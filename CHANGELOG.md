@@ -37,7 +37,3 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Command injection in `isGitIgnored`
 - 5 pre-existing test failures in dispatcher and state
 
-## [1.0.0] - 2026-03-15
-
-### Changed
-- Version reset to 1.0.0 — independent versioning lifecycle
