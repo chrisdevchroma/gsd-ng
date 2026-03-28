@@ -13,7 +13,7 @@ Validate `.planning/` directory integrity and report actionable issues. Checks f
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/health.md
+@~/.claude/gsd-ng/workflows/health.md
 </execution_context>
 
 <tool_usage>
@@ -43,6 +43,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute the health workflow from @~/.claude/get-shit-done/workflows/health.md end-to-end.
+Execute the health workflow from @~/.claude/gsd-ng/workflows/health.md end-to-end.
 Parse --repair flag from arguments and pass to workflow.
 </process>

@@ -14,9 +14,9 @@ Create a pull/merge request from the current branch with auto-generated descript
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/create-pr.md
+@~/.claude/gsd-ng/workflows/create-pr.md
 </execution_context>
 
 <process>
-Execute the create-pr workflow from @~/.claude/get-shit-done/workflows/create-pr.md end-to-end.
+Execute the create-pr workflow from @~/.claude/gsd-ng/workflows/create-pr.md end-to-end.
 </process>

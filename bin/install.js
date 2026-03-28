@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 // Colors
 const cyan = '\x1b[36m';
@@ -21,6 +22,21 @@ const args = process.argv.slice(2);
 const hasGlobal = args.includes('--global') || args.includes('-g');
 const hasLocal = args.includes('--local') || args.includes('-l');
 const hasUninstall = args.includes('--uninstall') || args.includes('-u');
+const noSeedPermissionsConfig = args.includes('--no-seed-permissions-config');
+let noSeedSandboxConfig = args.includes('--no-seed-sandbox-config');
+const runtimeArgIdx = args.findIndex(a => a === '--runtime');
+const runtimeArgVal = runtimeArgIdx !== -1 ? args[runtimeArgIdx + 1] : null;
+// Runtime is ONLY set via --runtime flag. No implicit default.
+// For non-interactive: --runtime is required (validated below).
+// For interactive: promptRuntime() sets this before install.
+let runtime = runtimeArgVal || null;  // null means "not specified yet"
+let isCopilot = runtime === 'copilot';
+
+// Validate --runtime value if provided
+if (runtimeArgVal && !['claude', 'copilot'].includes(runtimeArgVal)) {
+  console.error(`  ${yellow}Error: Unknown runtime '${runtimeArgVal}'. Use --runtime claude or --runtime copilot${reset}`);
+  process.exit(1);
+}
 
 /**
  * Convert a pathPrefix (which uses absolute paths for global installs) to a
@@ -53,28 +69,39 @@ function toHomePrefix(pathPrefix) {
   return normalized;
 }
 
-// Helper to get directory name (always .claude for the single supported runtime)
-function getDirName() {
+// Helper to get directory name based on runtime
+function getDirName(rt) {
+  if (rt === 'copilot') return '.github';
   return '.claude';
 }
 
 /**
  * Get the config directory path relative to home directory
  * Used for templating hooks that use path.join(homeDir, '<configDir>', ...)
+ * @param {string} rt - Runtime ('claude' or 'copilot')
  * @param {boolean} isGlobal - Whether this is a global install
  */
-function getConfigDirFromHome(isGlobal) {
+function getConfigDirFromHome(rt, isGlobal) {
+  if (rt === 'copilot') {
+    return isGlobal ? "'.copilot'" : "'.github'";
+  }
   if (!isGlobal) {
-    return `'${getDirName()}'`;
+    return `'${getDirName(rt)}'`;
   }
   return "'.claude'";
 }
 
 /**
  * Get the global config directory
+ * @param {string} rt - Runtime ('claude' or 'copilot')
  * @param {string|null} explicitDir - Explicit directory from --config-dir flag
  */
-function getGlobalDir(explicitDir = null) {
+function getGlobalDir(rt, explicitDir = null) {
+  if (rt === 'copilot') {
+    if (explicitDir) return expandTilde(explicitDir);
+    if (process.env.COPILOT_CONFIG_DIR) return expandTilde(process.env.COPILOT_CONFIG_DIR);
+    return path.join(os.homedir(), '.copilot');
+  }
   // Claude Code: --config-dir > CLAUDE_CONFIG_DIR > ~/.claude
   if (explicitDir) {
     return expandTilde(explicitDir);
@@ -91,9 +118,15 @@ const banner = '\n' +
   '  ██║  ███╗███████╗██║  ██║\n' +
   '  ██║   ██║╚════██║██║  ██║\n' +
   '  ╚██████╔╝███████║██████╔╝\n' +
-  '   ╚═════╝ ╚══════╝╚═════╝' + reset + '\n' +
+  '   ╚═════╝ ╚══════╝╚═════╝\n' +
+  dim + '        ███╗   ██╗ ██████╗\n' +
+  '        ████╗  ██║██╔════╝\n' +
+  '        ██╔██╗ ██║██║  ███╗\n' +
+  '        ██║╚██╗██║██║   ██║\n' +
+  '        ██║ ╚████║╚██████╔╝\n' +
+  '        ╚═╝  ╚═══╝ ╚═════╝' + reset + '\n' +
   '\n' +
-  '  Get Shit Done ' + dim + 'v' + pkg.version + reset + '\n' +
+  '  gsd-ng ' + dim + 'v' + pkg.version + reset + '\n' +
   '  A meta-prompting, context engineering and spec-driven\n' +
   '  development system for Claude Code.\n';
 
@@ -128,12 +161,12 @@ const forceStatusline = args.includes('--force-statusline');
 console.log(banner);
 
 if (hasUninstall) {
-  console.log('  Mode: Uninstall\n');
+  console.log(`  ${yellow}Mode: Uninstall${reset}\n`);
 }
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx get-shit-done-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}              Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}               Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}           Uninstall GSD (requires --global or --local)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for location)${reset}\n    npx get-shit-done-ng\n\n    ${dim}# Install globally${reset}\n    npx get-shit-done-ng --global\n\n    ${dim}# Install to current project only${reset}\n    npx get-shit-done-ng --local\n\n    ${dim}# Install to custom config directory${reset}\n    npx get-shit-done-ng --global --config-dir ~/.claude-work\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx get-shit-done-ng --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over the CLAUDE_CONFIG_DIR environment variable.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-c, --config-dir <path>${reset}            Specify custom config directory\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx gsd-ng --runtime claude --global --config-dir ~/.claude-work\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over the CLAUDE_CONFIG_DIR environment variable.\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
   process.exit(0);
 }
 
@@ -193,7 +226,7 @@ function getCommitAttribution() {
   }
 
   // Claude Code: read attribution from settings.json
-  const settings = readSettings(path.join(getGlobalDir(explicitConfigDir), 'settings.json'));
+  const settings = readSettings(path.join(getGlobalDir(runtime, explicitConfigDir), 'settings.json'));
   let result;
   if (!settings.attribution || settings.attribution.commit === undefined) {
     result = undefined;
@@ -237,7 +270,7 @@ function processAttribution(content, attribution) {
  * @param {boolean} isCommand - Whether copying command files
  */
 function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false) {
-  const dirName = getDirName();
+  const dirName = getDirName(runtime);
 
   // Clean install: remove existing destination to prevent orphaned files
   if (fs.existsSync(destDir)) {
@@ -276,18 +309,19 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
  * @param {boolean} isGlobal - Whether to uninstall from global or local
  */
 function uninstall(isGlobal) {
-  const dirName = getDirName();
+  const dirName = getDirName(runtime);
 
   // Get the target directory based on install type
   const targetDir = isGlobal
-    ? getGlobalDir(explicitConfigDir)
+    ? getGlobalDir(runtime, explicitConfigDir)
     : path.join(process.cwd(), dirName);
 
   const locationLabel = isGlobal
     ? targetDir.replace(os.homedir(), '~')
     : targetDir.replace(process.cwd(), '.');
 
-  console.log(`  Uninstalling GSD from ${cyan}Claude Code${reset} at ${cyan}${locationLabel}${reset}\n`);
+  const runtimeLabel = isCopilot ? 'Copilot CLI' : 'Claude Code';
+  console.log(`  Uninstalling GSD from ${cyan}${runtimeLabel}${reset} at ${cyan}${locationLabel}${reset}\n`);
 
   // Check if target directory exists
   if (!fs.existsSync(targetDir)) {
@@ -298,6 +332,80 @@ function uninstall(isGlobal) {
 
   let removedCount = 0;
 
+  if (isCopilot) {
+    // 1. Remove GSD skills (skills/gsd-* directories)
+    const skillsDir = path.join(targetDir, 'skills');
+    if (fs.existsSync(skillsDir)) {
+      let skillCount = 0;
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
+          fs.rmSync(path.join(skillsDir, entry.name), { recursive: true });
+          skillCount++;
+        }
+      }
+      if (skillCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${skillCount} Copilot skills`);
+      }
+    }
+
+    // 2. Remove gsd-ng engine directory
+    const gsdDir = path.join(targetDir, 'gsd-ng');
+    if (fs.existsSync(gsdDir)) {
+      fs.rmSync(gsdDir, { recursive: true });
+      removedCount++;
+      console.log(`  ${green}✓${reset} Removed gsd-ng/`);
+    }
+
+    // 3. Remove GSD agents (gsd-*.agent.md)
+    const agentsDir = path.join(targetDir, 'agents');
+    if (fs.existsSync(agentsDir)) {
+      let agentCount = 0;
+      for (const file of fs.readdirSync(agentsDir)) {
+        if (file.startsWith('gsd-') && file.endsWith('.agent.md')) {
+          fs.unlinkSync(path.join(agentsDir, file));
+          agentCount++;
+        }
+      }
+      if (agentCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${agentCount} Copilot agents`);
+      }
+    }
+
+    // 4. Clean GSD section from copilot-instructions.md
+    const instructionsPath = path.join(targetDir, 'copilot-instructions.md');
+    if (fs.existsSync(instructionsPath)) {
+      const content = fs.readFileSync(instructionsPath, 'utf8');
+      const cleaned = stripGsdFromCopilotInstructions(content);
+      if (cleaned === null) {
+        fs.unlinkSync(instructionsPath);
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed copilot-instructions.md (was GSD-only)`);
+      } else if (cleaned !== content) {
+        fs.writeFileSync(instructionsPath, cleaned);
+        removedCount++;
+        console.log(`  ${green}✓${reset} Cleaned GSD section from copilot-instructions.md`);
+      }
+    }
+
+    // 5. Remove gsd-hooks.json
+    const gsdHooksPath = path.join(targetDir, 'hooks', 'gsd-hooks.json');
+    if (fs.existsSync(gsdHooksPath)) {
+      fs.unlinkSync(gsdHooksPath);
+      removedCount++;
+      console.log(`  ${green}✓${reset} Removed hooks/gsd-hooks.json`);
+    }
+
+    // Print summary and return (no settings.json cleanup for Copilot)
+    if (removedCount === 0) {
+      console.log(`  ${yellow}⚠${reset} No GSD files found to remove`);
+    } else {
+      console.log(`\n  ${green}✓${reset} Uninstalled ${removedCount} GSD component(s)`);
+    }
+    return;
+  }
+
   // 1. Remove GSD commands
   const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
   if (fs.existsSync(gsdCommandsDir)) {
@@ -306,12 +414,12 @@ function uninstall(isGlobal) {
     console.log(`  ${green}✓${reset} Removed commands/gsd/`);
   }
 
-  // 2. Remove get-shit-done directory
-  const gsdDir = path.join(targetDir, 'get-shit-done');
+  // 2. Remove gsd-ng directory
+  const gsdDir = path.join(targetDir, 'gsd-ng');
   if (fs.existsSync(gsdDir)) {
     fs.rmSync(gsdDir, { recursive: true });
     removedCount++;
-    console.log(`  ${green}✓${reset} Removed get-shit-done/`);
+    console.log(`  ${green}✓${reset} Removed gsd-ng/`);
   }
 
   // 3. Remove GSD agents (gsd-*.md files only)
@@ -334,7 +442,7 @@ function uninstall(isGlobal) {
   // 4. Remove GSD hooks
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'sandbox-detect.js', 'gsd-guardrail.js'];
+    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'gsd-sandbox-detect.js', 'gsd-guardrail.js'];
     let hookCount = 0;
     for (const hook of gsdHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -425,13 +533,13 @@ function uninstall(isGlobal) {
       }
     }
 
-    // Remove GSD hooks from PreToolUse (sandbox-detect.js, gsd-guardrail.js)
+    // Remove GSD hooks from PreToolUse (gsd-sandbox-detect.js, gsd-guardrail.js)
     if (settings.hooks && settings.hooks.PreToolUse) {
       const before = settings.hooks.PreToolUse.length;
       settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(entry => {
         if (entry.hooks && Array.isArray(entry.hooks)) {
           const hasGsdHook = entry.hooks.some(h =>
-            h.command && (h.command.includes('sandbox-detect') || h.command.includes('gsd-guardrail'))
+            h.command && (h.command.includes('gsd-sandbox-detect') || h.command.includes('gsd-guardrail'))
           );
           return !hasGsdHook;
         }
@@ -443,6 +551,49 @@ function uninstall(isGlobal) {
       }
       if (settings.hooks.PreToolUse.length === 0) {
         delete settings.hooks.PreToolUse;
+      }
+    }
+
+    // Remove GSD-seeded permissions.allow entries
+    if (settings.permissions && Array.isArray(settings.permissions.allow)) {
+      const sandboxTemplatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
+      try {
+        let templateEntries = [];
+        if (fs.existsSync(sandboxTemplatePath)) {
+          const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+          templateEntries = sandboxTemplate.permissions?.allow ?? [];
+        }
+
+        // Also compute dynamic platform CLI entries for removal
+        const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
+        const dynamicEntries = [];
+        for (const cli of platformCLIs) {
+          try {
+            execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
+            dynamicEntries.push(`Bash(${cli} *)`);
+          } catch {
+            // CLI not installed — skip
+          }
+        }
+
+        const removalSet = new Set([...templateEntries, ...dynamicEntries]);
+        const before = settings.permissions.allow.length;
+        settings.permissions.allow = settings.permissions.allow.filter(e => !removalSet.has(e));
+
+        if (settings.permissions.allow.length < before) {
+          settingsModified = true;
+          console.log(`  ${green}✓${reset} Removed GSD permissions from settings`);
+        }
+
+        // Clean up empty structures
+        if (settings.permissions.allow.length === 0) {
+          delete settings.permissions.allow;
+        }
+        if (settings.permissions && Object.keys(settings.permissions).length === 0) {
+          delete settings.permissions;
+        }
+      } catch {
+        // Template missing or unreadable — skip
       }
     }
 
@@ -543,14 +694,14 @@ function generateManifest(dir, baseDir) {
  * Write file manifest after installation for future modification detection
  */
 function writeManifest(configDir) {
-  const gsdDir = path.join(configDir, 'get-shit-done');
+  const gsdDir = path.join(configDir, 'gsd-ng');
   const commandsDir = path.join(configDir, 'commands', 'gsd');
   const agentsDir = path.join(configDir, 'agents');
   const manifest = { version: pkg.version, timestamp: new Date().toISOString(), files: {} };
 
   const gsdHashes = generateManifest(gsdDir);
   for (const [rel, hash] of Object.entries(gsdHashes)) {
-    manifest.files['get-shit-done/' + rel] = hash;
+    manifest.files['gsd-ng/' + rel] = hash;
   }
   if (fs.existsSync(commandsDir)) {
     const cmdHashes = generateManifest(commandsDir);
@@ -642,13 +793,201 @@ function reportLocalPatches(configDir) {
   return meta.files || [];
 }
 
+// ─── Content Conversion Engine (Claude → Copilot) ────────────────────────────
+
+/**
+ * Tool name mapping from Claude Code tool names to Copilot tool identifiers.
+ * Used when converting Claude command/agent files to Copilot skill/agent format.
+ */
+const claudeToCopilotTools = {
+  Read: 'read',
+  Write: 'edit',
+  Edit: 'edit',
+  Bash: 'execute',
+  Grep: 'search',
+  Glob: 'search',
+  Task: 'agent',
+  WebSearch: 'web',
+  WebFetch: 'web',
+  TodoWrite: 'todo',
+  AskUserQuestion: 'ask_user',
+  SlashCommand: 'skill',
+};
+
+/** HTML comment markers wrapping the GSD-managed block in copilot-instructions.md */
+const GSD_COPILOT_INSTRUCTIONS_MARKER = '<!-- GSD Configuration — managed by get-shit-done installer -->';
+const GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER = '<!-- /GSD Configuration -->';
+
+/**
+ * Path and reference conversion applied to ALL Copilot content.
+ * Converts Claude-specific paths, directory names, and command prefixes to Copilot equivalents.
+ * @param {string} content - File content to convert
+ * @param {boolean} isGlobal - Whether this is a global install
+ * @returns {string} Converted content
+ */
+function convertClaudeToCopilotContent(content, isGlobal = false) {
+  let out = content;
+
+  if (isGlobal) {
+    // Global: ~/.claude/ → ~/.copilot/, $HOME/.claude/ → $HOME/.copilot/
+    out = out.replace(/~\/\.claude\//g, '~/.copilot/');
+    out = out.replace(/\$HOME\/\.claude\//g, '$HOME/.copilot/');
+  } else {
+    // Local: ~/.claude/ → .github/, $HOME/.claude/ → .github/, ./.claude/ → ./.github/
+    out = out.replace(/~\/\.claude\//g, '.github/');
+    out = out.replace(/\$HOME\/\.claude\//g, '.github/');
+    out = out.replace(/\.\/\.claude\//g, './.github/');
+  }
+
+  // Slash command prefix: gsd: → gsd- (applies to all Markdown content)
+  out = out.replace(/gsd:/g, 'gsd-');
+
+  // Standalone CLAUDE.md references → copilot-instructions.md
+  out = out.replace(/\bCLAUDE\.md\b/g, 'copilot-instructions.md');
+
+  return out;
+}
+
+/**
+ * Convert a Claude command .md file to Copilot SKILL.md format.
+ * Adjusts YAML frontmatter (allowed-tools list → comma-separated string with mapped names)
+ * and applies path/reference conversion to the body.
+ * @param {string} content - Source command .md content
+ * @param {string} skillName - Name of the skill (used for context only)
+ * @param {boolean} isGlobal - Whether this is a global install
+ * @returns {string} Converted content
+ */
+function convertClaudeCommandToCopilotSkill(content, skillName, isGlobal) {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!frontmatterMatch) {
+    return convertClaudeToCopilotContent(content, isGlobal);
+  }
+
+  let frontmatter = frontmatterMatch[1];
+  const body = frontmatterMatch[2];
+
+  // Convert name: field — replace gsd: prefix with gsd- (Copilot skill names cannot contain colons)
+  frontmatter = frontmatter.replace(/^(name:\s*)gsd:/m, '$1gsd-');
+
+  // Convert allowed-tools YAML list to comma-separated Copilot format with mapped names
+  frontmatter = frontmatter.replace(
+    /^allowed-tools:\s*\n((?:[ \t]*-[ \t]*\S+[ \t]*\n?)*)/m,
+    (match, listBlock) => {
+      const tools = listBlock
+        .split('\n')
+        .map(line => line.replace(/^[ \t]*-[ \t]*/, '').trim())
+        .filter(Boolean)
+        .map(t => claudeToCopilotTools[t] || t.toLowerCase());
+      return 'allowed-tools: ' + tools.join(', ') + '\n';
+    }
+  );
+
+  const convertedBody = convertClaudeToCopilotContent(body, isGlobal);
+  return '---\n' + frontmatter + '\n---\n' + convertedBody;
+}
+
+/**
+ * Convert a Claude agent .md to Copilot .agent.md format.
+ * Adjusts the tools frontmatter field from space/comma-separated Claude tool names
+ * to a JSON array of Copilot tool names.
+ * @param {string} content - Source agent .md content
+ * @param {boolean} isGlobal - Whether this is a global install
+ * @returns {string} Converted content
+ */
+function convertClaudeAgentToCopilotAgent(content, isGlobal) {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!frontmatterMatch) {
+    return convertClaudeToCopilotContent(content, isGlobal);
+  }
+
+  let frontmatter = frontmatterMatch[1];
+  const body = frontmatterMatch[2];
+
+  // Convert tools: line from space/comma-separated names to JSON array of Copilot names
+  frontmatter = frontmatter.replace(
+    /^(tools:[ \t]*)(.+)$/m,
+    (match, prefix, toolsValue) => {
+      const tools = toolsValue
+        .split(/[\s,]+/)
+        .map(t => t.trim())
+        .filter(Boolean)
+        .map(t => claudeToCopilotTools[t] || t.toLowerCase());
+      return prefix + JSON.stringify(tools);
+    }
+  );
+
+  const convertedBody = convertClaudeToCopilotContent(body, isGlobal);
+  return '---\n' + frontmatter + '\n---\n' + convertedBody;
+}
+
+/**
+ * Merge the GSD configuration block into copilot-instructions.md.
+ * Three cases:
+ *   - File doesn't exist: create with markers wrapping templateContent
+ *   - File exists with markers: replace content between markers
+ *   - File exists without markers: append markers + templateContent at end
+ * @param {string} instructionsPath - Absolute path to copilot-instructions.md
+ * @param {string} templateContent - GSD configuration block content
+ */
+function mergeCopilotInstructions(instructionsPath, templateContent) {
+  const gsdBlock = GSD_COPILOT_INSTRUCTIONS_MARKER + '\n' +
+    templateContent.trim() + '\n' +
+    GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER;
+
+  if (!fs.existsSync(instructionsPath)) {
+    fs.writeFileSync(instructionsPath, gsdBlock + '\n');
+    return;
+  }
+
+  const existing = fs.readFileSync(instructionsPath, 'utf8');
+  const markerStart = existing.indexOf(GSD_COPILOT_INSTRUCTIONS_MARKER);
+  const markerEnd = existing.indexOf(GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER);
+
+  if (markerStart !== -1 && markerEnd !== -1) {
+    // Replace content between markers (inclusive)
+    const updated = existing.slice(0, markerStart) +
+      gsdBlock +
+      existing.slice(markerEnd + GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER.length);
+    fs.writeFileSync(instructionsPath, updated);
+  } else {
+    // Append GSD block at end
+    const separator = existing.endsWith('\n') ? '\n' : '\n\n';
+    fs.writeFileSync(instructionsPath, existing + separator + gsdBlock + '\n');
+  }
+}
+
+/**
+ * Remove the GSD block from copilot-instructions.md content.
+ * @param {string} content - File content containing possible GSD markers
+ * @returns {string|null} Cleaned content, or null if file should be deleted (was GSD-only)
+ */
+function stripGsdFromCopilotInstructions(content) {
+  const markerStart = content.indexOf(GSD_COPILOT_INSTRUCTIONS_MARKER);
+  const markerEnd = content.indexOf(GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER);
+
+  if (markerStart === -1 || markerEnd === -1) {
+    return content; // No GSD block found — return unchanged
+  }
+
+  const before = content.slice(0, markerStart).trimEnd();
+  const after = content.slice(markerEnd + GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER.length).trimStart();
+  const cleaned = [before, after].filter(Boolean).join('\n\n');
+
+  if (!cleaned.trim()) {
+    return null; // File was GSD-only — caller should delete it
+  }
+  return cleaned + '\n';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function install(isGlobal) {
-  const dirName = getDirName();
+  const dirName = getDirName(runtime);
   const src = path.join(__dirname, '..');
 
   // Get the target directory based on install type
   const targetDir = isGlobal
-    ? getGlobalDir(explicitConfigDir)
+    ? getGlobalDir(runtime, explicitConfigDir)
     : path.join(process.cwd(), dirName);
 
   const locationLabel = isGlobal
@@ -663,10 +1002,121 @@ function install(isGlobal) {
     ? `${targetDir.replace(/\\/g, '/').replace(os.homedir().replace(/\\/g, '/'), '~')}/`
     : `./${dirName}/`;
 
-  console.log(`  Installing for ${cyan}Claude Code${reset} to ${cyan}${locationLabel}${reset}\n`);
+  const runtimeLabel = isCopilot ? 'Copilot CLI' : 'Claude Code';
+  console.log(`  Installing for ${cyan}${runtimeLabel}${reset} to ${cyan}${locationLabel}${reset}\n`);
 
   // Track installation failures
   const failures = [];
+
+  if (isCopilot) {
+    // Copilot: skills (from commands), agents, gsd-ng engine, copilot-instructions.md
+    // NO settings.json, NO hooks, NO statusline, NO sandbox seeding
+
+    // 1. Copy gsd-ng skill engine (same as Claude Code)
+    const skillSrc = path.join(src, 'gsd-ng');
+    const skillDest = path.join(targetDir, 'gsd-ng');
+    copyWithPathReplacement(skillSrc, skillDest, pathPrefix);
+    if (verifyInstalled(skillDest, 'gsd-ng')) {
+      console.log(`  ${green}✓${reset} Installed gsd-ng`);
+    } else {
+      failures.push('gsd-ng');
+    }
+
+    // 2. Convert commands to Copilot skills (skills/gsd-{name}/SKILL.md)
+    const commandsSrc = path.join(src, 'commands', 'gsd');
+    const skillsDir = path.join(targetDir, 'skills');
+    if (fs.existsSync(commandsSrc)) {
+      // Clean existing GSD skills
+      if (fs.existsSync(skillsDir)) {
+        for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
+            fs.rmSync(path.join(skillsDir, entry.name), { recursive: true });
+          }
+        }
+      }
+      fs.mkdirSync(skillsDir, { recursive: true });
+
+      const commandFiles = fs.readdirSync(commandsSrc).filter(f => f.endsWith('.md'));
+      let skillCount = 0;
+      for (const file of commandFiles) {
+        const content = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+        const skillName = 'gsd-' + path.basename(file, '.md').replace(/^gsd[:-]/, '');
+        const skillDir = path.join(skillsDir, skillName);
+        fs.mkdirSync(skillDir, { recursive: true });
+        const converted = convertClaudeCommandToCopilotSkill(content, skillName, isGlobal);
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), converted);
+        skillCount++;
+      }
+      console.log(`  ${green}✓${reset} Installed ${skillCount} Copilot skills`);
+    }
+
+    // 3. Convert agents to Copilot .agent.md format
+    const agentsSrc = path.join(src, 'agents');
+    if (fs.existsSync(agentsSrc)) {
+      const agentsDest = path.join(targetDir, 'agents');
+      // Clean existing GSD agents
+      if (fs.existsSync(agentsDest)) {
+        for (const file of fs.readdirSync(agentsDest)) {
+          if (file.startsWith('gsd-') && file.endsWith('.agent.md')) {
+            fs.unlinkSync(path.join(agentsDest, file));
+          }
+        }
+      }
+      fs.mkdirSync(agentsDest, { recursive: true });
+
+      const agentFiles = fs.readdirSync(agentsSrc).filter(f => f.endsWith('.md'));
+      let agentCount = 0;
+      for (const file of agentFiles) {
+        const content = fs.readFileSync(path.join(agentsSrc, file), 'utf8');
+        const converted = convertClaudeAgentToCopilotAgent(content, isGlobal);
+        const agentName = path.basename(file, '.md') + '.agent.md';
+        fs.writeFileSync(path.join(agentsDest, agentName), converted);
+        agentCount++;
+      }
+      console.log(`  ${green}✓${reset} Installed ${agentCount} Copilot agents`);
+    }
+
+    // 4. Generate copilot-instructions.md
+    const templatePath = path.join(targetDir, 'gsd-ng', 'templates', 'copilot-instructions.md');
+    const instructionsPath = path.join(targetDir, 'copilot-instructions.md');
+    if (fs.existsSync(templatePath)) {
+      const template = fs.readFileSync(templatePath, 'utf8');
+      mergeCopilotInstructions(instructionsPath, template);
+      console.log(`  ${green}✓${reset} Generated copilot-instructions.md`);
+    }
+
+    // 5. Write gsd-hooks.json (SessionStart update-check hook)
+    // Note: global Copilot hooks (~/.copilot/hooks/) are not yet supported by Copilot CLI
+    // (feature request #1354). Only wire hooks for local installs.
+    if (!isGlobal) {
+      const hooksDir = path.join(targetDir, 'hooks');
+      fs.mkdirSync(hooksDir, { recursive: true });
+      const gsdHooksPath = path.join(hooksDir, 'gsd-hooks.json');
+      const hookContent = JSON.stringify({
+        version: 1,
+        hooks: {
+          sessionStart: [
+            {
+              type: 'command',
+              bash: `node ${dirName}/gsd-ng/hooks/gsd-check-update.js`,
+              cwd: '.',
+              timeoutSec: 30,
+            }
+          ]
+        }
+      }, null, 2);
+      fs.writeFileSync(gsdHooksPath, hookContent);
+      console.log(`  ${green}✓${reset} Installed hooks/gsd-hooks.json`);
+    } else {
+      console.log(`  (hooks skipped — global Copilot hooks not yet supported by Copilot CLI)`);
+    }
+
+    // Copilot: no settings.json, no statusline, no sandbox seeding
+    if (failures.length > 0) {
+      console.log(`\n  ${yellow}⚠ ${failures.length} component(s) failed to install${reset}`);
+    }
+    return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
+  }
 
   // Save any locally modified GSD files before they get wiped
   saveLocalPatches(targetDir);
@@ -684,14 +1134,14 @@ function install(isGlobal) {
     failures.push('commands/gsd');
   }
 
-  // Copy get-shit-done skill with path replacement
-  const skillSrc = path.join(src, 'get-shit-done');
-  const skillDest = path.join(targetDir, 'get-shit-done');
+  // Copy gsd-ng skill with path replacement
+  const skillSrc = path.join(src, 'gsd-ng');
+  const skillDest = path.join(targetDir, 'gsd-ng');
   copyWithPathReplacement(skillSrc, skillDest, pathPrefix);
-  if (verifyInstalled(skillDest, 'get-shit-done')) {
-    console.log(`  ${green}✓${reset} Installed get-shit-done`);
+  if (verifyInstalled(skillDest, 'gsd-ng')) {
+    console.log(`  ${green}✓${reset} Installed gsd-ng`);
   } else {
-    failures.push('get-shit-done');
+    failures.push('gsd-ng');
   }
 
   // Copy agents to agents directory
@@ -732,7 +1182,7 @@ function install(isGlobal) {
 
   // Copy CHANGELOG.md
   const changelogSrc = path.join(src, 'CHANGELOG.md');
-  const changelogDest = path.join(targetDir, 'get-shit-done', 'CHANGELOG.md');
+  const changelogDest = path.join(targetDir, 'gsd-ng', 'CHANGELOG.md');
   if (fs.existsSync(changelogSrc)) {
     fs.copyFileSync(changelogSrc, changelogDest);
     if (verifyFileInstalled(changelogDest, 'CHANGELOG.md')) {
@@ -743,7 +1193,7 @@ function install(isGlobal) {
   }
 
   // Write VERSION file
-  const versionDest = path.join(targetDir, 'get-shit-done', 'VERSION');
+  const versionDest = path.join(targetDir, 'gsd-ng', 'VERSION');
   fs.writeFileSync(versionDest, pkg.version);
   if (verifyFileInstalled(versionDest, 'VERSION')) {
     console.log(`  ${green}✓${reset} Wrote VERSION (${pkg.version})`);
@@ -765,7 +1215,7 @@ function install(isGlobal) {
     const hooksDest = path.join(targetDir, 'hooks');
     fs.mkdirSync(hooksDest, { recursive: true });
     const hookEntries = fs.readdirSync(hooksSrc);
-    const configDirReplacement = getConfigDirFromHome(isGlobal);
+    const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
     for (const entry of hookEntries) {
       const srcFile = path.join(hooksSrc, entry);
       if (fs.statSync(srcFile).isFile()) {
@@ -813,8 +1263,8 @@ function install(isGlobal) {
     ? buildHookCommand(targetDir, 'gsd-context-monitor.js')
     : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-context-monitor.js';
   const sandboxDetectCommand = isGlobal
-    ? buildHookCommand(targetDir, 'sandbox-detect.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/sandbox-detect.js';
+    ? buildHookCommand(targetDir, 'gsd-sandbox-detect.js')
+    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-sandbox-detect.js';
   const guardrailCommand = isGlobal
     ? buildHookCommand(targetDir, 'gsd-guardrail.js')
     : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-guardrail.js';
@@ -888,7 +1338,7 @@ function install(isGlobal) {
   }
 
   const hasGsdSandboxDetectHook = settings.hooks.PreToolUse.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('sandbox-detect'))
+    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-sandbox-detect'))
   );
 
   if (!hasGsdSandboxDetectHook) {
@@ -919,6 +1369,86 @@ function install(isGlobal) {
       ]
     });
     console.log(`  ${green}✓${reset} Configured workflow guardrail hook`);
+  }
+
+  // Seed permissions.allow from settings-sandbox.json template
+  if (!noSeedPermissionsConfig && !isCopilot) {
+    const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
+    try {
+      const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+      const templateEntries = sandboxTemplate.permissions?.allow ?? [];
+
+      // Detect platform CLIs dynamically
+      const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
+      const dynamicEntries = [];
+      for (const cli of platformCLIs) {
+        try {
+          execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
+          dynamicEntries.push(`Bash(${cli} *)`);
+        } catch {
+          // CLI not installed — skip
+        }
+      }
+
+      // Also check .planning/config.json for configured platform
+      const configPath = path.join(process.cwd(), '.planning', 'config.json');
+      try {
+        if (fs.existsSync(configPath)) {
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          const platform = config.git?.platform;
+          const platformToCli = { github: 'gh', gitlab: 'glab', forgejo: 'fj', gitea: 'tea' };
+          if (platform && platformToCli[platform]) {
+            const entry = `Bash(${platformToCli[platform]} *)`;
+            if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
+          }
+        }
+      } catch {
+        // config.json missing or unparseable — skip
+      }
+
+      // Non-destructive merge: add missing entries, keep existing
+      const allNewEntries = [...templateEntries, ...dynamicEntries];
+      const existingAllow = settings.permissions?.allow ?? [];
+      const entriesToAdd = allNewEntries.filter(e => !existingAllow.includes(e));
+
+      if (entriesToAdd.length > 0) {
+        if (!settings.permissions) settings.permissions = {};
+        if (!settings.permissions.allow) settings.permissions.allow = [];
+        settings.permissions.allow.push(...entriesToAdd);
+        console.log(`  ${green}✓${reset} Seeded ${entriesToAdd.length} permissions`);
+      } else {
+        console.log(`  ${green}✓${reset} Permissions already up to date`);
+      }
+    } catch {
+      // Template missing or unreadable — skip silently
+    }
+  }
+
+  // Seed sandbox settings by default (opt-out via --no-seed-sandbox-config)
+  if (!noSeedSandboxConfig && !isCopilot) {
+    const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
+    try {
+      const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+      let sandboxSeeded = false;
+
+      if (sandboxTemplate.sandbox) {
+        if (!settings.sandbox) settings.sandbox = {};
+        if (settings.sandbox.enabled === undefined && sandboxTemplate.sandbox.enabled !== undefined) {
+          settings.sandbox.enabled = sandboxTemplate.sandbox.enabled;
+          sandboxSeeded = true;
+        }
+        if (settings.sandbox.autoAllowBashIfSandboxed === undefined && sandboxTemplate.sandbox.autoAllowBashIfSandboxed !== undefined) {
+          settings.sandbox.autoAllowBashIfSandboxed = sandboxTemplate.sandbox.autoAllowBashIfSandboxed;
+          sandboxSeeded = true;
+        }
+      }
+
+      if (sandboxSeeded) {
+        console.log(`  ${green}✓${reset} Enabled sandbox mode`);
+      }
+    } catch {
+      // Template missing or unreadable — skip
+    }
   }
 
   return { settingsPath, settings, statuslineCommand };
@@ -995,21 +1525,40 @@ function handleStatusline(settings, isInteractive, callback) {
 }
 
 /**
+ * Ask whether to enable sandbox mode by default.
+ * Only called from the interactive (TTY) installer flow for Claude runtime.
+ * Copilot runtime skips this prompt entirely (no sandbox model).
+ * Default is YES (Y/n) — user must explicitly type 'n' to opt out.
+ * User-facing language says "sandbox mode" not "seed sandbox config".
+ */
+function askSandboxMode(rl, callback) {
+  rl.question('  Enable sandbox mode by default? (Y/n): ', (answer) => {
+    const enable = answer.trim().toLowerCase() !== 'n';
+    callback(enable);
+  });
+}
+
+/**
  * Install GSD and finalize (hook registration + statusline)
  */
 function installAndFinish(isGlobal, isInteractive) {
   const result = install(isGlobal);
-  if (result) {
+  if (result && result.settingsPath) {
     handleStatusline(result.settings, isInteractive, (shouldInstallStatusline) => {
       finishInstall(result.settingsPath, result.settings, result.statuslineCommand, shouldInstallStatusline);
     });
+  } else if (result) {
+    // Copilot or other runtime without settings.json
+    console.log(`\n  ${green}Done!${reset} GSD installed for ${cyan}${isCopilot ? 'Copilot CLI' : 'your runtime'}${reset}.\n`);
   }
 }
 
 /**
- * Prompt for install location
+ * Prompt for runtime selection.
+ * Called FIRST in interactive flow, before location.
+ * No default -- user must explicitly choose 1 or 2.
  */
-function promptLocation() {
+function promptRuntime(callback) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -1025,8 +1574,44 @@ function promptLocation() {
     }
   });
 
-  const globalPath = getGlobalDir(explicitConfigDir).replace(os.homedir(), '~');
-  const localPath = './' + getDirName();
+  console.log(`  ${yellow}Which runtime?${reset}\n\n  ${cyan}1${reset}) Claude Code  ${dim}(commands in .claude/)${reset}\n  ${cyan}2${reset}) Copilot CLI   ${dim}(skills in .github/)${reset}\n`);
+
+  rl.question(`  Choice: `, (answer) => {
+    answered = true;
+    rl.close();
+    const choice = answer.trim();
+    if (choice === '1') {
+      callback('claude');
+    } else if (choice === '2') {
+      callback('copilot');
+    } else {
+      console.log(`\n  ${yellow}Invalid choice. Please enter 1 or 2.${reset}\n`);
+      promptRuntime(callback);
+    }
+  });
+}
+
+/**
+ * Prompt for install location
+ */
+function promptLocation(callback) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  let answered = false;
+
+  rl.on('close', () => {
+    if (!answered) {
+      answered = true;
+      console.log(`\n  ${yellow}Installation cancelled${reset}\n`);
+      process.exit(0);
+    }
+  });
+
+  const globalPath = getGlobalDir(runtime, explicitConfigDir).replace(os.homedir(), '~');
+  const localPath = './' + getDirName(runtime);
 
   console.log(`  ${yellow}Where would you like to install?${reset}\n\n  ${cyan}1${reset}) Global ${dim}(${globalPath})${reset} - available in all projects\n  ${cyan}2${reset}) Local  ${dim}(${localPath})${reset} - this project only\n`);
 
@@ -1035,7 +1620,7 @@ function promptLocation() {
     rl.close();
     const choice = answer.trim() || '1';
     const isGlobal = choice !== '2';
-    installAndFinish(isGlobal, true);
+    callback(isGlobal);
   });
 }
 
@@ -1051,16 +1636,45 @@ if (hasGlobal && hasLocal) {
     console.error(`  ${yellow}--uninstall requires --global or --local${reset}`);
     process.exit(1);
   }
+  if (!runtime) {
+    console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
+    process.exit(1);
+  }
   uninstall(hasGlobal);
 } else if (hasGlobal || hasLocal) {
+  // Non-interactive: --runtime is REQUIRED
+  if (!runtime) {
+    console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
+    process.exit(1);
+  }
   installAndFinish(hasGlobal, false);
 } else {
   // Interactive
   if (!process.stdin.isTTY) {
-    console.error(`  ${yellow}Non-interactive terminal detected. Use --global or --local to specify install location.${reset}\n`);
-    console.error(`  ${dim}Examples:${reset}\n    node bin/install.js --global\n    node bin/install.js --local\n`);
+    console.error(`  ${yellow}Non-interactive terminal detected. Use --runtime with --global or --local.${reset}\n`);
+    console.error(`  ${dim}Examples:${reset}\n    npx gsd-ng --runtime claude --global\n    npx gsd-ng --runtime claude --local\n    npx gsd-ng --runtime copilot --local\n`);
     process.exit(1);
   } else {
-    promptLocation();
+    // Interactive flow: runtime -> location -> sandbox (Claude only)
+    promptRuntime((selectedRuntime) => {
+      runtime = selectedRuntime;
+      isCopilot = runtime === 'copilot';
+      promptLocation((isGlobal) => {
+        if (isCopilot) {
+          // Copilot has no sandbox model -- skip sandbox prompt
+          installAndFinish(isGlobal, true);
+        } else {
+          // Claude: ask about sandbox mode
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          askSandboxMode(rl, (enableSandbox) => {
+            rl.close();
+            if (!enableSandbox) {
+              noSeedSandboxConfig = true;
+            }
+            installAndFinish(isGlobal, true);
+          });
+        }
+      });
+    });
   }
 }

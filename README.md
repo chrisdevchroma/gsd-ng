@@ -2,7 +2,7 @@
 
 # GET SHIT DONE NG
 
-**get-shit-done-ng is a next-generation fork of GSD, optimized specifically for Claude Code.**
+**gsd-ng is a next-generation hard fork of GSD, optimized for Claude Code and GitHub Copilot CLI.**
 
 Forked from [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done).
 
@@ -10,16 +10,16 @@ Forked from [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done
 
 **Solves context rot — the quality degradation that happens as Claude fills its context window.**
 
-[![npm version](https://img.shields.io/npm/v/get-shit-done-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-ng)
-[![npm downloads](https://img.shields.io/npm/dm/get-shit-done-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-ng)
-[![Tests](https://img.shields.io/github/actions/workflow/status/chrisdevchroma/get-shit-done-ng/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/chrisdevchroma/get-shit-done-ng/actions/workflows/test.yml)
-[![GitHub stars](https://img.shields.io/github/stars/chrisdevchroma/get-shit-done-ng?style=for-the-badge&logo=github&color=181717)](https://github.com/chrisdevchroma/get-shit-done-ng)
+[![npm version](https://img.shields.io/npm/v/gsd-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/gsd-ng)
+[![npm downloads](https://img.shields.io/npm/dm/gsd-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/gsd-ng)
+[![Tests](https://img.shields.io/github/actions/workflow/status/chrisdevchroma/gsd-ng/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/chrisdevchroma/gsd-ng/actions/workflows/test.yml)
+[![GitHub stars](https://img.shields.io/github/stars/chrisdevchroma/gsd-ng?style=for-the-badge&logo=github&color=181717)](https://github.com/chrisdevchroma/gsd-ng)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 <br>
 
 ```bash
-npx get-shit-done-ng@latest
+npx gsd-ng@latest
 ```
 
 **Works on Mac, Windows, and Linux.**
@@ -49,31 +49,34 @@ People who want to describe what they want and have it built correctly — witho
 ## Getting Started
 
 ```bash
-npx get-shit-done-ng@latest
+npx gsd-ng@latest
 ```
 
 The installer prompts you to choose your install location (global or local project).
 
 Verify with:
 - Claude Code: `/gsd:help`
+- Copilot CLI: `gsd-help` (skills format)
 
 ### Staying Updated
 
 GSD evolves fast. Update periodically:
 
 ```bash
-npx get-shit-done-ng@latest
+npx gsd-ng@latest
 ```
 
 <details>
 <summary><strong>Non-interactive Install (Docker, CI, Scripts)</strong></summary>
 
 ```bash
-npx get-shit-done-ng --global   # Install to ~/.claude/
-npx get-shit-done-ng --local    # Install to ./.claude/
+npx gsd-ng --runtime claude --global    # Install to ~/.claude/
+npx gsd-ng --runtime claude --local     # Install to ./.claude/
+npx gsd-ng --runtime copilot --local    # Install for Copilot CLI to ./.github/
+npx gsd-ng --runtime copilot --global   # Install for Copilot CLI to ~/.copilot/
 ```
 
-Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
+Use `--runtime claude` or `--runtime copilot` with `--global` (`-g`) or `--local` (`-l`) to skip the interactive prompts.
 
 </details>
 
@@ -83,33 +86,24 @@ Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
 Clone the repository and run the installer locally:
 
 ```bash
-git clone https://github.com/chrisdevchroma/get-shit-done-ng.git
-cd get-shit-done-ng
-node bin/install.js --local
+git clone https://github.com/chrisdevchroma/gsd-ng.git
+cd gsd-ng
+node bin/install.js --runtime claude --local
+node bin/install.js --runtime copilot --local   # Install for Copilot CLI
 ```
 
 Installs to `./.claude/` for testing modifications before contributing.
 
 </details>
 
-### Recommended: Sandbox Mode
+### Sandbox Mode
 
-GSD works best with Claude Code's sandbox mode. Copy the permissions template into your project:
+Sandbox mode is configured automatically during install. The installer seeds `settings.json` with sandbox settings and pre-approved permissions for all GSD operations.
 
-```bash
-cp node_modules/get-shit-done-ng/get-shit-done/templates/settings-sandbox.json .claude/settings.json
-```
-
-Or for local installs:
-
-```bash
-cp get-shit-done-ng/get-shit-done/templates/settings-sandbox.json .claude/settings.json
-```
-
-This enables sandbox isolation with pre-approved commands for all GSD operations. No approval dialogs, no security bypass.
+To opt out during install, use `--no-seed-sandbox-config`.
 
 > [!TIP]
-> If GSD ever triggers an approval dialog in sandbox mode, that's a bug — [open an issue](https://github.com/chrisdevchroma/get-shit-done-ng/issues).
+> If GSD ever triggers an approval dialog in sandbox mode, that's a bug -- [open an issue](https://github.com/chrisdevchroma/gsd-ng/issues).
 
 <details>
 <summary><strong>Alternative: Skip Permissions Mode</strong></summary>
@@ -142,19 +136,9 @@ If you want to customize which commands are allowed, add this to your project's 
 }
 ```
 
-See `get-shit-done-ng/get-shit-done/templates/settings-sandbox.json` for the complete list of GSD-required commands.
+See `gsd-ng/gsd-ng/templates/settings-sandbox.json` for the complete list of GSD-required commands.
 
 </details>
-
----
-
-## Quick Install (npm / npx)
-
-```bash
-npx get-shit-done-ng@latest
-```
-
-See [Getting Started](#getting-started) above for full options.
 
 ---
 
@@ -449,7 +433,8 @@ You're never locked in. The system adapts.
 | `/gsd:discuss-phase [N] [--auto]` | Capture implementation decisions before planning |
 | `/gsd:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
 | `/gsd:execute-phase <N>` | Execute all plans in parallel waves, verify when complete |
-| `/gsd:verify-work [N]` | Manual user acceptance testing ¹ |
+| `/gsd:verify-work [N]` | Manual user acceptance testing |
+| `/gsd:research-phase [N]` | Research how to implement a phase (standalone -- usually use /gsd:plan-phase instead) |
 | `/gsd:audit-milestone` | Verify milestone achieved its definition of done |
 | `/gsd:complete-milestone` | Archive milestone, tag release |
 | `/gsd:new-milestone [name]` | Start next version: questions → research → requirements → roadmap |
@@ -477,6 +462,24 @@ You're never locked in. The system adapts.
 | `/gsd:remove-phase [N]` | Remove future phase, renumber |
 | `/gsd:list-phase-assumptions [N]` | See Claude's intended approach before planning |
 | `/gsd:plan-milestone-gaps` | Create phases to close gaps from audit |
+| `/gsd:create-pr` | Create a pull request or merge request from GSD work |
+| `/gsd:squash <phase> [--strategy single\|per-plan\|logical] [--dry-run]` | Squash phase commits into clean history for code review |
+| `/gsd:validate-phase [N]` | Retroactively audit and fill Nyquist validation gaps for a completed phase |
+
+### Issue Tracking
+
+| Command | What it does |
+|---------|--------------|
+| `/gsd:import-issues [issue]` | Import external issues from GitHub/GitLab/Forgejo/Gitea as GSD todos |
+| `/gsd:sync-issues [phase]` | Manually sync GSD planning state with external issue trackers |
+| `/gsd:divergence [--refresh] [--init]` | Track upstream fork divergence and triage pending commits |
+
+### UI & Design
+
+| Command | What it does |
+|---------|--------------|
+| `/gsd:ui-phase [N]` | Generate UI design contract (UI-SPEC.md) for frontend phases |
+| `/gsd:ui-review [N]` | Retroactive 6-pillar visual audit of implemented frontend code |
 
 ### Session
 
@@ -496,8 +499,13 @@ You're never locked in. The system adapts.
 | `/gsd:debug [desc]` | Systematic debugging with persistent state |
 | `/gsd:quick [--full] [--discuss] [--research]` | Execute ad-hoc task with GSD guarantees (`--full` adds plan-checking and verification, `--discuss` gathers context first, `--research` investigates approaches before planning) |
 | `/gsd:health [--repair]` | Validate `.planning/` directory integrity, auto-repair with `--repair` |
-
-<sup>¹ Contributed by reddit user OracleGreyBeard</sup>
+| `/gsd:add-tests <phase> [instructions]` | Generate tests for a completed phase based on UAT criteria and implementation |
+| `/gsd:cleanup` | Archive phase directories from completed milestones |
+| `/gsd:do <description>` | Route freeform text to the right GSD command automatically |
+| `/gsd:note <text> \| list \| promote <N>` | Zero-friction idea capture, list notes, or promote to todos |
+| `/gsd:reapply-patches` | Reapply local modifications after a GSD update |
+| `/gsd:seed-memories` | Detect workspace topology and seed appropriate guardrail memories |
+| `/gsd:stats` | Display project statistics -- phases, plans, requirements, git metrics, and timeline |
 
 ---
 
@@ -574,30 +582,29 @@ At milestone completion, GSD offers squash merge (recommended) or merge with his
 
 ### Protecting Sensitive Files
 
-GSD's codebase mapping and analysis commands read files to understand your project. **Protect files containing secrets** by adding them to Claude Code's deny list:
+GSD's installer automatically seeds a `permissions.deny` list in `settings.json` that blocks access to sensitive files (`.env`, `.pem`, `.key`, credentials, `.aws/`, `.ssh/`, `.npmrc`, and more).
 
-1. Open Claude Code settings (`.claude/settings.json` or global)
-2. Add sensitive file patterns to the deny list:
+To see the full deny list, inspect `gsd-ng/gsd-ng/templates/settings-sandbox.json`.
+
+To add custom deny patterns, edit your project's `.claude/settings.json`:
 
 ```json
 {
   "permissions": {
     "deny": [
       "Read(.env)",
-      "Read(.env.*)",
-      "Read(**/secrets/*)",
-      "Read(**/*credential*)",
       "Read(**/*.pem)",
-      "Read(**/*.key)"
+      "Read(**/.ssh/*)"
     ]
   }
 }
 ```
 
-This prevents Claude from reading these files entirely, regardless of what commands you run.
-
 > [!IMPORTANT]
-> GSD includes built-in protections against committing secrets, but defense-in-depth is best practice. Deny read access to sensitive files as a first line of defense.
+> GSD includes built-in protections against committing secrets, but defense-in-depth is best practice. The deny list prevents Claude from reading sensitive files regardless of what commands you run.
+
+> [!NOTE]
+> **Linux users:** The sandbox template uses bare `Edit`, `Write`, and `Read` permissions (without glob patterns) because Linux's bubblewrap sandbox ignores gitignore-style globs in these rules. See [#16170](https://github.com/anthropics/claude-code/issues/16170) and [#6881](https://github.com/anthropics/claude-code/issues/6881).
 
 ---
 
@@ -609,18 +616,18 @@ This prevents Claude from reading these files entirely, regardless of what comma
 
 **Commands not working as expected?**
 - Run `/gsd:help` to verify installation
-- Re-run `npx get-shit-done-ng` to reinstall
+- Re-run `npx gsd-ng` to reinstall
 
 **Updating to the latest version?**
 ```bash
-npx get-shit-done-ng@latest
+npx gsd-ng@latest
 ```
 
 **Using Docker or containerized environments?**
 
 If file reads fail with tilde paths (`~/.claude/...`), set `CLAUDE_CONFIG_DIR` before installing:
 ```bash
-CLAUDE_CONFIG_DIR=/home/youruser/.claude npx get-shit-done-ng --global
+CLAUDE_CONFIG_DIR=/home/youruser/.claude npx gsd-ng --runtime claude --global
 ```
 This ensures absolute paths are used instead of `~` which may not expand correctly in containers.
 
@@ -629,14 +636,20 @@ This ensures absolute paths are used instead of `~` which may not expand correct
 To remove GSD completely:
 
 ```bash
-# Global installs
-npx get-shit-done-ng --global --uninstall
+# Claude Code - global installs
+npx gsd-ng --runtime claude --global --uninstall
 
-# Local installs (current project)
-npx get-shit-done-ng --local --uninstall
+# Claude Code - local installs (current project)
+npx gsd-ng --runtime claude --local --uninstall
+
+# Copilot CLI - local installs
+npx gsd-ng --runtime copilot --local --uninstall
+
+# Copilot CLI - global installs
+npx gsd-ng --runtime copilot --global --uninstall
 ```
 
-This removes all GSD commands, agents, hooks, and settings while preserving your other configurations.
+This removes all GSD commands/skills, agents, hooks, and settings while preserving your other configurations.
 
 ---
 

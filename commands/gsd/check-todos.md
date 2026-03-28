@@ -22,7 +22,7 @@ Routes to the check-todos workflow which handles:
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/check-todos.md
+@~/.claude/gsd-ng/workflows/check-todos.md
 </execution_context>
 
 <context>
@@ -58,7 +58,7 @@ Key constraints:
 </tool_usage>
 
 <process>
-**Follow the check-todos workflow** from `@~/.claude/get-shit-done/workflows/check-todos.md`.
+**Follow the check-todos workflow** from `@~/.claude/gsd-ng/workflows/check-todos.md`.
 
 The workflow handles all logic including:
 1. CLI data gathering (list-todos for pending, recurring-due for reminders)

@@ -15,7 +15,7 @@ const HOOKS_TO_COPY = [
   'gsd-context-monitor.js',
   'gsd-guardrail.js',
   'gsd-statusline.js',
-  'sandbox-detect.js'
+  'gsd-sandbox-detect.js'
 ];
 
 function build() {

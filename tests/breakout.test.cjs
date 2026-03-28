@@ -16,7 +16,7 @@ const path = require('path');
 const { runGsdTools, createTempGitProject, cleanup } = require('./helpers.cjs');
 
 // Direct require for unit testing internal helpers
-const commands = require('../get-shit-done/bin/lib/commands.cjs');
+const commands = require('../gsd-ng/bin/lib/commands.cjs');
 
 // ─── Unit tests for detectBreakout ───────────────────────────────────────────
 

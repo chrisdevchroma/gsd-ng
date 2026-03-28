@@ -57,7 +57,10 @@ process.stdin.on('end', () => {
       }
     }
 
-    const tmpDir = os.tmpdir();
+    const tmpDir = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp']
+      .filter(Boolean)
+      .find(d => { try { return fs.existsSync(d); } catch { return false; } })
+      || os.tmpdir();
     const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
 
     // If no metrics file, this is a subagent or fresh session -- exit silently

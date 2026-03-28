@@ -25,7 +25,7 @@ if (process.env.GSD_NO_GUARDRAIL === '1') {
 
 let input = '';
 // Timeout guard: if stdin doesn't close within 3s, exit silently instead of
-// hanging (matches pattern from gsd-context-monitor.js and sandbox-detect.js).
+// hanging (matches pattern from gsd-context-monitor.js and gsd-sandbox-detect.js).
 const stdinTimeout = setTimeout(() => process.exit(0), 3000);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => input += chunk);

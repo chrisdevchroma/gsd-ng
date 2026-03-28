@@ -18,8 +18,8 @@ Output: {phase_num}-UI-REVIEW.md
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/ui-review.md
-@~/.claude/get-shit-done/references/ui-brand.md
+@~/.claude/gsd-ng/workflows/ui-review.md
+@~/.claude/gsd-ng/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -53,6 +53,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute @~/.claude/get-shit-done/workflows/ui-review.md end-to-end.
+Execute @~/.claude/gsd-ng/workflows/ui-review.md end-to-end.
 Preserve all workflow gates.
 </process>

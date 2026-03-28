@@ -1112,7 +1112,7 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 **Check planning config using state load (commit_docs is available from the output):**
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state load)
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 # commit_docs is in the JSON output
 ```
@@ -1130,7 +1130,7 @@ Root cause: {root_cause}"
 
 Then commit planning docs via CLI (respects `commit_docs` config automatically):
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: resolve debug {slug}" --files .planning/debug/resolved/{slug}.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: resolve debug {slug}" --files .planning/debug/resolved/{slug}.md
 ```
 
 **Append to knowledge base:**
@@ -1161,7 +1161,7 @@ Then append the entry:
 
 Commit the knowledge base update alongside the resolved session:
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: update debug knowledge base with {slug}" --files .planning/debug/knowledge-base.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update debug knowledge base with {slug}" --files .planning/debug/knowledge-base.md
 ```
 
 Report completion and offer next steps.
@@ -1175,13 +1175,13 @@ Perform lightweight verification: does the Resolution section's root_cause and f
 **In auto mode** (goal: find_and_fix with auto-close):
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
 ```
 
 If `$AUTO_CFG` is `"true"` AND lightweight verification passes:
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close todo after debug resolution" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close todo after debug resolution" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
 ```
 Display: `[auto] Closed todo: $ORIGIN_TODO_TITLE`
 

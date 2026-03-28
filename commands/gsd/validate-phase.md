@@ -22,7 +22,7 @@ Output: updated VALIDATION.md + generated test files.
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/validate-phase.md
+@~/.claude/gsd-ng/workflows/validate-phase.md
 </execution_context>
 
 <context>
@@ -56,6 +56,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute @~/.claude/get-shit-done/workflows/validate-phase.md.
+Execute @~/.claude/gsd-ng/workflows/validate-phase.md.
 Preserve all workflow gates.
 </process>

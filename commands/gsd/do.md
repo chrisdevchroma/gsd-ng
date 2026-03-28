@@ -16,8 +16,8 @@ Use when you know what you want but don't know which `/gsd:*` command to run.
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/do.md
-@~/.claude/get-shit-done/references/ui-brand.md
+@~/.claude/gsd-ng/workflows/do.md
+@~/.claude/gsd-ng/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -51,6 +51,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute the do workflow from @~/.claude/get-shit-done/workflows/do.md end-to-end.
+Execute the do workflow from @~/.claude/gsd-ng/workflows/do.md end-to-end.
 Route user intent to the best GSD command and invoke it.
 </process>

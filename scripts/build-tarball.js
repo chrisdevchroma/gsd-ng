@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const DIST = path.join(ROOT, 'dist');
 fs.mkdirSync(DIST, { recursive: true });
-const OUT = path.join(DIST, 'get-shit-done-ng.tar.gz');
+const OUT = path.join(DIST, 'gsd-ng.tar.gz');
 
 // Guard: hooks/dist must be populated before packaging
 const distDir = path.join(ROOT, 'hooks', 'dist');

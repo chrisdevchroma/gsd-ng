@@ -92,7 +92,9 @@ function renderTokenBreakdown(data, config) {
  * Render the cross-model context warning.
  * Shows [>200k] in yellow when:
  *   - exceeds_200k_tokens is true (not null/false/undefined)
- *   - context_window_size > 200000 (Opus 1M class; skip on Sonnet-class)
+ *   - context_window_size > 200000 (only for large-window models; skip Sonnet/Haiku class)
+ * This warning indicates token usage exceeded 200K in the current session,
+ * which is a degradation signal for large-window models (Opus 4.6 = 1M window).
  * Returns '' otherwise.
  */
 function renderCrossModelWarning(data, config) {

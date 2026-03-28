@@ -16,9 +16,9 @@ Output ONLY the reference content below. Do NOT add:
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/help.md
+@~/.claude/gsd-ng/workflows/help.md
 </execution_context>
 
 <process>
-Execute the help workflow from @~/.claude/get-shit-done/workflows/help.md end-to-end.
+Execute the help workflow from @~/.claude/gsd-ng/workflows/help.md end-to-end.
 </process>

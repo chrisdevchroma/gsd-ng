@@ -5,6 +5,7 @@ const { runHook } = require('./hook-harness.cjs');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { resolveTmpDir } = require('./helpers.cjs');
 
 const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
@@ -12,8 +13,8 @@ const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
 test('gsd-context-monitor emits flat additionalContext, not hookSpecificOutput', () => {
   const session = 'phase2-test-' + Date.now();
-  const metricsPath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
-  const warnPath = path.join(os.tmpdir(), `claude-ctx-${session}-warned.json`);
+  const metricsPath = path.join(resolveTmpDir(), `claude-ctx-${session}.json`);
+  const warnPath = path.join(resolveTmpDir(), `claude-ctx-${session}-warned.json`);
 
   fs.writeFileSync(metricsPath, JSON.stringify({
     session_id: session,
@@ -79,8 +80,8 @@ test('gsd-check-update exits 0 without crashing', () => {
 
 test('HOOK-07: hookSpecificOutput must not appear in context-monitor stdout', () => {
   const session = 'hook07-test-' + Date.now();
-  const metricsPath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
-  const warnPath = path.join(os.tmpdir(), `claude-ctx-${session}-warned.json`);
+  const metricsPath = path.join(resolveTmpDir(), `claude-ctx-${session}.json`);
+  const warnPath = path.join(resolveTmpDir(), `claude-ctx-${session}-warned.json`);
 
   fs.writeFileSync(metricsPath, JSON.stringify({
     session_id: session,

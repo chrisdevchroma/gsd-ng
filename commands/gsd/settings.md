@@ -20,7 +20,7 @@ Routes to the settings workflow which handles:
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/settings.md
+@~/.claude/gsd-ng/workflows/settings.md
 </execution_context>
 
 <tool_usage>
@@ -50,7 +50,7 @@ Key constraints:
 </tool_usage>
 
 <process>
-**Follow the settings workflow** from `@~/.claude/get-shit-done/workflows/settings.md`.
+**Follow the settings workflow** from `@~/.claude/gsd-ng/workflows/settings.md`.
 
 The workflow handles all logic including:
 1. Config file creation with defaults if missing

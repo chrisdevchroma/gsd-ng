@@ -10,17 +10,25 @@ const { spawn } = require('child_process');
 const homeDir = os.homedir();
 const cwd = process.cwd();
 
-// Detect Claude Code config directory
+// Detect GSD config directory — supports Claude Code (.claude), Copilot local (.github), Copilot global (.copilot)
 // Respects CLAUDE_CONFIG_DIR for custom config directory setups
 function detectConfigDir(baseDir) {
   // Check env override first (supports multi-account setups)
   const envDir = process.env.CLAUDE_CONFIG_DIR;
-  if (envDir && fs.existsSync(path.join(envDir, 'get-shit-done', 'VERSION'))) {
+  if (envDir && fs.existsSync(path.join(envDir, 'gsd-ng', 'VERSION'))) {
     return envDir;
   }
-  const dir = '.claude';
-  if (fs.existsSync(path.join(baseDir, dir, 'get-shit-done', 'VERSION'))) {
-    return path.join(baseDir, dir);
+  // Check Claude Code local (.claude/gsd-ng/VERSION)
+  if (fs.existsSync(path.join(baseDir, '.claude', 'gsd-ng', 'VERSION'))) {
+    return path.join(baseDir, '.claude');
+  }
+  // Check Copilot local (.github/gsd-ng/VERSION)
+  if (fs.existsSync(path.join(baseDir, '.github', 'gsd-ng', 'VERSION'))) {
+    return path.join(baseDir, '.github');
+  }
+  // Check Copilot global (~/.copilot/gsd-ng/VERSION)
+  if (fs.existsSync(path.join(baseDir, '.copilot', 'gsd-ng', 'VERSION'))) {
+    return path.join(baseDir, '.copilot');
   }
   return envDir || path.join(baseDir, '.claude');
 }
@@ -31,8 +39,8 @@ const cacheDir = path.join(globalConfigDir, 'cache');
 const cacheFile = path.join(cacheDir, 'gsd-update-check.json');
 
 // VERSION file locations (check project first, then global)
-const projectVersionFile = path.join(projectConfigDir, 'get-shit-done', 'VERSION');
-const globalVersionFile = path.join(globalConfigDir, 'get-shit-done', 'VERSION');
+const projectVersionFile = path.join(projectConfigDir, 'gsd-ng', 'VERSION');
+const globalVersionFile = path.join(globalConfigDir, 'gsd-ng', 'VERSION');
 
 // ── SemVer utilities (exported for testing via GSD_TEST_MODE) ──────────────
 function compareSemVer(a, b) {
@@ -84,9 +92,9 @@ const child = spawn(process.execPath, ['-e', `
   const projectVersionFile = ${JSON.stringify(projectVersionFile)};
   const globalVersionFile = ${JSON.stringify(globalVersionFile)};
   const GITHUB_OWNER = ${JSON.stringify('chrisdevchroma')};
-  const GITHUB_REPO = ${JSON.stringify('get-shit-done-ng')};
+  const GITHUB_REPO = ${JSON.stringify('gsd-ng')};
   const GITHUB_TTL = 3600; // 1-hour cooldown between GitHub API checks
-  const ASSET_NAME = 'get-shit-done-ng.tar.gz';
+  const ASSET_NAME = 'gsd-ng.tar.gz';
 
   // SemVer utilities (duplicated inside spawn — separate process can't access outer scope)
   function compareSemVer(a, b) {
@@ -117,7 +125,7 @@ const child = spawn(process.execPath, ['-e', `
 
   let latest = null;
   try {
-    latest = execSync('npm view get-shit-done-ng version', { encoding: 'utf8', timeout: 10000, windowsHide: true }).trim();
+    latest = execSync('npm view gsd-ng version', { encoding: 'utf8', timeout: 10000, windowsHide: true }).trim();
   } catch (e) {}
 
   let source = latest ? 'npm' : 'unknown';
@@ -139,7 +147,7 @@ const child = spawn(process.execPath, ['-e', `
       hostname: 'api.github.com',
       path: '/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/releases/latest',
       headers: {
-        'User-Agent': 'get-shit-done-ng',
+        'User-Agent': 'gsd-ng',
         'Accept': 'application/vnd.github.v3+json',
       },
       timeout: 10000,

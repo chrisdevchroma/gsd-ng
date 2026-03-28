@@ -29,11 +29,11 @@ Initialize a new project through unified flow: questioning → research (optiona
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/new-project.md
-@~/.claude/get-shit-done/references/questioning.md
-@~/.claude/get-shit-done/references/ui-brand.md
-@~/.claude/get-shit-done/templates/project.md
-@~/.claude/get-shit-done/templates/requirements.md
+@~/.claude/gsd-ng/workflows/new-project.md
+@~/.claude/gsd-ng/references/questioning.md
+@~/.claude/gsd-ng/references/ui-brand.md
+@~/.claude/gsd-ng/templates/project.md
+@~/.claude/gsd-ng/templates/requirements.md
 </execution_context>
 
 <tool_usage>
@@ -63,6 +63,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute the new-project workflow from @~/.claude/get-shit-done/workflows/new-project.md end-to-end.
+Execute the new-project workflow from @~/.claude/gsd-ng/workflows/new-project.md end-to-end.
 Preserve all workflow gates (validation, approvals, commits, routing).
 </process>

@@ -24,7 +24,7 @@ const {
   cmdIssueImport,
   cmdIssueSync,
   cmdIssueListRefs,
-} = require('../get-shit-done/bin/lib/commands.cjs');
+} = require('../gsd-ng/bin/lib/commands.cjs');
 
 // ─── ISSUE_COMMANDS map ───────────────────────────────────────────────────────
 

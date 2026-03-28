@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const { resolveTmpDir } = require('./helpers.cjs');
 
 const {
   validatePath,
@@ -22,7 +23,7 @@ const {
   validatePhaseNumber,
   validateFieldName,
   INJECTION_PATTERNS,
-} = require('../get-shit-done/bin/lib/security.cjs');
+} = require('../gsd-ng/bin/lib/security.cjs');
 
 // ─── validatePath ─────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ describe('validatePath', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-sec-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-sec-'));
   });
 
   afterEach(() => {
@@ -99,7 +100,7 @@ describe('requireSafePath', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-sec-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-sec-'));
   });
 
   afterEach(() => {

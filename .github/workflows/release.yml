@@ -31,4 +31,4 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/get-shit-done-ng.tar.gz
+          files: dist/gsd-ng.tar.gz

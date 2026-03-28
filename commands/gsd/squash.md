@@ -20,7 +20,7 @@ Use --dry-run to preview groupings without executing.
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/squash.md
+@~/.claude/gsd-ng/workflows/squash.md
 </execution_context>
 
 <context>
@@ -54,6 +54,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute the squash workflow from @~/.claude/get-shit-done/workflows/squash.md end-to-end.
+Execute the squash workflow from @~/.claude/gsd-ng/workflows/squash.md end-to-end.
 Pass $ARGUMENTS for phase number and flags.
 </process>

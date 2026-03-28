@@ -25,7 +25,7 @@ Output: Test files committed with message `test(phase-{N}): add unit and E2E tes
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/add-tests.md
+@~/.claude/gsd-ng/workflows/add-tests.md
 </execution_context>
 
 <context>
@@ -62,6 +62,6 @@ Key constraints:
 </tool_usage>
 
 <process>
-Execute the add-tests workflow from @~/.claude/get-shit-done/workflows/add-tests.md end-to-end.
+Execute the add-tests workflow from @~/.claude/gsd-ng/workflows/add-tests.md end-to-end.
 Preserve all workflow gates (classification approval, test plan approval, RED-GREEN verification, gap reporting).
 </process>

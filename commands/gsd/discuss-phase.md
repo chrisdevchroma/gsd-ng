@@ -55,8 +55,8 @@ Key constraints:
 </tool_usage>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/discuss-phase.md
-@~/.claude/get-shit-done/templates/context.md
+@~/.claude/gsd-ng/workflows/discuss-phase.md
+@~/.claude/gsd-ng/templates/context.md
 </execution_context>
 
 <context>

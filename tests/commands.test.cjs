@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const { execSync } = require('node:child_process');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, createTempGitProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 
 describe('history-digest command', () => {
   let tmpDir;
@@ -1100,7 +1100,7 @@ describe('commit command', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('websearch command', () => {
-  const { cmdWebsearch } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { cmdWebsearch } = require('../gsd-ng/bin/lib/commands.cjs');
   let origFetch;
   let origApiKey;
   let origFsWriteSync;
@@ -1501,7 +1501,7 @@ describe('cmdSquash command', () => {
 // ─── applyCommitFormat function (COMM-01) ────────────────────────────────────
 
 describe('applyCommitFormat function', () => {
-  const { applyCommitFormat, appendIssueTrailers } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { applyCommitFormat, appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('gsd format returns message unchanged', () => {
     const result = applyCommitFormat('feat(14): add changelog', { commit_format: 'gsd' });
@@ -1540,7 +1540,7 @@ describe('applyCommitFormat function', () => {
 // ─── appendIssueTrailers function (COMM-02) ───────────────────────────────────
 
 describe('appendIssueTrailers function', () => {
-  const { appendIssueTrailers } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('single Fixes ref appends trailer with blank line', () => {
     const result = appendIssueTrailers('feat: add login', [{ action: 'Fixes', number: 42 }]);
@@ -1569,7 +1569,7 @@ describe('appendIssueTrailers function', () => {
 // ─── bumpVersion function (VER-01, VER-02) ────────────────────────────────────
 
 describe('bumpVersion function', () => {
-  const { bumpVersion, appendBuildMetadata } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { bumpVersion, appendBuildMetadata } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('semver patch: 1.0.0 -> 1.0.1', () => {
     assert.strictEqual(bumpVersion('1.0.0', 'patch', 'semver'), '1.0.1');
@@ -1616,7 +1616,7 @@ describe('bumpVersion function', () => {
 // ─── deriveVersionBump function (VER-01) ─────────────────────────────────────
 
 describe('deriveVersionBump function', () => {
-  const { deriveVersionBump } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { deriveVersionBump } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('feat one-liner returns minor', () => {
     assert.strictEqual(deriveVersionBump([{ oneLiner: 'feat(14): add changelog' }]), 'minor');
@@ -1653,7 +1653,7 @@ describe('deriveVersionBump function', () => {
 // ─── generateChangelog function (COMM-04, COMM-05) ───────────────────────────
 
 describe('generateChangelog function', () => {
-  const { generateChangelog } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { generateChangelog } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('feat and fix summaries produce Added and Fixed sections', () => {
     const result = generateChangelog('1.1.0', '2026-03-16', [
@@ -1685,7 +1685,7 @@ describe('generateChangelog function', () => {
 // ─── categorizeCommitType function (COMM-05) ─────────────────────────────────
 
 describe('categorizeCommitType function', () => {
-  const { categorizeCommitType } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { categorizeCommitType } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('feat prefix maps to Added', () => {
     assert.strictEqual(categorizeCommitType('feat(14): add changelog'), 'Added');
@@ -1779,7 +1779,7 @@ describe('divergence command', () => {
   });
 
   test('triage validation: skipped status without reason produces error', () => {
-    const { cmdDivergence } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
     const { stdout, stderr, exited } = callExpectingError(() => {
       // Use a temp dir that has no upstream — if no upstream, early exit before validation
       cmdDivergence(tmpDir, { triage: 'abc1234', status: 'skipped', reason: '' }, false);
@@ -1794,14 +1794,14 @@ describe('divergence command', () => {
   });
 
   test('parseDivergenceFile returns empty Map for missing file', () => {
-    const { parseDivergenceFile } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { parseDivergenceFile } = require('../gsd-ng/bin/lib/commands.cjs');
     const result = parseDivergenceFile('/tmp/nonexistent-divergence-12345.md');
     assert.ok(result instanceof Map, 'should return a Map');
     assert.strictEqual(result.size, 0, 'should be empty for missing file');
   });
 
   test('parseDivergenceFile round-trip: write then parse recovers entries', () => {
-    const { parseDivergenceFile, writeDivergenceFile } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { parseDivergenceFile, writeDivergenceFile } = require('../gsd-ng/bin/lib/commands.cjs');
     const filePath = path.join(tmpDir, '.planning', 'DIVERGENCE.md');
 
     const commits = [
@@ -1816,7 +1816,7 @@ describe('divergence command', () => {
 
     const content = fs.readFileSync(filePath, 'utf-8');
     assert.ok(content.includes('# Divergence Tracking'), 'should have header');
-    assert.ok(content.includes('Upstream remote:'), 'should have upstream URL');
+    assert.ok(content.includes('Upstream remote (upstream):'), 'should have upstream URL with remote name');
     assert.ok(content.includes('## Commit Triage'), 'should have triage section');
 
     const parsed = parseDivergenceFile(filePath);
@@ -1846,7 +1846,7 @@ describe('divergence command', () => {
 
   test('--branch flag returns branch_not_found error for nonexistent branch in non-git project', () => {
     // Non-git project: git rev-parse fails, so branch not found error returned
-    const { cmdDivergence } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
     const { stderr, exited } = callExpectingError(() => {
       cmdDivergence(tmpDir, { branch: 'feature/nonexistent' }, false);
     });
@@ -1856,7 +1856,7 @@ describe('divergence command', () => {
   });
 
   test('writeDivergenceBranchSection then parseDivergenceBranchSection round-trips', () => {
-    const { writeDivergenceBranchSection, parseDivergenceBranchSection } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { writeDivergenceBranchSection, parseDivergenceBranchSection } = require('../gsd-ng/bin/lib/commands.cjs');
     const filePath = path.join(tmpDir, '.planning', 'DIVERGENCE.md');
     const sectionKey = 'main..feature/test-branch';
     const commits = [
@@ -1876,7 +1876,7 @@ describe('divergence command', () => {
   });
 
   test('branch triage rejects invalid status via cmdDivergence', () => {
-    const { cmdDivergence } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
     const { stderr, exited } = callExpectingError(() => {
       // branch mode with triage but invalid status
       cmdDivergence(tmpDir, { branch: 'feature/test', base: 'main', triage: 'abc1234', status: 'invalid-status', reason: '' }, false);
@@ -1890,19 +1890,19 @@ describe('divergence command', () => {
 
   test('upstream triage validation accepts needs-adaptation and already-covered states', () => {
     // The VALID_TRIAGE_STATES now includes 6 states
-    const { VALID_TRIAGE_STATES } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { VALID_TRIAGE_STATES } = require('../gsd-ng/bin/lib/commands.cjs');
     assert.ok(VALID_TRIAGE_STATES.includes('needs-adaptation'), 'needs-adaptation accepted');
     assert.ok(VALID_TRIAGE_STATES.includes('already-covered'), 'already-covered accepted');
   });
 
   test('VALID_TRIAGE_STATES includes adapted (7 states total)', () => {
-    const { VALID_TRIAGE_STATES } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { VALID_TRIAGE_STATES } = require('../gsd-ng/bin/lib/commands.cjs');
     assert.ok(VALID_TRIAGE_STATES.includes('adapted'), "'adapted' should be a valid triage state");
     assert.strictEqual(VALID_TRIAGE_STATES.length, 7, 'Should have 7 total valid triage states');
   });
 
   test('upstream triage: adapted status without reason produces error', () => {
-    const { cmdDivergence } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
     const { stdout, stderr, exited } = callExpectingError(() => {
       cmdDivergence(tmpDir, { triage: 'abc1234', status: 'adapted', reason: '' }, false);
     });
@@ -1915,7 +1915,7 @@ describe('divergence command', () => {
   });
 
   test('branch triage: adapted status without reason produces error', () => {
-    const { cmdDivergence } = require('../get-shit-done/bin/lib/commands.cjs');
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
     const { stderr, exited } = callExpectingError(() => {
       // Branch mode: pass branch + base + triage + status=adapted with no reason
       cmdDivergence(tmpDir, { branch: 'feature/test', base: 'main', triage: 'abc1234', status: 'adapted', reason: '' }, false);
@@ -1976,11 +1976,11 @@ describe('help command', () => {
 
 describe('discoverTestCommand', () => {
   const os = require('os');
-  const { discoverTestCommand } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { discoverTestCommand } = require('../gsd-ng/bin/lib/commands.cjs');
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-dtc-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-dtc-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
   });
 
@@ -2218,7 +2218,7 @@ describe('divergence helpers', () => {
     normalizeForMatch,
     parseDivergenceBranchSection,
     VALID_TRIAGE_STATES,
-  } = require('../get-shit-done/bin/lib/commands.cjs');
+  } = require('../gsd-ng/bin/lib/commands.cjs');
 
   test('classifyCommit: fix prefix returns fix', () => {
     assert.strictEqual(classifyCommit('fix(core): resolve crash'), 'fix');
@@ -2292,8 +2292,7 @@ describe('divergence helpers', () => {
   });
 
   test('parseDivergenceBranchSection: reads correct section from multi-section DIVERGENCE.md', () => {
-    const os2 = require('os');
-    const tmpDir = fs.mkdtempSync(path.join(os2.tmpdir(), 'gsd-divbranch-'));
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-divbranch-'));
     try {
       const filePath = path.join(tmpDir, 'DIVERGENCE.md');
       const content = [
@@ -2335,8 +2334,7 @@ describe('divergence helpers', () => {
   });
 
   test('parseDivergenceBranchSection: returns empty Map when section not found', () => {
-    const os2 = require('os');
-    const tmpDir2 = fs.mkdtempSync(path.join(os2.tmpdir(), 'gsd-divbranch-'));
+    const tmpDir2 = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-divbranch-'));
     try {
       const filePath = path.join(tmpDir2, 'DIVERGENCE.md');
       fs.writeFileSync(filePath, '# Divergence Tracking\n', 'utf-8');
@@ -2390,7 +2388,7 @@ describe('detect-platform --field --raw', () => {
 
   test('detect-platform --field platform --raw returns plain string', () => {
     const { execFileSync } = require('child_process');
-    const TOOLS_PATH = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
     let out;
     try {
       out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'platform', '--raw'], {
@@ -2407,7 +2405,7 @@ describe('detect-platform --field --raw', () => {
 
   test('detect-platform --field source --raw returns plain string', () => {
     const { execFileSync } = require('child_process');
-    const TOOLS_PATH = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
     let out;
     try {
       out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'source', '--raw'], {
@@ -2424,7 +2422,7 @@ describe('detect-platform --field --raw', () => {
 
   test('detect-platform --field cli_installed --raw returns true or false string', () => {
     const { execFileSync } = require('child_process');
-    const TOOLS_PATH = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
     let out;
     try {
       out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'cli_installed', '--raw'], {
@@ -2440,7 +2438,7 @@ describe('detect-platform --field --raw', () => {
 
   test('detect-platform --field cli --raw returns CLI name string', () => {
     const { execFileSync } = require('child_process');
-    const TOOLS_PATH = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
     let out;
     try {
       out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'cli', '--raw'], {
@@ -2573,7 +2571,7 @@ describe('config-get --raw scalar extraction', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ISSUE_COMMANDS label operations', () => {
-  const { ISSUE_COMMANDS, applyVerifyLabel } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { ISSUE_COMMANDS, applyVerifyLabel } = require('../gsd-ng/bin/lib/commands.cjs');
 
   // Test 1: GitHub label operation
   test('ISSUE_COMMANDS.github.label returns correct gh args', () => {
@@ -2646,7 +2644,7 @@ describe('cmdIssueSync verify state modes', () => {
     );
     process.env.GSD_TEST_MODE = '1';
     try {
-      const { cmdIssueSync } = require('../get-shit-done/bin/lib/commands.cjs');
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
       const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
       const syncedItem = result.synced.find(s => s.ref === 'github:#42');
       assert.ok(syncedItem, 'should have synced github:#42');
@@ -2665,7 +2663,7 @@ describe('cmdIssueSync verify state modes', () => {
     );
     process.env.GSD_TEST_MODE = '1';
     try {
-      const { cmdIssueSync } = require('../get-shit-done/bin/lib/commands.cjs');
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
       const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
       const syncedItem = result.synced.find(s => s.ref === 'github:#42');
       assert.ok(syncedItem, 'should have synced github:#42');
@@ -2683,7 +2681,7 @@ describe('cmdIssueSync verify state modes', () => {
     );
     process.env.GSD_TEST_MODE = '1';
     try {
-      const { cmdIssueSync } = require('../get-shit-done/bin/lib/commands.cjs');
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
       const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
       const syncedItem = result.synced.find(s => s.ref === 'github:#42');
       assert.ok(syncedItem, 'should have synced github:#42');
@@ -2704,7 +2702,7 @@ describe('cleanup command', () => {
   let tmpDir;
 
   function createCleanupProject() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-cleanup-test-'));
+    const dir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-cleanup-test-'));
     fs.mkdirSync(path.join(dir, '.planning', 'phases'), { recursive: true });
     fs.mkdirSync(path.join(dir, '.planning', 'milestones'), { recursive: true });
     return dir;
@@ -2849,8 +2847,8 @@ describe('update command', () => {
   let fakeHome;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-update-test-'));
-    fakeHome = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-home-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-update-test-'));
+    fakeHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
   });
 
   afterEach(() => {
@@ -2864,12 +2862,12 @@ describe('update command', () => {
   // GSD_TEST_DRY_EXECUTE: '1' to skip actual install execution
   function runUpdate(localGsdVersion, globalGsdVersion, overrides, options = {}) {
     if (localGsdVersion) {
-      const localGsdDir = path.join(tmpDir, '.claude', 'get-shit-done');
+      const localGsdDir = path.join(tmpDir, '.claude', 'gsd-ng');
       fs.mkdirSync(localGsdDir, { recursive: true });
       fs.writeFileSync(path.join(localGsdDir, 'VERSION'), localGsdVersion + '\n');
     }
     if (globalGsdVersion) {
-      const globalGsdDir = path.join(fakeHome, '.claude', 'get-shit-done');
+      const globalGsdDir = path.join(fakeHome, '.claude', 'gsd-ng');
       fs.mkdirSync(globalGsdDir, { recursive: true });
       fs.writeFileSync(path.join(globalGsdDir, 'VERSION'), globalGsdVersion + '\n');
     }
@@ -2891,7 +2889,7 @@ describe('update command', () => {
     return runGsdTools(args, tmpDir, env);
   }
 
-  test('Test 1: detects local install when .claude/get-shit-done/VERSION exists', () => {
+  test('Test 1: detects local install when .claude/gsd-ng/VERSION exists', () => {
     // local=1.0.0, global=none, latest=1.0.0 -> already_current
     const result = runUpdate('1.0.0', null, { latestVersion: '1.0.0', updateSource: 'npm' });
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -2968,6 +2966,6 @@ describe('update command', () => {
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'updated');
     assert.ok(parsed.install_command, 'should record install_command for test verification');
-    assert.ok(parsed.install_command.includes('get-shit-done-ng'), 'install_command should reference package');
+    assert.ok(parsed.install_command.includes('gsd-ng'), 'install_command should reference package');
   });
 });

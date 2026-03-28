@@ -47,7 +47,7 @@ Key constraints:
 </tool_usage>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/map-codebase.md
+@~/.claude/gsd-ng/workflows/map-codebase.md
 </execution_context>
 
 <context>

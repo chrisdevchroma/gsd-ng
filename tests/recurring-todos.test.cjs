@@ -11,8 +11,9 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { resolveTmpDir } = require('./helpers.cjs');
 
-const { parseDuration, isRecurringDue, cmdTodoComplete, cmdRecurringDue, syncSingleRef } = require('../get-shit-done/bin/lib/commands.cjs');
+const { parseDuration, isRecurringDue, cmdTodoComplete, cmdRecurringDue, syncSingleRef } = require('../gsd-ng/bin/lib/commands.cjs');
 
 /**
  * Capture stdout output from a function that uses fs.writeSync(1, ...) or process.stdout.write.
@@ -130,7 +131,7 @@ describe('cmdTodoComplete - recurring', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-recurring-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-recurring-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning', 'todos', 'pending'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, '.planning', 'todos', 'completed'), { recursive: true });
   });
@@ -234,7 +235,7 @@ describe('cmdRecurringDue', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-recurring-due-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-recurring-due-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning', 'todos', 'pending'), { recursive: true });
   });
 
@@ -364,7 +365,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-sync-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-sync-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning', 'todos', 'pending'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, '.planning', 'todos', 'completed'), { recursive: true });
   });

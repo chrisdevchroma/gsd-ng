@@ -14,7 +14,7 @@ const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
 
 describe('detectWorkspaceType', () => {
   // Import directly for unit tests
-  const workspace = require('../get-shit-done/bin/lib/workspace.cjs');
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
   let tmpDir;
 
   beforeEach(() => {
@@ -119,7 +119,7 @@ describe('detectWorkspaceType', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('generateMemoriesSection', () => {
-  const workspace = require('../get-shit-done/bin/lib/workspace.cjs');
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
   let tmpDir;
 
   beforeEach(() => {
@@ -210,7 +210,7 @@ describe('generateMemoriesSection', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('generateMemoryMd', () => {
-  const workspace = require('../get-shit-done/bin/lib/workspace.cjs');
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
   let tmpDir;
 
   beforeEach(() => {
@@ -274,7 +274,7 @@ describe('generateMemoryMd', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('seedMemoryTemplate', () => {
-  const workspace = require('../get-shit-done/bin/lib/workspace.cjs');
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
   let tmpDir;
 
   beforeEach(() => {
@@ -334,9 +334,9 @@ describe('seedMemoryTemplate', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('end-to-end pipeline', () => {
-  const workspace = require('../get-shit-done/bin/lib/workspace.cjs');
-  const { cmdValidateHealth } = require('../get-shit-done/bin/lib/verify.cjs');
-  const TEMPLATE_PATH = path.join(__dirname, '..', 'get-shit-done', 'templates', 'memory-templates', 'multi-boundary.md');
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  const { cmdValidateHealth } = require('../gsd-ng/bin/lib/verify.cjs');
+  const TEMPLATE_PATH = path.join(__dirname, '..', 'gsd-ng', 'templates', 'memory-templates', 'multi-boundary.md');
   let tmpDir;
 
   beforeEach(() => {
@@ -412,7 +412,7 @@ describe('end-to-end pipeline', () => {
 
     // Run health check and capture output
     let capturedOutput = null;
-    const origOutput = require('../get-shit-done/bin/lib/core.cjs').output;
+    const origOutput = require('../gsd-ng/bin/lib/core.cjs').output;
 
     // Use runGsdTools CLI (gsd-tools validate health) to avoid process.exit(0) side effects
     const result = runGsdTools(['validate', 'health', '--cwd', tmpDir], tmpDir);

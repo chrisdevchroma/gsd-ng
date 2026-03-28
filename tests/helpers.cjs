@@ -4,9 +4,10 @@
 
 const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const TOOLS_PATH = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
 
 /**
  * Run gsd-tools command.
@@ -45,16 +46,26 @@ function runGsdTools(args, cwd = process.cwd(), envOverrides = {}) {
   }
 }
 
+// Resolve a writable temp base dir — os.tmpdir() may point to /tmp/claude which doesn't
+// exist in the Claude Code sandbox. Fall back through known-writable candidates.
+function resolveTmpDir() {
+  const candidates = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp'].filter(Boolean);
+  for (const dir of candidates) {
+    try { if (fs.existsSync(dir)) return dir; } catch {}
+  }
+  return os.tmpdir(); // last resort
+}
+
 // Create temp directory structure
 function createTempProject() {
-  const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-test-'));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-'));
   fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
   return tmpDir;
 }
 
 // Create temp directory with initialized git repo and at least one commit
 function createTempGitProject() {
-  const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-test-'));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-'));
   fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
 
   execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
@@ -77,4 +88,4 @@ function cleanup(tmpDir) {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, TOOLS_PATH };
+module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, TOOLS_PATH };

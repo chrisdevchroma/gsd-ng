@@ -49,8 +49,8 @@ Key constraints:
 </tool_usage>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/plan-phase.md
-@~/.claude/get-shit-done/references/ui-brand.md
+@~/.claude/gsd-ng/workflows/plan-phase.md
+@~/.claude/gsd-ng/references/ui-brand.md
 </execution_context>
 
 <context>
@@ -67,6 +67,6 @@ Normalize phase input in step 2 before any directory lookups.
 </context>
 
 <process>
-Execute the plan-phase workflow from @~/.claude/get-shit-done/workflows/plan-phase.md end-to-end.
+Execute the plan-phase workflow from @~/.claude/gsd-ng/workflows/plan-phase.md end-to-end.
 Preserve all workflow gates (validation, research, planning, verification loop, routing).
 </process>

@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { runGsdTools, createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, cleanup, TOOLS_PATH, resolveTmpDir } = require('./helpers.cjs');
 
 /**
  * Run gsd-tools capturing both stdout and stderr (even on exit 0).
@@ -176,7 +176,7 @@ describe('state-snapshot command', () => {
 **Status:** Ready to plan
 `
     );
-    const outsideDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-test-outside-'));
+    const outsideDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-outside-'));
 
     try {
       const result = runGsdTools(`state-snapshot --cwd "${tmpDir}"`, outsideDir);
@@ -548,7 +548,7 @@ milestone: v1.0
 // stateExtractField and stateReplaceField helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { stateExtractField, stateReplaceField } = require('../get-shit-done/bin/lib/state.cjs');
+const { stateExtractField, stateReplaceField } = require('../gsd-ng/bin/lib/state.cjs');
 
 describe('stateExtractField and stateReplaceField helpers', () => {
   // stateExtractField tests
@@ -1590,7 +1590,7 @@ describe('cmdStateBeginPhase (state begin-phase)', () => {
 // stateReplaceFieldWithFallback unit tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { stateReplaceFieldWithFallback } = require('../get-shit-done/bin/lib/state.cjs');
+const { stateReplaceFieldWithFallback } = require('../gsd-ng/bin/lib/state.cjs');
 
 describe('stateReplaceFieldWithFallback', () => {
   test('replaces existing bold field', () => {

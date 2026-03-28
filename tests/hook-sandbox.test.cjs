@@ -5,6 +5,7 @@ const { runHook } = require('./hook-harness.cjs');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { resolveTmpDir } = require('./helpers.cjs');
 
 const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
@@ -12,10 +13,10 @@ const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
 test('SAND-01: sandbox-detect emits additionalContext JSON when SANDBOX_RUNTIME=1', () => {
   const sessionId = 'sand01-test-' + Date.now();
-  const markerFile = path.join(os.tmpdir(), `gsd-sandbox-detect-${sessionId}.flag`);
+  const markerFile = path.join(resolveTmpDir(), `gsd-sandbox-detect-${sessionId}.flag`);
 
   try {
-    const hookPath = path.join(HOOKS_DIR, 'sandbox-detect.js');
+    const hookPath = path.join(HOOKS_DIR, 'gsd-sandbox-detect.js');
     const { stdout, stderr, exitCode } = runHook(
       hookPath,
       { session_id: sessionId },
@@ -47,10 +48,10 @@ test('SAND-01: sandbox-detect emits additionalContext JSON when SANDBOX_RUNTIME=
 
 test('SAND-01: sandbox-detect exits 0 silently on second call (once-per-session)', () => {
   const sessionId = 'sand01-once-' + Date.now();
-  const markerFile = path.join(os.tmpdir(), `gsd-sandbox-detect-${sessionId}.flag`);
+  const markerFile = path.join(resolveTmpDir(), `gsd-sandbox-detect-${sessionId}.flag`);
 
   try {
-    const hookPath = path.join(HOOKS_DIR, 'sandbox-detect.js');
+    const hookPath = path.join(HOOKS_DIR, 'gsd-sandbox-detect.js');
     const payload = { session_id: sessionId };
     const envOverrides = { SANDBOX_RUNTIME: '1' };
 

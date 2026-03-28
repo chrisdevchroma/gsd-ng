@@ -12,7 +12,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ describe('config-ensure-section command', () => {
 
   // Use a temp HOME so we don't touch the real ~/.gsd/ (sandbox-safe)
   test('merges user defaults from defaults.json', () => {
-    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-home-'));
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
     fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
     fs.writeFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), JSON.stringify({
       model_profile: 'quality',
@@ -99,7 +99,7 @@ describe('config-ensure-section command', () => {
 
   // Use a temp HOME so we don't touch the real ~/.gsd/ (sandbox-safe)
   test('merges nested workflow keys from defaults.json preserving unset keys', () => {
-    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-home-'));
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
     fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
     fs.writeFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), JSON.stringify({
       workflow: { research: false },

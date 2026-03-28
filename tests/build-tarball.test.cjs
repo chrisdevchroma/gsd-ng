@@ -7,11 +7,11 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const BUILD_SCRIPT = path.join(ROOT, 'scripts', 'build-tarball.js');
-const EXPECTED_TARBALL = path.join(ROOT, 'dist', 'get-shit-done-ng.tar.gz');
+const EXPECTED_TARBALL = path.join(ROOT, 'dist', 'gsd-ng.tar.gz');
 
 // ── DIST-01: build-tarball.js exits 0 and produces a .tar.gz file ────────────
 
-test('DIST-01: node scripts/build-tarball.js exits 0 and produces get-shit-done-ng.tar.gz', () => {
+test('DIST-01: node scripts/build-tarball.js exits 0 and produces gsd-ng.tar.gz', () => {
   // Remove any existing tarball so we verify fresh creation
   if (fs.existsSync(EXPECTED_TARBALL)) {
     fs.rmSync(EXPECTED_TARBALL);
@@ -31,12 +31,12 @@ test('DIST-01: node scripts/build-tarball.js exits 0 and produces get-shit-done-
 
   assert.ok(
     fs.existsSync(EXPECTED_TARBALL),
-    'dist/get-shit-done-ng.tar.gz must exist after build (DIST-01)'
+    'dist/gsd-ng.tar.gz must exist after build (DIST-01)'
   );
 
   const stats = fs.statSync(EXPECTED_TARBALL);
   assert.ok(
     stats.size > 0,
-    'dist/get-shit-done-ng.tar.gz must not be empty (DIST-01)'
+    'dist/gsd-ng.tar.gz must not be empty (DIST-01)'
   );
 });

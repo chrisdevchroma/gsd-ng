@@ -21,7 +21,7 @@ Routes to the import-issue workflow which handles:
 </objective>
 
 <execution_context>
-@${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/workflows/import-issue.md
+@${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/workflows/import-issue.md
 </execution_context>
 
 <context>
@@ -55,7 +55,7 @@ Key constraints:
 </tool_usage>
 
 <process>
-**Follow the import-issue workflow** from `@${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/workflows/import-issue.md`.
+**Follow the import-issue workflow** from `@${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/workflows/import-issue.md`.
 
 The workflow handles all logic including:
 1. Platform and CLI detection

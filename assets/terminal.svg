@@ -39,7 +39,7 @@
     <!-- Prompt line -->
     <text class="text prompt" font-size="15" y="0">~</text>
     <text class="text dim" font-size="15" x="16" y="0">$</text>
-    <text class="text command" font-size="15" x="36" y="0">npx get-shit-done-ng</text>
+    <text class="text command" font-size="15" x="36" y="0">npx gsd-ng</text>
 
     <!-- GSD Banner -->
     <text class="text cyan" font-size="14" y="48" xml:space="preserve">   ██████╗ ███████╗██████╗</text>
@@ -58,13 +58,13 @@
     <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="208" xml:space="preserve">╚═╝  ╚═══╝ ╚═════╝ </text>
 
     <!-- Title and subtitle -->
-    <text class="text white" font-size="15" y="244">  get-shit-done-ng <tspan class="dim">v1.0.0</tspan></text>
+    <text class="text white" font-size="15" y="244">  gsd-ng <tspan class="dim">v1.0.0</tspan></text>
     <text class="text white" font-size="15" y="268">  A meta-prompting, context engineering and spec-driven</text>
     <text class="text white" font-size="15" y="288">  development system for Claude Code.</text>
 
     <!-- Install output -->
     <text class="text" font-size="15" y="332"><tspan class="green">  ✓</tspan><tspan class="white"> Installed commands/gsd</tspan></text>
-    <text class="text" font-size="15" y="352"><tspan class="green">  ✓</tspan><tspan class="white"> Installed get-shit-done-ng</tspan></text>
+    <text class="text" font-size="15" y="352"><tspan class="green">  ✓</tspan><tspan class="white"> Installed gsd-ng</tspan></text>
 
     <!-- Done message -->
     <text class="text" font-size="15" y="400"><tspan class="green">  Done!</tspan><tspan class="white"> Run </tspan><tspan class="cyan">/gsd:help</tspan><tspan class="white"> to get started.</tspan></text>

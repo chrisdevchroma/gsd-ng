@@ -13,13 +13,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { runGsdTools } = require('./helpers.cjs');
+const { runGsdTools, resolveTmpDir } = require('./helpers.cjs');
 
 // Track temp files for cleanup
 let tempFiles = [];
 
 function writeTempFile(content) {
-  const tmpFile = path.join(os.tmpdir(), `gsd-fm-test-${Date.now()}-${Math.random().toString(36).slice(2)}.md`);
+  const tmpFile = path.join(resolveTmpDir(), `gsd-fm-test-${Date.now()}-${Math.random().toString(36).slice(2)}.md`);
   fs.writeFileSync(tmpFile, content, 'utf-8');
   tempFiles.push(tmpFile);
   return tmpFile;
@@ -89,7 +89,7 @@ describe('frontmatter set', () => {
 
     // Read back and verify
     const content = fs.readFileSync(file, 'utf-8');
-    const { extractFrontmatter } = require('../get-shit-done/bin/lib/frontmatter.cjs');
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
     const fm = extractFrontmatter(content);
     assert.strictEqual(fm.phase, '02');
   });
@@ -100,7 +100,7 @@ describe('frontmatter set', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(file, 'utf-8');
-    const { extractFrontmatter } = require('../get-shit-done/bin/lib/frontmatter.cjs');
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
     const fm = extractFrontmatter(content);
     assert.strictEqual(fm.status, 'active');
   });
@@ -111,7 +111,7 @@ describe('frontmatter set', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(file, 'utf-8');
-    const { extractFrontmatter } = require('../get-shit-done/bin/lib/frontmatter.cjs');
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
     const fm = extractFrontmatter(content);
     assert.ok(Array.isArray(fm.tags), 'tags should be an array');
     assert.deepStrictEqual(fm.tags, ['a', 'b']);
@@ -144,7 +144,7 @@ describe('frontmatter merge', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(file, 'utf-8');
-    const { extractFrontmatter } = require('../get-shit-done/bin/lib/frontmatter.cjs');
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
     const fm = extractFrontmatter(content);
     assert.strictEqual(fm.phase, '01', 'original field should be preserved');
     assert.strictEqual(fm.plan, '02', 'merged field should be present');
@@ -157,7 +157,7 @@ describe('frontmatter merge', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(file, 'utf-8');
-    const { extractFrontmatter } = require('../get-shit-done/bin/lib/frontmatter.cjs');
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
     const fm = extractFrontmatter(content);
     assert.strictEqual(fm.phase, '02', 'conflicting field should be overwritten');
     assert.strictEqual(fm.type, 'execute', 'non-conflicting field should be preserved');
