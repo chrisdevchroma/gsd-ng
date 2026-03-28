@@ -1,0 +1,15 @@
+{
+  "id": "micro-slug-generate",
+  "type": "micro",
+  "description": "Convert a phase name to a kebab-case directory slug",
+  "prompt": "Convert this phase name to a kebab-case slug suitable for a directory name (lowercase, hyphens, max 50 chars): 'Cross-Model Benchmark Infrastructure'. Output ONLY the slug, nothing else.",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": ["cross-model"],
+    "not_contains": [" ", "Cross", "Model"],
+    "output_length_hint": { "min": 10, "max": 60 }
+  }
+}

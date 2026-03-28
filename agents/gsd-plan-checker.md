@@ -3,8 +3,6 @@ name: gsd-plan-checker
 description: Verifies plans will achieve phase goal before execution. Goal-backward analysis of plan quality. Spawned by /gsd:plan-phase orchestrator.
 tools: Read, Bash, Glob, Grep
 color: green
-skills:
-  - gsd-plan-checker-workflow
 ---
 
 <role>
@@ -372,6 +370,47 @@ Overall: ✅ PASS / ❌ FAIL
 
 If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
 
+## Dimension 9: CLAUDE.md Compliance
+
+**Question:** Do plans respect project-specific conventions, constraints, and requirements from CLAUDE.md?
+
+**Process:**
+1. Read `./CLAUDE.md` in the working directory (already loaded in `<project_context>`)
+2. Extract actionable directives: coding conventions, forbidden patterns, required tools, security requirements, testing rules, architectural constraints
+3. For each directive, check if any plan task contradicts or ignores it
+4. Flag plans that introduce patterns CLAUDE.md explicitly forbids
+5. Flag plans that skip steps CLAUDE.md explicitly requires (e.g., required linting, specific test frameworks, commit conventions)
+
+**Pass criteria:**
+- No plan task introduces a pattern CLAUDE.md explicitly forbids
+- Required steps from CLAUDE.md are present in relevant tasks
+- If no CLAUDE.md exists → **PASS** (no constraints to violate)
+
+**Fail criteria:**
+- Plan introduces a forbidden pattern (e.g., uses a banned library, wrong commit format)
+- Plan omits a required step (e.g., skips mandatory linting, missing required test assertion)
+
+### Dimension 9 Output
+
+```
+## Dimension 9: CLAUDE.md Compliance
+
+CLAUDE.md directives extracted: {N}
+- {directive 1}
+- {directive 2}
+
+Plan compliance:
+| Plan | Directive | Status | Notes |
+|------|-----------|--------|-------|
+| {plan} | {directive} | ✅ / ❌ | {details} |
+
+Overall: ✅ PASS / ❌ FAIL
+```
+
+If no CLAUDE.md exists: `## Dimension 9: CLAUDE.md Compliance — ✅ PASS (no CLAUDE.md)`
+
+If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
+
 </verification_dimensions>
 
 <verification_process>
@@ -380,7 +419,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 
 Load phase operation context:
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
@@ -392,7 +431,7 @@ Orchestrator provides CONTEXT.md content in the verification prompt. If provided
 ls "$phase_dir"/*-PLAN.md 2>/dev/null
 # Read research for Nyquist validation data
 cat "$phase_dir"/*-RESEARCH.md 2>/dev/null
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "$phase_number"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$phase_number"
 ls "$phase_dir"/*-BRIEF.md 2>/dev/null
 ```
 
@@ -405,7 +444,7 @@ Use gsd-tools to validate plan structure:
 ```bash
 for plan in "$PHASE_DIR"/*-PLAN.md; do
   echo "=== $plan ==="
-  PLAN_STRUCTURE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify plan-structure "$plan")
+  PLAN_STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$plan")
   echo "$PLAN_STRUCTURE"
 done
 ```
@@ -423,7 +462,7 @@ Map errors/warnings to verification dimensions:
 Extract must_haves from each plan using gsd-tools:
 
 ```bash
-MUST_HAVES=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter get "$PLAN_PATH" --field must_haves)
+MUST_HAVES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_PATH" --field must_haves)
 ```
 
 Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
@@ -468,7 +507,7 @@ For each requirement: find covering task(s), verify action is specific, flag gap
 Use gsd-tools plan-structure verification (already run in Step 2):
 
 ```bash
-PLAN_STRUCTURE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
+PLAN_STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
 ```
 
 The `tasks` array in the result shows each task's completeness:

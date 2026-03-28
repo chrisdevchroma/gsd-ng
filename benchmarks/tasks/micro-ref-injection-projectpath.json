@@ -1,0 +1,15 @@
+{
+  "id": "micro-ref-injection-projectpath",
+  "type": "micro",
+  "description": "Verify project-relative @ reference resolves (tests Copilot .github/ install path)",
+  "prompt": "Read the file @{{REF_PREFIX}}/references/git-integration.md and confirm you can see its content. Output 'RESOLVED: yes' followed by the first line of the file, or 'RESOLVED: no' if the file could not be read.",
+  "timeout_ms": 30000,
+  "at_refs": ["project-relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": ["RESOLVED"],
+    "not_contains": [],
+    "output_length_hint": { "min": 10, "max": 500 }
+  }
+}

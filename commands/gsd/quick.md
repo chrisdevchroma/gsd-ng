@@ -1,7 +1,7 @@
 ---
 name: gsd:quick
 description: Execute a quick task with GSD guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: "[--full] [--discuss]"
+argument-hint: "[--verify] [--discuss] [--research] [--all]"
 allowed-tools:
   - Read
   - Write
@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-  - Task
+  - Agent
   - AskUserQuestion
 ---
 <objective>
@@ -24,13 +24,24 @@ Quick mode is the same system with a shorter path:
 
 **`--discuss` flag:** Lightweight discussion phase before planning. Surfaces assumptions, clarifies gray areas, captures decisions in CONTEXT.md. Use when the task has ambiguity worth resolving upfront.
 
-**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
+**`--verify` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
 
-Flags are composable: `--discuss --full` gives discussion + plan-checking + verification.
+**`--research` flag:** Spawns a focused research agent before planning. Investigates implementation approaches, library options, and pitfalls for the task. Use when you're unsure of the best approach.
+
+**`--all` flag:** Enables all optional stages (discuss + research + verify). Convenience shorthand for `--discuss --research --verify`.
+
+Flags are composable: `--discuss --research --verify` gives discussion + research + plan-checking + verification.
+
+| Flag | What it adds |
+|------|-------------|
+| `--discuss` | Lightweight discussion phase, captures decisions in CONTEXT.md |
+| `--research` | Spawns research agent, produces RESEARCH.md |
+| `--verify` | Plan-checking (max 2 iterations) + post-execution verification |
+| `--all` | All of the above (discuss + research + verify) |
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/quick.md
+@~/.claude/gsd-ng/workflows/quick.md
 </execution_context>
 
 <context>
@@ -39,7 +50,33 @@ $ARGUMENTS
 Context files are resolved inside the workflow (`init quick`) and delegated via `<files_to_read>` blocks.
 </context>
 
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
+
 <process>
-Execute the quick workflow from @~/.claude/get-shit-done/workflows/quick.md end-to-end.
+Execute the quick workflow from @~/.claude/gsd-ng/workflows/quick.md end-to-end.
 Preserve all workflow gates (validation, task description, planning, execution, state updates, commits).
 </process>

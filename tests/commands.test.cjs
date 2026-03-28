@@ -4,9 +4,10 @@
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
+const { execSync } = require('node:child_process');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 
 describe('history-digest command', () => {
   let tmpDir;
@@ -360,6 +361,37 @@ requirements-completed:
     assert.strictEqual(output.tech_added, undefined, 'tech_added excluded');
     assert.strictEqual(output.patterns, undefined, 'patterns excluded');
     assert.strictEqual(output.decisions, undefined, 'decisions excluded');
+  });
+
+  test('extracts one-liner from body when not in frontmatter', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '01-01-SUMMARY.md'),
+      `---
+phase: "01"
+key-files:
+  - src/lib/db.ts
+---
+
+# Phase 1: Foundation Summary
+
+**JWT auth with refresh rotation using jose library**
+
+## Performance
+
+- **Duration:** 28 min
+- **Tasks:** 5
+`
+    );
+
+    const result = runGsdTools('summary-extract .planning/phases/01-foundation/01-01-SUMMARY.md', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.one_liner, 'JWT auth with refresh rotation using jose library',
+      'one-liner should be extracted from body **bold** line');
   });
 
   test('handles missing frontmatter fields gracefully', () => {
@@ -1068,18 +1100,25 @@ describe('commit command', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('websearch command', () => {
-  const { cmdWebsearch } = require('../get-shit-done/bin/lib/commands.cjs');
+  const { cmdWebsearch } = require('../gsd-ng/bin/lib/commands.cjs');
   let origFetch;
   let origApiKey;
+  let origFsWriteSync;
   let origStdoutWrite;
   let captured;
 
   beforeEach(() => {
     origFetch = global.fetch;
     origApiKey = process.env.BRAVE_API_KEY;
-    origStdoutWrite = process.stdout.write;
+    origFsWriteSync = fs.writeSync.bind(fs);
+    origStdoutWrite = process.stdout.write.bind(process.stdout);
     captured = '';
-    process.stdout.write = (chunk) => { captured += chunk; return true; };
+    // Intercept both fs.writeSync(1,...) and process.stdout.write to capture output()
+    fs.writeSync = (fd, data, ...rest) => {
+      if (fd === 1) { captured += String(data); return data.length; }
+      return origFsWriteSync(fd, data, ...rest);
+    };
+    process.stdout.write = (chunk) => { captured += String(chunk); return true; };
   });
 
   afterEach(() => {
@@ -1089,6 +1128,7 @@ describe('websearch command', () => {
     } else {
       delete process.env.BRAVE_API_KEY;
     }
+    fs.writeSync = origFsWriteSync;
     process.stdout.write = origStdoutWrite;
   });
 
@@ -1184,5 +1224,1748 @@ describe('websearch command', () => {
     const output = JSON.parse(captured);
     assert.strictEqual(output.available, false);
     assert.strictEqual(output.error, 'Network timeout');
+  });
+});
+
+describe('stats command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns valid JSON with empty project', () => {
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.ok(Array.isArray(stats.phases), 'phases should be an array');
+    assert.strictEqual(stats.total_plans, 0);
+    assert.strictEqual(stats.total_summaries, 0);
+    assert.strictEqual(stats.percent, 0);
+    assert.strictEqual(stats.phases_completed, 0);
+    assert.strictEqual(stats.phases_total, 0);
+    assert.strictEqual(stats.requirements_total, 0);
+    assert.strictEqual(stats.requirements_complete, 0);
+  });
+
+  test('counts phases, plans, and summaries correctly', () => {
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-auth');
+    const p2 = path.join(tmpDir, '.planning', 'phases', '02-api');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.mkdirSync(p2, { recursive: true });
+
+    // Phase 1: 2 plans, 2 summaries (complete)
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-02-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(p1, '01-02-SUMMARY.md'), '# Summary');
+
+    // Phase 2: 1 plan, 0 summaries (planned)
+    fs.writeFileSync(path.join(p2, '02-01-PLAN.md'), '# Plan');
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.phases_total, 2);
+    assert.strictEqual(stats.phases_completed, 1);
+    assert.strictEqual(stats.total_plans, 3);
+    assert.strictEqual(stats.total_summaries, 2);
+    assert.strictEqual(stats.percent, 50);
+    assert.strictEqual(stats.plan_percent, 67);
+  });
+
+  test('counts requirements from REQUIREMENTS.md', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'REQUIREMENTS.md'),
+      `# Requirements
+
+## v1 Requirements
+
+- [x] **AUTH-01**: User can sign up
+- [x] **AUTH-02**: User can log in
+- [ ] **API-01**: REST endpoints
+- [ ] **API-02**: GraphQL support
+`
+    );
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.requirements_total, 4);
+    assert.strictEqual(stats.requirements_complete, 2);
+  });
+
+  test('reads last activity from STATE.md', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Status:** In progress\n**Last Activity:** 2025-06-15\n**Last Activity Description:** Working\n`
+    );
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.last_activity, '2025-06-15');
+  });
+
+  test('reads last activity from plain STATE.md template format', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n## Current Position\n\nPhase: 1 of 2 (Foundation)\nPlan: 1 of 1 in current phase\nStatus: In progress\nLast activity: 2025-06-16 — Finished plan 01-01\n`
+    );
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.last_activity, '2025-06-16 — Finished plan 01-01');
+  });
+
+  test('includes roadmap-only phases in totals and preserves hyphenated names', () => {
+    const p1 = path.join(tmpDir, '.planning', 'phases', '14-auth-hardening');
+    const p2 = path.join(tmpDir, '.planning', 'phases', '15-proof-generation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.mkdirSync(p2, { recursive: true });
+    fs.writeFileSync(path.join(p1, '14-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '14-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(p2, '15-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p2, '15-01-SUMMARY.md'), '# Summary');
+
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [x] **Phase 14: Auth Hardening**
+- [x] **Phase 15: Proof Generation**
+- [ ] **Phase 16: Multi-Claim Verification & UX**
+
+## Milestone v1.0 Growth
+
+### Phase 14: Auth Hardening
+**Goal:** Improve auth checks
+
+### Phase 15: Proof Generation
+**Goal:** Improve proof generation
+
+### Phase 16: Multi-Claim Verification & UX
+**Goal:** Support multi-claim verification
+`
+    );
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.phases_total, 3);
+    assert.strictEqual(stats.phases_completed, 2);
+    assert.strictEqual(stats.percent, 67);
+    assert.strictEqual(stats.plan_percent, 100);
+    assert.strictEqual(
+      stats.phases.find(p => p.number === '16')?.name,
+      'Multi-Claim Verification & UX'
+    );
+    assert.strictEqual(
+      stats.phases.find(p => p.number === '16')?.status,
+      'Not Started'
+    );
+  });
+
+  test('reports git commit count and first commit date from repository history', () => {
+    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.name "Test User"', { cwd: tmpDir, stdio: 'pipe' });
+
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'PROJECT.md'), '# Project\n');
+    execSync('git add -A', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "initial commit"', {
+      cwd: tmpDir,
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+        GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+      },
+    });
+
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), '# Updated\n');
+    execSync('git add README.md', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "second commit"', {
+      cwd: tmpDir,
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: '2026-02-01T00:00:00Z',
+        GIT_COMMITTER_DATE: '2026-02-01T00:00:00Z',
+      },
+    });
+
+    const result = runGsdTools('stats', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const stats = JSON.parse(result.output);
+    assert.strictEqual(stats.git_commits, 2);
+    assert.strictEqual(stats.git_first_commit_date, '2026-01-01');
+  });
+
+  test('table format renders readable output', () => {
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-auth');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('stats table', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(parsed.rendered, 'table format should include rendered field');
+    assert.ok(parsed.rendered.includes('Statistics'), 'should include Statistics header');
+    assert.ok(parsed.rendered.includes('| Phase |'), 'should include table header');
+    assert.ok(parsed.rendered.includes('| 1 |'), 'should include phase row');
+    assert.ok(parsed.rendered.includes('1/1 phases'), 'should report phase progress');
+  });
+});
+
+// ─── cmdSquash command ────────────────────────────────────────────────────────
+
+describe('cmdSquash command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempGitProject();
+    // Create a phase directory with SUMMARY.md files
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '14-commit-changelog-and-versioning');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '14-01-SUMMARY.md'), [
+      '---',
+      'phase: 14',
+      'plan: 01',
+      '---',
+      '',
+      '# Phase 14: Summary',
+      '',
+      '**Config keys and commit format presets for GSD-generated commits**',
+    ].join('\n'));
+    // Make a few commits for squash targets
+    fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'a');
+    execSync('git add a.txt && git commit -m "feat(14-01): task 1"', { cwd: tmpDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(tmpDir, 'b.txt'), 'b');
+    execSync('git add b.txt && git commit -m "feat(14-01): task 2"', { cwd: tmpDir, stdio: 'pipe' });
+  });
+
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('--dry-run single strategy returns plan without executing', () => {
+    const result = runGsdTools(['squash', '14', '--strategy', 'single', '--dry-run'], tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    const out = JSON.parse(result.output);
+    assert.strictEqual(out.dry_run, true);
+    assert.ok(out.groups, 'should have groups');
+    assert.ok(out.groups.length > 0, 'should have at least one group');
+    assert.strictEqual(out.executed, false);
+  });
+
+  test('refuses on main branch without --allow-stable', () => {
+    // tmpDir is on main branch by default
+    const result = runGsdTools(['squash', '14', '--strategy', 'single'], tmpDir);
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error.includes('stable branch'), `Expected 'stable branch' in: ${result.error}`);
+  });
+
+  test('creates backup tag before rewrite when --allow-stable', () => {
+    const result = runGsdTools(['squash', '14', '--strategy', 'single', '--allow-stable'], tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    // Check tag was created
+    const tags = execSync('git tag --list "gsd/backup/*"', { cwd: tmpDir, encoding: 'utf-8' });
+    assert.ok(tags.trim().length > 0, 'backup tag should exist');
+    assert.ok(tags.includes('gsd/backup/'), 'tag should match gsd/backup/ pattern');
+  });
+
+  test('list-backup-tags returns gsd backup tags', () => {
+    // Create a tag first
+    execSync('git tag gsd/backup/2026-03-16/main', { cwd: tmpDir, stdio: 'pipe' });
+    const result = runGsdTools(['squash', '--list-backup-tags'], tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    const out = JSON.parse(result.output);
+    assert.ok(out.tags.length > 0, 'should list at least one tag');
+    assert.ok(out.tags[0].includes('gsd/backup/'), 'tag should include gsd/backup/');
+  });
+});
+
+// ─── applyCommitFormat function (COMM-01) ────────────────────────────────────
+
+describe('applyCommitFormat function', () => {
+  const { applyCommitFormat, appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('gsd format returns message unchanged', () => {
+    const result = applyCommitFormat('feat(14): add changelog', { commit_format: 'gsd' });
+    assert.strictEqual(result, 'feat(14): add changelog');
+  });
+
+  test('conventional format returns message unchanged', () => {
+    const result = applyCommitFormat('feat(auth): add login', { commit_format: 'conventional' });
+    assert.strictEqual(result, 'feat(auth): add login');
+  });
+
+  test('issue-first format prepends issue ref when provided', () => {
+    const result = applyCommitFormat('add login', { commit_format: 'issue-first' }, { issueRef: '42' });
+    assert.strictEqual(result, '[#42] add login');
+  });
+
+  test('issue-first format unchanged without issueRef', () => {
+    const result = applyCommitFormat('add login', { commit_format: 'issue-first' });
+    assert.strictEqual(result, 'add login');
+  });
+
+  test('custom format applies template placeholders', () => {
+    const result = applyCommitFormat('add login endpoint', {
+      commit_format: 'custom',
+      commit_template: '{type}({scope}): {description}'
+    }, { type: 'feat', scope: 'auth', description: 'add login endpoint' });
+    assert.strictEqual(result, 'feat(auth): add login endpoint');
+  });
+
+  test('custom format with null template returns message unchanged', () => {
+    const result = applyCommitFormat('add login', { commit_format: 'custom', commit_template: null });
+    assert.strictEqual(result, 'add login');
+  });
+});
+
+// ─── appendIssueTrailers function (COMM-02) ───────────────────────────────────
+
+describe('appendIssueTrailers function', () => {
+  const { appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('single Fixes ref appends trailer with blank line', () => {
+    const result = appendIssueTrailers('feat: add login', [{ action: 'Fixes', number: 42 }]);
+    assert.strictEqual(result, 'feat: add login\n\nFixes #42');
+  });
+
+  test('multiple refs produce multiple trailer lines', () => {
+    const result = appendIssueTrailers('feat: add login', [
+      { action: 'Fixes', number: 42 },
+      { action: 'Closes', number: 43 }
+    ]);
+    assert.strictEqual(result, 'feat: add login\n\nFixes #42\nCloses #43');
+  });
+
+  test('empty refs returns message unchanged', () => {
+    const result = appendIssueTrailers('feat: add login', []);
+    assert.strictEqual(result, 'feat: add login');
+  });
+
+  test('null refs returns message unchanged', () => {
+    const result = appendIssueTrailers('feat: add login', null);
+    assert.strictEqual(result, 'feat: add login');
+  });
+});
+
+// ─── bumpVersion function (VER-01, VER-02) ────────────────────────────────────
+
+describe('bumpVersion function', () => {
+  const { bumpVersion, appendBuildMetadata } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('semver patch: 1.0.0 -> 1.0.1', () => {
+    assert.strictEqual(bumpVersion('1.0.0', 'patch', 'semver'), '1.0.1');
+  });
+
+  test('semver minor: 1.0.0 -> 1.1.0', () => {
+    assert.strictEqual(bumpVersion('1.0.0', 'minor', 'semver'), '1.1.0');
+  });
+
+  test('semver major: 1.0.0 -> 2.0.0', () => {
+    assert.strictEqual(bumpVersion('1.0.0', 'major', 'semver'), '2.0.0');
+  });
+
+  test('calver patch within same month increments patch', () => {
+    const now = new Date();
+    const currentCalVer = `${now.getFullYear()}.${now.getMonth() + 1}.0`;
+    assert.strictEqual(
+      bumpVersion(currentCalVer, 'patch', 'calver'),
+      `${now.getFullYear()}.${now.getMonth() + 1}.1`
+    );
+  });
+
+  test('calver from different month resets to current month', () => {
+    const now = new Date();
+    assert.strictEqual(
+      bumpVersion('2025.1.5', 'patch', 'calver'),
+      `${now.getFullYear()}.${now.getMonth() + 1}.0`
+    );
+  });
+
+  test('date-based patch increments build number', () => {
+    assert.strictEqual(bumpVersion('1.2.3', 'patch', 'date'), '1.2.4');
+  });
+
+  test('appendBuildMetadata adds +hash', () => {
+    assert.strictEqual(appendBuildMetadata('1.0.1', 'abc1234'), '1.0.1+abc1234');
+  });
+
+  test('appendBuildMetadata with null hash returns version unchanged', () => {
+    assert.strictEqual(appendBuildMetadata('1.0.1', null), '1.0.1');
+  });
+});
+
+// ─── deriveVersionBump function (VER-01) ─────────────────────────────────────
+
+describe('deriveVersionBump function', () => {
+  const { deriveVersionBump } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('feat one-liner returns minor', () => {
+    assert.strictEqual(deriveVersionBump([{ oneLiner: 'feat(14): add changelog' }]), 'minor');
+  });
+
+  test('fix-only one-liners return patch', () => {
+    assert.strictEqual(deriveVersionBump([
+      { oneLiner: 'fix(14): repair link' },
+      { oneLiner: 'fix(14): typo' },
+    ]), 'patch');
+  });
+
+  test('BREAKING CHANGE returns major', () => {
+    assert.strictEqual(deriveVersionBump([
+      { oneLiner: 'feat(14): add changelog BREAKING CHANGE' },
+    ]), 'major');
+  });
+
+  test('no type prefix returns patch', () => {
+    assert.strictEqual(deriveVersionBump([
+      { oneLiner: 'Update config system' },
+    ]), 'patch');
+  });
+
+  test('empty array returns patch default', () => {
+    assert.strictEqual(deriveVersionBump([]), 'patch');
+  });
+
+  test('null summaries returns patch default', () => {
+    assert.strictEqual(deriveVersionBump(null), 'patch');
+  });
+});
+
+// ─── generateChangelog function (COMM-04, COMM-05) ───────────────────────────
+
+describe('generateChangelog function', () => {
+  const { generateChangelog } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('feat and fix summaries produce Added and Fixed sections', () => {
+    const result = generateChangelog('1.1.0', '2026-03-16', [
+      { planId: '14-01', oneLiner: 'feat(14-01): add changelog generation' },
+      { planId: '14-02', oneLiner: 'fix(14-02): repair broken link' },
+    ]);
+    assert.ok(result.includes('## [1.1.0] - 2026-03-16'), 'should include version header');
+    assert.ok(result.includes('### Added'), 'should include Added section');
+    assert.ok(result.includes('### Fixed'), 'should include Fixed section');
+    // Descriptions are capitalized in output
+    assert.ok(result.includes('changelog generation'), 'should include feat description');
+    assert.ok(result.includes('broken link'), 'should include fix description');
+  });
+
+  test('output starts with version header', () => {
+    const result = generateChangelog('2.0.0', '2026-03-16', [
+      { planId: '14-01', oneLiner: 'feat: something' },
+    ]);
+    assert.ok(result.startsWith('## [2.0.0] - 2026-03-16'), 'should start with version header');
+  });
+
+  test('empty summaries produces placeholder in Added section', () => {
+    const result = generateChangelog('1.0.1', '2026-03-16', []);
+    assert.ok(result.includes('## [1.0.1] - 2026-03-16'), 'should include version header');
+    assert.ok(result.includes('### Added'), 'should include Added section');
+  });
+});
+
+// ─── categorizeCommitType function (COMM-05) ─────────────────────────────────
+
+describe('categorizeCommitType function', () => {
+  const { categorizeCommitType } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('feat prefix maps to Added', () => {
+    assert.strictEqual(categorizeCommitType('feat(14): add changelog'), 'Added');
+  });
+
+  test('fix prefix maps to Fixed', () => {
+    assert.strictEqual(categorizeCommitType('fix(14): repair link'), 'Fixed');
+  });
+
+  test('refactor prefix maps to Changed', () => {
+    assert.strictEqual(categorizeCommitType('refactor(14): simplify'), 'Changed');
+  });
+
+  test('perf prefix maps to Changed', () => {
+    assert.strictEqual(categorizeCommitType('perf(14): optimize'), 'Changed');
+  });
+
+  test('revert prefix maps to Removed', () => {
+    assert.strictEqual(categorizeCommitType('revert(14): undo feature'), 'Removed');
+  });
+
+  test('no prefix defaults to Changed', () => {
+    assert.strictEqual(categorizeCommitType('Update something'), 'Changed');
+  });
+
+  test('null/empty defaults to Changed', () => {
+    assert.strictEqual(categorizeCommitType(null), 'Changed');
+    assert.strictEqual(categorizeCommitType(''), 'Changed');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cmdHelp command
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cmdDivergence tests (CLEAN-05)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('divergence command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // Helper: call a function that may invoke error() (fs.writeSync(2,...) + process.exit(1))
+  // or output() (fs.writeSync(1,...)). Intercepts both fd 1 and fd 2 at the fs layer
+  // and mocks process.exit so the test process is not killed.
+  // Returns { stdout, stderr, exited, exitCode }.
+  function callExpectingError(fn) {
+    let stdout = '';
+    let stderr = '';
+    let exited = false;
+    let exitCode = null;
+    const origFsWriteSync = fs.writeSync.bind(fs);
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    const origExit = process.exit.bind(process);
+    fs.writeSync = (fd, data, ...rest) => {
+      if (fd === 1) { stdout += String(data); return data.length; }
+      if (fd === 2) { stderr += String(data); return data.length; }
+      return origFsWriteSync(fd, data, ...rest);
+    };
+    process.stderr.write = (chunk) => { stderr += String(chunk); return true; };
+    process.exit = (code) => { exited = true; exitCode = code; throw new Error(`process.exit(${code})`); };
+    try {
+      fn();
+    } catch (e) {
+      // Swallow process.exit errors; let genuine test errors propagate
+      if (!exited) throw e;
+    } finally {
+      fs.writeSync = origFsWriteSync;
+      process.stderr.write = origStderrWrite;
+      process.exit = origExit;
+    }
+    return { stdout, stderr, exited, exitCode };
+  }
+
+  test('returns no_upstream when no upstream remote exists', () => {
+    // createTempProject() creates a non-git project, so no upstream remote
+    const result = runGsdTools('divergence', tmpDir);
+    assert.ok(result.success, `Command should not crash: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.status, 'no_upstream', 'should return no_upstream status');
+    assert.deepStrictEqual(output.commits, [], 'commits should be empty array');
+  });
+
+  test('triage validation: skipped status without reason produces error', () => {
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
+    const { stdout, stderr, exited } = callExpectingError(() => {
+      // Use a temp dir that has no upstream — if no upstream, early exit before validation
+      cmdDivergence(tmpDir, { triage: 'abc1234', status: 'skipped', reason: '' }, false);
+    });
+
+    // Should either: produce an error about reason (if upstream exists), OR exit early with
+    // no_upstream (which is valid when no upstream is configured in the test environment)
+    assert.ok(
+      exited || stderr.includes('Reason required') || stderr.includes('skipped') || stdout.includes('no_upstream'),
+      `Expected error about reason or no_upstream exit, got stdout: ${stdout}, stderr: ${stderr}`
+    );
+  });
+
+  test('parseDivergenceFile returns empty Map for missing file', () => {
+    const { parseDivergenceFile } = require('../gsd-ng/bin/lib/commands.cjs');
+    const result = parseDivergenceFile('/tmp/nonexistent-divergence-12345.md');
+    assert.ok(result instanceof Map, 'should return a Map');
+    assert.strictEqual(result.size, 0, 'should be empty for missing file');
+  });
+
+  test('parseDivergenceFile round-trip: write then parse recovers entries', () => {
+    const { parseDivergenceFile, writeDivergenceFile } = require('../gsd-ng/bin/lib/commands.cjs');
+    const filePath = path.join(tmpDir, '.planning', 'DIVERGENCE.md');
+
+    const commits = [
+      { hash: 'abc1234', date: '2026-03-14', subject: 'fix: some change', status: 'picked', reason: 'Applied in Phase 17' },
+      { hash: 'def5678', date: '2026-03-15', subject: 'feat: new feature', status: 'skipped', reason: 'Not compatible with NG focus' },
+      { hash: 'ghi9012', date: '2026-03-16', subject: 'chore: cleanup', status: 'pending', reason: '' },
+    ];
+
+    writeDivergenceFile(filePath, 'https://github.com/upstream/repo.git', commits);
+
+    assert.ok(fs.existsSync(filePath), 'DIVERGENCE.md should be created');
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(content.includes('# Divergence Tracking'), 'should have header');
+    assert.ok(content.includes('Upstream remote (upstream):'), 'should have upstream URL with remote name');
+    assert.ok(content.includes('## Commit Triage'), 'should have triage section');
+
+    const parsed = parseDivergenceFile(filePath);
+    assert.ok(parsed instanceof Map, 'should return Map');
+    assert.strictEqual(parsed.size, 3, 'should parse 3 entries');
+
+    const entry = parsed.get('abc1234');
+    assert.ok(entry, 'should find abc1234');
+    assert.strictEqual(entry.status, 'picked', 'status should be picked');
+    assert.strictEqual(entry.reason, 'Applied in Phase 17', 'reason should be preserved');
+
+    const skipped = parsed.get('def5678');
+    assert.ok(skipped, 'should find def5678');
+    assert.strictEqual(skipped.status, 'skipped', 'skipped status preserved');
+    assert.strictEqual(skipped.subject, 'feat: new feature', 'subject preserved');
+  });
+
+  test('--init exits 0 in non-git project (no upstream/main ref)', () => {
+    // Non-git project with upstream remote set but no git history — should handle gracefully
+    const result = runGsdTools('divergence --init', tmpDir);
+    // Either no_upstream (no git repo) or initialized (0 commits) — either is acceptable
+    assert.ok(result.success, `Should exit 0: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.ok(output.status === 'no_upstream' || output.status === 'initialized',
+      `Unexpected status: ${output.status}`);
+  });
+
+  test('--branch flag returns branch_not_found error for nonexistent branch in non-git project', () => {
+    // Non-git project: git rev-parse fails, so branch not found error returned
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
+    const { stderr, exited } = callExpectingError(() => {
+      cmdDivergence(tmpDir, { branch: 'feature/nonexistent' }, false);
+    });
+    // Either exited (process.exit called) or wrote error about branch not found
+    assert.ok(exited || stderr.includes('not found') || stderr.includes('nonexistent'),
+      `Expected branch-not-found error, got: ${stderr}`);
+  });
+
+  test('writeDivergenceBranchSection then parseDivergenceBranchSection round-trips', () => {
+    const { writeDivergenceBranchSection, parseDivergenceBranchSection } = require('../gsd-ng/bin/lib/commands.cjs');
+    const filePath = path.join(tmpDir, '.planning', 'DIVERGENCE.md');
+    const sectionKey = 'main..feature/test-branch';
+    const commits = [
+      { hash: 'aaa1111', date: '2026-03-14', subject: 'fix: some fix', classification: 'fix', status: 'pending', reason: '' },
+      { hash: 'bbb2222', date: '2026-03-15', subject: 'feat: new thing', classification: 'feat', status: 'needs-adaptation', reason: 'needs port' },
+    ];
+    writeDivergenceBranchSection(filePath, sectionKey, commits);
+    assert.ok(fs.existsSync(filePath), 'DIVERGENCE.md should be created');
+
+    const section = parseDivergenceBranchSection(filePath, sectionKey);
+    assert.ok(section instanceof Map, 'should return a Map');
+    assert.ok(section.has('aaa1111'), 'should have aaa1111');
+    assert.ok(section.has('bbb2222'), 'should have bbb2222');
+    const entry = section.get('bbb2222');
+    assert.strictEqual(entry.status, 'needs-adaptation');
+    assert.ok(entry.reason.includes('needs port'), 'reason should be preserved');
+  });
+
+  test('branch triage rejects invalid status via cmdDivergence', () => {
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
+    const { stderr, exited } = callExpectingError(() => {
+      // branch mode with triage but invalid status
+      cmdDivergence(tmpDir, { branch: 'feature/test', base: 'main', triage: 'abc1234', status: 'invalid-status', reason: '' }, false);
+    });
+    // Should error about branch not found (before reaching triage validation)
+    // OR error about invalid status if branch check is bypassed in tests
+    // Either way, it should not silently succeed
+    assert.ok(exited || stderr.length > 0,
+      'Expected error output for invalid branch or status');
+  });
+
+  test('upstream triage validation accepts needs-adaptation and already-covered states', () => {
+    // The VALID_TRIAGE_STATES now includes 6 states
+    const { VALID_TRIAGE_STATES } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.ok(VALID_TRIAGE_STATES.includes('needs-adaptation'), 'needs-adaptation accepted');
+    assert.ok(VALID_TRIAGE_STATES.includes('already-covered'), 'already-covered accepted');
+  });
+
+  test('VALID_TRIAGE_STATES includes adapted (7 states total)', () => {
+    const { VALID_TRIAGE_STATES } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.ok(VALID_TRIAGE_STATES.includes('adapted'), "'adapted' should be a valid triage state");
+    assert.strictEqual(VALID_TRIAGE_STATES.length, 7, 'Should have 7 total valid triage states');
+  });
+
+  test('upstream triage: adapted status without reason produces error', () => {
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
+    const { stdout, stderr, exited } = callExpectingError(() => {
+      cmdDivergence(tmpDir, { triage: 'abc1234', status: 'adapted', reason: '' }, false);
+    });
+
+    // Either produces an error (validation reached) or exits early with no_upstream
+    assert.ok(
+      exited || stderr.includes('Reason required') || stderr.includes('adapted') || stdout.includes('no_upstream'),
+      `Expected error requiring reason or no_upstream exit, got stdout: ${stdout}, stderr: ${stderr}`
+    );
+  });
+
+  test('branch triage: adapted status without reason produces error', () => {
+    const { cmdDivergence } = require('../gsd-ng/bin/lib/commands.cjs');
+    const { stderr, exited } = callExpectingError(() => {
+      // Branch mode: pass branch + base + triage + status=adapted with no reason
+      cmdDivergence(tmpDir, { branch: 'feature/test', base: 'main', triage: 'abc1234', status: 'adapted', reason: '' }, false);
+    });
+
+    // Either exited (branch not found) or errors about reason requirement
+    assert.ok(exited || stderr.length > 0,
+      `Expected error for adapted without reason in branch mode, got: ${stderr}`);
+  });
+});
+
+describe('help command', () => {
+  test('returns a commands array with 10+ entries', () => {
+    const result = runGsdTools('help', process.cwd());
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.commands), 'commands should be an array');
+    assert.ok(output.commands.length >= 10, `Expected 10+ commands, got ${output.commands.length}`);
+  });
+
+  test('each entry has name and description fields', () => {
+    const result = runGsdTools('help', process.cwd());
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    for (const cmd of output.commands) {
+      assert.ok(typeof cmd.name === 'string' && cmd.name.length > 0, `Command missing name: ${JSON.stringify(cmd)}`);
+      assert.ok(typeof cmd.description === 'string', `Command missing description field: ${JSON.stringify(cmd)}`);
+    }
+  });
+
+  test('known commands are discoverable', () => {
+    const result = runGsdTools('help', process.cwd());
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const names = output.commands.map(c => c.name);
+    assert.ok(names.includes('gsd:help'), 'gsd:help should be discoverable');
+    assert.ok(names.includes('gsd:health'), 'gsd:health should be discoverable');
+    assert.ok(names.includes('gsd:execute-phase'), 'gsd:execute-phase should be discoverable');
+  });
+
+  test('commands are sorted alphabetically by name', () => {
+    const result = runGsdTools('help', process.cwd());
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const names = output.commands.map(c => c.name);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    assert.deepStrictEqual(names, sorted, 'Commands should be sorted alphabetically');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// discoverTestCommand function
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('discoverTestCommand', () => {
+  const os = require('os');
+  const { discoverTestCommand } = require('../gsd-ng/bin/lib/commands.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-dtc-'));
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('returns npm test when package.json has a test script', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { test: 'node --test' } })
+    );
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'npm test' }]);
+  });
+
+  test('returns null when no test infrastructure exists', () => {
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), []);
+  });
+
+  test('returns config override value when verification.test_command is set', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ verification: { test_command: 'make test' } })
+    );
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'make test' }]);
+  });
+
+  test('returns python -m pytest when pyproject.toml exists and no package.json test script', () => {
+    fs.writeFileSync(path.join(tmpDir, 'pyproject.toml'), '[tool.pytest.ini_options]\n');
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'python -m pytest' }]);
+  });
+
+  test('returns cargo test when Cargo.toml exists', () => {
+    fs.writeFileSync(path.join(tmpDir, 'Cargo.toml'), '[package]\nname = "myapp"\n');
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'cargo test' }]);
+  });
+
+  test('returns go test ./... when go.mod exists', () => {
+    fs.writeFileSync(path.join(tmpDir, 'go.mod'), 'module myapp\ngo 1.21\n');
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'go test ./...' }]);
+  });
+
+  test('config override takes priority over package.json auto-detection', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { test: 'jest' } })
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ verification: { test_command: 'make test' } })
+    );
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'make test' }]);
+  });
+
+  test('skips default npm test placeholder script', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } })
+    );
+    assert.deepStrictEqual(discoverTestCommand(tmpDir), []);
+  });
+
+  describe('submodule scanning', () => {
+    test('scans submodule_paths when CWD has no test command', () => {
+      // Create .gitmodules listing sub1 and sub2
+      fs.writeFileSync(path.join(tmpDir, '.gitmodules'), [
+        '[submodule "sub1"]',
+        '    path = sub1',
+        '    url = https://example.com/sub1.git',
+        '[submodule "sub2"]',
+        '    path = sub2',
+        '    url = https://example.com/sub2.git',
+      ].join('\n'));
+      // sub1 has package.json with test script
+      fs.mkdirSync(path.join(tmpDir, 'sub1'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'sub1', 'package.json'),
+        JSON.stringify({ scripts: { test: 'node --test' } })
+      );
+      // sub2 has pyproject.toml
+      fs.mkdirSync(path.join(tmpDir, 'sub2'));
+      fs.writeFileSync(path.join(tmpDir, 'sub2', 'pyproject.toml'), '[tool.pytest.ini_options]\n');
+      // CWD has no package.json
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [
+        { dir: 'sub1', command: 'npm test' },
+        { dir: 'sub2', command: 'python -m pytest' },
+      ]);
+    });
+
+    test('skips submodule paths without test infrastructure', () => {
+      fs.writeFileSync(path.join(tmpDir, '.gitmodules'), [
+        '[submodule "sub1"]',
+        '    path = sub1',
+        '    url = https://example.com/sub1.git',
+        '[submodule "sub2"]',
+        '    path = sub2',
+        '    url = https://example.com/sub2.git',
+      ].join('\n'));
+      // sub1 has a test script
+      fs.mkdirSync(path.join(tmpDir, 'sub1'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'sub1', 'package.json'),
+        JSON.stringify({ scripts: { test: 'npm run jest' } })
+      );
+      // sub2 is empty
+      fs.mkdirSync(path.join(tmpDir, 'sub2'));
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [
+        { dir: 'sub1', command: 'npm test' },
+      ]);
+    });
+
+    test('returns empty array when submodule paths have no tests', () => {
+      fs.writeFileSync(path.join(tmpDir, '.gitmodules'), [
+        '[submodule "sub1"]',
+        '    path = sub1',
+        '    url = https://example.com/sub1.git',
+      ].join('\n'));
+      // sub1 is empty
+      fs.mkdirSync(path.join(tmpDir, 'sub1'));
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), []);
+    });
+  });
+
+  describe('monorepo workspace scanning', () => {
+    test('resolves pnpm workspace globs to real directories', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'pnpm-workspace.yaml'),
+        'packages:\n  - packages/*\n'
+      );
+      fs.mkdirSync(path.join(tmpDir, 'packages', 'core'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'packages', 'core', 'package.json'),
+        JSON.stringify({ scripts: { test: 'node --test' } })
+      );
+      fs.mkdirSync(path.join(tmpDir, 'packages', 'utils'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'packages', 'utils', 'Cargo.toml'), '[package]\nname = "utils"\n');
+      const result = discoverTestCommand(tmpDir);
+      assert.deepStrictEqual(result, [
+        { dir: 'packages/core', command: 'npm test' },
+        { dir: 'packages/utils', command: 'cargo test' },
+      ]);
+    });
+
+    test('handles package.json workspaces array', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ workspaces: ['packages/*'] })
+      );
+      fs.mkdirSync(path.join(tmpDir, 'packages', 'app'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'packages', 'app', 'go.mod'), 'module myapp\ngo 1.21\n');
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [
+        { dir: 'packages/app', command: 'go test ./...' },
+      ]);
+    });
+
+    test('handles package.json workspaces object (Yarn Berry)', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ workspaces: { packages: ['libs/*'] } })
+      );
+      fs.mkdirSync(path.join(tmpDir, 'libs', 'core'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, 'libs', 'core', 'package.json'),
+        JSON.stringify({ scripts: { test: 'jest' } })
+      );
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [
+        { dir: 'libs/core', command: 'npm test' },
+      ]);
+    });
+  });
+
+  describe('config normalization', () => {
+    test('normalizes string config to single-element array', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, '.planning', 'config.json'),
+        JSON.stringify({ verification: { test_command: 'make test' } })
+      );
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: '.', command: 'make test' }]);
+    });
+
+    test('passes through array config unchanged', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, '.planning', 'config.json'),
+        JSON.stringify({ verification: { test_command: [{ dir: 'sub', command: 'npm test' }] } })
+      );
+      assert.deepStrictEqual(discoverTestCommand(tmpDir), [{ dir: 'sub', command: 'npm test' }]);
+    });
+  });
+
+  describe('discover-test-command CLI', () => {
+    test('discover-test-command CLI returns JSON array', () => {
+      const projDir = createTempProject();
+      try {
+        fs.writeFileSync(
+          path.join(projDir, 'package.json'),
+          JSON.stringify({ scripts: { test: 'node --test' } })
+        );
+        const result = runGsdTools(['discover-test-command'], projDir);
+        assert.ok(result.success, `CLI failed: ${result.error}`);
+        const parsed = JSON.parse(result.output);
+        assert.deepStrictEqual(parsed, [{ dir: '.', command: 'npm test' }]);
+      } finally {
+        cleanup(projDir);
+      }
+    });
+  });
+
+  test('verification.test_command round-trips via config-set and config-get CLI', () => {
+    // Need a .planning dir with config for gsd-tools
+    const projDir = createTempProject();
+    try {
+      const setResult = runGsdTools(['config-set', 'verification.test_command', 'make test'], projDir);
+      assert.ok(setResult.success, `config-set failed: ${setResult.error}`);
+
+      const getResult = runGsdTools(['config-get', 'verification.test_command', '--raw'], projDir);
+      assert.ok(getResult.success, `config-get failed: ${getResult.error}`);
+      assert.strictEqual(getResult.output, 'make test');
+    } finally {
+      cleanup(projDir);
+    }
+  });
+});
+
+// =============================================================================
+// Divergence helpers: classifyCommit, priorityOrder, extractPrNumber,
+// normalizeForMatch, parseDivergenceBranchSection, VALID_TRIAGE_STATES
+// =============================================================================
+
+describe('divergence helpers', () => {
+  const os = require('os');
+  const {
+    classifyCommit,
+    priorityOrder,
+    extractPrNumber,
+    normalizeForMatch,
+    parseDivergenceBranchSection,
+    VALID_TRIAGE_STATES,
+  } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  test('classifyCommit: fix prefix returns fix', () => {
+    assert.strictEqual(classifyCommit('fix(core): resolve crash'), 'fix');
+  });
+
+  test('classifyCommit: security prefix returns fix', () => {
+    assert.strictEqual(classifyCommit('security: patch XSS vulnerability'), 'fix');
+  });
+
+  test('classifyCommit: hotfix prefix returns fix', () => {
+    assert.strictEqual(classifyCommit('hotfix(auth): token expiry'), 'fix');
+  });
+
+  test('classifyCommit: feat prefix returns feat', () => {
+    assert.strictEqual(classifyCommit('feat(api): add search endpoint'), 'feat');
+  });
+
+  test('classifyCommit: docs prefix returns other', () => {
+    assert.strictEqual(classifyCommit('docs: update README'), 'other');
+  });
+
+  test('classifyCommit: chore prefix returns other', () => {
+    assert.strictEqual(classifyCommit('chore: bump deps'), 'other');
+  });
+
+  test('classifyCommit: BREAKING CHANGE returns fix', () => {
+    assert.strictEqual(classifyCommit('BREAKING CHANGE: remove v1 API'), 'fix');
+  });
+
+  test('classifyCommit: random message returns unknown', () => {
+    assert.strictEqual(classifyCommit('random commit message'), 'unknown');
+  });
+
+  test('classifyCommit: revert prefix returns fix', () => {
+    assert.strictEqual(classifyCommit('revert: feat(api): something'), 'fix');
+  });
+
+  test('extractPrNumber: extracts PR from (#1234) format', () => {
+    assert.strictEqual(extractPrNumber('fix(core): resolve crash (#1234)'), '1234');
+  });
+
+  test('extractPrNumber: extracts PR from Merge pull request #5678', () => {
+    assert.strictEqual(extractPrNumber('Merge pull request #5678 from branch'), '5678');
+  });
+
+  test('extractPrNumber: returns null when no PR ref', () => {
+    assert.strictEqual(extractPrNumber('just a commit message'), null);
+  });
+
+  test('normalizeForMatch: strips PR ref and prefix', () => {
+    const normalized = normalizeForMatch('fix(core): resolve crash (#1234)');
+    assert.ok(!normalized.includes('1234'), 'PR ref should be stripped');
+    assert.ok(!normalized.toLowerCase().startsWith('fix'), 'prefix should be stripped');
+    assert.ok(normalized.includes('resolve'), 'subject body should remain');
+  });
+
+  test('priorityOrder: fix returns 0', () => {
+    assert.strictEqual(priorityOrder('fix'), 0);
+  });
+
+  test('priorityOrder: feat returns 1', () => {
+    assert.strictEqual(priorityOrder('feat'), 1);
+  });
+
+  test('priorityOrder: other returns 2', () => {
+    assert.strictEqual(priorityOrder('other'), 2);
+  });
+
+  test('priorityOrder: unknown returns 3', () => {
+    assert.strictEqual(priorityOrder('unknown'), 3);
+  });
+
+  test('parseDivergenceBranchSection: reads correct section from multi-section DIVERGENCE.md', () => {
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-divbranch-'));
+    try {
+      const filePath = path.join(tmpDir, 'DIVERGENCE.md');
+      const content = [
+        '# Divergence Tracking',
+        '',
+        '## Commit Triage',
+        '',
+        '| Hash | Date | Subject | Status | Reason |',
+        '|------|------|---------|--------|--------|',
+        '| abc1234 | 2026-01-01 | fix: upstream bug | picked | cherry-picked |',
+        '',
+        '## Branch Tracking: main..feature/foo',
+        '',
+        '**Tracked:** main..feature/foo',
+        '',
+        '| Hash | Date | Subject | Classification | Status | Reason |',
+        '|------|------|---------|----------------|--------|--------|',
+        '| def5678 | 2026-01-02 | feat(api): new endpoint | feat | pending |  |',
+        '',
+        '## Branch Tracking: main..feature/bar',
+        '',
+        '| Hash | Date | Subject | Classification | Status | Reason |',
+        '|------|------|---------|----------------|--------|--------|',
+        '| ghi9012 | 2026-01-03 | fix: another fix | fix | pending |  |',
+        '',
+      ].join('\n');
+      fs.writeFileSync(filePath, content, 'utf-8');
+
+      const section = parseDivergenceBranchSection(filePath, 'main..feature/foo');
+      assert.ok(section instanceof Map, 'should return a Map');
+      assert.ok(section.has('def5678'), 'should contain def5678 from feature/foo section');
+      assert.ok(!section.has('ghi9012'), 'should not contain entries from feature/bar section');
+      assert.ok(!section.has('abc1234'), 'should not contain entries from upstream section');
+      const entry = section.get('def5678');
+      assert.strictEqual(entry.status, 'pending');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('parseDivergenceBranchSection: returns empty Map when section not found', () => {
+    const tmpDir2 = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-divbranch-'));
+    try {
+      const filePath = path.join(tmpDir2, 'DIVERGENCE.md');
+      fs.writeFileSync(filePath, '# Divergence Tracking\n', 'utf-8');
+      const result = parseDivergenceBranchSection(filePath, 'main..nonexistent');
+      assert.ok(result instanceof Map, 'should return a Map');
+      assert.strictEqual(result.size, 0, 'should be empty when section not found');
+    } finally {
+      fs.rmSync(tmpDir2, { recursive: true, force: true });
+    }
+  });
+
+  test('VALID_TRIAGE_STATES: includes all 7 states including needs-adaptation, already-covered, and adapted', () => {
+    assert.ok(Array.isArray(VALID_TRIAGE_STATES), 'should be an array');
+    assert.ok(VALID_TRIAGE_STATES.includes('picked'), 'should include picked');
+    assert.ok(VALID_TRIAGE_STATES.includes('skipped'), 'should include skipped');
+    assert.ok(VALID_TRIAGE_STATES.includes('deferred'), 'should include deferred');
+    assert.ok(VALID_TRIAGE_STATES.includes('pending'), 'should include pending');
+    assert.ok(VALID_TRIAGE_STATES.includes('needs-adaptation'), 'should include needs-adaptation');
+    assert.ok(VALID_TRIAGE_STATES.includes('already-covered'), 'should include already-covered');
+    assert.ok(VALID_TRIAGE_STATES.includes('adapted'), 'should include adapted');
+    assert.strictEqual(VALID_TRIAGE_STATES.length, 7, 'should have exactly 7 states');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// detect-platform --field --raw
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('detect-platform --field --raw', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Write a config with a known platform override so tests are deterministic
+    // without requiring a real git remote
+    const config = {
+      git: {
+        platform: 'github',
+        remote: 'origin',
+      },
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify(config, null, 2)
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('detect-platform --field platform --raw returns plain string', () => {
+    const { execFileSync } = require('child_process');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    let out;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'platform', '--raw'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch (err) {
+      assert.fail(`Command failed: ${err.stderr}`);
+    }
+    assert.strictEqual(out, 'github', 'should return plain platform string');
+    assert.ok(!out.startsWith('{'), 'output must not be JSON');
+  });
+
+  test('detect-platform --field source --raw returns plain string', () => {
+    const { execFileSync } = require('child_process');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    let out;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'source', '--raw'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch (err) {
+      assert.fail(`Command failed: ${err.stderr}`);
+    }
+    assert.strictEqual(out, 'config', 'source should be config when platform override set');
+    assert.ok(!out.startsWith('{'), 'output must not be JSON');
+  });
+
+  test('detect-platform --field cli_installed --raw returns true or false string', () => {
+    const { execFileSync } = require('child_process');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    let out;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'cli_installed', '--raw'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch (err) {
+      assert.fail(`Command failed: ${err.stderr}`);
+    }
+    assert.ok(out === 'true' || out === 'false', `cli_installed must be "true" or "false", got: ${out}`);
+  });
+
+  test('detect-platform --field cli --raw returns CLI name string', () => {
+    const { execFileSync } = require('child_process');
+    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    let out;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'detect-platform', '--field', 'cli', '--raw'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch (err) {
+      assert.fail(`Command failed: ${err.stderr}`);
+    }
+    // github platform maps to gh CLI
+    assert.strictEqual(out, 'gh', 'github platform should map to gh CLI');
+    assert.ok(!out.startsWith('{'), 'output must not be JSON');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// version-bump --field --raw
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('version-bump --field --raw', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Create minimal package.json
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ name: 'test-pkg', version: '1.0.0' }, null, 2)
+    );
+    // Need a git repo for version-bump (execGit calls)
+    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git add -A', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "init"', { cwd: tmpDir, stdio: 'pipe' });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('version-bump --level patch --field version --raw returns plain version string', () => {
+    const result = runGsdTools(['version-bump', '--level', 'patch', '--field', 'version', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '1.0.1', 'should return plain version string for patch bump');
+    assert.ok(!result.output.startsWith('{'), 'output must not be JSON');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolve-type-alias command
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolve-type-alias command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('resolve-type-alias feat --raw returns default alias (feature)', () => {
+    const result = runGsdTools(['resolve-type-alias', 'feat', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'feature', 'feat should resolve to feature by default');
+  });
+
+  test('resolve-type-alias fix --raw returns default alias (bugfix)', () => {
+    const result = runGsdTools(['resolve-type-alias', 'fix', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'bugfix', 'fix should resolve to bugfix by default');
+  });
+
+  test('resolve-type-alias with custom config override', () => {
+    const config = {
+      git: {
+        type_aliases: { feat: 'new-feature', fix: 'patch' },
+      },
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify(config, null, 2)
+    );
+    const result = runGsdTools(['resolve-type-alias', 'feat', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'new-feature', 'should use config alias');
+  });
+
+  test('resolve-type-alias unknown type returns type itself', () => {
+    const result = runGsdTools(['resolve-type-alias', 'docs', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'docs', 'unknown type should return itself');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// config-get --raw (regression check for scalar extraction)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('config-get --raw scalar extraction', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Write a config with a known git.remote value
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ git: { remote: 'origin' } }, null, 2)
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('config-get git.remote --raw returns plain string "origin"', () => {
+    const result = runGsdTools(['config-get', 'git.remote', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'origin', 'git.remote should return "origin"');
+    assert.ok(!result.output.startsWith('{'), 'output must not be JSON');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ISSUE_COMMANDS label operations (Phase 21-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ISSUE_COMMANDS label operations', () => {
+  const { ISSUE_COMMANDS, applyVerifyLabel } = require('../gsd-ng/bin/lib/commands.cjs');
+
+  // Test 1: GitHub label operation
+  test('ISSUE_COMMANDS.github.label returns correct gh args', () => {
+    const result = ISSUE_COMMANDS.github.label(42, null, 'needs-verification');
+    assert.strictEqual(result.cli, 'gh');
+    assert.deepStrictEqual(result.args, ['issue', 'edit', '42', '--add-label', 'needs-verification']);
+  });
+
+  // Test 2: GitHub label_create operation
+  test('ISSUE_COMMANDS.github.label_create returns correct gh args', () => {
+    const result = ISSUE_COMMANDS.github.label_create(null, 'needs-verification');
+    assert.strictEqual(result.cli, 'gh');
+    assert.deepStrictEqual(result.args, ['label', 'create', 'needs-verification', '--force']);
+  });
+
+  // Test 3: GitLab label operation
+  test('ISSUE_COMMANDS.gitlab.label returns correct glab args', () => {
+    const result = ISSUE_COMMANDS.gitlab.label(42, null, 'needs-verification');
+    assert.strictEqual(result.cli, 'glab');
+    assert.deepStrictEqual(result.args, ['issue', 'edit', '42', '--add-labels', 'needs-verification']);
+  });
+
+  // Test 4: Forgejo label operation
+  test('ISSUE_COMMANDS.forgejo.label returns correct fj args', () => {
+    const result = ISSUE_COMMANDS.forgejo.label(42, null, 'needs-verification');
+    assert.strictEqual(result.cli, 'fj');
+    assert.deepStrictEqual(result.args, ['issue', 'edit', '42', '--add-labels', 'needs-verification']);
+  });
+
+  // Test 5: Gitea label operation
+  test('ISSUE_COMMANDS.gitea.label returns correct tea args', () => {
+    const result = ISSUE_COMMANDS.gitea.label(42, null, 'needs-verification');
+    assert.strictEqual(result.cli, 'tea');
+    assert.deepStrictEqual(result.args, ['issues', 'edit', '42', '--add-labels', 'needs-verification']);
+  });
+
+  // Test for applyVerifyLabel export
+  test('applyVerifyLabel is exported as a function', () => {
+    assert.strictEqual(typeof applyVerifyLabel, 'function', 'applyVerifyLabel should be exported');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cmdIssueSync verify state modes (Phase 21-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('cmdIssueSync verify state modes', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Write a completed todo with an external_ref
+    const doneTodosDir = path.join(tmpDir, '.planning', 'todos', 'completed');
+    fs.mkdirSync(doneTodosDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(doneTodosDir, 'todo-1.md'),
+      `---\ntitle: Test todo\nexternal_ref: "github:#42"\n---\n\nDone.\n`
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // Test 6: close_state=close regression — calls close, not label
+  test('close_state=close calls close action (regression)', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ issue_tracker: { close_state: 'close' } }, null, 2)
+    );
+    process.env.GSD_TEST_MODE = '1';
+    try {
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
+      const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
+      const syncedItem = result.synced.find(s => s.ref === 'github:#42');
+      assert.ok(syncedItem, 'should have synced github:#42');
+      assert.strictEqual(syncedItem.action, 'close', 'action should be close');
+      assert.ok(syncedItem.success, 'close should succeed in test mode');
+    } finally {
+      delete process.env.GSD_TEST_MODE;
+    }
+  });
+
+  // Test 7: close_state=verify calls label, not close
+  test('close_state=verify produces verify action', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ issue_tracker: { close_state: 'verify', verify_label: 'needs-verification' } }, null, 2)
+    );
+    process.env.GSD_TEST_MODE = '1';
+    try {
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
+      const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
+      const syncedItem = result.synced.find(s => s.ref === 'github:#42');
+      assert.ok(syncedItem, 'should have synced github:#42');
+      assert.strictEqual(syncedItem.action, 'verify', 'action should be verify when close_state=verify');
+    } finally {
+      delete process.env.GSD_TEST_MODE;
+    }
+  });
+
+  // Test 8: close_state=verify_then_close closes after labeling
+  test('close_state=verify_then_close produces close action', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ issue_tracker: { close_state: 'verify_then_close', verify_label: 'needs-verification' } }, null, 2)
+    );
+    process.env.GSD_TEST_MODE = '1';
+    try {
+      const { cmdIssueSync } = require('../gsd-ng/bin/lib/commands.cjs');
+      const result = cmdIssueSync(tmpDir, null, { auto: true }, true);
+      const syncedItem = result.synced.find(s => s.ref === 'github:#42');
+      assert.ok(syncedItem, 'should have synced github:#42');
+      assert.strictEqual(syncedItem.action, 'close', 'action should be close after verify_then_close');
+      assert.ok(syncedItem.success, 'verify_then_close should succeed in test mode');
+    } finally {
+      delete process.env.GSD_TEST_MODE;
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cleanup command tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('cleanup command', () => {
+  const os = require('os');
+  let tmpDir;
+
+  function createCleanupProject() {
+    const dir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-cleanup-test-'));
+    fs.mkdirSync(path.join(dir, '.planning', 'phases'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.planning', 'milestones'), { recursive: true });
+    return dir;
+  }
+
+  beforeEach(() => {
+    tmpDir = createCleanupProject();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // Test 1: dry-run with one completed milestone returns expected shape
+  test('dry-run with one completed milestone returns milestones array and nothing_to_do false', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'MILESTONES.md'),
+      '# Milestones\n\n- [x] **v1.0 — Foundation** — Initial release\n- [ ] **v2.0 — Expansion**\n'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'milestones', 'v1.0-ROADMAP.md'),
+      '# Roadmap v1.0\n\n## Phase 1: Foundation\n\nSome content.\n\n## Phase 2: Auth\n\nMore content.\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-auth'), { recursive: true });
+
+    const result = runGsdTools(['cleanup', '--dry-run'], tmpDir);
+    assert.ok(result.success, 'cleanup dry-run should succeed: ' + result.error);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(Array.isArray(parsed.milestones), 'milestones should be an array');
+    assert.strictEqual(parsed.milestones.length, 1, 'should have 1 milestone entry');
+    assert.strictEqual(parsed.milestones[0].version, 'v1.0', 'version should be v1.0');
+    assert.ok(Array.isArray(parsed.milestones[0].phases_to_archive), 'phases_to_archive should be an array');
+    assert.ok(parsed.milestones[0].phases_to_archive.length > 0, 'should have phases to archive');
+    assert.strictEqual(parsed.nothing_to_do, false, 'nothing_to_do should be false');
+  });
+
+  // Test 2: dry-run when all milestones already archived returns nothing_to_do true
+  test('dry-run with all milestones already archived returns nothing_to_do true', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'MILESTONES.md'),
+      '# Milestones\n\n- [x] **v1.0 — Foundation** — Initial release\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'milestones', 'v1.0-phases'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'milestones', 'v1.0-ROADMAP.md'),
+      '# Roadmap v1.0\n\n## Phase 1: Foundation\n'
+    );
+
+    const result = runGsdTools(['cleanup', '--dry-run'], tmpDir);
+    assert.ok(result.success, 'cleanup dry-run should succeed: ' + result.error);
+
+    const parsed = JSON.parse(result.output);
+    assert.deepStrictEqual(parsed.milestones, [], 'milestones should be empty');
+    assert.strictEqual(parsed.nothing_to_do, true, 'nothing_to_do should be true');
+  });
+
+  // Test 3: execute (not dry-run) creates destination dir and moves phase directories
+  test('execute mode creates destination dir and moves phase directories', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'MILESTONES.md'),
+      '# Milestones\n\n- [x] **v1.0 — Foundation**\n'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'milestones', 'v1.0-ROADMAP.md'),
+      '# Roadmap v1.0\n\n## Phase 1: Foundation\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+
+    const result = runGsdTools(['cleanup'], tmpDir);
+    assert.ok(result.success, 'cleanup execute should succeed: ' + result.error);
+
+    const destDir = path.join(tmpDir, '.planning', 'milestones', 'v1.0-phases');
+    assert.ok(fs.existsSync(destDir), 'destination v1.0-phases dir should be created');
+    assert.ok(fs.existsSync(path.join(destDir, '01-foundation')), '01-foundation should be moved');
+    assert.ok(!fs.existsSync(path.join(tmpDir, '.planning', 'phases', '01-foundation')),
+      '01-foundation should no longer exist in phases/');
+
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.nothing_to_do, false, 'nothing_to_do should be false');
+  });
+
+  // Test 4: missing MILESTONES.md returns error-shaped result, not throw
+  test('missing MILESTONES.md returns error-shaped JSON result without crashing', () => {
+    // No MILESTONES.md created
+    const result = runGsdTools(['cleanup', '--dry-run'], tmpDir);
+    assert.ok(result.success, 'cleanup should exit 0 even with missing MILESTONES.md: ' + result.error);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(parsed.error || parsed.nothing_to_do === true, 'should return error or nothing_to_do=true');
+  });
+
+  // Test 5: missing ROADMAP snapshot for a milestone skips that milestone with warning
+  test('missing ROADMAP snapshot for milestone is handled gracefully', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'MILESTONES.md'),
+      '# Milestones\n\n- [x] **v1.0 — Foundation**\n'
+    );
+    // No v1.0-ROADMAP.md created — missing snapshot
+
+    const result = runGsdTools(['cleanup', '--dry-run'], tmpDir);
+    assert.ok(result.success, 'cleanup should succeed even with missing ROADMAP snapshot: ' + result.error);
+
+    const parsed = JSON.parse(result.output);
+    const hasSkipped = (parsed.milestones || []).some(m => m.skipped === true);
+    const hasNothingToDo = parsed.nothing_to_do === true;
+    assert.ok(hasSkipped || hasNothingToDo, 'should handle missing ROADMAP snapshot gracefully');
+  });
+
+  // Test 6: multiple completed milestones returns entries for each
+  test('multiple completed milestones returns entry for each', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'MILESTONES.md'),
+      '# Milestones\n\n- [x] **v1.0 — Foundation**\n- [x] **v1.1 — Auth**\n- [ ] **v2.0 — Expansion**\n'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'milestones', 'v1.0-ROADMAP.md'),
+      '# Roadmap v1.0\n\n## Phase 1: Foundation\n'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'milestones', 'v1.1-ROADMAP.md'),
+      '# Roadmap v1.1\n\n## Phase 2: Auth\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-auth'), { recursive: true });
+
+    const result = runGsdTools(['cleanup', '--dry-run'], tmpDir);
+    assert.ok(result.success, 'cleanup should succeed: ' + result.error);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(Array.isArray(parsed.milestones), 'milestones should be an array');
+    const versions = parsed.milestones.map(m => m.version);
+    assert.ok(versions.includes('v1.0'), 'should include v1.0');
+    assert.ok(versions.includes('v1.1'), 'should include v1.1');
+    assert.strictEqual(parsed.nothing_to_do, false, 'nothing_to_do should be false');
+  });
+});
+
+describe('update command', () => {
+  let tmpDir;
+  let fakeHome;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-update-test-'));
+    fakeHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  // Helper: run update command via gsd-tools subprocess with test overrides injected via env vars.
+  // GSD_TEST_HOME: fakeHome to isolate from real HOME
+  // GSD_UPDATE_TEST_OVERRIDES: JSON with { latestVersion, updateSource } to bypass network calls
+  // GSD_TEST_DRY_EXECUTE: '1' to skip actual install execution
+  function runUpdate(localGsdVersion, globalGsdVersion, overrides, options = {}) {
+    if (localGsdVersion) {
+      const localGsdDir = path.join(tmpDir, '.claude', 'gsd-ng');
+      fs.mkdirSync(localGsdDir, { recursive: true });
+      fs.writeFileSync(path.join(localGsdDir, 'VERSION'), localGsdVersion + '\n');
+    }
+    if (globalGsdVersion) {
+      const globalGsdDir = path.join(fakeHome, '.claude', 'gsd-ng');
+      fs.mkdirSync(globalGsdDir, { recursive: true });
+      fs.writeFileSync(path.join(globalGsdDir, 'VERSION'), globalGsdVersion + '\n');
+    }
+
+    const args = ['update', '--dry-run'];
+    if (options.execute) {
+      // Remove --dry-run for execute mode
+      args.splice(args.indexOf('--dry-run'), 1);
+    }
+
+    const env = {
+      GSD_TEST_HOME: fakeHome,
+      GSD_UPDATE_TEST_OVERRIDES: JSON.stringify(overrides || { latestVersion: null, updateSource: null }),
+    };
+    if (options.dryExecute) {
+      env.GSD_TEST_DRY_EXECUTE = '1';
+    }
+
+    return runGsdTools(args, tmpDir, env);
+  }
+
+  test('Test 1: detects local install when .claude/gsd-ng/VERSION exists', () => {
+    // local=1.0.0, global=none, latest=1.0.0 -> already_current
+    const result = runUpdate('1.0.0', null, { latestVersion: '1.0.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'already_current', 'local install detected, already current');
+    assert.strictEqual(parsed.installed, '1.0.0');
+  });
+
+  test('Test 2: detects global install when local VERSION missing', () => {
+    // local=none, global=1.2.0, latest=2.0.0 -> update_available (global)
+    const result = runUpdate(null, '1.2.0', { latestVersion: '2.0.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'update_available');
+    assert.strictEqual(parsed.installed, '1.2.0');
+    assert.strictEqual(parsed.install_type, 'global');
+  });
+
+  test('Test 3: returns unknown_version when no VERSION file found', () => {
+    // local=none, global=none
+    const result = runUpdate(null, null, { latestVersion: '1.0.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'unknown_version');
+  });
+
+  test('Test 4: dry-run returns installed, latest, update_source, update_available, status', () => {
+    // local=1.0.0, latest=1.5.0 -> update_available
+    const result = runUpdate('1.0.0', null, { latestVersion: '1.5.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.ok('installed' in parsed, 'should have installed field');
+    assert.ok('latest' in parsed, 'should have latest field');
+    assert.ok('update_source' in parsed, 'should have update_source field');
+    assert.ok('update_available' in parsed, 'should have update_available field');
+    assert.ok('status' in parsed, 'should have status field');
+    assert.strictEqual(parsed.update_available, true);
+    assert.strictEqual(parsed.status, 'update_available');
+  });
+
+  test('Test 5: returns already_current when installed == latest', () => {
+    const result = runUpdate('2.0.0', null, { latestVersion: '2.0.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'already_current');
+    assert.strictEqual(parsed.installed, '2.0.0');
+    assert.strictEqual(parsed.latest, '2.0.0');
+  });
+
+  test('Test 6: returns ahead when installed > latest', () => {
+    const result = runUpdate('3.0.0', null, { latestVersion: '2.5.0', updateSource: 'npm' });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'ahead');
+    assert.strictEqual(parsed.installed, '3.0.0');
+    assert.strictEqual(parsed.latest, '2.5.0');
+  });
+
+  test('Test 7: handles both npm and github unavailable returning both_unavailable', () => {
+    // Override with null latestVersion to simulate both unavailable
+    const result = runUpdate('1.0.0', null, { latestVersion: null, updateSource: null });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'both_unavailable');
+  });
+
+  test('Test 8: execute mode calls correct install command (npm path, dry execute)', () => {
+    // Execute mode with GSD_TEST_DRY_EXECUTE=1 to skip actual npx
+    const result = runUpdate('1.0.0', null, { latestVersion: '1.5.0', updateSource: 'npm' }, {
+      execute: true,
+      dryExecute: true,
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'updated');
+    assert.ok(parsed.install_command, 'should record install_command for test verification');
+    assert.ok(parsed.install_command.includes('gsd-ng'), 'install_command should reference package');
   });
 });

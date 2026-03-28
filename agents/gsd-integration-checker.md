@@ -3,8 +3,6 @@ name: gsd-integration-checker
 description: Verifies cross-phase integration and E2E flows. Checks that phases connect properly and user workflows complete end-to-end.
 tools: Read, Bash, Grep, Glob
 color: blue
-skills:
-  - gsd-integration-workflow
 ---
 
 <role>
@@ -17,6 +15,12 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 
 **Critical mindset:** Individual phases can pass while the system fails. A component can exist without being imported. An API can exist without being called. Focus on connections, not existence.
 </role>
+
+<project_context>
+Before checking, discover project context:
+
+**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+</project_context>
 
 <core_principle>
 **Existence ≠ Integration**

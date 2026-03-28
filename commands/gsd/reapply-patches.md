@@ -7,6 +7,32 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion
 After a GSD update wipes and reinstalls files, this command merges user's previously saved local modifications back into the new version. Uses intelligent comparison to handle cases where the upstream file also changed.
 </purpose>
 
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
+
 <process>
 
 ## Step 1: Detect backed-up patches
@@ -14,24 +40,11 @@ After a GSD update wipes and reinstalls files, this command merges user's previo
 Check for local patches directory:
 
 ```bash
-# Global install — detect runtime config directory
-if [ -d "$HOME/.config/opencode/gsd-local-patches" ]; then
-  PATCHES_DIR="$HOME/.config/opencode/gsd-local-patches"
-elif [ -d "$HOME/.opencode/gsd-local-patches" ]; then
-  PATCHES_DIR="$HOME/.opencode/gsd-local-patches"
-elif [ -d "$HOME/.gemini/gsd-local-patches" ]; then
-  PATCHES_DIR="$HOME/.gemini/gsd-local-patches"
-else
-  PATCHES_DIR="$HOME/.claude/gsd-local-patches"
-fi
-# Local install fallback — check all runtime directories
-if [ ! -d "$PATCHES_DIR" ]; then
-  for dir in .config/opencode .opencode .gemini .claude; do
-    if [ -d "./$dir/gsd-local-patches" ]; then
-      PATCHES_DIR="./$dir/gsd-local-patches"
-      break
-    fi
-  done
+# Global install
+PATCHES_DIR="$HOME/.claude/gsd-local-patches"
+# Local install fallback
+if [ ! -d "$PATCHES_DIR" ] && [ -d "./.claude/gsd-local-patches" ]; then
+  PATCHES_DIR="./.claude/gsd-local-patches"
 fi
 ```
 

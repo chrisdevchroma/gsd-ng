@@ -475,6 +475,51 @@ describe('cmdInitPhaseOp fallback', () => {
     assert.strictEqual(output.has_plans, false);
   });
 
+  test('prefers current milestone roadmap entry over archived phase with same number', () => {
+    const archiveDir = path.join(
+      tmpDir,
+      '.planning',
+      'milestones',
+      'v1.2-phases',
+      '02-event-parser-and-queue-schema'
+    );
+    fs.mkdirSync(archiveDir, { recursive: true });
+    fs.writeFileSync(path.join(archiveDir, '02-CONTEXT.md'), '# Archived context');
+    fs.writeFileSync(path.join(archiveDir, '02-01-PLAN.md'), '# Archived plan');
+    fs.writeFileSync(path.join(archiveDir, '02-VERIFICATION.md'), '# Archived verification');
+
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+<details>
+<summary>Shipped milestone v1.2</summary>
+
+### Phase 2: Event Parser and Queue Schema
+**Goal:** Archived milestone work
+</details>
+
+## Milestone v1.3 Current
+
+### Phase 2: Retry Orchestration
+**Goal:** Current milestone work
+**Plans:** TBD
+`
+    );
+
+    const result = runGsdTools('init phase-op 2', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, true);
+    assert.strictEqual(output.phase_dir, null);
+    assert.strictEqual(output.phase_name, 'Retry Orchestration');
+    assert.strictEqual(output.phase_slug, 'retry-orchestration');
+    assert.strictEqual(output.has_context, false);
+    assert.strictEqual(output.has_plans, false);
+    assert.strictEqual(output.has_verification, false);
+  });
+
   test('neither directory nor roadmap entry returns not found', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -487,6 +532,38 @@ describe('cmdInitPhaseOp fallback', () => {
     const output = JSON.parse(result.output);
     assert.strictEqual(output.phase_found, false);
     assert.strictEqual(output.phase_dir, null);
+  });
+
+  test('decimal phase in ROADMAP found via fallback (regression)', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n### Phase 15: Base\n**Goal:** Base work\n**Plans:** TBD\n\n### Phase 15.1: Hotfix\n**Goal:** Emergency fix\n**Plans:** TBD\n\n### Phase 16: Next\n**Goal:** Next work\n**Plans:** TBD\n'
+    );
+
+    const result = runGsdTools('init phase-op 15.1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, true);
+    assert.strictEqual(output.phase_number, '15.1');
+    assert.strictEqual(output.padded_phase, '15.1');
+    assert.strictEqual(output.phase_name, 'Hotfix');
+    assert.strictEqual(output.phase_dir, null);
+  });
+
+  test('decimal phase in init plan-phase ROADMAP fallback (regression)', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n### Phase 15: Base\n**Goal:** Base work\n**Plans:** TBD\n\n### Phase 15.1: Hotfix\n**Goal:** Emergency fix\n**Plans:** TBD\n\n### Phase 16: Next\n**Goal:** Next work\n**Plans:** TBD\n'
+    );
+
+    const result = runGsdTools('init plan-phase 15.1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, true);
+    assert.strictEqual(output.phase_number, '15.1');
+    assert.strictEqual(output.padded_phase, '15.1');
   });
 });
 
@@ -865,6 +942,137 @@ describe('cmdInitNewMilestone', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// roadmap analyze command
+// decimal phase not-found suggests parent
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('decimal phase not-found suggests parent', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '15-base'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), '{}');
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n### Phase 15: Base\n**Goal:** Base work\n**Plans:** TBD\n\n### Phase 16: Next\n**Goal:** Next work\n**Plans:** TBD\n'
+    );
+  });
+
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('phase-op suggests parent when decimal phase not found', () => {
+    const result = runGsdTools('init phase-op 15.1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, false);
+    assert.ok(output.phase_suggestion, 'Expected phase_suggestion to be set');
+    assert.ok(output.phase_suggestion.includes('15'), 'Suggestion should reference parent phase 15');
+  });
+
+  test('plan-phase suggests parent when decimal phase not found', () => {
+    const result = runGsdTools('init plan-phase 15.1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, false);
+    assert.ok(output.phase_suggestion, 'Expected phase_suggestion to be set');
+    assert.ok(output.phase_suggestion.includes('15'), 'Suggestion should reference parent phase 15');
+  });
+
+  test('integer phase not found has no suggestion', () => {
+    const result = runGsdTools('init phase-op 99', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, false);
+    assert.strictEqual(output.phase_suggestion, undefined);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cmdInitPlanPhase gap research detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('cmdInitPlanPhase gap research detection', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '03-api'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), '{}');
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n### Phase 3: API\n**Goal:** Build API\n**Plans:** TBD\n'
+    );
+  });
+
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('has_gap_research is true when GAP-RESEARCH.md exists', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'phases', '03-api', '03-GAP-RESEARCH.md'), '# Gap Research');
+    const result = runGsdTools('init plan-phase 03', tmpDir);
+    assert.ok(result.success);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.has_gap_research, true);
+    assert.ok(output.gap_research_path.includes('03-GAP-RESEARCH.md'));
+  });
+
+  test('has_research is false when only GAP-RESEARCH.md exists', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'phases', '03-api', '03-GAP-RESEARCH.md'), '# Gap Research');
+    const result = runGsdTools('init plan-phase 03', tmpDir);
+    assert.ok(result.success);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.has_research, false);
+  });
+
+  test('has_research true when both RESEARCH.md and GAP-RESEARCH.md exist', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'phases', '03-api', '03-RESEARCH.md'), '# Research');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'phases', '03-api', '03-GAP-RESEARCH.md'), '# Gap Research');
+    const result = runGsdTools('init plan-phase 03', tmpDir);
+    assert.ok(result.success);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.has_research, true);
+    assert.strictEqual(output.has_gap_research, true);
+  });
+
+  test('gap_research_path absent when no GAP-RESEARCH.md', () => {
+    const result = runGsdTools('init plan-phase 03', tmpDir);
+    assert.ok(result.success);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.has_gap_research, false);
+    assert.strictEqual(output.gap_research_path, undefined);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// init phase-op validates phase number (SEC-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('init phase-op validates phase number (SEC-02)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('rejects path traversal phase input', () => {
+    const result = runGsdTools('init phase-op --phase ../../etc', tmpDir);
+    assert.ok(!result.success || result.output.includes('Invalid phase number'),
+      'should reject path traversal in phase number');
+  });
+
+  test('rejects shell injection phase input', () => {
+    const result = runGsdTools(['init', 'phase-op', '--phase', 'rm -rf /'], tmpDir);
+    assert.ok(!result.success || result.output.includes('Invalid phase number'),
+      'should reject shell injection in phase number');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// roadmap analyze command
+// ─────────────────────────────────────────────────────────────────────────────

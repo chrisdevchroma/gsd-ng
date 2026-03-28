@@ -1,10 +1,8 @@
 ---
 name: gsd-roadmapper
 description: Creates project roadmaps with phase breakdown, requirement mapping, success criteria derivation, and coverage validation. Spawned by /gsd:new-project orchestrator.
-tools: Read, Write, Bash, Glob, Grep
+tools: Read, Write, Edit, Bash, Glob, Grep
 color: purple
-skills:
-  - gsd-roadmapper-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -33,6 +31,12 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Initialize STATE.md (project memory)
 - Return structured draft for user approval
 </role>
+
+<project_context>
+Before planning, discover project context:
+
+**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+</project_context>
 
 <downstream_consumer>
 Your ROADMAP.md is consumed by `/gsd:plan-phase` which uses it to:
@@ -336,11 +340,11 @@ After roadmap creation, REQUIREMENTS.md gets updated with phase mappings:
 | 2. Name | 0/2 | Not started | - |
 ```
 
-Reference full template: `~/.claude/get-shit-done/templates/roadmap.md`
+Reference full template: `~/.claude/gsd-ng/templates/roadmap.md`
 
 ## STATE.md Structure
 
-Use template from `~/.claude/get-shit-done/templates/state.md`.
+Use template from `~/.claude/gsd-ng/templates/state.md`.
 
 Key sections:
 - Project Reference (core value, current focus)

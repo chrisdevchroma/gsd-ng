@@ -536,7 +536,7 @@ Output: Chat component, API endpoints.
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/execute-plan.md
+@~/.claude/gsd-ng/workflows/execute-plan.md
 </execution_context>
 
 <context>
@@ -996,7 +996,8 @@ describe('phase complete command', () => {
     const output = JSON.parse(result.output);
     assert.strictEqual(output.completed_phase, '1');
     assert.strictEqual(output.plans_executed, '1/1');
-    assert.strictEqual(output.next_phase, '02');
+    assert.deepStrictEqual(output.next_phase, { number: '02', name: 'api' });
+    assert.strictEqual(typeof output.next_phase_name, 'string', 'next_phase_name backward compat field');
     assert.strictEqual(output.is_last_phase, false);
 
     // Verify STATE.md updated
@@ -1255,6 +1256,151 @@ describe('phase complete command', () => {
     assert.ok(result.success, `Command should succeed even without REQUIREMENTS.md: ${result.error}`);
   });
 
+  test('returns requirements_updated field in result', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Auth
+
+### Phase 1: Auth
+**Goal:** User authentication
+**Requirements:** AUTH-01
+**Plans:** 1 plans
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'REQUIREMENTS.md'),
+      `# Requirements
+
+## v1 Requirements
+
+- [ ] **AUTH-01**: User can sign up
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01 | Phase 1 | Pending |
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Auth\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-auth');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.requirements_updated, true, 'requirements_updated should be true');
+  });
+
+  test('handles In Progress status in traceability table', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Auth
+
+### Phase 1: Auth
+**Goal:** User authentication
+**Requirements:** AUTH-01, AUTH-02
+**Plans:** 1 plans
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'REQUIREMENTS.md'),
+      `# Requirements
+
+## v1 Requirements
+
+- [ ] **AUTH-01**: User can sign up
+- [ ] **AUTH-02**: User can log in
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01 | Phase 1 | In Progress |
+| AUTH-02 | Phase 1 | Pending |
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Auth\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-auth');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const req = fs.readFileSync(path.join(tmpDir, '.planning', 'REQUIREMENTS.md'), 'utf-8');
+    assert.ok(req.includes('| AUTH-01 | Phase 1 | Complete |'), 'In Progress should become Complete');
+    assert.ok(req.includes('| AUTH-02 | Phase 1 | Complete |'), 'Pending should become Complete');
+  });
+
+  test('scoped regex does not cross phase boundaries', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Setup
+- [ ] Phase 2: Auth
+
+### Phase 1: Setup
+**Goal:** Project setup
+**Plans:** 1 plans
+
+### Phase 2: Auth
+**Goal:** User authentication
+**Requirements:** AUTH-01
+**Plans:** 0 plans
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'REQUIREMENTS.md'),
+      `# Requirements
+
+## v1 Requirements
+
+- [ ] **AUTH-01**: User can sign up
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01 | Phase 2 | Pending |
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Setup\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-auth'), { recursive: true });
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    // Phase 1 has no Requirements field, so Phase 2's AUTH-01 should NOT be updated
+    const req = fs.readFileSync(path.join(tmpDir, '.planning', 'REQUIREMENTS.md'), 'utf-8');
+    assert.ok(req.includes('- [ ] **AUTH-01**'), 'AUTH-01 should remain unchecked (belongs to Phase 2)');
+    assert.ok(req.includes('| AUTH-01 | Phase 2 | Pending |'), 'AUTH-01 should remain Pending (belongs to Phase 2)');
+  });
+
   test('handles multi-level decimal phase without regex crash', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -1323,13 +1469,53 @@ describe('phase complete command', () => {
     const req = fs.readFileSync(path.join(tmpDir, '.planning', 'REQUIREMENTS.md'), 'utf-8');
     assert.ok(req.includes('- [ ] **AMT-01**'), 'AMT-01 should remain unchanged');
   });
+
+  test('preserves Milestone column in 5-column progress table', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Foundation
+
+### Phase 1: Foundation
+**Goal:** Setup
+**Plans:** 1 plans
+
+## Progress
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation | v1.0 | 0/1 | Planned |  |
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const rowMatch = roadmap.match(/^\|[^\n]*1\. Foundation[^\n]*$/m);
+    assert.ok(rowMatch, 'table row should exist');
+    const cells = rowMatch[0].split('|').slice(1, -1).map(c => c.trim());
+    assert.strictEqual(cells.length, 5, 'should have 5 columns');
+    assert.strictEqual(cells[1], 'v1.0', 'Milestone column should be preserved');
+    assert.ok(cells[3].includes('Complete'), 'Status column should be Complete');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // comparePhaseNum and normalizePhaseName (imported directly)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { comparePhaseNum, normalizePhaseName } = require('../get-shit-done/bin/lib/core.cjs');
+const { comparePhaseNum, normalizePhaseName } = require('../gsd-ng/bin/lib/core.cjs');
 
 describe('comparePhaseNum', () => {
   test('sorts integer phases numerically', () => {
@@ -1519,7 +1705,8 @@ describe('phase complete milestone-scoped next-phase', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.is_last_phase, false, 'should NOT be last phase — phase 6 is in milestone');
-    assert.strictEqual(output.next_phase, '06', 'next phase should be 06');
+    assert.deepStrictEqual(output.next_phase, { number: '06', name: 'dashboard' }, 'next phase should be 06');
+    assert.strictEqual(typeof output.next_phase_name, 'string', 'next_phase_name backward compat field');
   });
 
   test('detects last phase when only milestone phases are considered', () => {
@@ -1561,6 +1748,303 @@ describe('phase complete milestone-scoped next-phase', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// phase-plan-index file overlap detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+describe('phase-plan-index file overlap detection', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('same-wave overlap detected — overlaps array contains shared file', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-safety');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [src/a.cjs, src/shared.cjs]\n---\n<objective>\nPlan A\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [src/b.cjs, src/shared.cjs]\n---\n<objective>\nPlan B\n</objective>\n`
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.overlaps), 'overlaps should be an array');
+    assert.strictEqual(output.overlaps.length, 1, 'should detect one overlap entry');
+    assert.deepStrictEqual(output.overlaps[0].plans.sort(), ['25-01', '25-02'], 'overlap entry should list both plans');
+    assert.deepStrictEqual(output.overlaps[0].files, ['src/shared.cjs'], 'overlap entry should list shared file');
+  });
+
+  test('no overlap returns empty array — disjoint files_modified', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-safety');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [src/a.cjs]\n---\n<objective>\nPlan A\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [src/b.cjs]\n---\n<objective>\nPlan B\n</objective>\n`
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.overlaps), 'overlaps should be an array');
+    assert.deepStrictEqual(output.overlaps, [], 'disjoint files should produce empty overlaps');
+  });
+
+  test('different waves not flagged — shared file in different waves produces no overlap', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-safety');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [src/shared.cjs]\n---\n<objective>\nPlan A\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 2\nautonomous: true\nfiles_modified: [src/shared.cjs]\n---\n<objective>\nPlan B\n</objective>\n`
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.overlaps), 'overlaps should be an array');
+    assert.deepStrictEqual(output.overlaps, [], 'different-wave plans sharing files should not be flagged');
+  });
+
+  test('multi-plan overlap — three same-wave plans produce two overlap entries', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-safety');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // A shares shared.cjs with B; A shares x.cjs with C
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [x.cjs, shared.cjs]\n---\n<objective>\nPlan A\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [y.cjs, shared.cjs]\n---\n<objective>\nPlan B\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-03-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: [x.cjs, z.cjs]\n---\n<objective>\nPlan C\n</objective>\n`
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.overlaps), 'overlaps should be an array');
+    assert.strictEqual(output.overlaps.length, 2, 'should detect two overlap entries');
+
+    // Find A-B entry (shared.cjs) and A-C entry (x.cjs)
+    const abEntry = output.overlaps.find(e => e.files.includes('shared.cjs'));
+    const acEntry = output.overlaps.find(e => e.files.includes('x.cjs'));
+
+    assert.ok(abEntry, 'should have A-B entry with shared.cjs');
+    assert.deepStrictEqual(abEntry.plans.sort(), ['25-01', '25-02'], 'A-B entry should list plans 01 and 02');
+    assert.deepStrictEqual(abEntry.files, ['shared.cjs'], 'A-B entry should list shared.cjs');
+
+    assert.ok(acEntry, 'should have A-C entry with x.cjs');
+    assert.deepStrictEqual(acEntry.plans.sort(), ['25-01', '25-03'], 'A-C entry should list plans 01 and 03');
+    assert.deepStrictEqual(acEntry.files, ['x.cjs'], 'A-C entry should list x.cjs');
+  });
+
+  test('empty files_modified produces no overlaps — plans without files never match', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-safety');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: []\n---\n<objective>\nPlan A\n</objective>\n`
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\nfiles_modified: []\n---\n<objective>\nPlan B\n</objective>\n`
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(Array.isArray(output.overlaps), 'overlaps should be an array');
+    assert.deepStrictEqual(output.overlaps, [], 'empty files_modified should produce no overlaps');
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // milestone complete command
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// phase add — checkbox insertion in ROADMAP.md phases list
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase add inserts checkbox line in ROADMAP phases list', () => {
+  let tmpDir;
+
+  // Minimal ROADMAP with a phases list containing existing checkbox lines
+  const roadmapWithPhasesList = `# Roadmap v1.0
+
+## Phases
+
+- [ ] **Phase 1: Foundation** - Build the base
+- [x] **Phase 2: API** - Build the API
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 2: API
+**Goal:** Build API
+
+---
+`;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapWithPhasesList
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('phase add inserts a checkbox line in the phases list', () => {
+    const result = runGsdTools('phase add User Dashboard', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('- [ ] **Phase 3: User Dashboard**'),
+      `Expected checkbox line in roadmap. Got:\n${roadmap}`
+    );
+  });
+
+  test('phase add checkbox line appears before ## Phase Details', () => {
+    const result = runGsdTools('phase add New Feature', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const checkboxIdx = roadmap.indexOf('- [ ] **Phase 3: New Feature**');
+    const detailsIdx = roadmap.indexOf('## Phase Details');
+    assert.ok(checkboxIdx !== -1, 'checkbox line should exist');
+    assert.ok(detailsIdx !== -1, '## Phase Details heading should exist');
+    assert.ok(checkboxIdx < detailsIdx, 'checkbox line should appear before ## Phase Details');
+  });
+
+  test('phase add details section still created (regression check)', () => {
+    const result = runGsdTools('phase add User Dashboard', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('### Phase 3: User Dashboard'),
+      'details section should still be created'
+    );
+  });
+
+  test('phase add still creates directory (regression check)', () => {
+    const result = runGsdTools('phase add New Feature', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    assert.ok(
+      fs.existsSync(path.join(tmpDir, '.planning', 'phases', '03-new-feature')),
+      'directory should be created'
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// phase insert — checkbox insertion in ROADMAP.md phases list
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase insert inserts checkbox line in ROADMAP phases list', () => {
+  let tmpDir;
+
+  const roadmapWithPhasesList = `# Roadmap v1.0
+
+## Phases
+
+- [ ] **Phase 1: Foundation** - Build the base
+- [ ] **Phase 2: API** - Build the API
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 2: API
+**Goal:** Build API
+`;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapWithPhasesList
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('phase insert inserts a checkbox line in the phases list', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('- [ ] **Phase 01.1: Fix Critical Bug (INSERTED)**'),
+      `Expected checkbox line in roadmap. Got:\n${roadmap}`
+    );
+  });
+
+  test('phase insert checkbox line appears after the parent phase checkbox line', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const parentIdx = roadmap.indexOf('- [ ] **Phase 1: Foundation**');
+    const insertedIdx = roadmap.indexOf('- [ ] **Phase 01.1: Fix Critical Bug (INSERTED)**');
+    assert.ok(parentIdx !== -1, 'parent checkbox should exist');
+    assert.ok(insertedIdx !== -1, 'inserted checkbox line should exist');
+    assert.ok(insertedIdx > parentIdx, 'inserted checkbox should appear after parent checkbox');
+  });
+
+  test('phase insert details section still created (regression check)', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('### Phase 01.1: Fix Critical Bug (INSERTED)'),
+      'details section should still be created'
+    );
+  });
+});
 

@@ -10,11 +10,11 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { resolveTmpDir } = require('./helpers.cjs');
 
 const {
   loadConfig,
   resolveModelInternal,
-  MODEL_PROFILES,
   escapeRegex,
   generateSlugInternal,
   normalizePhaseName,
@@ -26,7 +26,9 @@ const {
   getRoadmapPhaseInternal,
   searchPhaseInDir,
   findPhaseInternal,
-} = require('../get-shit-done/bin/lib/core.cjs');
+  planningPaths,
+  extractCurrentMilestone,
+} = require('../gsd-ng/bin/lib/core.cjs');
 
 // ─── loadConfig ────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ describe('loadConfig', () => {
   let originalCwd;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
     originalCwd = process.cwd();
   });
@@ -58,7 +60,6 @@ describe('loadConfig', () => {
     assert.strictEqual(config.commit_docs, true);
     assert.strictEqual(config.research, true);
     assert.strictEqual(config.plan_checker, true);
-    assert.strictEqual(config.brave_search, false);
     assert.strictEqual(config.parallelization, true);
     assert.strictEqual(config.nyquist_validation, true);
   });
@@ -129,7 +130,7 @@ describe('resolveModelInternal', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
   });
 
@@ -148,7 +149,7 @@ describe('resolveModelInternal', () => {
     test('all known agents resolve to a valid string for each profile', () => {
       const knownAgents = ['gsd-planner', 'gsd-executor', 'gsd-phase-researcher', 'gsd-codebase-mapper'];
       const profiles = ['quality', 'balanced', 'budget'];
-      const validValues = ['inherit', 'sonnet', 'haiku', 'opus'];
+      const validValues = [null, 'sonnet', 'haiku', 'opus'];
 
       for (const profile of profiles) {
         writeConfig({ model_profile: profile });
@@ -172,11 +173,11 @@ describe('resolveModelInternal', () => {
       assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'haiku');
     });
 
-    test('opus override resolves to inherit', () => {
+    test('opus override resolves to opus directly', () => {
       writeConfig({
         model_overrides: { 'gsd-executor': 'opus' },
       });
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'inherit');
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'opus');
     });
 
     test('agents not in override fall back to profile', () => {
@@ -184,8 +185,8 @@ describe('resolveModelInternal', () => {
         model_profile: 'quality',
         model_overrides: { 'gsd-executor': 'haiku' },
       });
-      // gsd-planner not overridden, should use quality profile -> opus -> inherit
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'inherit');
+      // gsd-planner not overridden, should use quality profile -> opus
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
     });
   });
 
@@ -197,8 +198,8 @@ describe('resolveModelInternal', () => {
 
     test('defaults to balanced profile when model_profile missing', () => {
       writeConfig({});
-      // balanced profile, gsd-planner -> opus -> inherit
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'inherit');
+      // balanced profile, gsd-planner -> opus
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
     });
   });
 });
@@ -326,7 +327,7 @@ describe('safeReadFile', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
   });
 
   afterEach(() => {
@@ -350,7 +351,7 @@ describe('pathExistsInternal', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
   });
 
@@ -377,7 +378,7 @@ describe('getMilestoneInfo', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
   });
 
@@ -483,7 +484,7 @@ describe('searchPhaseInDir', () => {
   let phasesDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     phasesDir = path.join(tmpDir, 'phases');
     fs.mkdirSync(phasesDir, { recursive: true });
   });
@@ -551,7 +552,7 @@ describe('findPhaseInternal', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
   });
 
@@ -592,7 +593,7 @@ describe('getRoadmapPhaseInternal', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
   });
 
@@ -624,8 +625,8 @@ describe('getRoadmapPhaseInternal', () => {
     assert.strictEqual(result.goal, 'Create REST endpoints');
   });
 
-  test('returns null goal when Goal uses colon-outside-bold format', () => {
-    // Actual ROADMAP.md uses **Goal**: (colon outside bold) which the regex does not match
+  test('returns goal when Goal uses colon-outside-bold format', () => {
+    // **Goal**: (colon outside bold) is now supported alongside **Goal:**
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '### Phase 1: Foundation\n**Goal**: Build the base\n'
@@ -633,7 +634,7 @@ describe('getRoadmapPhaseInternal', () => {
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.strictEqual(result.found, true);
     assert.strictEqual(result.phase_name, 'Foundation');
-    assert.strictEqual(result.goal, null);
+    assert.strictEqual(result.goal, 'Build the base');
   });
 
   test('returns null when roadmap missing', () => {
@@ -674,7 +675,7 @@ describe('getMilestonePhaseFilter', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-core-test-'));
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
     fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
   });
 
@@ -800,5 +801,193 @@ describe('getMilestonePhaseFilter', () => {
 
     const filter = getMilestonePhaseFilter(tmpDir);
     assert.strictEqual(filter.phaseCount, 0);
+  });
+});
+
+// ─── planningPaths ─────────────────────────────────────────────────────────────
+
+describe('planningPaths', () => {
+  test('is exported from core.cjs', () => {
+    assert.strictEqual(typeof planningPaths, 'function');
+  });
+
+  test('root equals path.join(cwd, .planning)', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.root, path.join('/project', '.planning'));
+  });
+
+  test('state equals .planning/STATE.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.state, path.join('/project', '.planning', 'STATE.md'));
+  });
+
+  test('roadmap equals .planning/ROADMAP.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.roadmap, path.join('/project', '.planning', 'ROADMAP.md'));
+  });
+
+  test('config equals .planning/config.json', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.config, path.join('/project', '.planning', 'config.json'));
+  });
+
+  test('requirements equals .planning/REQUIREMENTS.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.requirements, path.join('/project', '.planning', 'REQUIREMENTS.md'));
+  });
+
+  test('phases equals .planning/phases', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.phases, path.join('/project', '.planning', 'phases'));
+  });
+
+  test('todos equals .planning/todos', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todos, path.join('/project', '.planning', 'todos'));
+  });
+
+  test('todosPending equals .planning/todos/pending', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todosPending, path.join('/project', '.planning', 'todos', 'pending'));
+  });
+
+  test('todosCompleted equals .planning/todos/completed', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todosCompleted, path.join('/project', '.planning', 'todos', 'completed'));
+  });
+
+  test('codebase equals .planning/codebase', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.codebase, path.join('/project', '.planning', 'codebase'));
+  });
+
+  test('divergence equals .planning/DIVERGENCE.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.divergence, path.join('/project', '.planning', 'DIVERGENCE.md'));
+  });
+
+  test('milestones equals .planning/milestones', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.milestones, path.join('/project', '.planning', 'milestones'));
+  });
+
+  test('project equals .planning/PROJECT.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.project, path.join('/project', '.planning', 'PROJECT.md'));
+  });
+
+  test('archive equals .planning/archive', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.archive, path.join('/project', '.planning', 'archive'));
+  });
+
+  test('milestonesFile equals .planning/MILESTONES.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.milestonesFile, path.join('/project', '.planning', 'MILESTONES.md'));
+  });
+
+  test('works with different cwd values', () => {
+    const a = planningPaths('/home/user/myproject');
+    const b = planningPaths('/tmp/other');
+    assert.strictEqual(a.root, path.join('/home/user/myproject', '.planning'));
+    assert.strictEqual(b.root, path.join('/tmp/other', '.planning'));
+    assert.notStrictEqual(a.root, b.root);
+  });
+});
+
+// ─── extractCurrentMilestone ──────────────────────────────────────────────────
+
+describe('extractCurrentMilestone', () => {
+  test('returns full content unchanged when no details blocks present', () => {
+    const content = '## v2.0\n### Phase 1\n- [ ] Task A\n';
+    assert.strictEqual(extractCurrentMilestone(content), content);
+  });
+
+  test('strips a single details block (archived milestone)', () => {
+    const content = '## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<details>'), 'should remove details block');
+    assert.ok(!result.includes('old stuff'), 'should remove archived content');
+    assert.ok(result.includes('## v2.0'), 'should preserve current milestone heading');
+  });
+
+  test('strips multiple details blocks', () => {
+    const content = '<details><summary>v0.9</summary>\nvery old\n</details>\n## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\nActive content\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<details>'), 'should remove all details blocks');
+    assert.ok(!result.includes('very old'), 'should remove first archived content');
+    assert.ok(!result.includes('old stuff'), 'should remove second archived content');
+    assert.ok(result.includes('Active content'), 'should preserve active content');
+  });
+
+  test('is case-insensitive for DETAILS tags', () => {
+    const content = '## v2.0\n<DETAILS><summary>v1.0</summary>\nold stuff\n</DETAILS>\nCurrent content\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<DETAILS>'), 'should remove uppercase DETAILS block');
+    assert.ok(!result.includes('old stuff'), 'should remove archived content');
+    assert.ok(result.includes('Current content'), 'should preserve current content');
+  });
+});
+
+// ─── generateSlugInternal max length ─────────────────────────────────────────
+
+describe('generateSlugInternal max length', () => {
+  test('input exceeding 50 chars produces output <= 50 chars', () => {
+    const longInput = 'context-token-optimization-with-many-extra-words-that-make-it-very-long';
+    const result = generateSlugInternal(longInput);
+    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+  });
+
+  test('short input is returned unchanged (no truncation)', () => {
+    assert.strictEqual(generateSlugInternal('short'), 'short');
+    assert.strictEqual(generateSlugInternal('my-feature'), 'my-feature');
+  });
+
+  test('null input still returns null', () => {
+    assert.strictEqual(generateSlugInternal(null), null);
+  });
+
+  test('empty string still returns null', () => {
+    assert.strictEqual(generateSlugInternal(''), null);
+  });
+
+  test('word boundary preservation — slug does not end with a partial word fragment', () => {
+    // 'context-token-optimizati...' would be a mid-word cut; result should end at a hyphen boundary
+    const longInput = 'context token optimization with many extra words that push it past fifty chars';
+    const result = generateSlugInternal(longInput);
+    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+    // Should not end with a hyphen (trailing hyphen was stripped)
+    assert.ok(!result.endsWith('-'), 'slug should not end with a hyphen');
+  });
+
+  test('custom maxLen parameter override works', () => {
+    const input = 'this-is-a-long-description-for-feature-work';
+    const result = generateSlugInternal(input, 20);
+    assert.ok(result.length <= 20, `slug length ${result.length} should be <= 20 with maxLen=20`);
+  });
+
+  test('exact 50-char slug is not truncated', () => {
+    // Build a string that produces exactly a 50-char slug
+    const input = 'abcde-fghij-klmno-pqrst-uvwxy-12345'; // 35 chars already slug-safe
+    const result = generateSlugInternal(input);
+    assert.strictEqual(result, input, 'exactly-50-or-under slug should be unchanged');
+  });
+});
+
+// ─── output EPIPE handling ────────────────────────────────────────────────────
+
+describe('output EPIPE handling', () => {
+  test('output() function wraps fs.writeSync in try/catch for EPIPE', () => {
+    // Verify the fix exists in the source code by checking the module text
+    const fs_mod = require('fs');
+    const path_mod = require('path');
+    const coreSrc = fs_mod.readFileSync(
+      path_mod.join(__dirname, '../gsd-ng/bin/lib/core.cjs'),
+      'utf-8'
+    );
+    assert.ok(
+      coreSrc.includes("if (e.code !== 'EPIPE') throw e"),
+      'core.cjs output() should contain EPIPE guard: if (e.code !== \'EPIPE\') throw e'
+    );
   });
 });

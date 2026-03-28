@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" width="2000" height="2000">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2500" width="2000" height="2500">
   <defs>
     <style>
       .bg { fill: #1a1b26; }
       .logo { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace; fill: #7dcfff; }
+      .ng { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace; fill: #4a9abf; }
     </style>
   </defs>
 
   <!-- Background -->
-  <rect class="bg" width="2000" height="2000"/>
+  <rect class="bg" width="2000" height="2500"/>
 
   <!-- GSD ASCII Logo - centered -->
   <g transform="translate(1000, 1000)">
@@ -17,5 +18,13 @@
     <text class="logo" font-size="108" text-anchor="middle" y="135" xml:space="preserve"> ██║   ██║╚════██║██║  ██║</text>
     <text class="logo" font-size="108" text-anchor="middle" y="255" xml:space="preserve"> ╚██████╔╝███████║██████╔╝</text>
     <text class="logo" font-size="108" text-anchor="middle" y="375" xml:space="preserve">  ╚═════╝ ╚══════╝╚═════╝ </text>
+
+    <!-- NG block - right-aligned below GSD, half size, muted blue -->
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="450" xml:space="preserve">███╗   ██╗ ██████╗ </text>
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="510" xml:space="preserve">████╗  ██║██╔════╝ </text>
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="570" xml:space="preserve">██╔██╗ ██║██║  ███╗</text>
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="630" xml:space="preserve">██║╚██╗██║██║   ██║</text>
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="690" xml:space="preserve">██║ ╚████║╚██████╔╝</text>
+    <text class="ng" font-size="54" text-anchor="end" x="850" y="750" xml:space="preserve">╚═╝  ╚═══╝ ╚═════╝ </text>
   </g>
 </svg>

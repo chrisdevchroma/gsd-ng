@@ -1,0 +1,16 @@
+{
+  "id": "core-explore-codebase",
+  "type": "core",
+  "description": "Map the fixture project structure and produce a summary of files, purpose, and current state",
+  "prompt": "Explore this project. List all files and directories, describe what each file does, identify the current project phase and any known issues. Read @.planning/STATE.md, @.planning/ROADMAP.md, @src/index.js, @src/utils.js, and @tests/utils.test.js. Output a structured summary with sections: Project Overview, File Map, Current State, Known Issues.",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "contains": ["utils.js", "Phase 3", "parseConfig"],
+    "not_contains": [],
+    "output_length_hint": { "min": 300, "max": 3000 }
+  }
+}

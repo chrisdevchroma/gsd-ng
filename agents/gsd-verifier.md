@@ -3,8 +3,6 @@ name: gsd-verifier
 description: Verifies phase goal achievement through goal-backward analysis. Checks codebase delivers what phase promised, not just that tasks completed. Creates VERIFICATION.md report.
 tools: Read, Write, Bash, Grep, Glob
 color: green
-skills:
-  - gsd-verifier-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -67,7 +65,26 @@ cat "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null
 2. Extract `must_haves` (truths, artifacts, key_links)
 3. Extract `gaps` (items that failed)
 4. Set `is_re_verification = true`
-5. **Skip to Step 3** with optimization:
+5. Read `verification_round` from frontmatter: `parseInt(fm.verification_round || 1)`
+6. Increment: `verification_round = previous_round + 1`
+7. If `verification_round >= 3` AND any gap IDs from `gaps:` section match the previous round's gap IDs:
+   - HALT — do not proceed with verification
+   - Return structured output:
+     ```
+     ## VERIFICATION HALTED — Oscillation Detected
+
+     **Phase:** {phase}
+     **Round:** {verification_round}
+     **Reason:** Same gaps have reappeared for {verification_round} consecutive rounds.
+
+     **Recurring gaps:**
+     {list of gap truths that match between current and previous rounds}
+
+     **Action required:** Human intervention needed. The automated gap closure cycle is not resolving these issues.
+     Suggest: `/gsd:debug` on the specific failing truth, or manual fix.
+     ```
+   - Write VERIFICATION.md with `status: halted` and `verification_round: {N}`
+8. **Skip to Step 3** with optimization:
    - **Failed items:** Full 3-level verification (exists, substantive, wired)
    - **Passed items:** Quick regression check (existence + basic sanity only)
 
@@ -80,7 +97,7 @@ Set `is_re_verification = false`, proceed with Step 1.
 ```bash
 ls "$PHASE_DIR"/*-PLAN.md 2>/dev/null
 ls "$PHASE_DIR"/*-SUMMARY.md 2>/dev/null
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM"
 grep -E "^| $PHASE_NUM" .planning/REQUIREMENTS.md 2>/dev/null
 ```
 
@@ -117,7 +134,7 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw)
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -160,7 +177,7 @@ For each truth:
 Use gsd-tools for artifact verification against must_haves in PLAN frontmatter:
 
 ```bash
-ARTIFACT_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH")
+ARTIFACT_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
@@ -209,7 +226,7 @@ Key links are critical connections. If broken, the goal fails even with all arti
 Use gsd-tools for key link verification against must_haves in PLAN frontmatter:
 
 ```bash
-LINKS_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH")
+LINKS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
@@ -291,12 +308,12 @@ Identify files modified in this phase from SUMMARY.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
+SUMMARY_FILES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
 
 # Option 2: Verify commits exist (if commit hashes documented)
 COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-SUMMARY.md | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
-  COMMITS_VALID=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES)
+  COMMITS_VALID=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES)
 fi
 
 # Fallback: grep for files
@@ -308,9 +325,13 @@ Run anti-pattern detection on each file:
 ```bash
 # TODO/FIXME/placeholder comments
 grep -n -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" "$file" 2>/dev/null
-grep -n -E "placeholder|coming soon|will be here" "$file" -i 2>/dev/null
+grep -n -E "placeholder|coming soon|will be here|not yet implemented|not available" "$file" -i 2>/dev/null
 # Empty implementations
 grep -n -E "return null|return \{\}|return \[\]|=> \{\}" "$file" 2>/dev/null
+# Hardcoded empty data (common stub patterns)
+grep -n -E "=\s*\[\]|=\s*\{\}|=\s*null|=\s*undefined" "$file" 2>/dev/null | grep -v -E "(test|spec|mock|fixture|\.test\.|\.spec\.)" 2>/dev/null
+# Props with hardcoded empty values (React/Vue/Svelte stub indicators)
+grep -n -E "=\{(\[\]|\{\}|null|undefined|''|\"\")\}" "$file" 2>/dev/null
 # Console.log only implementations
 grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^\s*(const|function|=>)"
 ```
@@ -381,8 +402,9 @@ Create `.planning/phases/{phase_dir}/{phase_num}-VERIFICATION.md`:
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-status: passed | gaps_found | human_needed
+status: passed | gaps_found | human_needed | halted
 score: N/M must-haves verified
+verification_round: 1  # Initial verification; incremented on each re-verification
 re_verification: # Only if previous VERIFICATION.md existed
   previous_status: gaps_found
   previous_score: 2/5
@@ -576,6 +598,8 @@ return <div>No messages</div>  // Always shows "no messages"
 - [ ] Overall status determined
 - [ ] Gaps structured in YAML frontmatter (if gaps_found)
 - [ ] Re-verification metadata included (if previous existed)
+- [ ] verification_round tracked (initial = 1, incremented on re-verification)
+- [ ] Halted if round >= 3 with same recurring gaps
 - [ ] VERIFICATION.md created with complete report
 - [ ] Results returned to orchestrator (NOT committed)
 </success_criteria>

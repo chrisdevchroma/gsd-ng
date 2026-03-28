@@ -3,7 +3,6 @@
  *
  * Validates that all agent .md files have correct frontmatter fields:
  * - Anti-heredoc instruction present in file-writing agents
- * - skills: field in all agents
  * - Commented hooks: pattern in file-writing agents
  * - Spawn type consistency across workflows
  */
@@ -14,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 
 const AGENTS_DIR = path.join(__dirname, '..', 'agents');
-const WORKFLOWS_DIR = path.join(__dirname, '..', 'get-shit-done', 'workflows');
+const WORKFLOWS_DIR = path.join(__dirname, '..', 'gsd-ng', 'workflows');
 const COMMANDS_DIR = path.join(__dirname, '..', 'commands', 'gsd');
 
 const ALL_AGENTS = fs.readdirSync(AGENTS_DIR)
@@ -55,33 +54,6 @@ describe('HDOC: anti-heredoc instruction', () => {
         if (/^cat\s+<<\s*'?EOF'?\s*>/.test(line.trim())) {
           assert.fail(`${agent}:${i + 1} has active heredoc pattern: ${line.trim()}`);
         }
-      }
-    }
-  });
-});
-
-// ─── Skills Frontmatter ──────────────────────────────────────────────────────
-
-describe('SKILL: skills frontmatter', () => {
-  for (const agent of ALL_AGENTS) {
-    test(`${agent} has skills: in frontmatter`, () => {
-      const content = fs.readFileSync(path.join(AGENTS_DIR, agent + '.md'), 'utf-8');
-      const frontmatter = content.split('---')[1] || '';
-      assert.ok(
-        frontmatter.includes('skills:'),
-        `${agent} missing skills: in frontmatter`
-      );
-    });
-  }
-
-  test('skill references follow naming convention', () => {
-    for (const agent of ALL_AGENTS) {
-      const content = fs.readFileSync(path.join(AGENTS_DIR, agent + '.md'), 'utf-8');
-      const frontmatter = content.split('---')[1] || '';
-      const skillLines = frontmatter.split('\n').filter(l => l.trim().startsWith('- gsd-'));
-      for (const line of skillLines) {
-        const skillName = line.trim().replace('- ', '');
-        assert.match(skillName, /^gsd-[\w-]+-workflow$/, `Invalid skill name: ${skillName}`);
       }
     }
   });

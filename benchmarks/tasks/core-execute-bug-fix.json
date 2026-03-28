@@ -1,0 +1,15 @@
+{
+  "id": "core-execute-bug-fix",
+  "type": "core",
+  "description": "Fix the known parseConfig bug in src/utils.js so empty/null/malformed input returns default config",
+  "prompt": "Read @src/utils.js and @tests/utils.test.js. The parseConfig function crashes on empty string input. Fix it so that empty string, null, undefined, and malformed JSON all return { widgets: [] } instead of throwing. Output the complete corrected src/utils.js file content.",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": ["parseConfig", "widgets", "try", "catch"],
+    "not_contains": [],
+    "output_length_hint": { "min": 200, "max": 2000 }
+  }
+}

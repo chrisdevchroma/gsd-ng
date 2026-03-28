@@ -3,8 +3,6 @@ name: gsd-planner
 description: Creates executable phase plans with task breakdown, dependency analysis, and goal-backward verification. Spawned by /gsd:plan-phase orchestrator.
 tools: Read, Write, Bash, Glob, Grep, WebFetch, mcp__context7__*
 color: green
-skills:
-  - gsd-planner-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -428,8 +426,8 @@ Output: [Artifacts created]
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/execute-plan.md
-@~/.claude/get-shit-done/templates/summary.md
+@~/.claude/gsd-ng/workflows/execute-plan.md
+@~/.claude/gsd-ng/templates/summary.md
 </execution_context>
 
 <context>
@@ -494,7 +492,7 @@ After determining `files_modified`, extract the key interfaces/types/exports fro
 
 ```bash
 # Extract type definitions, interfaces, and exports from relevant files
-grep -n "export\|interface\|type\|class\|function" {relevant_source_files} 2>/dev/null | head -50
+grep -n "export\\|interface\\|type\\|class\\|function" {relevant_source_files} 2>/dev/null | head -50
 ```
 
 Embed these in the plan's `<context>` section as an `<interfaces>` block:
@@ -933,7 +931,7 @@ Group by plan, dimension, severity.
 ### Step 6: Commit
 
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "fix($PHASE): revise plans based on checker feedback" --files .planning/phases/$PHASE-*/$PHASE-*-PLAN.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "fix($PHASE): revise plans based on checker feedback" --files .planning/phases/$PHASE-*/$PHASE-*-PLAN.md
 ```
 
 ### Step 7: Return Revision Summary
@@ -972,7 +970,7 @@ node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "fix($PHASE): revise
 Load planning context:
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init plan-phase "${PHASE}")
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "${PHASE}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
@@ -1029,7 +1027,7 @@ Apply discovery level protocol (see discovery_levels section).
 
 **Step 1 — Generate digest index:**
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" history-digest
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" history-digest
 ```
 
 **Step 2 — Select relevant phases (typically 2-4):**
@@ -1103,10 +1101,13 @@ Map dependencies explicitly before grouping into plans. Record needs/creates/has
 
 Identify parallelization: No deps = Wave 1, depends only on Wave 1 = Wave 2, shared file conflict = sequential.
 
+**Critical:** When listing `files_modified` in plan frontmatter, include ALL files the plan touches — especially shared utility files (commands.cjs, gsd-tools.cjs, config files). Missing entries cause the overlap check to produce false negatives.
+
 Prefer vertical slices over horizontal layers.
 </step>
 
 <step name="assign_waves">
+**Pass 1 — dependency-based wave assignment:**
 ```
 waves = {}
 for each plan in plan_order:
@@ -1116,12 +1117,36 @@ for each plan in plan_order:
     plan.wave = max(waves[dep] for dep in plan.depends_on) + 1
   waves[plan.id] = plan.wave
 ```
+
+**Pass 2 — file-overlap resolution:**
+
+After all plans have initial wave assignments, check for `files_modified` intersection between same-wave plans. File overlap in the same wave causes parallel executor conflicts (Edit retries, Write overwrites).
+
+```
+for wave_num in ascending order:
+  plans_in_wave = [p for p in all_plans if p.wave == wave_num]
+  assigned = []
+  for plan in plans_in_wave:
+    conflicting = [a for a in assigned if set(a.files_modified) & set(plan.files_modified)]
+    if conflicting:
+      plan.wave = wave_num + 1
+      waves[plan.id] = plan.wave
+      # propagate: for all plans where plan.id is in depends_on,
+      # re-compute their wave as max(dep waves) + 1
+    else:
+      assigned.append(plan)
+```
+
+**File overlap is a planner error.** If the overlap check bumps plans, log what happened:
+```
+Note: Plan {plan_b.id} bumped from wave {old} to wave {new} — shares files with {plan_a.id}: {overlapping_files}
+```
 </step>
 
 <step name="group_into_plans">
 Rules:
 1. Same-wave tasks with no file conflicts → parallel plans
-2. Shared files → same plan or sequential plans
+2. Shared files → same plan or sequential waves (NEVER same wave — causes parallel executor conflicts)
 3. Checkpoint tasks → `autonomous: false`
 4. Each plan: 2-3 tasks, single concern, ~50% context target
 </step>
@@ -1157,7 +1182,7 @@ Include all frontmatter fields.
 Validate each created PLAN.md using gsd-tools:
 
 ```bash
-VALID=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter validate "$PLAN_PATH" --schema plan)
+VALID=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter validate "$PLAN_PATH" --schema plan)
 ```
 
 Returns JSON: `{ valid, missing, present, schema }`
@@ -1170,7 +1195,7 @@ Required plan frontmatter fields:
 Also validate plan structure:
 
 ```bash
-STRUCTURE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
+STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
 ```
 
 Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
@@ -1207,7 +1232,7 @@ Plans:
 
 <step name="git_commit">
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-PLAN.md .planning/ROADMAP.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-PLAN.md .planning/ROADMAP.md
 ```
 </step>
 

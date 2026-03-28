@@ -1,0 +1,15 @@
+{
+  "id": "micro-commit-message",
+  "type": "micro",
+  "description": "Generate a conventional commit message from a described code change",
+  "prompt": "Generate a conventional commit message (type(scope): description format) for this change: Fixed the parseConfig function in src/utils.js to handle empty string input by returning a default config object instead of throwing SyntaxError. Output ONLY the commit message, nothing else.",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": ["fix"],
+    "not_contains": ["```"],
+    "output_length_hint": { "min": 20, "max": 200 }
+  }
+}

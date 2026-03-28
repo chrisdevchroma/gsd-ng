@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# gsd — thin wrapper around gsd-tools.cjs that resolves @file: output transparently.
+# Callers can pipe directly: gsd roadmap get-phase 17 | jq '.section'
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OUT=$(node "$SCRIPT_DIR/gsd-tools.cjs" "$@")
+if [[ "$OUT" == @file:* ]]; then
+  cat "${OUT#@file:}"
+else
+  printf '%s' "$OUT"
+fi

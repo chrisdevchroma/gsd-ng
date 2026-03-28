@@ -3,8 +3,6 @@ name: gsd-phase-researcher
 description: Researches how to implement a phase before planning. Produces RESEARCH.md consumed by gsd-planner. Spawned by /gsd:plan-phase orchestrator.
 tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp__context7__*
 color: cyan
-skills:
-  - gsd-researcher-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -42,6 +40,8 @@ Before researching, discover project context:
 5. Research should account for project skill patterns
 
 This ensures research aligns with project-specific conventions and libraries.
+
+**CLAUDE.md enforcement:** If `./CLAUDE.md` exists, extract all actionable directives (required tools, forbidden patterns, coding conventions, testing rules, security requirements). Include a `## Project Constraints (from CLAUDE.md)` section in RESEARCH.md listing these directives so the planner can verify compliance. Treat CLAUDE.md directives with the same authority as locked decisions from CONTEXT.md — research should not recommend approaches that contradict them.
 </project_context>
 
 <upstream_input>
@@ -122,22 +122,6 @@ When researching "best library for X": find what the ecosystem actually uses, do
 2. `mcp__context7__query-docs` with resolved ID + specific query
 
 **WebSearch tips:** Always include current year. Use multiple query variations. Cross-verify with authoritative sources.
-
-## Enhanced Web Search (Brave API)
-
-Check `brave_search` from init context. If `true`, use Brave Search for higher quality results:
-
-```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" websearch "your query" --limit 10
-```
-
-**Options:**
-- `--limit N` — Number of results (default: 10)
-- `--freshness day|week|month` — Restrict to recent content
-
-If `brave_search: false` (or not set), use built-in WebSearch tool instead.
-
-Brave Search provides an independent index (not Google/Bing dependent) with less SEO spam and faster responses.
 
 ## Verification Protocol
 
@@ -239,6 +223,12 @@ Priority: Context7 > Official Docs > Official GitHub > Verified WebSearch > Unve
 \`\`\`bash
 npm install [packages]
 \`\`\`
+
+**Version verification:** Before writing the Standard Stack table, verify each recommended package version is current:
+\`\`\`bash
+npm view [package] version
+\`\`\`
+Document the verified version and publish date. Training data versions may be months stale — always confirm against the registry.
 
 ## Architecture Patterns
 
@@ -367,7 +357,7 @@ Orchestrator provides: phase number/name, description/goal, requirements, constr
 
 Load phase context using init command:
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init phase-op "${PHASE}")
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
@@ -470,7 +460,7 @@ Write to: `$PHASE_DIR/$PADDED_PHASE-RESEARCH.md`
 ## Step 7: Commit Research (optional)
 
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs($PHASE): research phase domain" --files "$PHASE_DIR/$PADDED_PHASE-RESEARCH.md"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs($PHASE): research phase domain" --files "$PHASE_DIR/$PADDED_PHASE-RESEARCH.md"
 ```
 
 ## Step 8: Return Structured Result

@@ -1,0 +1,16 @@
+{
+  "id": "core-discuss-phase",
+  "type": "core",
+  "description": "Gather context for Phase 4 (Export Feature) by analyzing the project state and forming implementation decisions",
+  "prompt": "You are preparing to plan Phase 4 (Export Feature) for this project. Read @.planning/ROADMAP.md, @.planning/REQUIREMENTS.md, @.planning/STATE.md, and @src/utils.js. FEAT-03 requires an export command that outputs widgets as CSV or JSON. Propose: what implementation decisions need to be made? What are the key questions? Output a CONTEXT.md-style document with sections: Phase Boundary, Decisions (with specific choices), and Deferred Ideas.",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "contains": ["export", "CSV", "JSON", "FEAT-03"],
+    "not_contains": [],
+    "output_length_hint": { "min": 300, "max": 3000 }
+  }
+}

@@ -3,8 +3,6 @@ name: gsd-executor
 description: Executes GSD plans with atomic commits, deviation handling, checkpoint protocols, and state management. Spawned by execute-phase orchestrator or execute-plan command.
 tools: Read, Write, Edit, Bash, Grep, Glob
 color: yellow
-skills:
-  - gsd-executor-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -37,6 +35,8 @@ Before executing, discover project context:
 5. Follow skill rules relevant to your current task
 
 This ensures project-specific patterns, conventions, and best practices are applied during execution.
+
+**CLAUDE.md enforcement:** If `./CLAUDE.md` exists, treat its directives as hard constraints during execution. Before committing each task, verify that code changes do not violate CLAUDE.md rules (forbidden patterns, required conventions, mandated tools). If a task action would contradict a CLAUDE.md directive, apply the CLAUDE.md rule — it takes precedence over plan instructions. Document any CLAUDE.md-driven adjustments as deviations (Rule 2: auto-add missing critical functionality).
 </project_context>
 
 <execution_flow>
@@ -45,7 +45,7 @@ This ensures project-specific patterns, conventions, and best practices are appl
 Load execution context:
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
@@ -178,6 +178,9 @@ Track auto-fix attempts per task. After 3 auto-fix attempts on a single task:
 - STOP fixing — document remaining issues in SUMMARY.md under "Deferred Issues"
 - Continue to the next task (or return checkpoint if blocked)
 - Do NOT restart the build to find more issues
+
+**TODO OPERATIONS BOUNDARY:**
+NEVER call `todo complete`, `todo update`, or any todo-related gsd-tools commands during plan execution. Todo lifecycle management (creation, completion, status changes) is exclusively an orchestrator responsibility. The orchestrator closes todos only after verification passes. If you see todo context in your prompt (e.g., origin todo file paths, todo titles), treat it as read-only context — do NOT act on it.
 </deviation_rules>
 
 <analysis_paralysis_guard>
@@ -209,8 +212,8 @@ Do NOT continue reading. Analysis without action is a stuck signal.
 Check if auto mode is active at executor start (chain flag or user preference):
 
 ```bash
-AUTO_CHAIN=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
-AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
 ```
 
 Auto mode is active if either `AUTO_CHAIN` or `AUTO_CFG` is `"true"`. Store the result for checkpoint handling below.
@@ -223,7 +226,7 @@ Auto mode is active if either `AUTO_CHAIN` or `AUTO_CFG` is `"true"`. Store the 
 Before any `checkpoint:human-verify`, ensure verification environment is ready. If plan lacks server startup before checkpoint, ADD ONE (deviation Rule 3).
 
 For full automation-first patterns, server lifecycle, CLI handling:
-**See @~/.claude/get-shit-done/references/checkpoints.md**
+**See @~/.claude/gsd-ng/references/checkpoints.md**
 
 **Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. Claude does all automation.
 
@@ -339,6 +342,8 @@ git commit -m "{type}({phase}-{plan}): {concise task description}
 ```
 
 **5. Record hash:** `TASK_COMMIT=$(git rev-parse --short HEAD)` — track for SUMMARY.
+
+**6. Check for untracked files:** After running scripts or tools, check `git status --short | grep '^??'`. For any new untracked files: commit if intentional, add to `.gitignore` if generated/runtime output. Never leave generated files untracked.
 </task_commit_protocol>
 
 <summary_creation>
@@ -346,7 +351,7 @@ After all tasks complete, create `{phase}-{plan}-SUMMARY.md` at `.planning/phase
 
 **ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
 
-**Use template:** @~/.claude/get-shit-done/templates/summary.md
+**Use template:** @~/.claude/gsd-ng/templates/summary.md
 
 **Frontmatter:** phase, plan, subsystem, tags, dependency graph (requires/provides/affects), tech-stack (added/patterns), key-files (created/modified), decisions, metrics (duration, completed date).
 
@@ -374,6 +379,13 @@ After all tasks complete, create `{phase}-{plan}-SUMMARY.md` at `.planning/phase
 Or: "None - plan executed exactly as written."
 
 **Auth gates section** (if any occurred): Document which task, what was needed, outcome.
+
+**Stub tracking:** Before writing the SUMMARY, scan all files created/modified in this plan for stub patterns:
+- Hardcoded empty values: `=[]`, `={}`, `=null`, `=""` that flow to UI rendering
+- Placeholder text: "not available", "coming soon", "placeholder", "TODO", "FIXME"
+- Components with no data source wired (props always receiving empty/mock data)
+
+If any stubs exist, add a `## Known Stubs` section to the SUMMARY listing each stub with its file, line, and reason. These are tracked for the verifier to catch. Do NOT mark a plan as complete if stubs exist that prevent the plan's goal from being achieved — either wire the data or document in the plan why the stub is intentional and which future plan will resolve it.
 </summary_creation>
 
 <self_check>
@@ -399,34 +411,34 @@ After SUMMARY.md, update STATE.md using gsd-tools:
 
 ```bash
 # Advance plan counter (handles edge cases automatically)
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state advance-plan
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state advance-plan
 
 # Recalculate progress bar from disk state
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state update-progress
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state update-progress
 
 # Record execution metrics
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state record-metric \
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state record-metric \
   --phase "${PHASE}" --plan "${PLAN}" --duration "${DURATION}" \
   --tasks "${TASK_COUNT}" --files "${FILE_COUNT}"
 
 # Add decisions (extract from SUMMARY.md key-decisions)
 for decision in "${DECISIONS[@]}"; do
-  node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state add-decision \
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state add-decision \
     --phase "${PHASE}" --summary "${decision}"
 done
 
 # Update session info
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state record-session \
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state record-session \
   --stopped-at "Completed ${PHASE}-${PLAN}-PLAN.md"
 ```
 
 ```bash
 # Update ROADMAP.md progress for this phase (plan counts, status)
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap update-plan-progress "${PHASE_NUMBER}"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap update-plan-progress "${PHASE_NUMBER}"
 
 # Mark completed requirements from PLAN.md frontmatter
 # Extract the `requirements` array from the plan's frontmatter, then mark each complete
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" requirements mark-complete ${REQ_IDS}
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" requirements mark-complete ${REQ_IDS}
 ```
 
 **Requirement IDs:** Extract from the PLAN.md frontmatter `requirements:` field (e.g., `requirements: [AUTH-01, AUTH-02]`). Pass all IDs to `requirements mark-complete`. If the plan has no requirements field, skip this step.
@@ -444,13 +456,13 @@ node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" requirements mark-complete 
 
 **For blockers found during execution:**
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state add-blocker "Blocker description"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state add-blocker "Blocker description"
 ```
 </state_updates>
 
 <final_commit>
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs({phase}-{plan}): complete [plan-name] plan" --files .planning/phases/XX-name/{phase}-{plan}-SUMMARY.md .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs({phase}-{plan}): complete [plan-name] plan" --files .planning/phases/XX-name/{phase}-{plan}-SUMMARY.md .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md
 ```
 
 Separate from per-task commits — captures execution results only.
