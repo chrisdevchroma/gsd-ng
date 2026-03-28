@@ -7,6 +7,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
 const { validatePhaseNumber } = require('./security.cjs');
+const { adjustQuickTable } = require('./state.cjs');
 
 function cmdInitExecutePhase(cwd, phase, raw) {
   if (!phase) {
@@ -316,7 +317,7 @@ function cmdInitNewMilestone(cwd, raw) {
   output(result, raw);
 }
 
-function cmdInitQuick(cwd, description, raw) {
+function cmdInitQuick(cwd, description, verifyMode, raw) {
   const config = loadConfig(cwd);
   const now = new Date();
   const slug = description ? generateSlugInternal(description)?.substring(0, 40) : null;
@@ -333,6 +334,32 @@ function cmdInitQuick(cwd, description, raw) {
   const timeBlocks = Math.floor(secondsSinceMidnight / 2);
   const timeEncoded = timeBlocks.toString(36).padStart(3, '0');
   const quickId = dateStr + '-' + timeEncoded;
+
+  // Determine table_has_status:
+  // - If verifyMode: call adjustQuickTable (auto-migrates if needed), use its result
+  // - If not verifyMode: read-only check of existing table format
+  let table_has_status = false;
+  if (verifyMode) {
+    const adjustResult = adjustQuickTable(cwd);
+    table_has_status = adjustResult.table_has_status;
+  } else {
+    // Read-only detection: check if Quick Tasks Completed table has Status column
+    try {
+      const { state: statePath } = planningPaths(cwd);
+      const stateContent = fs.readFileSync(statePath, 'utf-8');
+      const sectionMatch = stateContent.match(/###\s*Quick Tasks Completed\s*\n/i);
+      if (sectionMatch) {
+        const afterSection = stateContent.slice(sectionMatch.index + sectionMatch[0].length);
+        const firstTableLine = afterSection.split('\n').find(l => l.trimStart().startsWith('|'));
+        if (firstTableLine) {
+          const headerCells = firstTableLine.split('|').map(c => c.trim()).filter(c => c !== '');
+          table_has_status = headerCells.some(c => c.toLowerCase() === 'status');
+        }
+      }
+    } catch {
+      // STATE.md doesn't exist or unreadable — table_has_status stays false
+    }
+  }
 
   const result = {
     // Models
@@ -361,6 +388,8 @@ function cmdInitQuick(cwd, description, raw) {
     roadmap_exists: pathExistsInternal(cwd, '.planning/ROADMAP.md'),
     planning_exists: pathExistsInternal(cwd, '.planning'),
 
+    // Table format detection
+    table_has_status,
   };
 
   output(result, raw);

@@ -313,4 +313,5 @@ module.exports = {
   cmdConfigSet,
   cmdConfigGet,
   cmdConfigSetModelProfile,
+  setConfigValue,
 };

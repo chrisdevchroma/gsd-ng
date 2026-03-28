@@ -1620,3 +1620,109 @@ describe('stateReplaceFieldWithFallback', () => {
     assert.match(result, /\*\*New Field:\*\* value/, 'appended field must use bold format');
   });
 });
+
+describe('state adjust-quick-table command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('Test 1: no Quick Tasks section returns section_not_found', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Phase:** 01\n`
+    );
+
+    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.adjusted, false, 'should not adjust');
+    assert.strictEqual(output.reason, 'section_not_found', 'should report section_not_found');
+    assert.strictEqual(output.table_has_status, false, 'table_has_status should be false');
+  });
+
+  test('Test 2: table already has Status column returns already_has_status', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Status | Directory |\n|---|-------------|------|--------|--------|-----------|`
+    );
+
+    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.adjusted, false, 'should not adjust');
+    assert.strictEqual(output.reason, 'already_has_status', 'should report already_has_status');
+    assert.strictEqual(output.table_has_status, true, 'table_has_status should be true');
+  });
+
+  test('Test 3: table WITHOUT Status column gets Status column added', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|-------------|------|--------|-----------|`
+    );
+
+    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.adjusted, true, 'should be adjusted');
+    assert.strictEqual(output.table_has_status, true, 'table_has_status should be true');
+  });
+
+  test('Test 4: migrated table content has Status column in correct position', () => {
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+    fs.writeFileSync(
+      statePath,
+      `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|-------------|------|--------|-----------|
+| 260101-a1b | Fix typo | 2026-01-01 | abc1234 | [260101-a1b-fix-typo](./quick/260101-a1b-fix-typo/) |`
+    );
+
+    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.adjusted, true, 'should be adjusted');
+
+    const updatedContent = fs.readFileSync(statePath, 'utf-8');
+    // Header should contain Status column
+    assert.ok(updatedContent.includes('Status'), 'header should contain Status');
+    // Separator should contain more separators after migration (6 pipes instead of 5)
+    const lines = updatedContent.split('\n');
+    const headerLine = lines.find(l => l.includes('Status') && l.includes('Directory'));
+    assert.ok(headerLine, 'header line with Status and Directory should exist');
+    // Status should appear BEFORE Directory in the header
+    assert.ok(headerLine.indexOf('Status') < headerLine.indexOf('Directory'), 'Status should appear before Directory');
+    // Data row should still exist
+    const dataLine = lines.find(l => l.includes('260101-a1b') && l.includes('Fix typo'));
+    assert.ok(dataLine, 'data row should still exist');
+    // Data row should have 6 pipe-delimited non-empty sections (7 pipes: leading, 6 cells, trailing)
+    // Count all parts (including empty leading/trailing) — should be 8: '' + 6 cells + ''
+    const dataParts = dataLine.split('|');
+    assert.strictEqual(dataParts.length, 8, `data row should have 8 parts (7 pipes), got ${dataParts.length}: ${dataLine}`);
+  });
+
+  test('Test 5: empty table (header + separator only) gets Status column added correctly', () => {
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+    fs.writeFileSync(
+      statePath,
+      `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|-------------|------|--------|-----------|`
+    );
+
+    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.adjusted, true, 'should be adjusted');
+    assert.strictEqual(output.table_has_status, true, 'table_has_status should be true');
+
+    const updatedContent = fs.readFileSync(statePath, 'utf-8');
+    assert.ok(updatedContent.includes('Status'), 'Status column should be in updated content');
+  });
+});

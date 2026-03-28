@@ -81,18 +81,56 @@ Use `--runtime claude` or `--runtime copilot` with `--global` (`-g`) or `--local
 </details>
 
 <details>
-<summary><strong>Development Installation</strong></summary>
+<summary><strong>Development / Building from Source</strong></summary>
 
-Clone the repository and run the installer locally:
+Use this when working on a development branch or testing local changes.
+
+**1. Clone and checkout branch:**
 
 ```bash
 git clone https://github.com/chrisdevchroma/gsd-ng.git
 cd gsd-ng
-node bin/install.js --runtime claude --local
-node bin/install.js --runtime copilot --local   # Install for Copilot CLI
+git checkout <branch-name>
 ```
 
-Installs to `./.claude/` for testing modifications before contributing.
+**2. Install dependencies:**
+
+```bash
+npm install
+```
+
+This installs dev dependencies (esbuild, c8) needed for building and testing.
+
+**3. Build hooks:**
+
+```bash
+npm run build:hooks
+```
+
+Copies hook scripts to `hooks/dist/`. The installer expects built hooks in `hooks/dist/`, so this step is required before installing.
+
+**4. Install locally into your project:**
+
+Run from inside the target project directory (not the gsd-ng clone):
+
+```bash
+node bin/install.js --runtime claude --local
+node bin/install.js --runtime copilot --local   # For Copilot CLI
+```
+
+Installs to `./.claude/` (or `./.github/` for Copilot).
+
+**5. Run tests:**
+
+```bash
+npm test
+```
+
+**6. Run tests with coverage:**
+
+```bash
+npm run test:coverage
+```
 
 </details>
 
@@ -232,22 +270,22 @@ Plans are grouped into "waves" based on dependencies. Within each wave, plans ru
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  PHASE EXECUTION                                                     │
+│  PHASE EXECUTION                                                    │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
+│                                                                     │
 │  WAVE 1 (parallel)          WAVE 2 (parallel)          WAVE 3       │
-│  ┌─────────┐ ┌─────────┐    ┌─────────┐ ┌─────────┐    ┌─────────┐ │
-│  │ Plan 01 │ │ Plan 02 │ →  │ Plan 03 │ │ Plan 04 │ →  │ Plan 05 │ │
-│  │         │ │         │    │         │ │         │    │         │ │
-│  │ User    │ │ Product │    │ Orders  │ │ Cart    │    │ Checkout│ │
-│  │ Model   │ │ Model   │    │ API     │ │ API     │    │ UI      │ │
-│  └─────────┘ └─────────┘    └─────────┘ └─────────┘    └─────────┘ │
+│  ┌─────────┐ ┌─────────┐    ┌─────────┐ ┌─────────┐    ┌─────────┐  │
+│  │ Plan 01 │ │ Plan 02 │ →  │ Plan 03 │ │ Plan 04 │ →  │ Plan 05 │  │
+│  │         │ │         │    │         │ │         │    │         │  │
+│  │ User    │ │ Product │    │ Orders  │ │ Cart    │    │ Checkout│  │
+│  │ Model   │ │ Model   │    │ API     │ │ API     │    │ UI      │  │
+│  └─────────┘ └─────────┘    └─────────┘ └─────────┘    └─────────┘  │
 │       │           │              ↑           ↑              ↑       │
 │       └───────────┴──────────────┴───────────┘              │       │
 │              Dependencies: Plan 03 needs Plan 01            │       │
 │                          Plan 04 needs Plan 02              │       │
 │                          Plan 05 needs Plans 03 + 04        │       │
-│                                                                      │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -327,9 +365,20 @@ Quick mode gives you GSD guarantees (atomic commits, state tracking) with a fast
 
 **`--research` flag:** Spawns a focused researcher before planning. Investigates implementation approaches, library options, and pitfalls. Use when you're unsure how to approach a task.
 
-**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification.
+**`--verify` flag:** Enables plan-checking (max 2 iterations) and post-execution verification.
 
-Flags are composable: `--discuss --research --full` gives discussion + research + plan-checking + verification.
+**`--all` flag:** Enables all optional stages (discuss + research + verify).
+
+Flags are composable: `--discuss --research --verify` gives discussion + research + plan-checking + verification.
+
+**Quick Mode Flags**
+
+| Flag | What it adds |
+|------|-------------|
+| `--discuss` | Lightweight discussion phase, captures decisions in CONTEXT.md |
+| `--research` | Spawns research agent, produces RESEARCH.md |
+| `--verify` | Plan-checking (max 2 iterations) + post-execution verification |
+| `--all` | All of the above (discuss + research + verify) |
 
 ```
 /gsd:quick
@@ -344,9 +393,9 @@ Flags are composable: `--discuss --research --full` gives discussion + research 
 
 ### Context Engineering
 
-Claude Code is incredibly powerful *if* you give it the context it needs. Most people don't.
+Claude Code is powerful — but without structured context, results degrade as projects grow. Context gets lost, quality drops, and code stops fitting together.
 
-GSD handles it for you:
+GSD handles context for you:
 
 | File | What it does |
 |------|--------------|
@@ -358,8 +407,6 @@ GSD handles it for you:
 | `PLAN.md` | Atomic task with XML structure, verification steps |
 | `SUMMARY.md` | What happened, what changed, committed to history |
 | `todos/` | Captured ideas and tasks for later work |
-
-Size limits based on where Claude's quality degrades. Stay under, get consistent excellence.
 
 ### XML Prompt Formatting
 
@@ -378,8 +425,6 @@ Every plan is structured XML optimized for Claude:
   <done>Valid credentials return cookie, invalid return 401</done>
 </task>
 ```
-
-Precise instructions. No guessing. Verification built in.
 
 ### Multi-Agent Orchestration
 
@@ -409,8 +454,6 @@ lmn012o feat(08-02): create registration endpoint
 
 > [!NOTE]
 > **Benefits:** Git bisect finds exact failing task. Each task independently revertable. Clear history for Claude in future sessions. Better observability in AI-automated workflow.
-
-Every commit is surgical, traceable, and meaningful.
 
 ### Modular by Design
 
@@ -497,7 +540,7 @@ You're never locked in. The system adapts.
 | `/gsd:add-todo [desc]` | Capture idea for later |
 | `/gsd:check-todos` | List pending todos |
 | `/gsd:debug [desc]` | Systematic debugging with persistent state |
-| `/gsd:quick [--full] [--discuss] [--research]` | Execute ad-hoc task with GSD guarantees (`--full` adds plan-checking and verification, `--discuss` gathers context first, `--research` investigates approaches before planning) |
+| `/gsd:quick [--verify] [--discuss] [--research] [--all]` | Execute ad-hoc task with GSD guarantees (`--verify` adds plan-checking and verification, `--discuss` gathers context first, `--research` investigates approaches before planning, `--all` enables all optional stages) |
 | `/gsd:health [--repair]` | Validate `.planning/` directory integrity, auto-repair with `--repair` |
 | `/gsd:add-tests <phase> [instructions]` | Generate tests for a completed phase based on UAT criteria and implementation |
 | `/gsd:cleanup` | Archive phase directories from completed milestones |
@@ -601,7 +644,7 @@ To add custom deny patterns, edit your project's `.claude/settings.json`:
 ```
 
 > [!IMPORTANT]
-> GSD includes built-in protections against committing secrets, but defense-in-depth is best practice. The deny list prevents Claude from reading sensitive files regardless of what commands you run.
+> GSD's sandbox deny list prevents Claude from reading sensitive files, reducing the risk of secrets appearing in generated code. For additional protection, consider a pre-commit hook like [git-secrets](https://github.com/awslabs/git-secrets) or [detect-secrets](https://github.com/Yelp/detect-secrets).
 
 > [!NOTE]
 > **Linux users:** The sandbox template uses bare `Edit`, `Write`, and `Read` permissions (without glob patterns) because Linux's bubblewrap sandbox ignores gitignore-style globs in these rules. See [#16170](https://github.com/anthropics/claude-code/issues/16170) and [#6881](https://github.com/anthropics/claude-code/issues/6881).

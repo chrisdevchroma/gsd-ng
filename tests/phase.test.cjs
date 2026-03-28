@@ -1893,3 +1893,158 @@ describe('phase-plan-index file overlap detection', () => {
 // milestone complete command
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// phase add — checkbox insertion in ROADMAP.md phases list
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase add inserts checkbox line in ROADMAP phases list', () => {
+  let tmpDir;
+
+  // Minimal ROADMAP with a phases list containing existing checkbox lines
+  const roadmapWithPhasesList = `# Roadmap v1.0
+
+## Phases
+
+- [ ] **Phase 1: Foundation** - Build the base
+- [x] **Phase 2: API** - Build the API
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 2: API
+**Goal:** Build API
+
+---
+`;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapWithPhasesList
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('phase add inserts a checkbox line in the phases list', () => {
+    const result = runGsdTools('phase add User Dashboard', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('- [ ] **Phase 3: User Dashboard**'),
+      `Expected checkbox line in roadmap. Got:\n${roadmap}`
+    );
+  });
+
+  test('phase add checkbox line appears before ## Phase Details', () => {
+    const result = runGsdTools('phase add New Feature', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const checkboxIdx = roadmap.indexOf('- [ ] **Phase 3: New Feature**');
+    const detailsIdx = roadmap.indexOf('## Phase Details');
+    assert.ok(checkboxIdx !== -1, 'checkbox line should exist');
+    assert.ok(detailsIdx !== -1, '## Phase Details heading should exist');
+    assert.ok(checkboxIdx < detailsIdx, 'checkbox line should appear before ## Phase Details');
+  });
+
+  test('phase add details section still created (regression check)', () => {
+    const result = runGsdTools('phase add User Dashboard', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('### Phase 3: User Dashboard'),
+      'details section should still be created'
+    );
+  });
+
+  test('phase add still creates directory (regression check)', () => {
+    const result = runGsdTools('phase add New Feature', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    assert.ok(
+      fs.existsSync(path.join(tmpDir, '.planning', 'phases', '03-new-feature')),
+      'directory should be created'
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// phase insert — checkbox insertion in ROADMAP.md phases list
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase insert inserts checkbox line in ROADMAP phases list', () => {
+  let tmpDir;
+
+  const roadmapWithPhasesList = `# Roadmap v1.0
+
+## Phases
+
+- [ ] **Phase 1: Foundation** - Build the base
+- [ ] **Phase 2: API** - Build the API
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 2: API
+**Goal:** Build API
+`;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapWithPhasesList
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('phase insert inserts a checkbox line in the phases list', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('- [ ] **Phase 01.1: Fix Critical Bug (INSERTED)**'),
+      `Expected checkbox line in roadmap. Got:\n${roadmap}`
+    );
+  });
+
+  test('phase insert checkbox line appears after the parent phase checkbox line', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const parentIdx = roadmap.indexOf('- [ ] **Phase 1: Foundation**');
+    const insertedIdx = roadmap.indexOf('- [ ] **Phase 01.1: Fix Critical Bug (INSERTED)**');
+    assert.ok(parentIdx !== -1, 'parent checkbox should exist');
+    assert.ok(insertedIdx !== -1, 'inserted checkbox line should exist');
+    assert.ok(insertedIdx > parentIdx, 'inserted checkbox should appear after parent checkbox');
+  });
+
+  test('phase insert details section still created (regression check)', () => {
+    const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(
+      roadmap.includes('### Phase 01.1: Fix Critical Bug (INSERTED)'),
+      'details section should still be created'
+    );
+  });
+});
+

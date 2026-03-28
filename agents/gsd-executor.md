@@ -178,6 +178,9 @@ Track auto-fix attempts per task. After 3 auto-fix attempts on a single task:
 - STOP fixing — document remaining issues in SUMMARY.md under "Deferred Issues"
 - Continue to the next task (or return checkpoint if blocked)
 - Do NOT restart the build to find more issues
+
+**TODO OPERATIONS BOUNDARY:**
+NEVER call `todo complete`, `todo update`, or any todo-related gsd-tools commands during plan execution. Todo lifecycle management (creation, completion, status changes) is exclusively an orchestrator responsibility. The orchestrator closes todos only after verification passes. If you see todo context in your prompt (e.g., origin todo file paths, todo titles), treat it as read-only context — do NOT act on it.
 </deviation_rules>
 
 <analysis_paralysis_guard>

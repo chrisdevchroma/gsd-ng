@@ -1,0 +1,221 @@
+{
+  "_comment_models": "cost_tier uses Copilot pricing multipliers (0x, 0.33x, 1x, 3x). Free (0x) models enabled by default; others disabled. All models use effort_flag high for fair comparison.",
+  "models": [
+    {
+      "id": "claude-opus-4.6",
+      "runtime": "claude",
+      "model_flag": "opus",
+      "effort_flag": "high",
+      "group": "claude",
+      "cost_tier": "3x",
+      "enabled": true,
+      "ref_prefix": "~/.claude/gsd-ng"
+    },
+    {
+      "id": "claude-sonnet-4.6",
+      "runtime": "claude",
+      "model_flag": "sonnet",
+      "effort_flag": "high",
+      "group": "claude",
+      "cost_tier": "1x",
+      "enabled": true,
+      "ref_prefix": "~/.claude/gsd-ng"
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "runtime": "claude",
+      "model_flag": "haiku",
+      "effort_flag": "high",
+      "group": "claude",
+      "cost_tier": "0.33x",
+      "enabled": true,
+      "ref_prefix": "~/.claude/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5-mini",
+      "runtime": "copilot",
+      "model_flag": "gpt-5-mini",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "0x",
+      "enabled": true,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-4.1",
+      "runtime": "copilot",
+      "model_flag": "gpt-4.1",
+      "effort_flag": null,
+      "group": "copilot",
+      "cost_tier": "0x",
+      "enabled": true,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-sonnet-4.6",
+      "runtime": "copilot",
+      "model_flag": "claude-sonnet-4.6",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-sonnet-4.5",
+      "runtime": "copilot",
+      "model_flag": "claude-sonnet-4.5",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-haiku-4.5",
+      "runtime": "copilot",
+      "model_flag": "claude-haiku-4.5",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "0.33x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-opus-4.6",
+      "runtime": "copilot",
+      "model_flag": "claude-opus-4.6",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "3x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-opus-4.5",
+      "runtime": "copilot",
+      "model_flag": "claude-opus-4.5",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "3x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-claude-sonnet-4",
+      "runtime": "copilot",
+      "model_flag": "claude-sonnet-4",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.4",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.4",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": true,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.3-codex",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.3-codex",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": true,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.2-codex",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.2-codex",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.2",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.2",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.1-codex-max",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.1-codex-max",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.1-codex",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.1-codex",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.1",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.1",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "1x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.4-mini",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.4-mini",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "0.33x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-5.1-codex-mini",
+      "runtime": "copilot",
+      "model_flag": "gpt-5.1-codex-mini",
+      "effort_flag": "high",
+      "group": "copilot",
+      "cost_tier": "0.33x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    },
+    {
+      "id": "copilot-gpt-4.1-mini",
+      "runtime": "copilot",
+      "model_flag": "gpt-4.1-mini",
+      "effort_flag": null,
+      "group": "copilot",
+      "cost_tier": "0.33x",
+      "enabled": false,
+      "ref_prefix": ".github/gsd-ng"
+    }
+  ],
+  "defaults": {
+    "timeout_ms": 120000,
+    "micro_timeout_ms": 30000,
+    "parallel": true,
+    "result_dir": ".planning/benchmarks/results"
+  }
+}

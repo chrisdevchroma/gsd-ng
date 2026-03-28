@@ -1,0 +1,16 @@
+{
+  "id": "core-check-todos",
+  "type": "core",
+  "description": "Review pending todos and recommend action (handle as quick task, debug, or plan as phase)",
+  "prompt": "Read @.planning/todos/pending/fix-utils-crash.md and @.planning/STATE.md. This is a pending todo in a GSD project. Analyze it and recommend one of: (1) Handle as quick task — simple fix, do it now; (2) Debug — needs investigation first; (3) Plan as phase — complex enough to warrant full planning. Explain your recommendation in 2-3 sentences. Output a JSON object: { recommendation: 'quick-task' | 'debug' | 'plan-phase', reasoning: '...' }",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "json_block",
+    "required_fields": ["recommendation", "reasoning"],
+    "contains": ["recommendation"],
+    "not_contains": [],
+    "output_length_hint": { "min": 50, "max": 500 }
+  }
+}

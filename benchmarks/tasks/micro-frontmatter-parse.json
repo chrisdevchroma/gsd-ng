@@ -1,0 +1,15 @@
+{
+  "id": "micro-frontmatter-parse",
+  "type": "micro",
+  "description": "Parse YAML frontmatter from a GSD todo file and extract key fields",
+  "prompt": "Read the file @.planning/todos/pending/fix-utils-crash.md and output ONLY a JSON object with the fields: title, area, phase, priority. No explanation, just the JSON.",
+  "timeout_ms": 30000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "json_block",
+    "required_fields": ["title", "area", "phase", "priority"],
+    "contains": ["Fix parseConfig crash", "bug", "3", "high"],
+    "output_length_hint": { "min": 50, "max": 500 }
+  }
+}

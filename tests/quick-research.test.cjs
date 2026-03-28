@@ -37,13 +37,14 @@ describe('quick command: --research in frontmatter', () => {
     );
   });
 
-  test('argument-hint includes all three flags', () => {
+  test('argument-hint includes all flags', () => {
     content = fs.readFileSync(commandPath, 'utf-8');
     const hintLine = content.split('\n').find(l => l.includes('argument-hint'));
     assert.ok(hintLine, 'should have argument-hint line');
-    assert.ok(hintLine.includes('--full'), 'argument-hint should include --full');
+    assert.ok(hintLine.includes('--verify'), 'argument-hint should include --verify');
     assert.ok(hintLine.includes('--discuss'), 'argument-hint should include --discuss');
     assert.ok(hintLine.includes('--research'), 'argument-hint should include --research');
+    assert.ok(hintLine.includes('--all'), 'argument-hint should include --all');
   });
 
   test('objective section describes --research flag', () => {
@@ -279,19 +280,27 @@ describe('quick workflow: banner variants for flag combinations', () => {
     );
   });
 
-  test('has banner for research + full mode', () => {
+  test('has banner for research + verify mode', () => {
     content = fs.readFileSync(path.join(WORKFLOWS_DIR, 'quick.md'), 'utf-8');
     assert.ok(
-      content.includes('RESEARCH + FULL)'),
-      'should have banner for --research --full'
+      content.includes('RESEARCH + VERIFY)'),
+      'should have banner for --research --verify'
     );
   });
 
-  test('has banner for all three flags', () => {
+  test('has banner for all three flags (individual)', () => {
     content = fs.readFileSync(path.join(WORKFLOWS_DIR, 'quick.md'), 'utf-8');
     assert.ok(
-      content.includes('DISCUSS + RESEARCH + FULL)'),
-      'should have banner for --discuss --research --full'
+      content.includes('DISCUSS + RESEARCH + VERIFY)'),
+      'should have banner for --discuss --research --verify'
+    );
+  });
+
+  test('has banner for --all flag', () => {
+    content = fs.readFileSync(path.join(WORKFLOWS_DIR, 'quick.md'), 'utf-8');
+    assert.ok(
+      content.includes('QUICK TASK (ALL)'),
+      'should have banner for --all flag'
     );
   });
 });

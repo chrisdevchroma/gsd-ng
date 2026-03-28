@@ -141,13 +141,14 @@
  *     --stopped-at "..."
  *     [--resume-file path]
  *   state begin-phase --phase N --name S --plans C  Update STATE.md for new phase start
+ *   state adjust-quick-table          Add Status column to Quick Tasks table if missing
  *
  * Compound Commands (workflow-specific initialization):
  *   init execute-phase <phase>         All context for execute-phase workflow
  *   init plan-phase <phase>            All context for plan-phase workflow
  *   init new-project                   All context for new-project workflow
  *   init new-milestone                 All context for new-milestone workflow
- *   init quick <description>           All context for quick workflow
+ *   init quick [--verify] <description>  All context for quick workflow
  *   init resume                        All context for resume-project workflow
  *   init verify-work <phase>           All context for verify-work workflow
  *   init phase-op <phase>              Generic phase operation context
@@ -172,6 +173,160 @@ const commands = require('./lib/commands.cjs');
 const init = require('./lib/init.cjs');
 const frontmatter = require('./lib/frontmatter.cjs');
 const workspace = require('./lib/workspace.cjs');
+const guard = require('./lib/guard.cjs');
+
+// ─── Command Registry (for typo detection) ────────────────────────────────────
+
+const ALL_COMMANDS = [
+  'state', 'resolve-model', 'find-phase', 'commit', 'verify-summary',
+  'template', 'frontmatter', 'verify', 'generate-slug', 'current-timestamp',
+  'list-todos', 'recurring-due', 'staleness-check', 'verify-path-exists',
+  'config-ensure-section', 'config-set', 'config-set-model-profile',
+  'config-get', 'history-digest', 'phases', 'roadmap', 'requirements',
+  'phase', 'milestone', 'validate', 'progress', 'stats', 'todo', 'update',
+  'scaffold', 'init', 'phase-plan-index', 'state-snapshot', 'summary-extract',
+  'detect-platform', 'detect-workspace', 'discover-test-command', 'websearch',
+  'squash', 'version-bump', 'generate-changelog', 'generate-allowlist',
+  'resolve-type-alias', 'issue-import', 'issue-sync', 'issue-list-refs',
+  'divergence', 'pingpong-check', 'breakout-check', 'cleanup', 'help', 'guard',
+];
+
+// ─── Subcommand Registry (for fuzzy subcommand matching) ─────────────────────
+
+const SUBCOMMANDS = {
+  state: ['load', 'json', 'update', 'get', 'patch', 'advance-plan', 'record-metric', 'update-progress', 'add-decision', 'add-blocker', 'resolve-blocker', 'record-session', 'begin-phase', 'adjust-quick-table'],
+  template: ['select', 'fill'],
+  frontmatter: ['get', 'set', 'merge', 'validate'],
+  verify: ['plan-structure', 'phase-completeness', 'references', 'commits', 'artifacts', 'key-links'],
+  phases: ['list'],
+  roadmap: ['get-phase', 'analyze', 'update-plan-progress', 'add-phase'],
+  requirements: ['mark-complete'],
+  phase: ['next-decimal', 'add', 'insert', 'remove', 'complete'],
+  milestone: ['complete'],
+  validate: ['consistency', 'health'],
+  todo: ['complete'],
+  init: ['execute-phase', 'plan-phase', 'new-project', 'new-milestone', 'quick', 'resume', 'verify-work', 'phase-op', 'todos', 'milestone-op', 'map-codebase', 'progress'],
+  guard: ['sync-chain'],
+};
+
+// ─── Levenshtein Distance (for typo detection) ────────────────────────────────
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+// ─── Subcommand Fuzzy Matching ────────────────────────────────────────────────
+
+/**
+ * Suggest close subcommand matches for an unknown input.
+ *
+ * Strategy:
+ * 1. Same-namespace: check SUBCOMMANDS[currentCommand] with levenshtein distance <= 2
+ *    and distance < ceil(length/2) — same threshold as top-level matching.
+ * 2. Cross-namespace: check all subcommands in all other namespaces using levenshtein.
+ *    Format suggestions as "namespace subcommand" (e.g., "phase complete").
+ * 3. Hyphenated-compound: if input contains a hyphen, try splitting it into parts
+ *    and checking if any part matches a namespace and the remaining parts match a
+ *    subcommand in that namespace (e.g., "complete-phase" -> "phase complete").
+ *
+ * @param {string} input - The unknown subcommand provided by the user
+ * @param {string} currentCommand - The top-level command namespace (e.g., 'state')
+ * @returns {{ sameNamespace: string[], crossNamespace: string[] }}
+ */
+function suggestSubcommand(input, currentCommand) {
+  const sameResults = [];
+  const crossResults = [];
+
+  const distThreshold = (sub) => sub.dist <= 2 && sub.dist < Math.ceil(sub.sub.length / 2);
+
+  // 1. Same-namespace matching
+  const sameSubcmds = SUBCOMMANDS[currentCommand] || [];
+  for (const sub of sameSubcmds) {
+    const dist = levenshtein(input, sub);
+    if (dist <= 2 && dist < Math.ceil(sub.length / 2)) {
+      sameResults.push({ sub, dist });
+    }
+  }
+  sameResults.sort((a, b) => a.dist - b.dist);
+
+  // 2. Cross-namespace matching
+  const crossSeen = new Set();
+  for (const [ns, subcmds] of Object.entries(SUBCOMMANDS)) {
+    if (ns === currentCommand) continue;
+    for (const sub of subcmds) {
+      const suggestion = `${ns} ${sub}`;
+      // Direct levenshtein match against the subcommand alone
+      const dist = levenshtein(input, sub);
+      if (dist <= 2 && dist < Math.ceil(sub.length / 2) && !crossSeen.has(suggestion)) {
+        crossResults.push({ suggestion, dist });
+        crossSeen.add(suggestion);
+      }
+      // Also try matching against the full "ns subcommand" compound form (e.g., "phase complete" vs "complete-phase")
+      const fullForm = `${ns}-${sub}`;
+      const fullDist = levenshtein(input, fullForm);
+      if (fullDist <= 3 && fullDist < Math.ceil(fullForm.length / 2) && !crossSeen.has(suggestion)) {
+        crossResults.push({ suggestion, dist: fullDist });
+        crossSeen.add(suggestion);
+      }
+    }
+  }
+
+  // 3. Hyphenated-compound decomposition
+  // e.g., "complete-phase" -> try namespace="phase", subcommand="complete"
+  if (input.includes('-')) {
+    const parts = input.split('-');
+    for (let splitAt = 1; splitAt < parts.length; splitAt++) {
+      const prefix = parts.slice(0, splitAt).join('-');
+      const suffix = parts.slice(splitAt).join('-');
+      // Try: namespace=suffix, subcommand=prefix (e.g., complete-phase -> phase namespace, complete subcommand)
+      for (const [ns, subcmds] of Object.entries(SUBCOMMANDS)) {
+        if (ns === currentCommand) continue;
+        const nsDist = levenshtein(suffix, ns);
+        if (nsDist <= 1) {
+          for (const sub of subcmds) {
+            const subDist = levenshtein(prefix, sub);
+            if (subDist <= 2 && subDist < Math.ceil(sub.length / 2)) {
+              const suggestion = `${ns} ${sub}`;
+              if (!crossSeen.has(suggestion)) {
+                crossResults.push({ suggestion, dist: nsDist + subDist });
+                crossSeen.add(suggestion);
+              }
+            }
+          }
+        }
+        // Also try: namespace=prefix, subcommand=suffix
+        const nsDist2 = levenshtein(prefix, ns);
+        if (nsDist2 <= 1) {
+          for (const sub of subcmds) {
+            const subDist = levenshtein(suffix, sub);
+            if (subDist <= 2 && subDist < Math.ceil(sub.length / 2)) {
+              const suggestion = `${ns} ${sub}`;
+              if (!crossSeen.has(suggestion)) {
+                crossResults.push({ suggestion, dist: nsDist2 + subDist });
+                crossSeen.add(suggestion);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  crossResults.sort((a, b) => a.dist - b.dist);
+
+  return {
+    sameNamespace: sameResults.map(r => r.sub),
+    crossNamespace: crossResults.map(r => r.suggestion),
+  };
+}
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
@@ -250,7 +405,7 @@ async function main() {
 
   if (args.includes('--help') || args.includes('-h')) printHelp();
 
-  const command = args[0];
+  let command = args[0];
 
   if (!command) printHelp({ exitCode: 1 });
 
@@ -296,6 +451,18 @@ async function main() {
       }
       origExit(code);
     };
+  }
+
+  // Flag-style argument support: --phase 36.3 -> phase 36.3
+  // Allows callers to use --command style (common mistake). Emits info hint to stderr.
+  if (command && command.startsWith('--') && command !== '--help' && command !== '-h') {
+    const flagName = command.slice(2); // strip --
+    if (ALL_COMMANDS.includes(flagName)) {
+      fs.writeSync(2, `[info] Interpreted --${flagName} as command '${flagName}'. Canonical usage: gsd-tools ${flagName} ${args.slice(1).join(' ')}\n`);
+      args[0] = flagName;
+      command = flagName;
+    }
+    // If not a known command, fall through to switch default (typo detection handles it)
   }
 
   switch (command) {
@@ -375,8 +542,20 @@ async function main() {
           plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null,
           raw
         );
-      } else {
+      } else if (subcommand === 'adjust-quick-table') {
+        state.cmdStateAdjustQuickTable(cwd, raw);
+      } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd, raw);
+      } else {
+        const suggestions = suggestSubcommand(subcommand, 'state');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`state ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown state subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.state.join(', ')}`);
+        } else {
+          error(`Unknown state subcommand '${subcommand}'. Available: ${SUBCOMMANDS.state.join(', ')}`);
+        }
       }
       break;
     }
@@ -434,7 +613,15 @@ async function main() {
           fields: fieldsIdx !== -1 ? JSON.parse(args[fieldsIdx + 1]) : {},
         }, raw);
       } else {
-        error('Unknown template subcommand. Available: select, fill');
+        const suggestions = suggestSubcommand(subcommand, 'template');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`template ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown template subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.template.join(', ')}`);
+        } else {
+          error(`Unknown template subcommand '${subcommand}'. Available: ${SUBCOMMANDS.template.join(', ')}`);
+        }
       }
       break;
     }
@@ -456,7 +643,15 @@ async function main() {
         const schemaIdx = args.indexOf('--schema');
         frontmatter.cmdFrontmatterValidate(cwd, file, schemaIdx !== -1 ? args[schemaIdx + 1] : null, raw);
       } else {
-        error('Unknown frontmatter subcommand. Available: get, set, merge, validate');
+        const suggestions = suggestSubcommand(subcommand, 'frontmatter');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`frontmatter ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown frontmatter subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.frontmatter.join(', ')}`);
+        } else {
+          error(`Unknown frontmatter subcommand '${subcommand}'. Available: ${SUBCOMMANDS.frontmatter.join(', ')}`);
+        }
       }
       break;
     }
@@ -476,7 +671,15 @@ async function main() {
       } else if (subcommand === 'key-links') {
         verify.cmdVerifyKeyLinks(cwd, args[2], raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links');
+        const suggestions = suggestSubcommand(subcommand, 'verify');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`verify ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown verify subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.verify.join(', ')}`);
+        } else {
+          error(`Unknown verify subcommand '${subcommand}'. Available: ${SUBCOMMANDS.verify.join(', ')}`);
+        }
       }
       break;
     }
@@ -548,7 +751,15 @@ async function main() {
         };
         phase.cmdPhasesList(cwd, options, raw);
       } else {
-        error('Unknown phases subcommand. Available: list');
+        const suggestions = suggestSubcommand(subcommand, 'phases');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`phases ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown phases subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phases.join(', ')}`);
+        } else {
+          error(`Unknown phases subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phases.join(', ')}`);
+        }
       }
       break;
     }
@@ -561,8 +772,19 @@ async function main() {
         roadmap.cmdRoadmapAnalyze(cwd, raw);
       } else if (subcommand === 'update-plan-progress') {
         roadmap.cmdRoadmapUpdatePlanProgress(cwd, args[2], raw);
+      } else if (subcommand === 'add-phase') {
+        // Alias: redirect to phase add
+        phase.cmdPhaseAdd(cwd, args.slice(2).join(' '), raw);
       } else {
-        error('Unknown roadmap subcommand. Available: get-phase, analyze, update-plan-progress');
+        const suggestions = suggestSubcommand(subcommand, 'roadmap');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`roadmap ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown roadmap subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.roadmap.join(', ')}`);
+        } else {
+          error(`Unknown roadmap subcommand '${subcommand}'. Available: ${SUBCOMMANDS.roadmap.join(', ')}`);
+        }
       }
       break;
     }
@@ -572,7 +794,15 @@ async function main() {
       if (subcommand === 'mark-complete') {
         milestone.cmdRequirementsMarkComplete(cwd, args.slice(2), raw);
       } else {
-        error('Unknown requirements subcommand. Available: mark-complete');
+        const suggestions = suggestSubcommand(subcommand, 'requirements');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`requirements ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown requirements subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.requirements.join(', ')}`);
+        } else {
+          error(`Unknown requirements subcommand '${subcommand}'. Available: ${SUBCOMMANDS.requirements.join(', ')}`);
+        }
       }
       break;
     }
@@ -591,7 +821,15 @@ async function main() {
       } else if (subcommand === 'complete') {
         phase.cmdPhaseComplete(cwd, args[2], raw);
       } else {
-        error('Unknown phase subcommand. Available: next-decimal, add, insert, remove, complete');
+        const suggestions = suggestSubcommand(subcommand, 'phase');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`phase ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown phase subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phase.join(', ')}`);
+        } else {
+          error(`Unknown phase subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phase.join(', ')}`);
+        }
       }
       break;
     }
@@ -613,7 +851,15 @@ async function main() {
         }
         milestone.cmdMilestoneComplete(cwd, args[2], { name: milestoneName, archivePhases }, raw);
       } else {
-        error('Unknown milestone subcommand. Available: complete');
+        const suggestions = suggestSubcommand(subcommand, 'milestone');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`milestone ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown milestone subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.milestone.join(', ')}`);
+        } else {
+          error(`Unknown milestone subcommand '${subcommand}'. Available: ${SUBCOMMANDS.milestone.join(', ')}`);
+        }
       }
       break;
     }
@@ -626,7 +872,15 @@ async function main() {
         const repairFlag = args.includes('--repair');
         verify.cmdValidateHealth(cwd, { repair: repairFlag }, raw);
       } else {
-        error('Unknown validate subcommand. Available: consistency, health');
+        const suggestions = suggestSubcommand(subcommand, 'validate');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`validate ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown validate subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.validate.join(', ')}`);
+        } else {
+          error(`Unknown validate subcommand '${subcommand}'. Available: ${SUBCOMMANDS.validate.join(', ')}`);
+        }
       }
       break;
     }
@@ -648,7 +902,15 @@ async function main() {
       if (subcommand === 'complete') {
         commands.cmdTodoComplete(cwd, args[2], raw);
       } else {
-        error('Unknown todo subcommand. Available: complete');
+        const suggestions = suggestSubcommand(subcommand, 'todo');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`todo ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown todo subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.todo.join(', ')}`);
+        } else {
+          error(`Unknown todo subcommand '${subcommand}'. Available: ${SUBCOMMANDS.todo.join(', ')}`);
+        }
       }
       break;
     }
@@ -688,9 +950,14 @@ async function main() {
         case 'new-milestone':
           init.cmdInitNewMilestone(cwd, raw);
           break;
-        case 'quick':
-          init.cmdInitQuick(cwd, args.slice(2).join(' '), raw);
+        case 'quick': {
+          const verifyFlagIdx = args.indexOf('--verify');
+          const verifyMode = verifyFlagIdx !== -1;
+          // Remove --verify from args before joining as description
+          const descArgs = args.slice(2).filter((_, i) => i + 2 !== verifyFlagIdx);
+          init.cmdInitQuick(cwd, descArgs.join(' '), verifyMode, raw);
           break;
+        }
         case 'resume':
           init.cmdInitResume(cwd, raw);
           break;
@@ -713,7 +980,17 @@ async function main() {
           init.cmdInitProgress(cwd, raw);
           break;
         default:
-          error(`Unknown init workflow: ${workflow}\nAvailable: execute-phase, plan-phase, new-project, new-milestone, quick, resume, verify-work, phase-op, todos, milestone-op, map-codebase, progress`);
+          {
+            const suggestions = workflow ? suggestSubcommand(workflow, 'init') : { sameNamespace: [], crossNamespace: [] };
+            if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+              const parts = [];
+              if (suggestions.sameNamespace.length > 0) parts.push(`init ${suggestions.sameNamespace[0]}`);
+              if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+              error(`Unknown init workflow '${workflow}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.init.join(', ')}`);
+            } else {
+              error(`Unknown init workflow '${workflow}'. Available: ${SUBCOMMANDS.init.join(', ')}`);
+            }
+          }
       }
       break;
     }
@@ -932,8 +1209,38 @@ async function main() {
       printHelp();
       break;
 
-    default:
-      error(`Unknown command: ${command}. Available commands include: issue-import, issue-sync, issue-list-refs, detect-platform, detect-workspace, discover-test-command, squash, version-bump, generate-changelog, and others.`);
+    case 'guard': {
+      const subcommand = args[1];
+      if (subcommand === 'sync-chain') {
+        guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '), raw);
+      } else {
+        const suggestions = suggestSubcommand(subcommand, 'guard');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`guard ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown guard subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.guard.join(', ')}`);
+        } else {
+          error(`Unknown guard subcommand '${subcommand}'. Available: ${SUBCOMMANDS.guard.join(', ')}`);
+        }
+      }
+      break;
+    }
+
+    default: {
+      // Typo detection: suggest close matches using Levenshtein distance
+      const candidates = ALL_COMMANDS
+        .map(cmd => ({ cmd, dist: levenshtein(command, cmd) }))
+        .filter(c => c.dist <= 2 && c.dist < Math.ceil(c.cmd.length / 2))
+        .sort((a, b) => a.dist - b.dist);
+
+      if (candidates.length > 0) {
+        const suggestions = candidates.map(c => c.cmd).join(', ');
+        error(`Unknown command '${command}'. Did you mean: ${suggestions}?`);
+      } else {
+        error(`Unknown command '${command}'. Available commands: ${ALL_COMMANDS.join(', ')}`);
+      }
+    }
   }
 }
 

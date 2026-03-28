@@ -884,6 +884,103 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
   output({ updated: true, phase: phaseNum, name: phaseName, plans: planCount, failed }, raw, 'true');
 }
 
+/**
+ * Insert a Status column into the Quick Tasks Completed table if it is missing.
+ * Reads STATE.md, finds the ### Quick Tasks Completed section, checks the header row
+ * for a Status column, and if absent inserts it before the Directory column in the
+ * header, separator, and all data rows.
+ *
+ * Returns:
+ *   { adjusted: false, reason: 'section_not_found', table_has_status: false }
+ *   { adjusted: false, reason: 'already_has_status', table_has_status: true }
+ *   { adjusted: true, table_has_status: true }
+ */
+function adjustQuickTable(cwd) {
+  const { state: statePath } = planningPaths(cwd);
+
+  let content;
+  try {
+    content = fs.readFileSync(statePath, 'utf-8');
+  } catch {
+    return { adjusted: false, reason: 'section_not_found', table_has_status: false };
+  }
+
+  // Find the ### Quick Tasks Completed section
+  const sectionMatch = content.match(/###\s*Quick Tasks Completed\s*\n/i);
+  if (!sectionMatch) {
+    return { adjusted: false, reason: 'section_not_found', table_has_status: false };
+  }
+
+  // Find the first table row after the section heading (the header row)
+  const afterSection = content.slice(sectionMatch.index + sectionMatch[0].length);
+  const lines = afterSection.split('\n');
+
+  // Find the header line (first line starting with |)
+  const headerIdx = lines.findIndex(l => l.trimStart().startsWith('|'));
+  if (headerIdx === -1) {
+    // Section exists but has no table
+    return { adjusted: false, reason: 'section_not_found', table_has_status: false };
+  }
+
+  const headerLine = lines[headerIdx];
+  // Split header by | and get cell names (trim whitespace)
+  const headerCells = headerLine.split('|').map(c => c.trim()).filter(c => c !== '');
+
+  // Check if Status column already exists (case-insensitive)
+  const hasStatus = headerCells.some(c => c.toLowerCase() === 'status');
+  if (hasStatus) {
+    return { adjusted: false, reason: 'already_has_status', table_has_status: true };
+  }
+
+  // Find the index of the Directory column in header cells
+  const dirIdx = headerCells.findIndex(c => c.toLowerCase() === 'directory');
+  if (dirIdx === -1) {
+    // Can't find where to insert — treat as already adjusted or unknown
+    return { adjusted: false, reason: 'directory_not_found', table_has_status: false };
+  }
+
+  // Helper: insert a cell value before the Directory column in a table row string
+  function insertCellBeforeDir(rowLine, newCell) {
+    // Split by | keeping empties to preserve leading/trailing pipes
+    const parts = rowLine.split('|');
+    // parts[0] is empty (before leading |), parts[1..n-1] are cells, parts[n] is empty (after trailing |)
+    // headerCells[dirIdx] maps to parts[dirIdx + 1] (offset by 1 because of leading empty)
+    const insertAt = dirIdx + 1;
+    parts.splice(insertAt, 0, newCell);
+    return parts.join('|');
+  }
+
+  // Process lines: migrate header, separator, and data rows
+  const newLines = [...lines];
+
+  // Migrate header row
+  newLines[headerIdx] = insertCellBeforeDir(headerLine, ' Status ');
+
+  // Check next line — should be the separator row (contains ---)
+  if (headerIdx + 1 < lines.length && lines[headerIdx + 1].trimStart().startsWith('|')) {
+    newLines[headerIdx + 1] = insertCellBeforeDir(lines[headerIdx + 1], '--------');
+  }
+
+  // Migrate all subsequent data rows
+  for (let i = headerIdx + 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trimStart().startsWith('|')) break; // End of table
+    newLines[i] = insertCellBeforeDir(line, '  ');
+  }
+
+  // Reconstruct content: replace the afterSection portion
+  const updatedAfterSection = newLines.join('\n');
+  const updatedContent = content.slice(0, sectionMatch.index + sectionMatch[0].length) + updatedAfterSection;
+
+  writeStateMd(statePath, updatedContent, cwd);
+  return { adjusted: true, table_has_status: true };
+}
+
+function cmdStateAdjustQuickTable(cwd, raw) {
+  const result = adjustQuickTable(cwd);
+  output(result, raw);
+}
+
 module.exports = {
   stateExtractField,
   stateReplaceField,
@@ -903,4 +1000,6 @@ module.exports = {
   cmdStateSnapshot,
   cmdStateJson,
   cmdStateBeginPhase,
+  adjustQuickTable,
+  cmdStateAdjustQuickTable,
 };

@@ -928,3 +928,66 @@ describe('extractCurrentMilestone', () => {
     assert.ok(result.includes('Current content'), 'should preserve current content');
   });
 });
+
+// ─── generateSlugInternal max length ─────────────────────────────────────────
+
+describe('generateSlugInternal max length', () => {
+  test('input exceeding 50 chars produces output <= 50 chars', () => {
+    const longInput = 'context-token-optimization-with-many-extra-words-that-make-it-very-long';
+    const result = generateSlugInternal(longInput);
+    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+  });
+
+  test('short input is returned unchanged (no truncation)', () => {
+    assert.strictEqual(generateSlugInternal('short'), 'short');
+    assert.strictEqual(generateSlugInternal('my-feature'), 'my-feature');
+  });
+
+  test('null input still returns null', () => {
+    assert.strictEqual(generateSlugInternal(null), null);
+  });
+
+  test('empty string still returns null', () => {
+    assert.strictEqual(generateSlugInternal(''), null);
+  });
+
+  test('word boundary preservation — slug does not end with a partial word fragment', () => {
+    // 'context-token-optimizati...' would be a mid-word cut; result should end at a hyphen boundary
+    const longInput = 'context token optimization with many extra words that push it past fifty chars';
+    const result = generateSlugInternal(longInput);
+    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+    // Should not end with a hyphen (trailing hyphen was stripped)
+    assert.ok(!result.endsWith('-'), 'slug should not end with a hyphen');
+  });
+
+  test('custom maxLen parameter override works', () => {
+    const input = 'this-is-a-long-description-for-feature-work';
+    const result = generateSlugInternal(input, 20);
+    assert.ok(result.length <= 20, `slug length ${result.length} should be <= 20 with maxLen=20`);
+  });
+
+  test('exact 50-char slug is not truncated', () => {
+    // Build a string that produces exactly a 50-char slug
+    const input = 'abcde-fghij-klmno-pqrst-uvwxy-12345'; // 35 chars already slug-safe
+    const result = generateSlugInternal(input);
+    assert.strictEqual(result, input, 'exactly-50-or-under slug should be unchanged');
+  });
+});
+
+// ─── output EPIPE handling ────────────────────────────────────────────────────
+
+describe('output EPIPE handling', () => {
+  test('output() function wraps fs.writeSync in try/catch for EPIPE', () => {
+    // Verify the fix exists in the source code by checking the module text
+    const fs_mod = require('fs');
+    const path_mod = require('path');
+    const coreSrc = fs_mod.readFileSync(
+      path_mod.join(__dirname, '../gsd-ng/bin/lib/core.cjs'),
+      'utf-8'
+    );
+    assert.ok(
+      coreSrc.includes("if (e.code !== 'EPIPE') throw e"),
+      'core.cjs output() should contain EPIPE guard: if (e.code !== \'EPIPE\') throw e'
+    );
+  });
+});

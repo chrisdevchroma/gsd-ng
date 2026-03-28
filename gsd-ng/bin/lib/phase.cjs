@@ -349,6 +349,58 @@ function detectFileOverlaps(plans) {
   return overlaps;
 }
 
+/**
+ * Insert a `- [ ] **Phase N: Description**` checkbox line into the phases list
+ * section of ROADMAP.md content.
+ *
+ * @param {string} rawContent - Full ROADMAP.md content
+ * @param {string|number} phaseNum - Phase number or decimal (e.g. 3, '01.1')
+ * @param {string} description - Phase description
+ * @param {string|number|null} afterPhase - For inserts: parent phase to insert after.
+ *   null for appends (phase add).
+ * @returns {string} Updated ROADMAP.md content
+ */
+function insertCheckboxLine(rawContent, phaseNum, description, afterPhase) {
+  const checkboxLine = `- [ ] **Phase ${phaseNum}: ${description}**`;
+  const lines = rawContent.split('\n');
+
+  if (afterPhase != null) {
+    // For insert: find the parent phase's checkbox line (or last decimal of parent)
+    const escapedParent = String(afterPhase).replace(/\./g, '\\.');
+    const parentPattern = new RegExp(`^- \\[[ x]\\] \\*\\*Phase\\s+${escapedParent}[.:]`);
+    const decimalPattern = new RegExp(`^- \\[[ x]\\] \\*\\*Phase\\s+${escapedParent}\\.\\d+[.:]`);
+    let insertAfterIdx = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (parentPattern.test(lines[i])) {
+        insertAfterIdx = i;
+      }
+      // Also match existing decimal phases of this parent (e.g. 36.1, 36.2)
+      if (decimalPattern.test(lines[i])) {
+        insertAfterIdx = i;
+      }
+    }
+
+    if (insertAfterIdx >= 0) {
+      lines.splice(insertAfterIdx + 1, 0, checkboxLine);
+      return lines.join('\n');
+    }
+  }
+
+  // For add (or insert fallback): append after last checkbox line in the phases list
+  let lastCheckboxIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^- \[[ x]\] \*\*Phase\s+\d/.test(lines[i])) {
+      lastCheckboxIdx = i;
+    }
+  }
+
+  if (lastCheckboxIdx >= 0) {
+    lines.splice(lastCheckboxIdx + 1, 0, checkboxLine);
+  }
+  return lines.join('\n');
+}
+
 function cmdPhaseAdd(cwd, description, raw) {
   if (!description) {
     error('description required for phase add');
@@ -392,6 +444,9 @@ function cmdPhaseAdd(cwd, description, raw) {
   } else {
     updatedContent = rawContent + phaseEntry;
   }
+
+  // Insert checkbox summary line in the phases list at the top of ROADMAP.md
+  updatedContent = insertCheckboxLine(updatedContent, newPhaseNum, description, null);
 
   fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
 
@@ -473,7 +528,11 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
     insertIdx = rawContent.length;
   }
 
-  const updatedContent = rawContent.slice(0, insertIdx) + phaseEntry + rawContent.slice(insertIdx);
+  let updatedContent = rawContent.slice(0, insertIdx) + phaseEntry + rawContent.slice(insertIdx);
+
+  // Insert checkbox summary line in the phases list, after the parent phase's checkbox
+  updatedContent = insertCheckboxLine(updatedContent, decimalPhase, description + ' (INSERTED)', afterPhase);
+
   fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
 
   const result = {

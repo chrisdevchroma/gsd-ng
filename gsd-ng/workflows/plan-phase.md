@@ -732,9 +732,7 @@ Check for auto-advance trigger:
 1. Parse `--auto` flag from $ARGUMENTS
 2. **Sync chain flag with intent** — if user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference):
    ```bash
-   if [[ "$ARGUMENTS" != *"--auto"* ]]; then
-     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-set workflow._auto_chain_active false 2>/dev/null
-   fi
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard sync-chain "$ARGUMENTS" 2>/dev/null
    ```
 3. Read both the chain flag and user preference:
    ```bash

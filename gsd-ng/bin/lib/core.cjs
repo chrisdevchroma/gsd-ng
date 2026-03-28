@@ -98,7 +98,12 @@ function output(result, raw, rawValue) {
   // can tear down the process before the reader consumes the buffer.
   // fs.writeSync(1, ...) blocks until the kernel accepts the bytes, and
   // skipping process.exit() lets the event loop drain naturally.
-  fs.writeSync(1, data);
+  try {
+    fs.writeSync(1, data);
+  } catch (e) {
+    if (e.code !== 'EPIPE') throw e;
+    // EPIPE: pipe reader closed early — data was buffered, safe to ignore
+  }
 }
 
 function error(message) {
@@ -489,9 +494,13 @@ function pathExistsInternal(cwd, targetPath) {
   }
 }
 
-function generateSlugInternal(text) {
+function generateSlugInternal(text, maxLen = 50) {
   if (!text) return null;
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let slug = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (slug.length > maxLen) {
+    slug = slug.slice(0, maxLen).replace(/-[^-]*$/, '');
+  }
+  return slug;
 }
 
 function getMilestoneInfo(cwd) {

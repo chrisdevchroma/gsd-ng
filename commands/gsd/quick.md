@@ -1,7 +1,7 @@
 ---
 name: gsd:quick
 description: Execute a quick task with GSD guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: "[--full] [--discuss] [--research]"
+argument-hint: "[--verify] [--discuss] [--research] [--all]"
 allowed-tools:
   - Read
   - Write
@@ -24,11 +24,20 @@ Quick mode is the same system with a shorter path:
 
 **`--discuss` flag:** Lightweight discussion phase before planning. Surfaces assumptions, clarifies gray areas, captures decisions in CONTEXT.md. Use when the task has ambiguity worth resolving upfront.
 
-**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
+**`--verify` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
 
 **`--research` flag:** Spawns a focused research agent before planning. Investigates implementation approaches, library options, and pitfalls for the task. Use when you're unsure of the best approach.
 
-Flags are composable: `--discuss --research --full` gives discussion + research + plan-checking + verification.
+**`--all` flag:** Enables all optional stages (discuss + research + verify). Convenience shorthand for `--discuss --research --verify`.
+
+Flags are composable: `--discuss --research --verify` gives discussion + research + plan-checking + verification.
+
+| Flag | What it adds |
+|------|-------------|
+| `--discuss` | Lightweight discussion phase, captures decisions in CONTEXT.md |
+| `--research` | Spawns research agent, produces RESEARCH.md |
+| `--verify` | Plan-checking (max 2 iterations) + post-execution verification |
+| `--all` | All of the above (discuss + research + verify) |
 </objective>
 
 <execution_context>

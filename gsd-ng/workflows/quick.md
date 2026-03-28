@@ -3,11 +3,13 @@ Execute small, ad-hoc tasks with GSD guarantees (atomic commits, STATE.md tracki
 
 With `--discuss` flag: lightweight discussion phase before planning. Surfaces assumptions, clarifies gray areas, captures decisions in CONTEXT.md so the planner treats them as locked.
 
-With `--full` flag: enables plan-checking (max 2 iterations) and post-execution verification for quality guarantees without full milestone ceremony.
+With `--verify` flag: enables plan-checking (max 2 iterations) and post-execution verification for quality guarantees without full milestone ceremony.
 
 With `--research` flag: spawns a focused research agent before planning. Investigates implementation approaches, library options, and pitfalls. Use when you're unsure how to approach a task.
 
-Flags are composable: `--discuss --research --full` gives discussion + research + plan-checking + verification.
+With `--all` flag: convenience shorthand that enables all optional stages (discuss + research + verify).
+
+Flags are composable: `--discuss --research --verify` gives discussion + research + plan-checking + verification.
 </purpose>
 
 <tool_usage>
@@ -47,10 +49,13 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Step 1: Parse arguments and get task description**
 
 Parse `$ARGUMENTS` for:
-- `--full` flag → store as `$FULL_MODE` (true/false)
+- `--verify` flag → store as `$VERIFY_MODE` (true/false)
 - `--discuss` flag → store as `$DISCUSS_MODE` (true/false)
 - `--research` flag → store as `$RESEARCH_MODE` (true/false)
+- `--all` flag → store as `$ALL_MODE` (true/false)
 - Remaining text → use as `$DESCRIPTION` if non-empty
+
+After parsing all flags, if `$ALL_MODE` is true, set `$DISCUSS_MODE=true`, `$RESEARCH_MODE=true`, `$VERIFY_MODE=true`.
 
 Parse `--todo-file` flag:
 - `--todo-file` value → store as `$ORIGIN_TODO_FILE` (filename of originating todo, e.g., "fix-broken-test.md")
@@ -89,25 +94,34 @@ If still empty, re-prompt: "Please provide a task description."
 
 Display banner based on active flags:
 
-If `$DISCUSS_MODE` and `$RESEARCH_MODE` and `$FULL_MODE`:
+If `$ALL_MODE`:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► QUICK TASK (DISCUSS + RESEARCH + FULL)
+ GSD ► QUICK TASK (ALL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ All optional stages enabled (discuss + research + verify)
+```
+
+If `$DISCUSS_MODE` and `$RESEARCH_MODE` and `$VERIFY_MODE` (no --all flag):
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► QUICK TASK (DISCUSS + RESEARCH + VERIFY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Discussion + research + plan checking + verification enabled
 ```
 
-If `$DISCUSS_MODE` and `$FULL_MODE` (no research):
+If `$DISCUSS_MODE` and `$VERIFY_MODE` (no research):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► QUICK TASK (DISCUSS + FULL)
+ GSD ► QUICK TASK (DISCUSS + VERIFY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Discussion + plan checking + verification enabled
 ```
 
-If `$DISCUSS_MODE` and `$RESEARCH_MODE` (no full):
+If `$DISCUSS_MODE` and `$RESEARCH_MODE` (no verify):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  GSD ► QUICK TASK (DISCUSS + RESEARCH)
@@ -116,10 +130,10 @@ If `$DISCUSS_MODE` and `$RESEARCH_MODE` (no full):
 ◆ Discussion + research enabled
 ```
 
-If `$RESEARCH_MODE` and `$FULL_MODE` (no discuss):
+If `$RESEARCH_MODE` and `$VERIFY_MODE` (no discuss):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► QUICK TASK (RESEARCH + FULL)
+ GSD ► QUICK TASK (RESEARCH + VERIFY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Research + plan checking + verification enabled
@@ -143,10 +157,10 @@ If `$RESEARCH_MODE` only:
 ◆ Research phase enabled — investigating approaches before planning
 ```
 
-If `$FULL_MODE` only:
+If `$VERIFY_MODE` only:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GSD ► QUICK TASK (FULL MODE)
+ GSD ► QUICK TASK (VERIFY MODE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Plan checking + verification enabled
@@ -388,16 +402,16 @@ If research file not found, warn but continue: "Research agent did not produce o
 
 **Step 5: Spawn planner (quick mode)**
 
-**If `$FULL_MODE`:** Use `quick-full` mode with stricter constraints.
+**If `$VERIFY_MODE`:** Use `quick-verify` mode with stricter constraints.
 
-**If NOT `$FULL_MODE`:** Use standard `quick` mode.
+**If NOT `$VERIFY_MODE`:** Use standard `quick` mode.
 
 ```
 Task(
   prompt="
 <planning_context>
 
-**Mode:** ${FULL_MODE ? 'quick-full' : 'quick'}
+**Mode:** ${VERIFY_MODE ? 'quick-verify' : 'quick'}
 **Directory:** ${QUICK_DIR}
 **Description:** ${DESCRIPTION}
 
@@ -416,9 +430,9 @@ ${RESEARCH_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md (Research fi
 - Create a SINGLE plan with 1-3 focused tasks
 - Quick tasks should be atomic and self-contained
 ${RESEARCH_MODE ? '- Research findings are available — use them to inform library/pattern choices' : '- No research phase'}
-${FULL_MODE ? '- Target ~40% context usage (structured for verification)' : '- Target ~30% context usage (simple, focused)'}
-${FULL_MODE ? '- MUST generate `must_haves` in plan frontmatter (truths, artifacts, key_links)' : ''}
-${FULL_MODE ? '- Each task MUST have `files`, `action`, `verify`, `done` fields' : ''}
+${VERIFY_MODE ? '- Target ~40% context usage (structured for verification)' : '- Target ~30% context usage (simple, focused)'}
+${VERIFY_MODE ? '- MUST generate `must_haves` in plan frontmatter (truths, artifacts, key_links)' : ''}
+${VERIFY_MODE ? '- Each task MUST have `files`, `action`, `verify`, `done` fields' : ''}
 </constraints>
 
 <output>
@@ -441,9 +455,9 @@ If plan not found, error: "Planner failed to create ${quick_id}-PLAN.md"
 
 ---
 
-**Step 5.5: Plan-checker loop (only when `$FULL_MODE`)**
+**Step 5.5: Plan-checker loop (only when `$VERIFY_MODE`)**
 
-Skip this step entirely if NOT `$FULL_MODE`.
+Skip this step entirely if NOT `$VERIFY_MODE`.
 
 Display banner:
 ```
@@ -458,7 +472,7 @@ Checker prompt:
 
 ```markdown
 <verification_context>
-**Mode:** quick-full
+**Mode:** quick-verify
 **Task Description:** ${DESCRIPTION}
 
 <files_to_read>
@@ -511,7 +525,7 @@ Revision prompt:
 
 ```markdown
 <revision_context>
-**Mode:** quick-full (revision)
+**Mode:** quick-verify (revision)
 
 <files_to_read>
 - ${QUICK_DIR}/${quick_id}-PLAN.md (Existing plan)
@@ -606,9 +620,9 @@ Note: For quick tasks producing multiple plans (rare), spawn executors in parall
 
 ---
 
-**Step 6.5: Verification (only when `$FULL_MODE`)**
+**Step 6.5: Verification (only when `$VERIFY_MODE`)**
 
-Skip this step entirely if NOT `$FULL_MODE`.
+Skip this step entirely if NOT `$VERIFY_MODE`.
 
 Display banner:
 ```
@@ -655,6 +669,8 @@ Store as `$VERIFICATION_STATUS`.
 
 Update STATE.md with quick task completion record.
 
+The `init quick` command (Step 1) already detected the table format and migrated it if `--verify` was used. The `table_has_status` field from init JSON determines which row format to use.
+
 **7a. Check if "Quick Tasks Completed" section exists:**
 
 Read STATE.md and check for `### Quick Tasks Completed` section.
@@ -663,7 +679,7 @@ Read STATE.md and check for `### Quick Tasks Completed` section.
 
 Insert after `### Blockers/Concerns` section:
 
-**If `$FULL_MODE`:**
+**If `table_has_status` (from init JSON):**
 ```markdown
 ### Quick Tasks Completed
 
@@ -671,7 +687,7 @@ Insert after `### Blockers/Concerns` section:
 |---|-------------|------|--------|--------|-----------|
 ```
 
-**If NOT `$FULL_MODE`:**
+**If NOT `table_has_status`:**
 ```markdown
 ### Quick Tasks Completed
 
@@ -679,18 +695,16 @@ Insert after `### Blockers/Concerns` section:
 |---|-------------|------|--------|-----------|
 ```
 
-**Note:** If the table already exists, match its existing column format. If adding `--full` to a project that already has quick tasks without a Status column, add the Status column to the header and separator rows, and leave Status empty for the new row's predecessors.
-
 **7c. Append new row to table:**
 
 Use `date` from init:
 
-**If `$FULL_MODE` (or table has Status column):**
+**If `table_has_status` (from init JSON):**
 ```markdown
 | ${quick_id} | ${DESCRIPTION} | ${date} | ${commit_hash} | ${VERIFICATION_STATUS} | [${quick_id}-${slug}](./quick/${quick_id}-${slug}/) |
 ```
 
-**If NOT `$FULL_MODE` (and table has no Status column):**
+**If NOT `table_has_status`:**
 ```markdown
 | ${quick_id} | ${DESCRIPTION} | ${date} | ${commit_hash} | [${quick_id}-${slug}](./quick/${quick_id}-${slug}/) |
 ```
@@ -716,7 +730,7 @@ Build file list:
 - `.planning/STATE.md`
 - If `$DISCUSS_MODE` and context file exists: `${QUICK_DIR}/${quick_id}-CONTEXT.md`
 - If `$RESEARCH_MODE` and research file exists: `${QUICK_DIR}/${quick_id}-RESEARCH.md`
-- If `$FULL_MODE` and verification file exists: `${QUICK_DIR}/${quick_id}-VERIFICATION.md`
+- If `$VERIFY_MODE` and verification file exists: `${QUICK_DIR}/${quick_id}-VERIFICATION.md`
 
 ```bash
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(quick-${quick_id}): ${DESCRIPTION}" --files ${file_list}
@@ -729,11 +743,11 @@ commit_hash=$(git rev-parse --short HEAD)
 
 Display completion output:
 
-**If `$FULL_MODE`:**
+**If `$VERIFY_MODE`:**
 ```
 ---
 
-GSD > QUICK TASK COMPLETE (FULL MODE)
+GSD > QUICK TASK COMPLETE (VERIFY MODE)
 
 Quick Task ${quick_id}: ${DESCRIPTION}
 
@@ -747,7 +761,7 @@ Commit: ${commit_hash}
 Ready for next task: /gsd:quick
 ```
 
-**If NOT `$FULL_MODE`:**
+**If NOT `$VERIFY_MODE`:**
 ```
 ---
 
@@ -769,6 +783,15 @@ Ready for next task: /gsd:quick
 **Origin todo closure (only when $ORIGIN_TODO_FILE is set):**
 
 Skip this section entirely if `$ORIGIN_TODO_FILE` is empty.
+
+**Defensive guard:** Check that the todo still exists in pending/ before attempting closure. If the executor already moved it (a known coordination issue), log and skip gracefully.
+
+```bash
+if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ ! -f ".planning/todos/pending/$ORIGIN_TODO_FILE" ]]; then
+  echo "[warn] Origin todo already moved from pending/: $ORIGIN_TODO_FILE — skipping closure"
+  ORIGIN_TODO_FILE=""  # Clear to skip all closure logic below
+fi
+```
 
 Perform lightweight verification: does the SUMMARY.md describe work that addresses the todo?
 
@@ -818,17 +841,17 @@ Display: `Todo kept open: $ORIGIN_TODO_TITLE`
 <success_criteria>
 - [ ] ROADMAP.md validation passes
 - [ ] User provides task description
-- [ ] `--full`, `--discuss`, and `--research` flags parsed from arguments when present
+- [ ] `--verify`, `--discuss`, `--research`, and `--all` flags parsed from arguments when present
 - [ ] Slug generated (lowercase, hyphens, max 40 chars)
 - [ ] Quick ID generated (YYMMDD-xxx format, 2s Base36 precision)
 - [ ] Directory created at `.planning/quick/YYMMDD-xxx-slug/`
 - [ ] (--discuss) Gray areas identified and presented, decisions captured in `${quick_id}-CONTEXT.md`
 - [ ] (--research) Research agent spawned, `${quick_id}-RESEARCH.md` created
 - [ ] `${quick_id}-PLAN.md` created by planner (honors CONTEXT.md decisions when --discuss, uses RESEARCH.md findings when --research)
-- [ ] (--full) Plan checker validates plan, revision loop capped at 2
+- [ ] (--verify) Plan checker validates plan, revision loop capped at 2
 - [ ] `${quick_id}-SUMMARY.md` created by executor
-- [ ] (--full) `${quick_id}-VERIFICATION.md` created by verifier
-- [ ] STATE.md updated with quick task row (Status column when --full)
+- [ ] (--verify) `${quick_id}-VERIFICATION.md` created by verifier
+- [ ] STATE.md updated with quick task row (Status column when --verify)
 - [ ] Artifacts committed
 - [ ] (--todo-file) Origin todo tracked and closure offered at completion
 - [ ] (--todo-file) Closure gated on lightweight verification

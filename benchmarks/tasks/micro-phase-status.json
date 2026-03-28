@@ -1,0 +1,15 @@
+{
+  "id": "micro-phase-status",
+  "type": "micro",
+  "description": "Read STATE.md and report the current phase number and name",
+  "prompt": "Read @.planning/STATE.md and tell me: what is the current phase number and name? Output ONLY a JSON object with fields: phase_number, phase_name, status. No explanation.",
+  "timeout_ms": 30000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "json_block",
+    "required_fields": ["phase_number", "phase_name"],
+    "contains": ["3", "bug"],
+    "output_length_hint": { "min": 30, "max": 300 }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "micro-gray-area",
+  "type": "micro",
+  "description": "Answer a nuanced GSD workflow question requiring judgment",
+  "prompt": "In the context of GSD (get-shit-done) development workflow: Should a bug fix that touches 2 files be done as a quick-task or planned as a full phase? Answer in 2-3 sentences explaining the tradeoff.",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": [],
+    "not_contains": [],
+    "output_length_hint": { "min": 50, "max": 500 }
+  }
+}
