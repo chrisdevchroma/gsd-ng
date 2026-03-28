@@ -1,0 +1,84 @@
+name: Security Override
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  checks: write
+  pull-requests: read
+
+jobs:
+  process-override:
+    # Only run on PR comments matching the override pattern
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/security-override:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify permissions and process override
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const comment = context.payload.comment;
+            const issue = context.payload.issue;
+
+            // Extract reason from comment body
+            const match = comment.body.match(/^\/security-override:\s*(.+)/);
+            if (!match || !match[1].trim()) {
+              core.setFailed('Override requires a reason. Format: /security-override: <reason>');
+              return;
+            }
+            const reason = match[1].trim();
+
+            // Verify commenter has write access (maintainer or admin)
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: comment.user.login,
+            });
+
+            const allowed = ['write', 'admin', 'maintain'];
+            if (!allowed.includes(permission.permission)) {
+              core.setFailed(`User ${comment.user.login} does not have write permissions (has: ${permission.permission})`);
+              return;
+            }
+
+            // Find the failed Security Scan check run on this PR
+            const prNumber = issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: pr.head.sha,
+              check_name: 'security-scan',
+              status: 'completed',
+              filter: 'latest',
+            });
+
+            const failedCheck = checkRuns.check_runs.find(cr => cr.conclusion === 'failure');
+            if (!failedCheck) {
+              core.info('No failed security-scan check found. Nothing to override.');
+              return;
+            }
+
+            // Update check run to success
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: failedCheck.id,
+              conclusion: 'success',
+              output: {
+                title: 'Security Override Applied',
+                summary: `Override by @${comment.user.login}: ${reason}`,
+              },
+            });
+
+            core.info(`Security check overridden by @${comment.user.login}. Reason: ${reason}`);
+            // The comment itself is the permanent audit trail — no deletion

@@ -8,7 +8,7 @@ const os = require('os');
 const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, extractCurrentMilestone, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES } = require('./model-profiles.cjs');
-const { validatePath } = require('./security.cjs');
+const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
 
 function cmdGenerateSlug(text, raw) {
   if (!text) {
@@ -1704,7 +1704,7 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
       number: iid || parseInt(String(number), 10),
       iid: iid || null,
       title: 'Test issue ' + number,
-      body: 'Test body',
+      body: process.env.GSD_TEST_BODY || 'Test body',
       labels: labels.map(l => (typeof l === 'string' ? { name: l } : l)),
       state: 'open',
     };
@@ -1746,6 +1746,28 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
     ? `${platform}:${repo}#${issueNumber}`
     : `${platform}:#${issueNumber}`;
 
+  // Security: scan external content for prompt injection patterns (Rule of Two: external data + write access)
+  const titleScan = scanForInjection(title, { external: true });
+  const bodyScan = scanForInjection(body, { external: true });
+
+  // Log all findings regardless of tier
+  if (!titleScan.clean) {
+    logSecurityEvent(cwd, { source: `issue-import:${externalRef}:title`, tier: titleScan.tier, blocked: titleScan.blocked, findings: titleScan.findings });
+  }
+  if (!bodyScan.clean) {
+    logSecurityEvent(cwd, { source: `issue-import:${externalRef}:body`, tier: bodyScan.tier, blocked: bodyScan.blocked, findings: bodyScan.findings });
+  }
+
+  // Block on high-confidence detection (unambiguous attack indicators in external content)
+  const highTier = titleScan.tier === 'high' || bodyScan.tier === 'high';
+  if (highTier) {
+    const allBlocked = [...titleScan.blocked, ...bodyScan.blocked];
+    error(`[SECURITY] High-confidence injection detected in issue ${externalRef}. Detected: ${allBlocked.join('; ')}. Re-run with --force-unsafe to override.`);
+  }
+
+  // Wrap body in untrusted-content tags for all non-blocked writes
+  const wrappedBody = wrapUntrustedContent(body, externalRef);
+
   // Generate filename: YYYY-MM-DD-{slug}.md
   const today = new Date().toISOString().split('T')[0];
   const slug = title
@@ -1777,7 +1799,7 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
     '',
     `[Imported from ${platformDisplay} issue #${issueNumber}]`,
     '',
-    body,
+    wrappedBody,
     '',
     '## Solution',
     '',
@@ -2031,7 +2053,19 @@ function cmdIssueSync(cwd, phase, options, raw) {
       const content = fs.readFileSync(path.join(doneTodosDir, file), 'utf-8');
       const fm = extractFrontmatter(content);
       if (fm && fm.external_ref) {
-        const refResults = syncSingleRef(fm.external_ref, commentContext, itConfig);
+        const refStr = fm.external_ref;
+
+        // Security: scan todo content for injection before processing (external data was written on import)
+        const scanResult = scanForInjection(content, { external: true });
+        if (!scanResult.clean) {
+          logSecurityEvent(cwd, { source: `issue-sync:${refStr}`, tier: scanResult.tier, blocked: scanResult.blocked, findings: scanResult.findings });
+        }
+        if (scanResult.tier === 'high') {
+          // Log warning but don't block sync (batch operation — log and continue)
+          process.stderr.write(`[security] High-confidence injection detected in sync for ${refStr}. Logged to security-events.log.\n`);
+        }
+
+        const refResults = syncSingleRef(refStr, commentContext, itConfig);
         synced.push(...refResults);
       }
     } catch (_e) {

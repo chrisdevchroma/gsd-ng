@@ -9,6 +9,7 @@ This is the bridge between GSD's internal work and team-facing code review.
 <required_reading>
 Read STATE.md and config.json before any operation.
 @~/.claude/gsd-ng/references/planning-config.md
+@references/security-untrusted-content.md
 </required_reading>
 
 <process>
@@ -320,6 +321,33 @@ sed -i \
 ```
 </step>
 
+<step name="sanitize_outbound">
+Before building the PR title or creating the PR, sanitize the description body:
+
+If the PR body contains `<untrusted-content` tags (from imported issue content in phase context), these must be stripped before submission. These tags are for internal GSD agent use and should not appear in GitHub/GitLab PR descriptions.
+
+```bash
+# The agent should process the PR body text to remove wrapper tags
+# Replace: <untrusted-content source="...">content</untrusted-content>
+# With: content (inner text preserved, tags removed)
+if grep -q '<untrusted-content' "$PR_BODY_FILE" 2>/dev/null; then
+  # Strip opening tags: <untrusted-content source="...">
+  # Strip closing tags: </untrusted-content>
+  # Preserve everything between the tags (inner content intact)
+  sed -i 's|<untrusted-content[^>]*>||g; s|</untrusted-content>||g' "$PR_BODY_FILE"
+fi
+```
+
+This is a text transformation the agent performs on the PR body string before passing it to `gh pr create`. The pattern to remove is:
+- Opening tag: `<untrusted-content source="...">` (any source value)
+- Closing tag: `</untrusted-content>`
+- Preserve everything between the tags
+
+If no `<untrusted-content` tags are present, no action needed.
+
+Note: `stripUntrustedWrappers()` in `bin/lib/security.cjs` implements the same logic programmatically for non-workflow code paths. This step is the agent-facing equivalent.
+</step>
+
 <step name="build_pr_title">
 Determine PR title:
 
@@ -338,7 +366,7 @@ Edit? (enter to accept, or type new title)
 </step>
 
 <step name="create_pr">
-Create the PR/MR using the platform-specific CLI:
+Create the PR/MR using the platform-specific CLI. The body file (`$PR_BODY_FILE`) has been sanitized of `<untrusted-content>` wrapper tags by the `sanitize_outbound` step — external systems should never receive these internal GSD tags.
 
 ```bash
 # Determine draft flag

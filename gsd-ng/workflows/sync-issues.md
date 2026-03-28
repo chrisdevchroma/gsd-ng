@@ -33,6 +33,7 @@ If the user picks "Other" (free text): follow up as plain text — NOT another A
 
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
+@references/security-untrusted-content.md
 </required_reading>
 
 <process>
@@ -136,6 +137,12 @@ For each conflict, use AskUserQuestion:
   - "Mark GSD todo as done" — move the GSD todo to done
   - "Reopen external issue" — use CLI to reopen the external issue
   - "Ignore" — leave both states as-is
+</step>
+
+<step name="security_awareness">
+After sync completes, check stderr output for `[security]` warnings.
+If present, inform the user:
+"Security scan detected suspicious content in synced issues. Details logged to .claude/logs/security-events.log. Run /gsd:health to review."
 </step>
 
 <step name="summary">

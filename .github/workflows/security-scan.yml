@@ -1,0 +1,33 @@
+name: Security Scan
+
+on:
+  pull_request_target:
+    paths:
+      - '.planning/**'
+      - '.claude/**'
+      - '.github/**'
+
+permissions:
+  checks: write
+  pull-requests: read
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch (trusted)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        # No ref specified — defaults to default branch (trusted execution model)
+        # PR diff data is fetched via GitHub API in ci-security-scan.cjs, not via checkout
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Run security scan
+        run: node scripts/ci-security-scan.cjs
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
