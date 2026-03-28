@@ -39,9 +39,19 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload to GitHub Release
+      - name: Create GitHub Release as draft
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: dist/gsd-ng.tar.gz
           generate_release_notes: true
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          draft: true
+
+      - name: Publish release
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name==\"$TAG\") | .id")
+          gh api repos/${{ github.repository }}/releases/$RELEASE_ID --method PATCH -f draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}
