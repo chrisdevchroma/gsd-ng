@@ -11,7 +11,22 @@ Configuration options for `.planning/` directory behavior.
 "git": {
   "branching_strategy": "none",
   "phase_branch_template": "gsd/phase-{phase}-{slug}",
-  "milestone_branch_template": "gsd/{milestone}-{slug}"
+  "milestone_branch_template": "gsd/{milestone}-{slug}",
+  "target_branch": "main",
+  "auto_push": false,
+  "remote": "origin",
+  "review_branch_template": "{type}/{phase}-{slug}",
+  "pr_draft": true,
+  "platform": null,
+  "type_aliases": {
+    "feat": "feature",
+    "fix": "bugfix",
+    "chore": "chore",
+    "refactor": "refactor"
+  },
+  "commit_format": "gsd",
+  "commit_template": null,
+  "versioning_scheme": "semver"
 }
 ```
 
@@ -22,6 +37,15 @@ Configuration options for `.planning/` directory behavior.
 | `git.branching_strategy` | `"none"` | Git branching approach: `"none"`, `"phase"`, or `"milestone"` |
 | `git.phase_branch_template` | `"gsd/phase-{phase}-{slug}"` | Branch template for phase strategy |
 | `git.milestone_branch_template` | `"gsd/{milestone}-{slug}"` | Branch template for milestone strategy |
+| `git.target_branch` | `"main"` | Default merge target for PRs and branch creation |
+| `git.auto_push` | `false` | Push work branch to remote after phase completion |
+| `git.remote` | `"origin"` | Remote name for push/PR operations |
+| `git.review_branch_template` | `"{type}/{phase}-{slug}"` | Template for team-facing review branches |
+| `git.pr_draft` | `true` | Create PRs as drafts by default |
+| `git.platform` | `null` | Override platform auto-detection |
+| `git.commit_format` | `"gsd"` | Commit message preset: gsd, conventional, issue-first, custom |
+| `git.commit_template` | `null` | Custom template string (when commit_format is custom) |
+| `git.versioning_scheme` | `"semver"` | Version scheme: semver, calver, date |
 </config_schema>
 
 <commit_docs_behavior>
@@ -196,5 +220,103 @@ Squash merge is recommended — keeps main branch history clean while preserving
 | `milestone` | Release branches, staging environments, PR per version |
 
 </branching_strategy_behavior>
+
+<git_collaboration_config>
+
+**Git Collaboration Options (Phase 13):**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `git.target_branch` | `"main"` | Default merge target for PRs and branch creation |
+| `git.auto_push` | `false` | Push work branch to remote after phase completion |
+| `git.remote` | `"origin"` | Remote name for push/PR operations |
+| `git.review_branch_template` | `"{type}/{phase}-{slug}"` | Template for team-facing review branches |
+| `git.type_aliases` | `{"feat":"feature","fix":"bugfix","chore":"chore","refactor":"refactor"}` | Maps commit types to branch prefixes |
+| `git.pr_template` | `null` | Path to custom PR description template (markdown with GSD variables) |
+| `git.pr_draft` | `true` | Create PRs as drafts by default |
+| `git.platform` | `null` | Override platform auto-detection: `"github"`, `"gitlab"`, `"forgejo"`, `"gitea"` |
+
+**Two-Layer Branch Model:**
+
+GSD uses a two-layer branch model for team collaboration:
+
+1. **Work branch** (Layer 1): GSD's internal branch for atomic per-task commits. Controlled by existing `branching_strategy`, `phase_branch_template`, `milestone_branch_template`. Based from `target_branch` instead of current HEAD.
+
+2. **Review branch** (Layer 2): Team-facing branch created by `/gsd:create-pr`. Named via `review_branch_template`. Contains squashed commits for clean PR history.
+
+**Target Branch:**
+
+The `target_branch` determines:
+- Base for new work branches: `git checkout -b {work_branch} {target_branch}`
+- PR target: PRs opened against this branch
+- Merge target in `complete-milestone`
+
+Per-milestone override: `/gsd:new-milestone --target-branch develop`
+
+**Review Branch Template Variables:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{type}` | Branch type from type_aliases | `feature`, `bugfix` |
+| `{phase}` | Zero-padded phase number | `13` |
+| `{slug}` | Lowercase hyphenated phase name | `git-branching` |
+
+**Platform CLI Requirements:**
+
+| Platform | CLI | Install |
+|----------|-----|---------|
+| GitHub | `gh` | `brew install gh` or github.com/cli/cli |
+| GitLab | `glab` | `brew install glab` or gitlab.com/gitlab-org/cli |
+| Forgejo | `fj` | forgejo.org/cli |
+| Gitea | `tea` | gitea.com/gitea/tea |
+
+If the required CLI is not installed, PR creation is disabled with a warning. Push features still work.
+
+</git_collaboration_config>
+
+<commit_format_config>
+
+**Commit Format & Versioning Options (Phase 14):**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `git.commit_format` | `"gsd"` | Commit message preset: `"gsd"`, `"conventional"`, `"issue-first"`, `"custom"` |
+| `git.commit_template` | `null` | Custom template string when `commit_format` is `"custom"`. Placeholders: `{type}`, `{scope}`, `{description}`, `{issue}` |
+| `git.versioning_scheme` | `"semver"` | Version scheme: `"semver"`, `"calver"`, `"date"` |
+
+**Commit Format Presets:**
+
+| Preset | Format | Example |
+|--------|--------|---------|
+| `gsd` (default) | `{type}({scope}): {description}` with phase/plan prefix | `feat(14-01): add changelog generation` |
+| `conventional` | Strict Conventional Commits format (message passed through) | `feat(auth): add OAuth2 login` |
+| `issue-first` | `[#N] {description}` when issue ref present | `[#42] add OAuth2 login` |
+| `custom` | User-defined template from `git.commit_template` | Depends on template |
+
+**GSD-generated commits only** -- no pre-commit hook enforcement on manual git commits. GSD respects existing project git hooks (e.g., commitlint) when they are present.
+
+**Issue reference trailers:**
+
+When a requirement has an `external_ref` field, trailers are appended per Conventional Commits footer spec:
+```
+feat(auth): add OAuth2 login
+
+Fixes #42
+Closes #43
+```
+
+Blank line before trailers is required. Recognized by GitHub/GitLab for auto-closing issues.
+
+**Versioning Schemes:**
+
+| Scheme | Format | Bump behavior |
+|--------|--------|---------------|
+| `semver` (default) | `MAJOR.MINOR.PATCH` | Standard SemVer: breaking=major, feat=minor, fix=patch |
+| `calver` | `YYYY.MM.PATCH` | Year.Month from current date, patch increments within month |
+| `date` | `MAJOR.MINOR.BUILD` | Chrome-style: BUILD auto-increments each release |
+
+Snapshot builds append `+{short_hash}` (e.g., `1.2.3+abc1234`) per SemVer 2.0.0 build metadata spec. The `+hash` suffix is written to `VERSION` file only (not `package.json` -- npm rejects build metadata).
+
+</commit_format_config>
 
 </planning_config>

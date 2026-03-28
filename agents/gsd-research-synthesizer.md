@@ -3,8 +3,6 @@ name: gsd-research-synthesizer
 description: Synthesizes research outputs from parallel researcher agents into SUMMARY.md. Spawned by /gsd:new-project after 4 researcher agents complete.
 tools: Read, Write, Bash
 color: purple
-skills:
-  - gsd-synthesizer-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -33,6 +31,12 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Write SUMMARY.md
 - Commit ALL research files (researchers write but don't commit — you commit everything)
 </role>
+
+<project_context>
+Before synthesizing, discover project context:
+
+**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
+</project_context>
 
 <downstream_consumer>
 Your SUMMARY.md is consumed by the gsd-roadmapper agent which uses it to:

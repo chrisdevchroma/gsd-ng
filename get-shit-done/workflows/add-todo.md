@@ -2,6 +2,35 @@
 Capture an idea, task, or issue that surfaces during a GSD session as a structured todo for later work. Enables "thought → capture → continue" flow without losing context.
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 </required_reading>
@@ -20,7 +49,7 @@ Extract from init JSON: `commit_docs`, `date`, `timestamp`, `todo_count`, `todos
 
 Ensure directories exist:
 ```bash
-mkdir -p .planning/todos/pending .planning/todos/done
+mkdir -p .planning/todos/pending .planning/todos/completed
 ```
 
 Note existing areas from the todos array for consistency in infer_area step.
@@ -96,6 +125,9 @@ title: [title]
 area: [area]
 files:
   - [file:lines]
+# Optional — for recurring reminders:
+# recurring: true
+# interval: 30d
 ---
 
 ## Problem
@@ -106,6 +138,11 @@ files:
 
 [approach hints or "TBD"]
 ```
+
+**Recurring todos:** If the user specifies this should be a recurring or permanent reminder, add `recurring: true` and `interval: {duration}` to the frontmatter (uncomment and fill those fields). Valid interval formats: `7d`, `14d`, `30d`, `90d` (any Nd/Nw/Nm/Ny format — d=days, w=weeks, m=months, y=years). Do NOT add `last_completed` — it will be set automatically on first completion. Recurring todos stay in `pending/` after completion and resurface when their interval elapses.
+
+The `--recurring` and `--interval` flags are recognized when invoking via arguments:
+- `/gsd:add-todo Check upstream changes --recurring --interval 30d`
 </step>
 
 <step name="update_state">
@@ -128,21 +165,27 @@ Confirm: "Committed: docs: capture todo - [title]"
 </step>
 
 <step name="confirm">
+Display the saved todo summary:
+
 ```
 Todo saved: .planning/todos/pending/[filename]
 
   [title]
   Area: [area]
   Files: [count] referenced
-
----
-
-Would you like to:
-
-1. Continue with current work
-2. Add another todo
-3. View all todos (/gsd:check-todos)
 ```
+
+Then use AskUserQuestion:
+- header: "Todo saved"
+- question: "[title] captured. What would you like to do next?"
+- options:
+  - "Continue with current work" -- return to what you were doing; exit workflow
+  - "Add another todo" -- capture another todo now
+  - "View all todos" -- run /gsd:check-todos
+
+If user selects "Add another todo": loop back to the `extract_content` step within this same workflow invocation (do NOT invoke a fresh /gsd:add-todo).
+If user selects "View all todos": invoke /gsd:check-todos (the workflow reference, not inline summary).
+If user selects "Continue with current work": exit the workflow.
 </step>
 
 </process>

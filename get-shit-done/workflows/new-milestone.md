@@ -4,6 +4,35 @@ Start a new milestone cycle for an existing project. Loads project context, gath
 
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 
 Read all files referenced by the invoking prompt's execution_context before starting.
@@ -13,6 +42,9 @@ Read all files referenced by the invoking prompt's execution_context before star
 <process>
 
 ## 1. Load Context
+
+**Parse flags:**
+- `--target-branch {branch}`: Override the global `git.target_branch` config for this milestone. Sets the target branch in config.json (source of truth) and records it in STATE.md for visibility.
 
 - Read PROJECT.md (existing project, validated requirements, decisions)
 - Read MILESTONES.md (what shipped previously)
@@ -65,6 +97,18 @@ Status: Defining requirements
 Last activity: [today] — Milestone v[X.Y] started
 ```
 
+If `--target-branch` flag was provided, add to STATE.md Current Position:
+```
+Target Branch: {branch} (set via --target-branch)
+```
+
+And invoke config-set to persist to config.json (source of truth):
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set git.target_branch "{branch}"
+```
+
+This ensures config.json is the source of truth, while STATE.md provides visibility.
+
 Keep Accumulated Context section from previous milestone.
 
 ## 6. Cleanup and Commit
@@ -73,6 +117,11 @@ Delete MILESTONE-CONTEXT.md if exists (consumed).
 
 ```bash
 node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: start milestone v[X.Y] [Name]" --files .planning/PROJECT.md .planning/STATE.md
+```
+
+If `--target-branch` was provided, include `.planning/config.json` in the commit:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: start milestone v[X.Y] [Name]" --files .planning/PROJECT.md .planning/STATE.md .planning/config.json
 ```
 
 ## 7. Load Context and Resolve Models
@@ -86,21 +135,23 @@ Extract from init JSON: `researcher_model`, `synthesizer_model`, `roadmapper_mod
 
 ## 8. Research Decision
 
+Check `research_enabled` from init JSON (loaded from config).
+
+**If `research_enabled` is `true`:**
+
 AskUserQuestion: "Research the domain ecosystem for new features before defining requirements?"
 - "Research first (Recommended)" — Discover patterns, features, architecture for NEW capabilities
-- "Skip research" — Go straight to requirements
+- "Skip research for this milestone" — Go straight to requirements (does not change your default)
 
-**Persist choice to config** (so future `/gsd:plan-phase` honors it):
+**If `research_enabled` is `false`:**
 
-```bash
-# If "Research first": persist true
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow.research true
+AskUserQuestion: "Research the domain ecosystem for new features before defining requirements?"
+- "Skip research (current default)" — Go straight to requirements
+- "Research first" — Discover patterns, features, architecture for NEW capabilities
 
-# If "Skip research": persist false
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow.research false
-```
+**IMPORTANT:** Do NOT persist this choice to config.json. The `workflow.research` setting is a persistent user preference that controls plan-phase behavior across the project. Changing it here would silently alter future `/gsd:plan-phase` behavior. To change the default, use `/gsd:settings`.
 
-**If "Research first":**
+**If user chose "Research first":**
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -379,6 +430,7 @@ Also: `/gsd:plan-phase [N]` — skip discussion, plan directly
 - [ ] ROADMAP.md phases continue from previous milestone
 - [ ] All commits made (if planning docs committed)
 - [ ] User knows next step: `/gsd:discuss-phase [N]`
+- [ ] If --target-branch provided: git.target_branch updated in config.json
 
 **Atomic commits:** Each phase commits its artifacts immediately.
 </success_criteria>

@@ -1,6 +1,6 @@
 ---
 name: gsd:discuss-phase
-description: Gather phase context through adaptive questioning before planning
+description: Gather phase context through adaptive questioning before planning. Use --auto to skip interactive questions (Claude picks recommended defaults).
 argument-hint: "<phase> [--auto]"
 allowed-tools:
   - Read
@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
   - Grep
   - AskUserQuestion
-  - Task
+  - Agent
   - mcp__context7__resolve-library-id
   - mcp__context7__query-docs
 ---
@@ -27,6 +27,32 @@ Extract implementation decisions that downstream agents need — researcher and 
 
 **Output:** `{phase_num}-CONTEXT.md` — decisions clear enough that downstream agents can act without asking the user again
 </objective>
+
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
 
 <execution_context>
 @~/.claude/get-shit-done/workflows/discuss-phase.md
@@ -68,7 +94,8 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 
 **Probing depth:**
 - Ask 4 questions per area before checking
-- "More questions about [area], or move to next?"
+- "More questions about [area], or move to next? (Remaining: [list unvisited areas])"
+- Show remaining unvisited areas so user knows what's still ahead
 - If more → ask 4 more, check again
 - After all areas → "Ready to create context?"
 

@@ -6,7 +6,7 @@ allowed-tools:
   - Read
   - Write
   - Bash
-  - Task
+  - Agent
   - AskUserQuestion
 ---
 <objective>
@@ -37,6 +37,32 @@ Milestone name: $ARGUMENTS (optional - will prompt if not provided)
 
 Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
 </context>
+
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
 
 <process>
 Execute the new-milestone workflow from @~/.claude/get-shit-done/workflows/new-milestone.md end-to-end.

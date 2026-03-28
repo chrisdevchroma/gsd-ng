@@ -2,6 +2,35 @@
 Audit Nyquist validation gaps for a completed phase. Generate missing tests. Update VALIDATION.md.
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 @~/.claude/get-shit-done/references/ui-brand.md
 </required_reading>
@@ -19,7 +48,7 @@ Parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`.
 
 ```bash
 AUDITOR_MODEL=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" resolve-model gsd-nyquist-auditor --raw)
-NYQUIST_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config get workflow.nyquist_validation --raw)
+NYQUIST_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.nyquist_validation --raw)
 ```
 
 If `NYQUIST_CFG` is `false`: exit with "Nyquist validation is disabled. Enable via /gsd:settings."
@@ -84,13 +113,32 @@ Call AskUserQuestion with gap table and options:
 
 ## 5. Spawn gsd-nyquist-auditor
 
+```bash
+WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+```
+
 ```
 Task(
-  prompt="Read ~/.claude/agents/gsd-nyquist-auditor.md for instructions.\n\n" +
-    "<files_to_read>{PLAN, SUMMARY, impl files, VALIDATION.md}</files_to_read>" +
-    "<gaps>{gap list}</gaps>" +
-    "<test_infrastructure>{framework, config, commands}</test_infrastructure>" +
-    "<constraints>Never modify impl files. Max 3 debug iterations. Escalate impl bugs.</constraints>",
+  prompt="Read ~/.claude/agents/gsd-nyquist-auditor.md for instructions.
+
+<files_to_read>{PLAN, SUMMARY, impl files, VALIDATION.md}</files_to_read>
+
+<workspace_context>
+Workspace type: {WORKSPACE_TYPE}
+Project root: {PROJECT_ROOT}
+Submodule paths: {SUBMODULE_PATHS}
+
+CRITICAL: Always commit to the source location. Your working directory is {PROJECT_ROOT}.
+If workspace type is 'submodule', source code lives in the submodule directories listed above.
+Do NOT modify deployed copies (e.g., .claude/get-shit-done/) — always edit source first.
+</workspace_context>
+
+<gaps>{gap list}</gaps>
+<test_infrastructure>{framework, config, commands}</test_infrastructure>
+<constraints>Never modify impl files. Max 3 debug iterations. Escalate impl bugs.</constraints>",
   subagent_type="gsd-nyquist-auditor",
   model="{AUDITOR_MODEL}",
   description="Fill validation gaps for Phase {N}"
@@ -128,7 +176,7 @@ Handle return:
 git add {test_files}
 git commit -m "test(phase-${PHASE}): add Nyquist validation tests"
 
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit-docs "docs(phase-${PHASE}): add/update validation strategy"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-${PHASE}): add/update validation strategy"
 ```
 
 ## 8. Results + Routing

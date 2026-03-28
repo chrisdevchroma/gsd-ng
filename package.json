@@ -1,9 +1,9 @@
 {
-  "name": "get-shit-done-cc",
-  "version": "1.22.4",
-  "description": "A meta-prompting, context engineering and spec-driven development system for Claude Code, OpenCode, Gemini and Codex by TÂCHES.",
+  "name": "get-shit-done-ng",
+  "version": "1.0.0",
+  "description": "A meta-prompting, context engineering and spec-driven development system for Claude Code.",
   "bin": {
-    "get-shit-done-cc": "bin/install.js"
+    "get-shit-done-ng": "bin/install.js"
   },
   "files": [
     "bin",
@@ -19,21 +19,17 @@
     "ai",
     "meta-prompting",
     "context-engineering",
-    "spec-driven-development",
-    "gemini",
-    "gemini-cli",
-    "codex",
-    "codex-cli"
+    "spec-driven-development"
   ],
   "author": "TÂCHES",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/glittercowboy/get-shit-done.git"
+    "url": "git+https://github.com/chrisdevchroma/get-shit-done-ng.git"
   },
-  "homepage": "https://github.com/glittercowboy/get-shit-done",
+  "homepage": "https://github.com/chrisdevchroma/get-shit-done-ng",
   "bugs": {
-    "url": "https://github.com/glittercowboy/get-shit-done/issues"
+    "url": "https://github.com/chrisdevchroma/get-shit-done-ng/issues"
   },
   "engines": {
     "node": ">=16.7.0"
@@ -44,6 +40,7 @@
   },
   "scripts": {
     "build:hooks": "node scripts/build-hooks.js",
+    "build:tarball": "npm run build:hooks && node scripts/build-tarball.js",
     "prepublishOnly": "npm run build:hooks",
     "test": "node scripts/run-tests.cjs",
     "test:coverage": "c8 --check-coverage --lines 70 --reporter text --include 'get-shit-done/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs"

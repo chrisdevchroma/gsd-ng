@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-  - Task
+  - Agent
   - TodoWrite
   - AskUserQuestion
 ---
@@ -34,6 +34,32 @@ Phase: $ARGUMENTS
 
 Context files are resolved inside the workflow via `gsd-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
 </context>
+
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
 
 <process>
 Execute the execute-phase workflow from @~/.claude/get-shit-done/workflows/execute-phase.md end-to-end.

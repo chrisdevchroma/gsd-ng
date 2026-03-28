@@ -11,6 +11,7 @@
       .prompt { fill: #7aa2f7; }
       .command { fill: #c0caf5; }
       .cyan { fill: #7dcfff; }
+      .ng-text { fill: #4a9abf; }
       .green { fill: #9ece6a; }
       .dim { fill: #565f89; }
       .white { fill: #c0caf5; }
@@ -38,9 +39,9 @@
     <!-- Prompt line -->
     <text class="text prompt" font-size="15" y="0">~</text>
     <text class="text dim" font-size="15" x="16" y="0">$</text>
-    <text class="text command" font-size="15" x="36" y="0">npx get-shit-done-cc</text>
+    <text class="text command" font-size="15" x="36" y="0">npx get-shit-done-ng</text>
 
-    <!-- Banner -->
+    <!-- GSD Banner -->
     <text class="text cyan" font-size="14" y="48" xml:space="preserve">   ██████╗ ███████╗██████╗</text>
     <text class="text cyan" font-size="14" y="68" xml:space="preserve">  ██╔════╝ ██╔════╝██╔══██╗</text>
     <text class="text cyan" font-size="14" y="88" xml:space="preserve">  ██║  ███╗███████╗██║  ██║</text>
@@ -48,21 +49,29 @@
     <text class="text cyan" font-size="14" y="128" xml:space="preserve">  ╚██████╔╝███████║██████╔╝</text>
     <text class="text cyan" font-size="14" y="148" xml:space="preserve">   ╚═════╝ ╚══════╝╚═════╝</text>
 
+    <!-- NG block - right-aligned at GSD right edge, half size, muted blue -->
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="158" xml:space="preserve">███╗   ██╗ ██████╗ </text>
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="168" xml:space="preserve">████╗  ██║██╔════╝ </text>
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="178" xml:space="preserve">██╔██╗ ██║██║  ███╗</text>
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="188" xml:space="preserve">██║╚██╗██║██║   ██║</text>
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="198" xml:space="preserve">██║ ╚████║╚██████╔╝</text>
+    <text class="text ng-text" font-size="7" text-anchor="end" x="228" y="208" xml:space="preserve">╚═╝  ╚═══╝ ╚═════╝ </text>
+
     <!-- Title and subtitle -->
-    <text class="text white" font-size="15" y="188">  Get Shit Done <tspan class="dim">v1.0.1</tspan></text>
-    <text class="text white" font-size="15" y="212">  A meta-prompting, context engineering and spec-driven</text>
-    <text class="text white" font-size="15" y="232">  development system for Claude Code by TÂCHES.</text>
+    <text class="text white" font-size="15" y="244">  get-shit-done-ng <tspan class="dim">v1.0.0</tspan></text>
+    <text class="text white" font-size="15" y="268">  A meta-prompting, context engineering and spec-driven</text>
+    <text class="text white" font-size="15" y="288">  development system for Claude Code.</text>
 
     <!-- Install output -->
-    <text class="text" font-size="15" y="280"><tspan class="green">  ✓</tspan><tspan class="white"> Installed commands/gsd</tspan></text>
-    <text class="text" font-size="15" y="304"><tspan class="green">  ✓</tspan><tspan class="white"> Installed get-shit-done</tspan></text>
+    <text class="text" font-size="15" y="332"><tspan class="green">  ✓</tspan><tspan class="white"> Installed commands/gsd</tspan></text>
+    <text class="text" font-size="15" y="352"><tspan class="green">  ✓</tspan><tspan class="white"> Installed get-shit-done-ng</tspan></text>
 
     <!-- Done message -->
-    <text class="text" font-size="15" y="352"><tspan class="green">  Done!</tspan><tspan class="white"> Run </tspan><tspan class="cyan">/gsd:help</tspan><tspan class="white"> to get started.</tspan></text>
+    <text class="text" font-size="15" y="400"><tspan class="green">  Done!</tspan><tspan class="white"> Run </tspan><tspan class="cyan">/gsd:help</tspan><tspan class="white"> to get started.</tspan></text>
 
     <!-- New prompt -->
-    <text class="text prompt" font-size="15" y="400">~</text>
-    <text class="text dim" font-size="15" x="16" y="400">$</text>
-    <text class="text white" font-size="15" x="36" y="400">▌</text>
+    <text class="text prompt" font-size="15" y="440">~</text>
+    <text class="text dim" font-size="15" x="16" y="440">$</text>
+    <text class="text white" font-size="15" x="36" y="440">▌</text>
   </g>
 </svg>

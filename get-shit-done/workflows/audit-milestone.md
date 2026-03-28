@@ -133,7 +133,7 @@ For each REQ-ID, determine status using all three sources:
 Skip if `workflow.nyquist_validation` is explicitly `false` (absent = enabled).
 
 ```bash
-NYQUIST_CONFIG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config get workflow.nyquist_validation --raw 2>/dev/null)
+NYQUIST_CONFIG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.nyquist_validation --raw 2>/dev/null)
 ```
 
 If `false`: skip entirely.
@@ -221,9 +221,9 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 
 **Complete milestone** — archive and tag
 
-/gsd:complete-milestone {version}
+`/gsd:complete-milestone {version}`
 
-<sub>/clear first → fresh context window</sub>
+<sub>`/clear` first → fresh context window</sub>
 
 ───────────────────────────────────────────────────────────────
 
@@ -266,9 +266,9 @@ Phases needing validation: run `/gsd:validate-phase {N}` for each flagged phase.
 
 **Plan gap closure** — create phases to complete milestone
 
-/gsd:plan-milestone-gaps
+`/gsd:plan-milestone-gaps`
 
-<sub>/clear first → fresh context window</sub>
+<sub>`/clear` first → fresh context window</sub>
 
 ───────────────────────────────────────────────────────────────
 
@@ -304,13 +304,13 @@ All requirements met. No critical blockers. Accumulated tech debt needs review.
 
 **A. Complete milestone** — accept debt, track in backlog
 
-/gsd:complete-milestone {version}
+`/gsd:complete-milestone {version}`
 
 **B. Plan cleanup phase** — address debt before completing
 
-/gsd:plan-milestone-gaps
+`/gsd:plan-milestone-gaps`
 
-<sub>/clear first → fresh context window</sub>
+<sub>`/clear` first → fresh context window</sub>
 
 ───────────────────────────────────────────────────────────────
 </offer_next>

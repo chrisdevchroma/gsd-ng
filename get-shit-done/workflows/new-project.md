@@ -2,6 +2,35 @@
 Initialize a new project through unified flow: questioning, research (optional), requirements, roadmap. This is the most leveraged moment in any project — deep questioning here means better plans, better execution, better outcomes. One workflow takes you from idea to ready-for-planning.
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 </required_reading>
@@ -1015,7 +1044,125 @@ Use AskUserQuestion:
 node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: create roadmap ([N] phases)" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md
 ```
 
-## 9. Done
+## 9. CLAUDE.md & Memory Seeding
+
+**Detect workspace topology:**
+
+```bash
+WS_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace --raw)
+```
+
+Parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).
+
+**If type is NOT `standalone`:**
+
+Seed the multi-boundary structural memory template:
+
+```bash
+mkdir -p .claude/memory
+cp "$HOME/.claude/get-shit-done/templates/memory-templates/multi-boundary.md" .claude/memory/project_commit-boundary.md
+```
+
+**If auto mode:** Seed silently.
+
+**If interactive mode:** Show what was detected and what will be seeded:
+
+```
+Workspace topology: [type] (detected via [signal])
+
+Seeding structural memory: project_commit-boundary.md
+— "This repo has multiple code boundaries — commit changes in the right sub-directory"
+```
+
+Use AskUserQuestion:
+- header: "Memory"
+- question: "Seed this structural guardrail memory?"
+- options:
+  - "Yes (Recommended)" — Seed memory file to .claude/memory/
+  - "Skip" — Don't seed any memories
+
+If "Skip": Do not copy the template.
+
+**If type IS `standalone`:**
+
+No template to seed. Continue to CLAUDE.md generation.
+
+**Generate CLAUDE.md:**
+
+Read existing CLAUDE.md if present (`fs.existsSync`).
+
+Build the GSD metadata section from the workspace detection result:
+
+For non-standalone workspaces:
+```
+## GSD
+
+**Workspace type:** {type}
+**Detection signal:** {signal}
+```
+
+For standalone workspaces:
+```
+## GSD
+
+**Workspace type:** standalone
+```
+
+If CLAUDE.md does NOT exist: Create new file with project name heading, then the `## GSD` section with workspace type, then the `## Memories` section.
+
+If CLAUDE.md exists and has NO `## GSD` section: Insert the `## GSD` section before `## Memories` (or before end of file if no Memories section).
+
+If CLAUDE.md exists and HAS a `## GSD` section: Replace the existing `## GSD` section content (from `## GSD` to the next `## ` heading) with the new workspace type content.
+
+The `## GSD` section must always appear before the `## Memories` section in the generated output.
+
+The Memories section is built by scanning `.claude/memory/*.md` (excluding MEMORY.md):
+- For each file, read frontmatter `description` field (fallback: `name`, then `(no description)`)
+- Format as: `- [.claude/memory/{filename}](.claude/memory/{filename}) — {description}`
+- Sort alphabetically
+
+Full section format (showing GSD before Memories):
+```
+## GSD
+
+**Workspace type:** submodule
+**Detection signal:** .gitmodules
+
+## Memories
+
+Read `.claude/memory/` for persistent feedback and project context. Key entries:
+
+- [.claude/memory/project_commit-boundary.md](.claude/memory/project_commit-boundary.md) — This repo has multiple code boundaries — commit changes in the right sub-directory
+```
+
+If no `.claude/memory/` directory or no files in it, write a minimal Memories section:
+```
+## Memories
+
+Read `.claude/memory/` for persistent feedback and project context.
+
+(No memory files yet — memories accumulate through use.)
+```
+
+**Generate MEMORY.md:**
+
+Write `.claude/memory/MEMORY.md` with grouped index. Group by `type` field from frontmatter (capitalize group names). Format:
+```
+# Memory Index
+
+## Feedback
+- [project_commit-boundary.md](project_commit-boundary.md) — Description from frontmatter
+```
+
+Only generate if `.claude/memory/` has files to index.
+
+**Commit:**
+
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: generate CLAUDE.md with memory seeding" --files CLAUDE.md .claude/memory/
+```
+
+## 10. Done
 
 Present completion summary:
 
@@ -1033,6 +1180,8 @@ Present completion summary:
 | Research       | `.planning/research/`       |
 | Requirements   | `.planning/REQUIREMENTS.md` |
 | Roadmap        | `.planning/ROADMAP.md`      |
+| CLAUDE.md      | `CLAUDE.md`                 |
+| Memories       | `.claude/memory/`           |
 
 **[N] phases** | **[X] requirements** | Ready to build ✓
 ```
@@ -1056,9 +1205,9 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 
 **Phase 1: [Phase Name]** — [Goal from ROADMAP.md]
 
-/gsd:discuss-phase 1 — gather context and clarify approach
+`/gsd:discuss-phase 1` — gather context and clarify approach
 
-<sub>/clear first → fresh context window</sub>
+<sub>`/clear` first → fresh context window</sub>
 
 ---
 
@@ -1083,6 +1232,9 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - `.planning/REQUIREMENTS.md`
 - `.planning/ROADMAP.md`
 - `.planning/STATE.md`
+- `CLAUDE.md` (with Memories section)
+- `.claude/memory/MEMORY.md` (memory index)
+- `.claude/memory/project_commit-boundary.md` (if multi-boundary workspace)
 
 </output>
 
@@ -1104,6 +1256,9 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - [ ] ROADMAP.md created with phases, requirement mappings, success criteria
 - [ ] STATE.md initialized
 - [ ] REQUIREMENTS.md traceability updated
+- [ ] CLAUDE.md generated with Memories section referencing all .claude/memory/*.md files → **committed**
+- [ ] .claude/memory/MEMORY.md generated as memory index → **committed**
+- [ ] Workspace topology detected and appropriate memories seeded (if non-standalone)
 - [ ] User knows next step is `/gsd:discuss-phase 1`
 
 **Atomic commits:** Each phase commits its artifacts immediately. If context is lost, artifacts persist.

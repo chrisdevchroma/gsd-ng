@@ -1,18 +1,22 @@
 ---
 name: gsd:cleanup
-description: Archive accumulated phase directories from completed milestones
+description: Archive phase directories from completed milestones
+model: haiku
+allowed-tools:
+  - Bash
+  - AskUserQuestion
 ---
-<objective>
-Archive phase directories from completed milestones into `.planning/milestones/v{X.Y}-phases/`.
 
-Use when `.planning/phases/` has accumulated directories from past milestones.
-</objective>
+Run the cleanup command in dry-run mode first, show the preview to the user, then ask for confirmation before executing:
 
-<execution_context>
-@~/.claude/get-shit-done/workflows/cleanup.md
-</execution_context>
+1. Show dry-run preview:
+!`node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" cleanup --dry-run`
 
-<process>
-Follow the cleanup workflow at @~/.claude/get-shit-done/workflows/cleanup.md.
-Identify completed milestones, show a dry-run summary, and archive on confirmation.
-</process>
+2. If nothing_to_do is true, tell the user "All milestones already archived. Nothing to clean up." and stop.
+
+3. Otherwise, show the preview and use AskUserQuestion to ask "Proceed with archiving?" with options "Yes, archive" and "Cancel".
+
+4. If confirmed, execute:
+!`node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" cleanup`
+
+5. Show the result.

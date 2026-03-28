@@ -3,8 +3,6 @@ name: gsd-verifier
 description: Verifies phase goal achievement through goal-backward analysis. Checks codebase delivers what phase promised, not just that tasks completed. Creates VERIFICATION.md report.
 tools: Read, Write, Bash, Grep, Glob
 color: green
-skills:
-  - gsd-verifier-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -67,7 +65,26 @@ cat "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null
 2. Extract `must_haves` (truths, artifacts, key_links)
 3. Extract `gaps` (items that failed)
 4. Set `is_re_verification = true`
-5. **Skip to Step 3** with optimization:
+5. Read `verification_round` from frontmatter: `parseInt(fm.verification_round || 1)`
+6. Increment: `verification_round = previous_round + 1`
+7. If `verification_round >= 3` AND any gap IDs from `gaps:` section match the previous round's gap IDs:
+   - HALT — do not proceed with verification
+   - Return structured output:
+     ```
+     ## VERIFICATION HALTED — Oscillation Detected
+
+     **Phase:** {phase}
+     **Round:** {verification_round}
+     **Reason:** Same gaps have reappeared for {verification_round} consecutive rounds.
+
+     **Recurring gaps:**
+     {list of gap truths that match between current and previous rounds}
+
+     **Action required:** Human intervention needed. The automated gap closure cycle is not resolving these issues.
+     Suggest: `/gsd:debug` on the specific failing truth, or manual fix.
+     ```
+   - Write VERIFICATION.md with `status: halted` and `verification_round: {N}`
+8. **Skip to Step 3** with optimization:
    - **Failed items:** Full 3-level verification (exists, substantive, wired)
    - **Passed items:** Quick regression check (existence + basic sanity only)
 
@@ -308,9 +325,13 @@ Run anti-pattern detection on each file:
 ```bash
 # TODO/FIXME/placeholder comments
 grep -n -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" "$file" 2>/dev/null
-grep -n -E "placeholder|coming soon|will be here" "$file" -i 2>/dev/null
+grep -n -E "placeholder|coming soon|will be here|not yet implemented|not available" "$file" -i 2>/dev/null
 # Empty implementations
 grep -n -E "return null|return \{\}|return \[\]|=> \{\}" "$file" 2>/dev/null
+# Hardcoded empty data (common stub patterns)
+grep -n -E "=\s*\[\]|=\s*\{\}|=\s*null|=\s*undefined" "$file" 2>/dev/null | grep -v -E "(test|spec|mock|fixture|\.test\.|\.spec\.)" 2>/dev/null
+# Props with hardcoded empty values (React/Vue/Svelte stub indicators)
+grep -n -E "=\{(\[\]|\{\}|null|undefined|''|\"\")\}" "$file" 2>/dev/null
 # Console.log only implementations
 grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^\s*(const|function|=>)"
 ```
@@ -381,8 +402,9 @@ Create `.planning/phases/{phase_dir}/{phase_num}-VERIFICATION.md`:
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-status: passed | gaps_found | human_needed
+status: passed | gaps_found | human_needed | halted
 score: N/M must-haves verified
+verification_round: 1  # Initial verification; incremented on each re-verification
 re_verification: # Only if previous VERIFICATION.md existed
   previous_status: gaps_found
   previous_score: 2/5
@@ -576,6 +598,8 @@ return <div>No messages</div>  // Always shows "no messages"
 - [ ] Overall status determined
 - [ ] Gaps structured in YAML frontmatter (if gaps_found)
 - [ ] Re-verification metadata included (if previous existed)
+- [ ] verification_round tracked (initial = 1, incremented on re-verification)
+- [ ] Halted if round >= 3 with same recurring gaps
 - [ ] VERIFICATION.md created with complete report
 - [ ] Results returned to orchestrator (NOT committed)
 </success_criteria>

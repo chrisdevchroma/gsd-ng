@@ -6,6 +6,35 @@ Each agent has fresh context, explores a specific focus area, and **writes docum
 Output: .planning/codebase/ folder with 7 structured documents about the codebase state.
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <philosophy>
 **Why dedicated mapper agents:**
 - Fresh context per domain (no token contamination)
@@ -33,6 +62,25 @@ if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 Extract from init JSON: `mapper_model`, `commit_docs`, `codebase_dir`, `existing_maps`, `has_maps`, `codebase_dir_exists`.
 </step>
 
+<step name="check_incremental">
+**Check for --incremental flag:**
+
+Parse `$ARGUMENTS` for `--incremental` or `incremental` keyword.
+
+If `--incremental` flag is present:
+
+```bash
+STALE_JSON=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" staleness-check --raw 2>/dev/null || echo '{"stale":[]}')
+STALE_COUNT=$(echo "$STALE_JSON" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stale.length)}catch{console.log(0)}})")
+```
+
+If STALE_COUNT is 0: output "All codebase docs are up-to-date. Nothing to update." and exit workflow.
+
+If STALE_COUNT > 0: output "{STALE_COUNT} codebase doc(s) need updating." and spawn one `gsd-incremental-mapper` agent per stale doc (use same pattern as execute-phase `incremental_remap` step). Wait for all agents to complete, then skip to `commit_codebase_map` step.
+
+If NO `--incremental` flag (default behavior): continue to `check_existing` for full re-map.
+</step>
+
 <step name="check_existing">
 Check if .planning/codebase/ already exists using `has_maps` from init context.
 
@@ -43,17 +91,15 @@ ls -la .planning/codebase/
 
 **If exists:**
 
-```
-.planning/codebase/ already exists with these documents:
-[List files found]
+Display: `.planning/codebase/ already exists with: [list files found]`
 
-What's next?
-1. Refresh - Delete existing and remap codebase
-2. Update - Keep existing, only update specific documents
-3. Skip - Use existing codebase map as-is
-```
-
-Wait for user response.
+Use AskUserQuestion:
+- header: "Codebase map"
+- question: ".planning/codebase/ already exists. What would you like to do?"
+- options:
+  - "Refresh" — Delete existing and remap entire codebase
+  - "Update" — Keep existing, only update specific documents
+  - "Skip" — Use existing codebase map as-is
 
 If "Refresh": Delete .planning/codebase/, continue to create_structure
 If "Update": Ask which documents to update, continue to spawn_agents (filtered)

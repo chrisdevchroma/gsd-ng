@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(ssh-add *)",
+      "Bash(ssh-keygen *)",
+      "Bash(date *)",
+      "Bash(echo *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(mktemp *)",
+      "Bash(rm *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sort *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(tr *)",
+      "Bash(jq *)",
+      "Bash(test *)",
+      "Bash(touch *)",
+      "Bash(chmod *)",
+      "Bash(sed *)",
+      "Bash(tar *)",
+      "Bash(curl *)"
+    ]
+  }
+}

@@ -5,8 +5,39 @@ With `--discuss` flag: lightweight discussion phase before planning. Surfaces as
 
 With `--full` flag: enables plan-checking (max 2 iterations) and post-execution verification for quality guarantees without full milestone ceremony.
 
-Flags are composable: `--discuss --full` gives discussion + plan-checking + verification.
+With `--research` flag: spawns a focused research agent before planning. Investigates implementation approaches, library options, and pitfalls. Use when you're unsure how to approach a task.
+
+Flags are composable: `--discuss --research --full` gives discussion + research + plan-checking + verification.
 </purpose>
+
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
 
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
@@ -18,7 +49,29 @@ Read all files referenced by the invoking prompt's execution_context before star
 Parse `$ARGUMENTS` for:
 - `--full` flag → store as `$FULL_MODE` (true/false)
 - `--discuss` flag → store as `$DISCUSS_MODE` (true/false)
+- `--research` flag → store as `$RESEARCH_MODE` (true/false)
 - Remaining text → use as `$DESCRIPTION` if non-empty
+
+Parse `--todo-file` flag:
+- `--todo-file` value → store as `$ORIGIN_TODO_FILE` (filename of originating todo, e.g., "fix-broken-test.md")
+- Remove `--todo-file {value}` from `$ARGUMENTS` before extracting `$DESCRIPTION`
+
+```bash
+ORIGIN_TODO_FILE=""
+if [[ "$ARGUMENTS" == *"--todo-file "* ]]; then
+  ORIGIN_TODO_FILE=$(echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
+  ARGUMENTS="${ARGUMENTS/--todo-file $ORIGIN_TODO_FILE/}"
+  ARGUMENTS=$(echo "$ARGUMENTS" | xargs)  # trim whitespace
+fi
+```
+
+If `$ORIGIN_TODO_FILE` is set, read the todo title for display later:
+```bash
+ORIGIN_TODO_TITLE=""
+if [[ -n "$ORIGIN_TODO_FILE" ]]; then
+  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+fi
+```
 
 If `$DESCRIPTION` is empty after parsing, prompt user interactively:
 
@@ -36,13 +89,40 @@ If still empty, re-prompt: "Please provide a task description."
 
 Display banner based on active flags:
 
-If `$DISCUSS_MODE` and `$FULL_MODE`:
+If `$DISCUSS_MODE` and `$RESEARCH_MODE` and `$FULL_MODE`:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► QUICK TASK (DISCUSS + RESEARCH + FULL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ Discussion + research + plan checking + verification enabled
+```
+
+If `$DISCUSS_MODE` and `$FULL_MODE` (no research):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  GSD ► QUICK TASK (DISCUSS + FULL)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Discussion + plan checking + verification enabled
+```
+
+If `$DISCUSS_MODE` and `$RESEARCH_MODE` (no full):
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► QUICK TASK (DISCUSS + RESEARCH)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ Discussion + research enabled
+```
+
+If `$RESEARCH_MODE` and `$FULL_MODE` (no discuss):
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► QUICK TASK (RESEARCH + FULL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ Research + plan checking + verification enabled
 ```
 
 If `$DISCUSS_MODE` only:
@@ -52,6 +132,15 @@ If `$DISCUSS_MODE` only:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ◆ Discussion phase enabled — surfacing gray areas before planning
+```
+
+If `$RESEARCH_MODE` only:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► QUICK TASK (RESEARCH)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ Research phase enabled — investigating approaches before planning
 ```
 
 If `$FULL_MODE` only:
@@ -234,6 +323,69 @@ Report: `Context captured: ${QUICK_DIR}/${quick_id}-CONTEXT.md`
 
 ---
 
+**Step 4.75: Research phase (only when `$RESEARCH_MODE`)**
+
+Skip this step entirely if NOT `$RESEARCH_MODE`.
+
+Display banner:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► RESEARCHING QUICK TASK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+◆ Investigating approaches for: ${DESCRIPTION}
+```
+
+Spawn a single focused researcher (not 4 parallel researchers like full phases — quick tasks need targeted research, not broad domain surveys):
+
+```
+Task(
+  prompt="
+<research_context>
+
+**Mode:** quick-task
+**Task:** ${DESCRIPTION}
+**Output:** ${QUICK_DIR}/${quick_id}-RESEARCH.md
+
+<files_to_read>
+- .planning/STATE.md (Project state — what's already built)
+- .planning/PROJECT.md (Project context)
+- ./CLAUDE.md (if exists — project-specific guidelines)
+${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-CONTEXT.md (User decisions — research should align with these)' : ''}
+</files_to_read>
+
+</research_context>
+
+<focus>
+This is a quick task, not a full phase. Research should be concise and targeted:
+1. Best libraries/patterns for this specific task
+2. Common pitfalls and how to avoid them
+3. Integration points with existing codebase
+4. Any constraints or gotchas worth knowing before planning
+
+Do NOT produce a full domain survey. Target 1-2 pages of actionable findings.
+</focus>
+
+<output>
+Write research to: ${QUICK_DIR}/${quick_id}-RESEARCH.md
+Use standard research format but keep it lean — skip sections that don't apply.
+Return: ## RESEARCH COMPLETE with file path
+</output>
+",
+  subagent_type="gsd-phase-researcher",
+  model="{planner_model}",
+  description="Research: ${DESCRIPTION}"
+)
+```
+
+After researcher returns:
+1. Verify research exists at `${QUICK_DIR}/${quick_id}-RESEARCH.md`
+2. Report: "Research complete: ${QUICK_DIR}/${quick_id}-RESEARCH.md"
+
+If research file not found, warn but continue: "Research agent did not produce output — proceeding to planning without research."
+
+---
+
 **Step 5: Spawn planner (quick mode)**
 
 **If `$FULL_MODE`:** Use `quick-full` mode with stricter constraints.
@@ -253,6 +405,7 @@ Task(
 - .planning/STATE.md (Project State)
 - ./CLAUDE.md (if exists — follow project-specific guidelines)
 ${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-CONTEXT.md (User decisions — locked, do not revisit)' : ''}
+${RESEARCH_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md (Research findings — use to inform implementation choices)' : ''}
 </files_to_read>
 
 **Project skills:** Check .claude/skills/ or .agents/skills/ directory (if either exists) — read SKILL.md files, plans should account for project skill rules
@@ -262,7 +415,7 @@ ${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-CONTEXT.md (User decision
 <constraints>
 - Create a SINGLE plan with 1-3 focused tasks
 - Quick tasks should be atomic and self-contained
-- No research phase
+${RESEARCH_MODE ? '- Research findings are available — use them to inform library/pattern choices' : '- No research phase'}
 ${FULL_MODE ? '- Target ~40% context usage (structured for verification)' : '- Target ~30% context usage (simple, focused)'}
 ${FULL_MODE ? '- MUST generate `must_haves` in plan frontmatter (truths, artifacts, key_links)' : ''}
 ${FULL_MODE ? '- Each task MUST have `files`, `action`, `verify`, `done` fields' : ''}
@@ -398,10 +551,27 @@ Offer: 1) Force proceed, 2) Abort
 
 Spawn gsd-executor with plan reference:
 
+```bash
+WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+```
+
 ```
 Task(
   prompt="
 Execute quick task ${quick_id}.
+
+<workspace_context>
+Workspace type: ${WORKSPACE_TYPE}
+Project root: ${PROJECT_ROOT}
+Submodule paths: ${SUBMODULE_PATHS}
+
+CRITICAL: Always commit to the source location. Your working directory is ${PROJECT_ROOT}.
+If workspace type is 'submodule', source code lives in the submodule directories listed above.
+Do NOT modify deployed copies (e.g., .claude/get-shit-done/) — always edit source first.
+</workspace_context>
 
 <files_to_read>
 - ${QUICK_DIR}/${quick_id}-PLAN.md (Plan)
@@ -545,6 +715,7 @@ Build file list:
 - `${QUICK_DIR}/${quick_id}-SUMMARY.md`
 - `.planning/STATE.md`
 - If `$DISCUSS_MODE` and context file exists: `${QUICK_DIR}/${quick_id}-CONTEXT.md`
+- If `$RESEARCH_MODE` and research file exists: `${QUICK_DIR}/${quick_id}-RESEARCH.md`
 - If `$FULL_MODE` and verification file exists: `${QUICK_DIR}/${quick_id}-VERIFICATION.md`
 
 ```bash
@@ -566,6 +737,7 @@ GSD > QUICK TASK COMPLETE (FULL MODE)
 
 Quick Task ${quick_id}: ${DESCRIPTION}
 
+${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md' : ''}
 Summary: ${QUICK_DIR}/${quick_id}-SUMMARY.md
 Verification: ${QUICK_DIR}/${quick_id}-VERIFICATION.md (${VERIFICATION_STATUS})
 Commit: ${commit_hash}
@@ -583,6 +755,7 @@ GSD > QUICK TASK COMPLETE
 
 Quick Task ${quick_id}: ${DESCRIPTION}
 
+${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md' : ''}
 Summary: ${QUICK_DIR}/${quick_id}-SUMMARY.md
 Commit: ${commit_hash}
 
@@ -591,20 +764,73 @@ Commit: ${commit_hash}
 Ready for next task: /gsd:quick
 ```
 
+---
+
+**Origin todo closure (only when $ORIGIN_TODO_FILE is set):**
+
+Skip this section entirely if `$ORIGIN_TODO_FILE` is empty.
+
+Perform lightweight verification: does the SUMMARY.md describe work that addresses the todo?
+
+Read the SUMMARY.md one-liner and the todo title. If they share keywords or the summary clearly relates to the todo description, verification passes. If unclear, still offer closure but note the uncertainty.
+
+**In auto mode** (check `AUTO_CFG`):
+
+```bash
+AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+```
+
+If `$AUTO_CFG` is `"true"`:
+- If lightweight verification passes: auto-close the todo
+  ```bash
+  node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+  ```
+  Display: `[auto] Closed todo: $ORIGIN_TODO_TITLE`
+- If lightweight verification uncertain: keep open, log: `[auto] Kept todo open (uncertain match): $ORIGIN_TODO_TITLE`
+
+**In interactive mode:**
+
+Use AskUserQuestion:
+```
+AskUserQuestion(
+  header: "Close Todo?",
+  question: "This task was started from todo '$ORIGIN_TODO_TITLE'. Close it?",
+  multiSelect: false,
+  options: [
+    { label: "Yes, close it", description: "Mark todo as complete" },
+    { label: "No, keep open", description: "Leave in pending for further work" }
+  ]
+)
+```
+
+If user selects "Yes, close it":
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close todo after quick task" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
+```
+Display: `Closed todo: $ORIGIN_TODO_TITLE`
+
+If user selects "No, keep open":
+Display: `Todo kept open: $ORIGIN_TODO_TITLE`
+
 </process>
 
 <success_criteria>
 - [ ] ROADMAP.md validation passes
 - [ ] User provides task description
-- [ ] `--full` and `--discuss` flags parsed from arguments when present
+- [ ] `--full`, `--discuss`, and `--research` flags parsed from arguments when present
 - [ ] Slug generated (lowercase, hyphens, max 40 chars)
 - [ ] Quick ID generated (YYMMDD-xxx format, 2s Base36 precision)
 - [ ] Directory created at `.planning/quick/YYMMDD-xxx-slug/`
 - [ ] (--discuss) Gray areas identified and presented, decisions captured in `${quick_id}-CONTEXT.md`
-- [ ] `${quick_id}-PLAN.md` created by planner (honors CONTEXT.md decisions when --discuss)
+- [ ] (--research) Research agent spawned, `${quick_id}-RESEARCH.md` created
+- [ ] `${quick_id}-PLAN.md` created by planner (honors CONTEXT.md decisions when --discuss, uses RESEARCH.md findings when --research)
 - [ ] (--full) Plan checker validates plan, revision loop capped at 2
 - [ ] `${quick_id}-SUMMARY.md` created by executor
 - [ ] (--full) `${quick_id}-VERIFICATION.md` created by verifier
 - [ ] STATE.md updated with quick task row (Status column when --full)
 - [ ] Artifacts committed
+- [ ] (--todo-file) Origin todo tracked and closure offered at completion
+- [ ] (--todo-file) Closure gated on lightweight verification
+- [ ] (--todo-file, auto mode) Auto-close on verified match, keep open on uncertain
 </success_criteria>

@@ -105,6 +105,42 @@ Phase: "API documentation"
 - Scope (roadmap defines this)
 </gray_area_identification>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "Which areas do you want to discuss?",
+      "header": "Discuss",
+      "multiSelect": true,
+      "options": [
+        { "label": "Layout style", "description": "Cards vs list vs timeline" },
+        { "label": "Loading behavior", "description": "Infinite scroll or pagination" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
+<answer_validation>
+**IMPORTANT: Answer validation** — After every AskUserQuestion call, check if the response is empty or whitespace-only. If so:
+1. Retry the question once with the same parameters
+2. If still empty, present the options as a plain-text numbered list and ask the user to type their choice number
+Never proceed with an empty answer.
+</answer_validation>
+
 <process>
 
 **Express path available:** If you already have a PRD or acceptance criteria document, use `/gsd:plan-phase {phase} --prd path/to/prd.md` to skip this discussion and go straight to planning.
@@ -128,6 +164,13 @@ Use /gsd:progress to see available phases.
 Exit workflow.
 
 **If `phase_found` is true:** Continue to check_existing.
+
+**Auto mode** — If `--auto` is present in ARGUMENTS:
+- In `check_existing`: auto-select "Skip" (if context exists) or continue without prompting (if no context/plans)
+- In `present_gray_areas`: auto-select ALL gray areas without asking the user
+- In `discuss_areas`: for each discussion question, choose the recommended option (first option, or the one marked "recommended") without using AskUserQuestion
+- Log each auto-selected choice inline so the user can review decisions in the context file
+- After discussion completes, auto-advance to plan-phase (existing behavior)
 </step>
 
 <step name="check_existing">
@@ -138,7 +181,10 @@ ls ${phase_dir}/*-CONTEXT.md 2>/dev/null
 ```
 
 **If exists:**
-Use AskUserQuestion:
+
+**If `--auto`:** Auto-select "Update it" — load existing context and continue to analyze_phase. Log: `[auto] Context exists — updating with auto-selected decisions.`
+
+**Otherwise:** Use AskUserQuestion:
 - header: "Context"
 - question: "Phase [X] already has context. What do you want to do?"
 - options:
@@ -154,7 +200,9 @@ If "Skip": Exit workflow
 
 Check `has_plans` and `plan_count` from init. **If `has_plans` is true:**
 
-Use AskUserQuestion:
+**If `--auto`:** Auto-select "Continue and replan after". Log: `[auto] Plans exist — continuing with context capture, will replan after.`
+
+**Otherwise:** Use AskUserQuestion:
 - header: "Plans exist"
 - question: "Phase [X] already has {plan_count} plan(s) created without user context. Your decisions here won't affect existing plans unless you replan."
 - options:
@@ -166,7 +214,70 @@ If "Continue and replan after": Continue to analyze_phase.
 If "View existing plans": Display plan files, then offer "Continue" / "Cancel".
 If "Cancel": Exit workflow.
 
-**If `has_plans` is false:** Continue to load_prior_context.
+**If `has_plans` is false:** Continue to scan_related_todos.
+</step>
+
+<step name="scan_related_todos">
+**Scan pending todos for potential phase links.**
+
+Read the phase goal from ROADMAP.md for this phase:
+```bash
+PHASE_GOAL=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
+  process.stdin.on('data', d => {
+    try { const r = JSON.parse(d); console.log(r.goal || r.name || ''); } catch { console.log(''); }
+  });
+")
+```
+
+If `$PHASE_GOAL` is empty, skip silently and continue to load_prior_context.
+
+List pending todos and filter for candidates:
+```bash
+PENDING_DIR=".planning/todos/pending"
+```
+
+If `ls "$PENDING_DIR"/*.md 2>/dev/null` returns no files, skip silently and continue to load_prior_context.
+
+Read each pending todo file. For each, extract `title` from frontmatter. Score by keyword overlap with PHASE_GOAL:
+- Split both title and goal into lowercase words
+- Filter stop words (a, an, the, is, are, was, were, be, been, to, for, of, in, on, at, by, with, and, or, not, this, that, it, as, from, but, its, no, has, have, had)
+- Count matching words between title and goal
+- A todo is a candidate if it has 2+ matching non-stop-words OR 1 matching word that is 6+ characters long (strong signal)
+- Skip todos that already have a `phase:` frontmatter field set (already linked)
+
+Cap at 3 candidates maximum. If more than 3 match, skip the scan entirely (too noisy).
+
+**If 0 candidates:** Skip silently, continue to load_prior_context.
+
+**If 1-3 candidates and NOT --auto:**
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "These pending todos may relate to Phase ${PHASE}. Link them to this phase?",
+  multiSelect: true,
+  options: [
+    { label: "[todo-filename-1]", description: "[todo title 1]" },
+    { label: "[todo-filename-2]", description: "[todo title 2]" },
+    { label: "None of these", description: "Skip linking" }
+  ]
+)
+```
+
+For each selected todo (not "None of these"):
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$SELECTED_FILE" --field phase --value "${PHASE}"
+```
+
+Log: `Linked todo: $SELECTED_FILE -> Phase ${PHASE}`
+
+**If --auto:** Auto-select all candidates (link them all). Log: `[auto] Linked ${N} todo(s) to Phase ${PHASE}`.
+
+For each linked todo in auto mode:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "${PHASE}"
+```
+
+Continue to load_prior_context.
 </step>
 
 <step name="load_prior_context">
@@ -323,7 +434,9 @@ We'll clarify HOW to implement this.
 - [Decision from Phase M that applies here]
 ```
 
-**Then use AskUserQuestion (multiSelect: true):**
+**If `--auto`:** Auto-select ALL gray areas. Log: `[auto] Selected all gray areas: [list area names].` Skip the AskUserQuestion below and continue directly to discuss_areas with all areas selected.
+
+**Otherwise, use AskUserQuestion (multiSelect: true):**
 - header: "Discuss"
 - question: "Which areas do you want to discuss for [phase name]?"
 - options: Generate 3-4 phase-specific gray areas, each with:
@@ -395,6 +508,14 @@ For each selected area, conduct a focused discussion loop.
 
 Each answer (or answer set, in batch mode) should reveal the next question or next batch.
 
+**Auto mode (`--auto`):** For each area, Claude selects the recommended option (first option, or the one explicitly marked "recommended") for every question without using AskUserQuestion. Log each auto-selected choice:
+```
+[auto] [Area] — Q: "[question text]" → Selected: "[chosen option]" (recommended default)
+```
+After all areas are auto-resolved, skip the "Explore more gray areas" prompt and proceed directly to write_context.
+
+**Interactive mode (no `--auto`):**
+
 **For each area:**
 
 1. **Announce the area:**
@@ -427,11 +548,13 @@ Each answer (or answer set, in batch mode) should reveal the next question or ne
 
 3. **After the current set of questions, check:**
    - header: "[Area]" (max 12 chars)
-   - question: "More questions about [area], or move to next?"
-   - options: "More questions" / "Next area"
+   - question: "More questions about [area], or move to next? (Remaining: [list other unvisited areas])"
+   - options: "Next area" / "More questions"
 
-   If "More questions" → ask another 4 single questions, or another 2-5 question batch when `--batch` is active, then check again
+   When building the question text, list the remaining unvisited areas so the user knows what's ahead. For example: "More questions about Layout, or move to next? (Remaining: Loading behavior, Content ordering)"
+
    If "Next area" → proceed to next selected area
+   If "More questions" → ask another 4 single questions, or another 2-5 question batch when `--batch` is active, then check again
    If "Other" (free text) → interpret intent: continuation phrases ("chat more", "keep going", "yes", "more") map to "More questions"; advancement phrases ("done", "move on", "next", "skip") map to "Next area". If ambiguous, ask: "Continue with more questions about [area], or move to the next area?"
 
 4. **After all initially-selected areas complete:**
@@ -609,6 +732,7 @@ Created: .planning/phases/${PADDED_PHASE}-${SLUG}/${PADDED_PHASE}-CONTEXT.md
 
 **Also available:**
 - `/gsd:plan-phase ${PHASE} --skip-research` — plan without research
+- `/gsd:ui-phase ${PHASE}` — generate UI design contract before planning (if phase has frontend work)
 - Review/edit CONTEXT.md before continuing
 
 ---
@@ -647,7 +771,7 @@ Check for auto-advance trigger:
 1. Parse `--auto` flag from $ARGUMENTS
 2. **Sync chain flag with intent** — if user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference):
    ```bash
-   if [[ ! "$ARGUMENTS" =~ --auto ]]; then
+   if [[ "$ARGUMENTS" != *"--auto"* ]]; then
      node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow._auto_chain_active false 2>/dev/null
    fi
    ```
@@ -690,7 +814,7 @@ This keeps the auto-advance chain flat — discuss, plan, and execute all run at
   Auto-advance pipeline finished: discuss → plan → execute
 
   Next: /gsd:discuss-phase ${NEXT_PHASE} --auto
-  <sub>/clear first → fresh context window</sub>
+  <sub>`/clear` first → fresh context window</sub>
   ```
 - **PLANNING COMPLETE** → Planning done, execution didn't complete:
   ```

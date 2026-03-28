@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosixPath, output, error } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, normalizePhaseName, toPosixPath, output, error } = require('./core.cjs');
 
 function cmdInitExecutePhase(cwd, phase, raw) {
   if (!phase) {
@@ -13,10 +13,29 @@ function cmdInitExecutePhase(cwd, phase, raw) {
   }
 
   const config = loadConfig(cwd);
-  const phaseInfo = findPhaseInternal(cwd, phase);
+  let phaseInfo = findPhaseInternal(cwd, phase);
   const milestone = getMilestoneInfo(cwd);
 
   const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+
+  // Fallback to ROADMAP.md if no phase directory exists yet
+  if (!phaseInfo && roadmapPhase?.found) {
+    const phaseName = roadmapPhase.phase_name;
+    phaseInfo = {
+      found: true,
+      directory: null,
+      phase_number: roadmapPhase.phase_number,
+      phase_name: phaseName,
+      phase_slug: phaseName ? phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : null,
+      plans: [],
+      summaries: [],
+      incomplete_plans: [],
+      has_research: false,
+      has_context: false,
+      has_verification: false,
+    };
+  }
+
   const reqMatch = roadmapPhase?.section?.match(/^\*\*Requirements\*\*:[^\S\n]*([^\n]*)$/m);
   const reqExtracted = reqMatch
     ? reqMatch[1].replace(/[\[\]]/g, '').split(',').map(s => s.trim()).filter(Boolean).join(', ')
@@ -34,6 +53,12 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     branching_strategy: config.branching_strategy,
     phase_branch_template: config.phase_branch_template,
     milestone_branch_template: config.milestone_branch_template,
+    target_branch: config.target_branch,
+    auto_push: config.auto_push,
+    remote: config.remote,
+    review_branch_template: config.review_branch_template,
+    pr_draft: config.pr_draft,
+    platform: config.platform,
     verifier_enabled: config.verifier,
 
     // Phase info
@@ -86,9 +111,28 @@ function cmdInitPlanPhase(cwd, phase, raw) {
   }
 
   const config = loadConfig(cwd);
-  const phaseInfo = findPhaseInternal(cwd, phase);
+  let phaseInfo = findPhaseInternal(cwd, phase);
 
   const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+
+  // Fallback to ROADMAP.md if no phase directory exists yet
+  if (!phaseInfo && roadmapPhase?.found) {
+    const phaseName = roadmapPhase.phase_name;
+    phaseInfo = {
+      found: true,
+      directory: null,
+      phase_number: roadmapPhase.phase_number,
+      phase_name: phaseName,
+      phase_slug: phaseName ? phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : null,
+      plans: [],
+      summaries: [],
+      incomplete_plans: [],
+      has_research: false,
+      has_context: false,
+      has_verification: false,
+    };
+  }
+
   const reqMatch = roadmapPhase?.section?.match(/^\*\*Requirements\*\*:[^\S\n]*([^\n]*)$/m);
   const reqExtracted = reqMatch
     ? reqMatch[1].replace(/[\[\]]/g, '').split(',').map(s => s.trim()).filter(Boolean).join(', ')
@@ -113,7 +157,7 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     phase_number: phaseInfo?.phase_number || null,
     phase_name: phaseInfo?.phase_name || null,
     phase_slug: phaseInfo?.phase_slug || null,
-    padded_phase: phaseInfo?.phase_number?.padStart(2, '0') || null,
+    padded_phase: phaseInfo?.phase_number ? normalizePhaseName(phaseInfo.phase_number) : null,
     phase_req_ids,
 
     // Existing artifacts
@@ -132,6 +176,16 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     requirements_path: '.planning/REQUIREMENTS.md',
   };
 
+  // Suggest parent phase for decimal phase not found
+  if (!phaseInfo && String(phase).includes('.')) {
+    const parentPhase = String(phase).split('.')[0];
+    const parentInfo = findPhaseInternal(cwd, parentPhase);
+    const parentRoadmap = getRoadmapPhaseInternal(cwd, parentPhase);
+    if (parentInfo || parentRoadmap?.found) {
+      result.phase_suggestion = `Phase ${phase} not found. Did you mean Phase ${parentPhase}?`;
+    }
+  }
+
   if (phaseInfo?.directory) {
     // Find *-CONTEXT.md in phase directory
     const phaseDirFull = path.join(cwd, phaseInfo.directory);
@@ -141,10 +195,17 @@ function cmdInitPlanPhase(cwd, phase, raw) {
       if (contextFile) {
         result.context_path = toPosixPath(path.join(phaseInfo.directory, contextFile));
       }
-      const researchFile = files.find(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
+      const researchFile = files.find(f =>
+        (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) || f === 'RESEARCH.md'
+      );
       if (researchFile) {
         result.research_path = toPosixPath(path.join(phaseInfo.directory, researchFile));
       }
+      const gapResearchFile = files.find(f => f.endsWith('-GAP-RESEARCH.md'));
+      if (gapResearchFile) {
+        result.gap_research_path = toPosixPath(path.join(phaseInfo.directory, gapResearchFile));
+      }
+      result.has_gap_research = !!gapResearchFile;
       const verificationFile = files.find(f => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md');
       if (verificationFile) {
         result.verification_path = toPosixPath(path.join(phaseInfo.directory, verificationFile));
@@ -154,6 +215,8 @@ function cmdInitPlanPhase(cwd, phase, raw) {
         result.uat_path = toPosixPath(path.join(phaseInfo.directory, uatFile));
       }
     } catch {}
+  } else {
+    result.has_gap_research = false;
   }
 
   output(result, raw);
@@ -161,11 +224,6 @@ function cmdInitPlanPhase(cwd, phase, raw) {
 
 function cmdInitNewProject(cwd, raw) {
   const config = loadConfig(cwd);
-
-  // Detect Brave Search API key availability
-  const homedir = require('os').homedir();
-  const braveKeyFile = path.join(homedir, '.gsd', 'brave_api_key');
-  const hasBraveSearch = !!(process.env.BRAVE_API_KEY || fs.existsSync(braveKeyFile));
 
   // Detect existing code
   let hasCode = false;
@@ -207,9 +265,6 @@ function cmdInitNewProject(cwd, raw) {
 
     // Git state
     has_git: pathExistsInternal(cwd, '.git'),
-
-    // Enhanced search
-    brave_search_available: hasBraveSearch,
 
     // File paths
     project_path: '.planning/PROJECT.md',
@@ -338,7 +393,28 @@ function cmdInitVerifyWork(cwd, phase, raw) {
   }
 
   const config = loadConfig(cwd);
-  const phaseInfo = findPhaseInternal(cwd, phase);
+  let phaseInfo = findPhaseInternal(cwd, phase);
+
+  // Fallback to ROADMAP.md if no phase directory exists yet
+  if (!phaseInfo) {
+    const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+    if (roadmapPhase?.found) {
+      const phaseName = roadmapPhase.phase_name;
+      phaseInfo = {
+        found: true,
+        directory: null,
+        phase_number: roadmapPhase.phase_number,
+        phase_name: phaseName,
+        phase_slug: phaseName ? phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : null,
+        plans: [],
+        summaries: [],
+        incomplete_plans: [],
+        has_research: false,
+        has_context: false,
+        has_verification: false,
+      };
+    }
+  }
 
   const result = {
     // Models
@@ -365,6 +441,29 @@ function cmdInitPhaseOp(cwd, phase, raw) {
   const config = loadConfig(cwd);
   let phaseInfo = findPhaseInternal(cwd, phase);
 
+  // If the only disk match comes from an archived milestone, prefer the
+  // current milestone's ROADMAP entry so discuss-phase and similar flows
+  // don't attach to shipped work that reused the same phase number.
+  if (phaseInfo?.archived) {
+    const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+    if (roadmapPhase?.found) {
+      const phaseName = roadmapPhase.phase_name;
+      phaseInfo = {
+        found: true,
+        directory: null,
+        phase_number: roadmapPhase.phase_number,
+        phase_name: phaseName,
+        phase_slug: phaseName ? phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : null,
+        plans: [],
+        summaries: [],
+        incomplete_plans: [],
+        has_research: false,
+        has_context: false,
+        has_verification: false,
+      };
+    }
+  }
+
   // Fallback to ROADMAP.md if no directory exists (e.g., Plans: TBD)
   if (!phaseInfo) {
     const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
@@ -389,7 +488,6 @@ function cmdInitPhaseOp(cwd, phase, raw) {
   const result = {
     // Config
     commit_docs: config.commit_docs,
-    brave_search: config.brave_search,
 
     // Phase info
     phase_found: !!phaseInfo,
@@ -397,7 +495,7 @@ function cmdInitPhaseOp(cwd, phase, raw) {
     phase_number: phaseInfo?.phase_number || null,
     phase_name: phaseInfo?.phase_name || null,
     phase_slug: phaseInfo?.phase_slug || null,
-    padded_phase: phaseInfo?.phase_number?.padStart(2, '0') || null,
+    padded_phase: phaseInfo?.phase_number ? normalizePhaseName(phaseInfo.phase_number) : null,
 
     // Existing artifacts
     has_research: phaseInfo?.has_research || false,
@@ -416,6 +514,16 @@ function cmdInitPhaseOp(cwd, phase, raw) {
     requirements_path: '.planning/REQUIREMENTS.md',
   };
 
+  // Suggest parent phase for decimal phase not found
+  if (!phaseInfo && String(phase).includes('.')) {
+    const parentPhase = String(phase).split('.')[0];
+    const parentInfo = findPhaseInternal(cwd, parentPhase);
+    const parentRoadmap = getRoadmapPhaseInternal(cwd, parentPhase);
+    if (parentInfo || parentRoadmap?.found) {
+      result.phase_suggestion = `Phase ${phase} not found. Did you mean Phase ${parentPhase}?`;
+    }
+  }
+
   if (phaseInfo?.directory) {
     const phaseDirFull = path.join(cwd, phaseInfo.directory);
     try {
@@ -424,7 +532,9 @@ function cmdInitPhaseOp(cwd, phase, raw) {
       if (contextFile) {
         result.context_path = toPosixPath(path.join(phaseInfo.directory, contextFile));
       }
-      const researchFile = files.find(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
+      const researchFile = files.find(f =>
+        (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) || f === 'RESEARCH.md'
+      );
       if (researchFile) {
         result.research_path = toPosixPath(path.join(phaseInfo.directory, researchFile));
       }
@@ -600,27 +710,55 @@ function cmdInitProgress(cwd, raw) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
 
-  // Analyze phases
+  // Analyze phases — filter to current milestone and include ROADMAP-only phases
   const phasesDir = path.join(cwd, '.planning', 'phases');
   const phases = [];
   let currentPhase = null;
   let nextPhase = null;
 
+  // Build set of phases defined in ROADMAP for the current milestone
+  const roadmapPhaseNums = new Set();
+  const roadmapPhaseNames = new Map();
+  try {
+    const roadmapContent = stripShippedMilestones(
+      fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8')
+    );
+    const headingPattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+    let hm;
+    while ((hm = headingPattern.exec(roadmapContent)) !== null) {
+      roadmapPhaseNums.add(hm[1]);
+      roadmapPhaseNames.set(hm[1], hm[2].replace(/\(INSERTED\)/i, '').trim());
+    }
+  } catch {}
+
+  const isDirInMilestone = getMilestonePhaseFilter(cwd);
+  const seenPhaseNums = new Set();
+
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
-    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name)
+      .filter(isDirInMilestone)
+      .sort((a, b) => {
+        const pa = a.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const pb = b.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        if (!pa || !pb) return a.localeCompare(b);
+        return parseInt(pa[1], 10) - parseInt(pb[1], 10);
+      });
 
     for (const dir of dirs) {
-      const match = dir.match(/^(\d+(?:\.\d+)*)-?(.*)/);
+      const match = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i);
       const phaseNumber = match ? match[1] : dir;
       const phaseName = match && match[2] ? match[2] : null;
+      seenPhaseNums.add(phaseNumber.replace(/^0+/, '') || '0');
 
       const phasePath = path.join(phasesDir, dir);
       const phaseFiles = fs.readdirSync(phasePath);
 
       const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md');
       const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
-      const hasResearch = phaseFiles.some(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
+      const hasResearch = phaseFiles.some(f =>
+        (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) || f === 'RESEARCH.md'
+      );
 
       const status = summaries.length >= plans.length && plans.length > 0 ? 'complete' :
                      plans.length > 0 ? 'in_progress' :
@@ -647,6 +785,29 @@ function cmdInitProgress(cwd, raw) {
       }
     }
   } catch {}
+
+  // Add phases defined in ROADMAP but not yet scaffolded to disk
+  for (const [num, name] of roadmapPhaseNames) {
+    const stripped = num.replace(/^0+/, '') || '0';
+    if (!seenPhaseNums.has(stripped)) {
+      const phaseInfo = {
+        number: num,
+        name: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        directory: null,
+        status: 'not_started',
+        plan_count: 0,
+        summary_count: 0,
+        has_research: false,
+      };
+      phases.push(phaseInfo);
+      if (!nextPhase && !currentPhase) {
+        nextPhase = phaseInfo;
+      }
+    }
+  }
+
+  // Re-sort phases by number after adding ROADMAP-only phases
+  phases.sort((a, b) => parseInt(a.number, 10) - parseInt(b.number, 10));
 
   // Check for paused work
   let pausedAt = null;

@@ -257,6 +257,39 @@ describe('roadmap analyze command', () => {
     assert.strictEqual(output.phases[1].goal, 'Build features');
     assert.strictEqual(output.phases[1].depends_on, 'Phase 1');
   });
+
+  test('next_phase is an object with number and name properties', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap v1.0
+
+## Phases
+
+- [x] **Phase 1: Foundation** - Setup
+- [ ] **Phase 2: API** - Build endpoints
+
+### Phase 1: Foundation
+**Goal:** Set up project infrastructure
+
+### Phase 2: API
+**Goal:** Build REST API
+`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan 1');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary 1');
+
+    const result = runGsdTools('roadmap analyze', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(output.next_phase !== null, 'next_phase should not be null');
+    assert.strictEqual(typeof output.next_phase, 'object', 'next_phase should be an object');
+    assert.strictEqual(output.next_phase.number, '2', 'next_phase.number should be "2"');
+    assert.strictEqual(output.next_phase.name, 'API', 'next_phase.name should be "API"');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -661,6 +694,74 @@ describe('roadmap update-plan-progress command', () => {
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false, 'should not update');
     assert.ok(output.reason.includes('ROADMAP.md not found'), 'reason should mention missing ROADMAP.md');
+  });
+
+  test('preserves Milestone column in 5-column progress table', () => {
+    const roadmapContent = `# Roadmap
+
+### Phase 50: Build
+**Goal:** Build stuff
+**Plans:** 1 plans
+
+## Progress
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 50. Build | v2.0 | 0/1 | Planned |  |
+`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent);
+
+    const p50 = path.join(tmpDir, '.planning', 'phases', '50-build');
+    fs.mkdirSync(p50, { recursive: true });
+    fs.writeFileSync(path.join(p50, '50-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p50, '50-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('roadmap update-plan-progress 50', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const rowMatch = roadmap.match(/^\|[^\n]*50\. Build[^\n]*$/m);
+    assert.ok(rowMatch, 'table row should exist');
+    const cells = rowMatch[0].split('|').slice(1, -1).map(c => c.trim());
+    assert.strictEqual(cells.length, 5, 'should have 5 columns');
+    assert.strictEqual(cells[1], 'v2.0', 'Milestone column should be preserved');
+    assert.ok(cells[3].includes('Complete'), 'Status column should show Complete');
+  });
+
+  test('marks completed plan checkboxes', () => {
+    const roadmapContent = `# Roadmap
+
+- [ ] Phase 50: Build
+  - [ ] 50-01-PLAN.md
+  - [ ] 50-02-PLAN.md
+
+### Phase 50: Build
+**Goal:** Build stuff
+**Plans:** 2 plans
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|---------------|--------|-----------|
+| 50. Build | 0/2 | Planned |  |
+`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent);
+
+    const p50 = path.join(tmpDir, '.planning', 'phases', '50-build');
+    fs.mkdirSync(p50, { recursive: true });
+    fs.writeFileSync(path.join(p50, '50-01-PLAN.md'), '# Plan 1');
+    fs.writeFileSync(path.join(p50, '50-02-PLAN.md'), '# Plan 2');
+    // Only plan 1 has a summary (completed)
+    fs.writeFileSync(path.join(p50, '50-01-SUMMARY.md'), '# Summary 1');
+
+    const result = runGsdTools('roadmap update-plan-progress 50', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    assert.ok(roadmap.includes('[x] 50-01-PLAN.md') || roadmap.includes('[x] 50-01'),
+      'completed plan checkbox should be marked');
+    assert.ok(roadmap.includes('[ ] 50-02-PLAN.md') || roadmap.includes('[ ] 50-02'),
+      'incomplete plan checkbox should remain unchecked');
   });
 });
 

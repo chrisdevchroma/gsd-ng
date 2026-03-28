@@ -49,6 +49,7 @@ function cmdStateLoad(cwd, raw) {
       `branching_strategy=${c.branching_strategy}`,
       `phase_branch_template=${c.phase_branch_template}`,
       `milestone_branch_template=${c.milestone_branch_template}`,
+      `target_branch=${c.target_branch || 'main'}`,
       `parallelization=${c.parallelization}`,
       `research=${c.research}`,
       `plan_checker=${c.plan_checker}`,
@@ -212,25 +213,55 @@ function cmdStateAdvancePlan(cwd, raw) {
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
-  const currentPlan = parseInt(stateExtractField(content, 'Current Plan'), 10);
-  const totalPlans = parseInt(stateExtractField(content, 'Total Plans in Phase'), 10);
   const today = new Date().toISOString().split('T')[0];
+
+  // Try legacy separate fields first, then compound "Plan: X of Y" format
+  const legacyPlan = stateExtractField(content, 'Current Plan');
+  const legacyTotal = stateExtractField(content, 'Total Plans in Phase');
+  const planField = stateExtractField(content, 'Plan');
+
+  let currentPlan, totalPlans;
+  let useCompoundFormat = false;
+
+  if (legacyPlan && legacyTotal) {
+    currentPlan = parseInt(legacyPlan, 10);
+    totalPlans = parseInt(legacyTotal, 10);
+  } else if (planField) {
+    // Compound format: "2 of 6 in current phase" or "2 of 6"
+    currentPlan = parseInt(planField, 10);
+    const ofMatch = planField.match(/of\s+(\d+)/);
+    totalPlans = ofMatch ? parseInt(ofMatch[1], 10) : NaN;
+    useCompoundFormat = true;
+  }
 
   if (isNaN(currentPlan) || isNaN(totalPlans)) {
     output({ error: 'Cannot parse Current Plan or Total Plans in Phase from STATE.md' }, raw);
     return;
   }
 
+  const replaceField = (c, primary, fallback, value) => {
+    let r = stateReplaceField(c, primary, value);
+    if (r) return r;
+    if (fallback) { r = stateReplaceField(c, fallback, value); if (r) return r; }
+    return c;
+  };
+
   if (currentPlan >= totalPlans) {
-    content = stateReplaceField(content, 'Status', 'Phase complete — ready for verification') || content;
-    content = stateReplaceField(content, 'Last Activity', today) || content;
+    content = replaceField(content, 'Status', null, 'Phase complete — ready for verification');
+    content = replaceField(content, 'Last Activity', 'Last activity', today);
     writeStateMd(statePath, content, cwd);
     output({ advanced: false, reason: 'last_plan', current_plan: currentPlan, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
   } else {
     const newPlan = currentPlan + 1;
-    content = stateReplaceField(content, 'Current Plan', String(newPlan)) || content;
-    content = stateReplaceField(content, 'Status', 'Ready to execute') || content;
-    content = stateReplaceField(content, 'Last Activity', today) || content;
+    if (useCompoundFormat) {
+      // Preserve compound format: "X of Y in current phase" → replace X only
+      const newPlanValue = planField.replace(/^\d+/, String(newPlan));
+      content = stateReplaceField(content, 'Plan', newPlanValue) || content;
+    } else {
+      content = stateReplaceField(content, 'Current Plan', String(newPlan)) || content;
+    }
+    content = replaceField(content, 'Status', null, 'Ready to execute');
+    content = replaceField(content, 'Last Activity', 'Last activity', today);
     writeStateMd(statePath, content, cwd);
     output({ advanced: true, previous_plan: currentPlan, current_plan: newPlan, total_plans: totalPlans }, raw, 'true');
   }
@@ -276,14 +307,16 @@ function cmdStateUpdateProgress(cwd, raw) {
 
   let content = fs.readFileSync(statePath, 'utf-8');
 
-  // Count summaries across all phases
+  // Count summaries across current milestone phases only
   const phasesDir = path.join(cwd, '.planning', 'phases');
   let totalPlans = 0;
   let totalSummaries = 0;
 
   if (fs.existsSync(phasesDir)) {
+    const isDirInMilestone = getMilestonePhaseFilter(cwd);
     const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-      .filter(e => e.isDirectory()).map(e => e.name);
+      .filter(e => e.isDirectory()).map(e => e.name)
+      .filter(isDirInMilestone);
     for (const dir of phaseDirs) {
       const files = fs.readdirSync(path.join(phasesDir, dir));
       totalPlans += files.filter(f => f.match(/-PLAN\.md$/i)).length;
@@ -473,6 +506,10 @@ function cmdStateSnapshot(cwd, raw) {
   const lastActivityDesc = stateExtractField(content, 'Last Activity Description');
   const pausedAt = stateExtractField(content, 'Paused At');
 
+  // Load config for git target_branch visibility
+  const config = loadConfig(cwd);
+  const targetBranch = config.target_branch || 'main';
+
   // Parse numeric fields
   const totalPhases = totalPhasesRaw ? parseInt(totalPhasesRaw, 10) : null;
   const totalPlansInPhase = totalPlansRaw ? parseInt(totalPlansRaw, 10) : null;
@@ -539,6 +576,7 @@ function cmdStateSnapshot(cwd, raw) {
     progress_percent: progressPercent,
     last_activity: lastActivity,
     last_activity_desc: lastActivityDesc,
+    target_branch: targetBranch,
     decisions,
     blockers,
     paused_at: pausedAt,
@@ -666,9 +704,20 @@ function stripFrontmatter(content) {
 }
 
 function syncStateFrontmatter(content, cwd) {
+  // Read existing frontmatter BEFORE stripping — it may contain values
+  // that the body no longer has (e.g., Status field removed by an agent).
+  const existingFm = extractFrontmatter(content);
   const body = stripFrontmatter(content);
-  const fm = buildStateFrontmatter(body, cwd);
-  const yamlStr = reconstructFrontmatter(fm);
+  const derivedFm = buildStateFrontmatter(body, cwd);
+
+  // Preserve existing frontmatter status when body-derived status is 'unknown'.
+  // This prevents a missing Status: field in the body from overwriting a
+  // previously valid status (e.g., 'executing' → 'unknown').
+  if (derivedFm.status === 'unknown' && existingFm.status && existingFm.status !== 'unknown') {
+    derivedFm.status = existingFm.status;
+  }
+
+  const yamlStr = reconstructFrontmatter(derivedFm);
   return `---\n${yamlStr}\n---\n\n${body}`;
 }
 
@@ -701,6 +750,73 @@ function cmdStateJson(cwd, raw) {
   output(fm, raw, JSON.stringify(fm, null, 2));
 }
 
+/**
+ * Update STATE.md to reflect the start of a new phase.
+ *
+ * Sets: Status, Last Activity, Last Activity Description, Current Phase,
+ * Current Phase Name, Current Plan, Total Plans in Phase, Current focus body,
+ * and Current Position section.
+ */
+function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
+  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  if (!fs.existsSync(statePath)) {
+    output({ updated: false, error: 'STATE.md not found' }, raw);
+    return;
+  }
+
+  if (!phaseNumber || !phaseName || !planCount) {
+    output({ updated: false, error: '--phase, --name, and --plans are required' }, raw);
+    return;
+  }
+
+  let content = fs.readFileSync(statePath, 'utf-8');
+  const today = new Date().toISOString().split('T')[0];
+
+  // Format phase number with leading zero if needed (e.g., "3" -> "03")
+  const phaseNum = String(phaseNumber).padStart(2, '0');
+  // Current Plan starts at first plan of the new phase
+  const firstPlan = `${phaseNum}-01`;
+  const description = `Starting Phase ${phaseNum}: ${phaseName}`;
+
+  // Update flat fields
+  const replacements = [
+    ['Status', 'In progress'],
+    ['Last Activity', today],
+    ['Last Activity Description', description],
+    ['Current Phase', phaseNum],
+    ['Current Phase Name', phaseName],
+    ['Current Plan', firstPlan],
+    ['Total Plans in Phase', String(planCount)],
+  ];
+
+  const failed = [];
+  for (const [field, value] of replacements) {
+    const result = stateReplaceField(content, field, value);
+    if (result !== null) {
+      content = result;
+    } else {
+      failed.push(field);
+    }
+  }
+
+  // Update ## Current Position section body
+  const positionSectionPattern = /(##\s*Current Position\s*\n)([\s\S]*?)(?=\n##|$)/i;
+  const positionBody = `\nPhase ${phaseNum} of ?? (${phaseName}) — In Progress\nPlan: 1 of ${planCount} — executing\nStatus: Phase ${phaseNum} starting — ${phaseName}\n`;
+  if (positionSectionPattern.test(content)) {
+    content = content.replace(positionSectionPattern, (_match, header) => `${header}${positionBody}`);
+  }
+
+  // Update ## Current focus section body
+  const focusSectionPattern = /(##\s*Current focus\s*\n)([\s\S]*?)(?=\n##|$)/i;
+  const focusBody = `\n${phaseName} — ${planCount} plan${planCount !== 1 ? 's' : ''} to execute\n`;
+  if (focusSectionPattern.test(content)) {
+    content = content.replace(focusSectionPattern, (_match, header) => `${header}${focusBody}`);
+  }
+
+  writeStateMd(statePath, content, cwd);
+  output({ updated: true, phase: phaseNum, name: phaseName, plans: planCount, failed }, raw, 'true');
+}
+
 module.exports = {
   stateExtractField,
   stateReplaceField,
@@ -718,4 +834,5 @@ module.exports = {
   cmdStateRecordSession,
   cmdStateSnapshot,
   cmdStateJson,
+  cmdStateBeginPhase,
 };

@@ -21,12 +21,40 @@
  *   generate-slug <text>               Convert text to URL-safe slug
  *   current-timestamp [format]         Get timestamp (full|date|filename)
  *   list-todos [area]                  Count and enumerate pending todos
+ *   recurring-due                      List recurring todos past their interval
  *   verify-path-exists <path>          Check file/directory existence
  *   config-ensure-section              Initialize .planning/config.json
  *   history-digest                     Aggregate all SUMMARY.md data
  *   summary-extract <path> [--fields]  Extract structured data from SUMMARY.md
  *   state-snapshot                     Structured parse of STATE.md
  *   phase-plan-index <phase>           Index plans with waves and status
+ *   detect-platform [remote]            Detect git hosting platform from remote URL
+ *                                      Returns: platform, source, cli, cli_installed
+ *   detect-workspace                   Detect workspace topology (submodule/monorepo/standalone)
+ *                                      Returns: type, signal
+ *   discover-test-command              Discover test command(s) for this project
+ *                                      Returns: [{dir, command}] array (empty if none found)
+ *   version-bump                       Bump project version per configured scheme
+ *     [--level major|minor|patch]       Override auto-derived bump level
+ *     [--scheme semver|calver|date]     Override configured scheme
+ *     [--snapshot]                      Append +{hash} to VERSION file only
+ *   generate-changelog <version>       Generate CHANGELOG.md entries from SUMMARY.md files
+ *     [--date YYYY-MM-DD]              Override date (default: today)
+ *   generate-allowlist                 Generate .claude/settings.json permissions
+ *                                      from static template + config-derived entries
+ *   divergence                          Show upstream/branch drift and manage triage
+ *     [--refresh]                       Fetch from upstream/remote first
+ *     [--init]                          Create/update DIVERGENCE.md inventory
+ *     [--triage <hash>]                 Update a commit's triage status
+ *     [--branch <name>]                 Track branch instead of upstream
+ *     [--base <ref>]                    Base ref for branch mode (default: git.target_branch or main)
+ *   pingpong-check [--window N]         Detect agent oscillation in recent commits
+ *   update [--dry-run]                Check for and install GSD updates
+ *     [--local]                        Force local install path
+ *     [--global]                       Force global install path
+ *   cleanup [--dry-run]               Archive phase dirs from completed milestones
+ *   breakout-check --plan {id}         Detect files modified outside plan scope
+ *     --declared-files f1,f2,f3
  *   websearch <query>                  Search web via Brave API (if configured)
  *     [--limit N] [--freshness day|week|month]
  *
@@ -110,6 +138,7 @@
  *   state record-session               Update session continuity
  *     --stopped-at "..."
  *     [--resume-file path]
+ *   state begin-phase --phase N --name S --plans C  Update STATE.md for new phase start
  *
  * Compound Commands (workflow-specific initialization):
  *   init execute-phase <phase>         All context for execute-phase workflow
@@ -128,7 +157,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { error } = require('./lib/core.cjs');
+const { execSync } = require('child_process');
+const { error, output: coreOutput } = require('./lib/core.cjs');
 const state = require('./lib/state.cjs');
 const phase = require('./lib/phase.cjs');
 const roadmap = require('./lib/roadmap.cjs');
@@ -139,6 +169,26 @@ const milestone = require('./lib/milestone.cjs');
 const commands = require('./lib/commands.cjs');
 const init = require('./lib/init.cjs');
 const frontmatter = require('./lib/frontmatter.cjs');
+const workspace = require('./lib/workspace.cjs');
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function printHelp({ exitCode = 0 } = {}) {
+  const src = fs.readFileSync(__filename, 'utf8');
+  const match = src.match(/\/\*\*([\s\S]*?)\*\//);
+  const out = exitCode !== 0 ? process.stderr : process.stdout;
+  if (!match) { out.write('No help available.\n'); process.exit(exitCode); }
+  const lines = match[1].split('\n').map(l => l.replace(/^\s*\*\s?/, '')).filter((_, i, arr) => i > 0 || arr[i].trim());
+  out.write(lines.join('\n').trim() + '\n');
+  process.exit(exitCode);
+}
+
+// Module-level state for --pick field extraction.
+// Capture buffer is populated by fs.writeSync/process.stdout.write interception in main().
+// Original references are stored so the post-run .then() handler can restore and write.
+const _pickStdoutChunks = [];
+let _origFsWriteSync = null;
+let _origStdoutWrite = null;
 
 // ─── CLI Router ───────────────────────────────────────────────────────────────
 
@@ -159,6 +209,22 @@ async function main() {
     if (!value || value.startsWith('--')) error('Missing value for --cwd');
     args.splice(cwdIdx, 2);
     cwd = path.resolve(value);
+  } else {
+    // No explicit --cwd: resolve git repo root to handle worktree contexts
+    try {
+      const repoRoot = execSync('git rev-parse --show-toplevel', {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      // Only use git root if it has a .planning directory
+      // (avoids incorrectly resolving when invoked from a non-GSD repo)
+      if (fs.existsSync(path.join(repoRoot, '.planning'))) {
+        cwd = repoRoot;
+      }
+    } catch {
+      // Not a git repo or git unavailable — keep process.cwd()
+    }
   }
 
   if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
@@ -169,10 +235,65 @@ async function main() {
   const raw = rawIndex !== -1;
   if (rawIndex !== -1) args.splice(rawIndex, 1);
 
+  // --pick <name>: extract a single field from JSON output (replaces jq dependency).
+  // Supports dot-notation (e.g., --pick workflow.research) and bracket notation
+  // for arrays (e.g., --pick directories[-1]).
+  const pickIdx = args.indexOf('--pick');
+  let pickField = null;
+  if (pickIdx !== -1) {
+    pickField = args[pickIdx + 1];
+    if (!pickField || pickField.startsWith('--')) error('Missing value for --pick');
+    args.splice(pickIdx, 2);
+  }
+
+  if (args.includes('--help') || args.includes('-h')) printHelp();
+
   const command = args[0];
 
-  if (!command) {
-    error('Usage: gsd-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, resolve-model, find-phase, commit, verify-summary, verify, frontmatter, template, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, init');
+  if (!command) printHelp({ exitCode: 1 });
+
+  // When --pick is active, intercept stdout writes to extract a single field
+  // from JSON output (replaces jq dependency). output() uses fs.writeSync(1, ...)
+  // so we intercept at the fs layer; also intercept process.stdout.write for any
+  // non-output() paths (printHelp, etc.).
+  if (pickField) {
+    _origFsWriteSync = fs.writeSync.bind(fs);
+    _origStdoutWrite = process.stdout.write.bind(process.stdout);
+
+    fs.writeSync = function (fd, data, ...rest) {
+      if (fd === 1) {
+        _pickStdoutChunks.push(String(data));
+        return data.length;
+      }
+      return _origFsWriteSync(fd, data, ...rest);
+    };
+
+    process.stdout.write = function (data) {
+      _pickStdoutChunks.push(String(data));
+      return true;
+    };
+
+    // Intercept process.exit to flush captured output on error paths (e.g. error())
+    const origExit = process.exit.bind(process);
+    process.exit = function (code) {
+      fs.writeSync = _origFsWriteSync;
+      process.stdout.write = _origStdoutWrite;
+      process.exit = origExit;
+      if (code === 0 || code === undefined) {
+        const captured = _pickStdoutChunks.join('');
+        let jsonStr = captured;
+        if (jsonStr.startsWith('@file:')) {
+          try { jsonStr = fs.readFileSync(jsonStr.slice(6), 'utf-8'); } catch { jsonStr = captured; }
+        }
+        try {
+          const obj = JSON.parse(jsonStr);
+          const value = extractField(obj, pickField);
+          const result = value === null || value === undefined ? '' : String(value);
+          _origFsWriteSync(1, result);
+        } catch { _origFsWriteSync(1, captured); }
+      }
+      origExit(code);
+    };
   }
 
   switch (command) {
@@ -241,6 +362,17 @@ async function main() {
           stopped_at: stoppedIdx !== -1 ? args[stoppedIdx + 1] : null,
           resume_file: resumeIdx !== -1 ? args[resumeIdx + 1] : 'None',
         }, raw);
+      } else if (subcommand === 'begin-phase') {
+        const phaseIdx = args.indexOf('--phase');
+        const nameIdx = args.indexOf('--name');
+        const plansIdx = args.indexOf('--plans');
+        state.cmdStateBeginPhase(
+          cwd,
+          phaseIdx !== -1 ? args[phaseIdx + 1] : null,
+          nameIdx !== -1 ? args[nameIdx + 1] : null,
+          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null,
+          raw
+        );
       } else {
         state.cmdStateLoad(cwd, raw);
       }
@@ -362,6 +494,16 @@ async function main() {
       break;
     }
 
+    case 'recurring-due': {
+      commands.cmdRecurringDue(cwd, raw);
+      break;
+    }
+
+    case 'staleness-check': {
+      commands.cmdStalenessCheck(cwd, raw);
+      break;
+    }
+
     case 'verify-path-exists': {
       commands.cmdVerifyPathExists(cwd, args[1], raw);
       break;
@@ -374,6 +516,11 @@ async function main() {
 
     case 'config-set': {
       config.cmdConfigSet(cwd, args[1], args[2], raw);
+      break;
+    }
+
+    case "config-set-model-profile": {
+      config.cmdConfigSetModelProfile(cwd, args[1], raw);
       break;
     }
 
@@ -488,6 +635,12 @@ async function main() {
       break;
     }
 
+    case 'stats': {
+      const subcommand = args[1] || 'json';
+      commands.cmdStats(cwd, subcommand, raw);
+      break;
+    }
+
     case 'todo': {
       const subcommand = args[1];
       if (subcommand === 'complete') {
@@ -495,6 +648,14 @@ async function main() {
       } else {
         error('Unknown todo subcommand. Available: complete');
       }
+      break;
+    }
+
+    case 'update': {
+      const dryRun = args.includes('--dry-run');
+      const localInstall = args.includes('--local');
+      const globalInstall = args.includes('--global');
+      commands.cmdUpdate(cwd, { dryRun, local: localInstall, global: globalInstall }, raw);
       break;
     }
 
@@ -573,6 +734,35 @@ async function main() {
       break;
     }
 
+    case 'detect-platform': {
+      // Support --field <name> --raw for scalar extraction (e.g. detect-platform --field platform --raw)
+      const dpFieldIdx = args.indexOf('--field');
+      const dpField = dpFieldIdx !== -1 ? args[dpFieldIdx + 1] : null;
+      // Use the first non-flag positional argument as the remote name
+      const dpRemoteArg = args[1] && !args[1].startsWith('--') ? args[1] : null;
+      if (dpField && raw) {
+        // silent=true: returns result without calling output()/process.exit()
+        const dpResult = commands.cmdDetectPlatform(cwd, dpRemoteArg, false, true);
+        if (dpResult && dpResult[dpField] !== undefined) {
+          process.stdout.write(String(dpResult[dpField]));
+        }
+        process.exit(0);
+      }
+      commands.cmdDetectPlatform(cwd, dpRemoteArg, raw);
+      break;
+    }
+
+    case 'detect-workspace': {
+      workspace.cmdDetectWorkspace(cwd, raw);
+      break;
+    }
+
+    case 'discover-test-command': {
+      const result = commands.discoverTestCommand(cwd);
+      coreOutput(result, raw);
+      break;
+    }
+
     case 'websearch': {
       const query = args[1];
       const limitIdx = args.indexOf('--limit');
@@ -584,9 +774,215 @@ async function main() {
       break;
     }
 
+    case 'squash': {
+      const listBackupTags = args.includes('--list-backup-tags');
+      const phase = listBackupTags ? null : args[1];
+      const dryRun = args.includes('--dry-run');
+      const allowStable = args.includes('--allow-stable');
+      const strategyIdx = args.indexOf('--strategy');
+      const strategy = strategyIdx >= 0 ? args[strategyIdx + 1] : null;
+      commands.cmdSquash(cwd, phase, {
+        strategy,
+        dryRun,
+        allowStable,
+        listBackupTags,
+      }, raw);
+      break;
+    }
+
+    case 'version-bump': {
+      const levelIdx = args.indexOf('--level');
+      const schemeIdx = args.indexOf('--scheme');
+      const snapshot = args.includes('--snapshot');
+      const vbFieldIdx = args.indexOf('--field');
+      const vbField = vbFieldIdx !== -1 ? args[vbFieldIdx + 1] : null;
+      if (vbField && raw) {
+        // silent=true: returns result without calling output()/process.exit()
+        const vbResult = commands.cmdVersionBump(cwd, {
+          level: levelIdx >= 0 ? args[levelIdx + 1] : null,
+          scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
+          snapshot,
+        }, false, true);
+        if (vbResult && vbResult[vbField] !== undefined) {
+          process.stdout.write(String(vbResult[vbField]));
+        }
+        process.exit(0);
+      }
+      commands.cmdVersionBump(cwd, {
+        level: levelIdx >= 0 ? args[levelIdx + 1] : null,
+        scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
+        snapshot,
+      }, raw);
+      break;
+    }
+
+    case 'generate-changelog': {
+      const version = args[1];
+      const dateIdx = args.indexOf('--date');
+      commands.cmdGenerateChangelog(cwd, version, {
+        date: dateIdx >= 0 ? args[dateIdx + 1] : null,
+      }, raw);
+      break;
+    }
+
+    case 'generate-allowlist': {
+      commands.cmdGenerateAllowlist(cwd, raw);
+      break;
+    }
+
+    case 'resolve-type-alias': {
+      // Resolve a short commit type to its branch prefix alias using git.type_aliases config.
+      // Usage: gsd-tools resolve-type-alias feat --raw
+      const typeArg = args[1] || 'feat';
+      // git.type_aliases is nested in config.json under the git section.
+      // loadConfig() returns a flat object so we read the raw config file directly.
+      const rtaConfigPath = path.join(cwd, '.planning', 'config.json');
+      let rtaAliases = { feat: 'feature', fix: 'bugfix', chore: 'chore', refactor: 'refactor' };
+      try {
+        const rawCfg = JSON.parse(fs.readFileSync(rtaConfigPath, 'utf-8'));
+        if (rawCfg.git && rawCfg.git.type_aliases) {
+          rtaAliases = rawCfg.git.type_aliases;
+        }
+      } catch {}
+      const resolvedAlias = rtaAliases[typeArg] !== undefined ? rtaAliases[typeArg] : typeArg;
+      if (raw) {
+        process.stdout.write(resolvedAlias);
+        process.exit(0);
+      }
+      coreOutput({ type: typeArg, alias: resolvedAlias }, false, resolvedAlias);
+      break;
+    }
+
+    case 'issue-import': {
+      const platform = args[1];
+      const number = args[2];
+      const repoIdx = args.indexOf('--repo');
+      const repo = repoIdx >= 0 ? args[repoIdx + 1] : null;
+      commands.cmdIssueImport(cwd, platform, number, repo, raw);
+      break;
+    }
+
+    case 'issue-sync': {
+      const phase = args[1] || null;
+      const auto = args.includes('--auto');
+      commands.cmdIssueSync(cwd, phase, { auto }, raw);
+      break;
+    }
+
+    case 'issue-list-refs': {
+      commands.cmdIssueListRefs(cwd, raw);
+      break;
+    }
+
+    case 'divergence': {
+      const refreshFlag = args.includes('--refresh');
+      const initFlag = args.includes('--init');
+      const triageIdx = args.indexOf('--triage');
+      const statusIdx = args.indexOf('--status');
+      const reasonIdx = args.indexOf('--reason');
+      const branchIdx = args.indexOf('--branch');
+      const baseIdx = args.indexOf('--base');
+      const opts = {
+        refresh: refreshFlag,
+        init: initFlag,
+        triage: triageIdx !== -1 ? args[triageIdx + 1] : null,
+        status: statusIdx !== -1 ? args[statusIdx + 1] : null,
+        reason: reasonIdx !== -1 ? args.slice(reasonIdx + 1).join(' ') : null,
+        branch: branchIdx !== -1 ? args[branchIdx + 1] : null,
+        base: baseIdx !== -1 ? args[baseIdx + 1] : null,
+      };
+      commands.cmdDivergence(cwd, opts, raw);
+      break;
+    }
+
+    case 'pingpong-check': {
+      const windowIdx = args.indexOf('--window');
+      commands.cmdPingpongCheck(cwd, windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : [], raw);
+      break;
+    }
+
+    case 'breakout-check': {
+      const planIdx = args.indexOf('--plan');
+      const filesIdx = args.indexOf('--declared-files');
+      const checkArgs = [];
+      if (planIdx !== -1) { checkArgs.push('--plan', args[planIdx + 1]); }
+      if (filesIdx !== -1) { checkArgs.push('--declared-files', args[filesIdx + 1]); }
+      commands.cmdBreakoutCheck(cwd, checkArgs, raw);
+      break;
+    }
+
+    case 'cleanup': {
+      const dryRun = args.includes('--dry-run');
+      commands.cmdCleanup(cwd, { dryRun }, raw);
+      break;
+    }
+
+    case 'help':
+      commands.cmdHelp(cwd, args.slice(1), raw);
+      break;
+
+    case '--help':
+    case '-h':
+      printHelp();
+      break;
+
     default:
-      error(`Unknown command: ${command}`);
+      error(`Unknown command: ${command}. Available commands include: issue-import, issue-sync, issue-list-refs, detect-platform, detect-workspace, discover-test-command, squash, version-bump, generate-changelog, and others.`);
   }
 }
 
-main();
+/**
+ * Extract a field from an object using dot-notation and bracket syntax.
+ * Supports: 'field', 'parent.child', 'arr[-1]', 'arr[0]'
+ */
+function extractField(obj, fieldPath) {
+  const parts = fieldPath.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    const bracketMatch = part.match(/^(.+?)\[(-?\d+)]$/);
+    if (bracketMatch) {
+      const key = bracketMatch[1];
+      const index = parseInt(bracketMatch[2], 10);
+      current = current[key];
+      if (!Array.isArray(current)) return undefined;
+      current = index < 0 ? current[current.length + index] : current[index];
+    } else {
+      current = current[part];
+    }
+  }
+  return current;
+}
+
+// Capture pickField before main() runs so the .then() closure can access it.
+// main() sets pickField as a local — we need it for the post-run extraction.
+// Re-parse --pick from argv here (main() hasn't spliced it yet at module scope).
+const _pickFieldForPostRun = (() => {
+  const i = process.argv.indexOf('--pick');
+  return i !== -1 ? process.argv[i + 1] : null;
+})();
+
+main().then(() => {
+  if (_pickFieldForPostRun && _pickStdoutChunks.length > 0) {
+    // Normal success path: output() wrote via fs.writeSync interception; process.exit not called.
+    // Restore originals first, then extract and write the requested field to real stdout.
+    if (_origFsWriteSync) fs.writeSync = _origFsWriteSync;
+    if (_origStdoutWrite) process.stdout.write = _origStdoutWrite;
+
+    let captured = _pickStdoutChunks.join('');
+    if (captured.startsWith('@file:')) {
+      try { captured = fs.readFileSync(captured.slice(6), 'utf-8'); } catch { /* keep as-is */ }
+    }
+    try {
+      const obj = JSON.parse(captured);
+      const value = extractField(obj, _pickFieldForPostRun);
+      const result = value === null || value === undefined ? '' : String(value);
+      process.stdout.write(result);
+    } catch {
+      process.stdout.write(captured);
+    }
+  }
+}).catch((err) => {
+  process.stderr.write((err && err.message) || String(err));
+  process.exit(1);
+});

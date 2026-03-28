@@ -1,0 +1,30 @@
+---
+description: Detect workspace topology and seed appropriate guardrail memories
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Agent
+argument-hint: "[--force]"
+---
+
+Detect workspace topology (submodule, monorepo, standalone) and seed appropriate structure-hazard memories into `.claude/memory/`. Updates both CLAUDE.md Memories section and `.claude/memory/MEMORY.md`.
+
+**Steps:**
+1. Run `node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace` to determine workspace type
+2. If type is `submodule` or `monorepo`: seed the multi-boundary memory template from `$HOME/.claude/get-shit-done/templates/memory-templates/multi-boundary.md` into `.claude/memory/project_commit-boundary.md`
+3. If type is `standalone`: no memories to seed (report "standalone workspace, no structural memories needed")
+4. Scan `.claude/memory/*.md` and regenerate the CLAUDE.md Memories section (append if CLAUDE.md exists, create if not). Also write/update the `## GSD` metadata section above the Memories section using the workspace type from Step 1:
+   - For non-standalone workspaces: `## GSD\n\n**Workspace type:** {type}\n**Detection signal:** {signal}`
+   - For standalone workspaces: `## GSD\n\n**Workspace type:** standalone`
+   - If CLAUDE.md already has a `## GSD` section, replace it in-place. If not, insert it before the `## Memories` section.
+5. Regenerate `.claude/memory/MEMORY.md` from current memory files
+6. Commit changes
+
+**If `--force` flag:** Skip confirmation and overwrite existing memory files.
+**Otherwise:** Show what would be seeded and ask user to confirm via AskUserQuestion before writing.
+
+Run from: `/gsd:seed-memories`

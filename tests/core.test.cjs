@@ -14,7 +14,6 @@ const os = require('os');
 const {
   loadConfig,
   resolveModelInternal,
-  MODEL_PROFILES,
   escapeRegex,
   generateSlugInternal,
   normalizePhaseName,
@@ -58,7 +57,6 @@ describe('loadConfig', () => {
     assert.strictEqual(config.commit_docs, true);
     assert.strictEqual(config.research, true);
     assert.strictEqual(config.plan_checker, true);
-    assert.strictEqual(config.brave_search, false);
     assert.strictEqual(config.parallelization, true);
     assert.strictEqual(config.nyquist_validation, true);
   });
@@ -148,7 +146,7 @@ describe('resolveModelInternal', () => {
     test('all known agents resolve to a valid string for each profile', () => {
       const knownAgents = ['gsd-planner', 'gsd-executor', 'gsd-phase-researcher', 'gsd-codebase-mapper'];
       const profiles = ['quality', 'balanced', 'budget'];
-      const validValues = ['inherit', 'sonnet', 'haiku', 'opus'];
+      const validValues = [null, 'sonnet', 'haiku', 'opus'];
 
       for (const profile of profiles) {
         writeConfig({ model_profile: profile });
@@ -172,11 +170,11 @@ describe('resolveModelInternal', () => {
       assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'haiku');
     });
 
-    test('opus override resolves to inherit', () => {
+    test('opus override resolves to opus directly', () => {
       writeConfig({
         model_overrides: { 'gsd-executor': 'opus' },
       });
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'inherit');
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-executor'), 'opus');
     });
 
     test('agents not in override fall back to profile', () => {
@@ -184,8 +182,8 @@ describe('resolveModelInternal', () => {
         model_profile: 'quality',
         model_overrides: { 'gsd-executor': 'haiku' },
       });
-      // gsd-planner not overridden, should use quality profile -> opus -> inherit
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'inherit');
+      // gsd-planner not overridden, should use quality profile -> opus
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
     });
   });
 
@@ -197,8 +195,8 @@ describe('resolveModelInternal', () => {
 
     test('defaults to balanced profile when model_profile missing', () => {
       writeConfig({});
-      // balanced profile, gsd-planner -> opus -> inherit
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'inherit');
+      // balanced profile, gsd-planner -> opus
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
     });
   });
 });
@@ -624,8 +622,8 @@ describe('getRoadmapPhaseInternal', () => {
     assert.strictEqual(result.goal, 'Create REST endpoints');
   });
 
-  test('returns null goal when Goal uses colon-outside-bold format', () => {
-    // Actual ROADMAP.md uses **Goal**: (colon outside bold) which the regex does not match
+  test('returns goal when Goal uses colon-outside-bold format', () => {
+    // **Goal**: (colon outside bold) is now supported alongside **Goal:**
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '### Phase 1: Foundation\n**Goal**: Build the base\n'
@@ -633,7 +631,7 @@ describe('getRoadmapPhaseInternal', () => {
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.strictEqual(result.found, true);
     assert.strictEqual(result.phase_name, 'Foundation');
-    assert.strictEqual(result.goal, null);
+    assert.strictEqual(result.goal, 'Build the base');
   });
 
   test('returns null when roadmap missing', () => {

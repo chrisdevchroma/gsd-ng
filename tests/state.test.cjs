@@ -475,6 +475,30 @@ describe('STATE.md frontmatter sync', () => {
     assert.ok(content.includes('status: paused'), 'frontmatter should reflect latest status');
   });
 
+  test('preserves frontmatter status when body Status field is missing', () => {
+    // Simulate: frontmatter has status: executing, but body lost Status: field
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+status: executing
+milestone: v1.0
+---
+
+# Project State
+
+**Current Phase:** 03
+**Current Plan:** 03-02
+`
+    );
+
+    // Any writeStateMd triggers syncStateFrontmatter — use state update on a field that exists
+    runGsdTools('state update "Current Plan" "03-03"', tmpDir);
+
+    const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(content.includes('status: executing'), 'should preserve existing status, not overwrite with unknown');
+    assert.ok(!content.includes('status: unknown'), 'should not contain unknown status');
+  });
+
   test('round-trip: write then read via state json', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
@@ -891,6 +915,45 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
     const output = JSON.parse(result.output);
     assert.ok(output.error !== undefined, 'output should have error field');
     assert.ok(output.error.toLowerCase().includes('cannot parse'), 'error should mention Cannot parse');
+  });
+
+  test('advances plan in compound "Plan: X of Y" format', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\nPlan: 2 of 5 in current phase\nStatus: In progress\nLast activity: 2025-01-01\n`
+    );
+
+    const result = runGsdTools('state advance-plan', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, true, 'advanced should be true');
+    assert.strictEqual(output.previous_plan, 2);
+    assert.strictEqual(output.current_plan, 3);
+    assert.strictEqual(output.total_plans, 5);
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('Plan: 3 of 5 in current phase'),
+      'should preserve compound format with updated plan number');
+    assert.ok(updated.includes('Status: Ready to execute'),
+      'Status should be updated');
+  });
+
+  test('marks phase complete on last plan in compound format', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\nPlan: 3 of 3 in current phase\nStatus: In progress\nLast activity: 2025-01-01\n`
+    );
+
+    const result = runGsdTools('state advance-plan', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, false);
+    assert.strictEqual(output.reason, 'last_plan');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('Phase complete'), 'Status should contain Phase complete');
   });
 });
 
@@ -1370,6 +1433,76 @@ describe('milestone-scoped phase counting in frontmatter', () => {
 
     const output = JSON.parse(jsonResult.output);
     assert.strictEqual(Number(output.progress.total_phases), 4, 'without ROADMAP should count all 4 phases');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cmdStateBeginPhase (state begin-phase)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('cmdStateBeginPhase (state begin-phase)', () => {
+  let tmpDir;
+
+  const beginPhaseFixture = [
+    '# Project State',
+    '',
+    '**Status:** Planning',
+    '**Current Phase:** 01',
+    '**Current Phase Name:** Foundation',
+    '**Current Plan:** 01-01',
+    '**Total Plans in Phase:** 2',
+    '**Last Activity:** 2024-01-01',
+    '**Last Activity Description:** Old description',
+    '**Progress:** [█████░░░░░] 50%',
+    '',
+    '## Current Position',
+    '',
+    'Phase 01 of 21 — Foundation',
+    '',
+    '## Current focus',
+    '',
+    'Foundation work in progress.',
+    '',
+    '## Session Continuity',
+    '',
+    '**Last session:** 2024-01-01',
+    '**Stopped at:** Phase 1 Plan 1',
+    '**Resume file:** None',
+  ].join('\n') + '\n';
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('updates STATE.md fields for new phase start', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), beginPhaseFixture);
+
+    const result = runGsdTools(['state', 'begin-phase', '--phase', '03', '--name', 'API Layer', '--plans', '4'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const out = JSON.parse(result.output);
+    assert.strictEqual(out.updated, true, 'updated should be true');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Current Phase:** 03'), 'Current Phase should be updated to 03');
+    assert.ok(updated.includes('**Current Phase Name:** API Layer'), 'Current Phase Name should be updated');
+    assert.ok(updated.includes('**Current Plan:** 03-01'), 'Current Plan should be set to 03-01');
+    assert.ok(updated.includes('**Total Plans in Phase:** 4'), 'Total Plans in Phase should be updated to 4');
+  });
+
+  test('returns error when STATE.md missing', () => {
+    // Do NOT write STATE.md
+    const result = runGsdTools(['state', 'begin-phase', '--phase', '05', '--name', 'Deploy', '--plans', '2'], tmpDir);
+    // Command should exit 0 with error in output, or fail — either way STATE.md missing is an error
+    const text = result.output || result.error || '';
+    assert.ok(
+      text.includes('STATE.md') || text.includes('not found'),
+      `Output should mention STATE.md or not found, got: ${text}`
+    );
   });
 });
 

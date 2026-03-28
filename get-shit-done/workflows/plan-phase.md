@@ -2,6 +2,35 @@
 Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification. Default flow: Research (if needed) -> Plan -> Verify -> Done. Orchestrates gsd-phase-researcher, gsd-planner, and gsd-plan-checker agents with a revision loop (max 3 iterations).
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 
@@ -169,16 +198,156 @@ Use AskUserQuestion:
   - "Continue without context" — Plan using research + requirements only
   - "Run discuss-phase first" — Capture design decisions before planning
 
-If "Continue without context": Proceed to step 5.
+If "Continue without context": Proceed to step 4.5.
 If "Run discuss-phase first": Display `/gsd:discuss-phase {X}` and exit workflow.
+
+## 4.5. Scan Related Todos (Fallback)
+
+**Skip if:** `context_path` is not null (discuss-phase already ran and performed this scan), OR `--gaps` flag is set (gap closure doesn't link new todos), OR PRD express path was used (step 3.5 ran).
+
+When discuss-phase is skipped, scan pending todos for keyword overlap with the phase goal. This is the same logic as discuss-phase's scan_related_todos step, serving as a fallback to ensure todos always get a chance to be linked.
+
+Read the phase goal:
+```bash
+PHASE_GOAL=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
+  process.stdin.on('data', d => {
+    try { const r = JSON.parse(d); console.log(r.goal || r.name || ''); } catch { console.log(''); }
+  });
+")
+```
+
+If `$PHASE_GOAL` is empty or `ls .planning/todos/pending/*.md 2>/dev/null` returns no files, skip silently and continue to step 5.
+
+Scan pending todos for candidates using keyword overlap:
+- Read each `.planning/todos/pending/*.md` file
+- Extract `title` from frontmatter
+- Skip todos that already have a `phase:` frontmatter field set (already linked)
+- Split both title and phase goal into lowercase words
+- Filter stop words (a, an, the, is, are, was, were, be, been, to, for, of, in, on, at, by, with, and, or, not, this, that, it, as, from, but, its, no, has, have, had)
+- A todo is a candidate if 2+ non-stop-words match, OR 1 matching word is 6+ characters long
+- Cap at 3 candidates maximum; if more than 3 match, skip (too noisy)
+
+**If 0 candidates:** Skip silently, continue to step 5.
+
+**If 1-3 candidates and NOT --auto:**
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "These pending todos may relate to Phase ${PHASE}. Link them? (discuss-phase was skipped, so this is your chance)",
+  multiSelect: true,
+  options: [
+    { label: "[todo-filename-1]", description: "[todo title 1]" },
+    { label: "[todo-filename-2]", description: "[todo title 2]" },
+    { label: "None of these", description: "Skip linking" }
+  ]
+)
+```
+
+For each selected todo (not "None of these"):
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$SELECTED_FILE" --field phase --value "${PHASE}"
+```
+
+Log: `Linked todo: $SELECTED_FILE -> Phase ${PHASE}`
+
+**If --auto:** Auto-select all candidates. Log: `[auto] Linked ${N} todo(s) to Phase ${PHASE}`.
+
+For each linked todo in auto mode:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "${PHASE}"
+```
+
+Continue to step 5.
 
 ## 5. Handle Research
 
-**Skip if:** `--gaps` flag, `--skip-research` flag, or `research_enabled` is false (from init) without `--research` override.
+**Skip if:** `--skip-research` flag, OR `--gaps` flag without `--research` flag.
+
+**Gap research path (when `--gaps` AND `--research` flags both present):**
+
+Display banner:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ GSD ► RESEARCHING GAPS FOR PHASE {X}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+◆ Spawning gap researcher...
+```
+
+```bash
+PHASE_DESC=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" | jq -r '.section')
+```
+
+Gap research prompt:
+
+```markdown
+<objective>
+Research gap domains for Phase {phase_number}: {phase_name}
+Answer: "What do I need to know to address these verification gaps?"
+</objective>
+
+<files_to_read>
+- {verification_path} (Verification gaps)
+- {uat_path} (UAT gaps — if exists)
+- {context_path} (Phase context)
+- {requirements_path} (Project requirements)
+- {state_path} (Project decisions and history)
+</files_to_read>
+
+<gap_focus>
+This is gap-closure research, not full phase research.
+Focus ONLY on domains where verification gaps exist.
+Do NOT re-research the full phase scope.
+</gap_focus>
+
+<additional_context>
+**Phase description:** {phase_description}
+
+**Project instructions:** Read ./CLAUDE.md if exists — follow project-specific guidelines
+**Project skills:** Check .claude/skills/ or .agents/skills/ directory (if either exists) — read SKILL.md files, research should account for project skill patterns
+</additional_context>
+
+<output>
+Write to: {phase_dir}/{padded_phase}-GAP-RESEARCH.md
+</output>
+```
+
+```
+Task(
+  prompt=gap_research_prompt,
+  subagent_type="gsd-phase-researcher",
+  model="{researcher_model}",
+  description="Research gaps for Phase {phase}"
+)
+```
+
+Set `GAP_RESEARCH_PATH` to `{phase_dir}/{padded_phase}-GAP-RESEARCH.md`.
+
+Continue to step 6 (skip normal research — gap research replaces it in this path).
 
 **If `has_research` is true (from init) AND no `--research` flag:** Use existing, skip to step 6.
 
 **If RESEARCH.md missing OR `--research` flag:**
+
+**If no explicit flag (`--research` or `--skip-research`) and not `--auto`:**
+Ask the user whether to research, with a contextual recommendation based on the phase:
+
+```
+AskUserQuestion([
+  {
+    question: "Research before planning Phase {X}: {phase_name}?",
+    header: "Research",
+    multiSelect: false,
+    options: [
+      { label: "Research first (Recommended)", description: "Investigate domain, patterns, and dependencies before planning. Best for new features, unfamiliar integrations, or architectural changes." },
+      { label: "Skip research", description: "Plan directly from context and requirements. Best for bug fixes, simple refactors, or well-understood tasks." }
+    ]
+  }
+])
+```
+
+If user selects "Skip research": skip to step 6.
+
+**If `--auto` and `research_enabled` is false:** Skip research silently (preserves automated behavior).
 
 Display banner:
 ```
@@ -242,6 +411,13 @@ Skip if `nyquist_validation_enabled` is false OR `research_enabled` is false.
 
 If `research_enabled` is false and `nyquist_validation_enabled` is true: warn "Nyquist validation enabled but research disabled — VALIDATION.md cannot be created without RESEARCH.md. Plans will lack validation requirements (Dimension 8)." Continue to step 6.
 
+**But Nyquist is not applicable for this run** when all of the following are true:
+- `research_enabled` is false
+- `has_research` is false
+- no `--research` flag was provided
+
+In that case: **skip validation-strategy creation entirely**. Do **not** expect `RESEARCH.md` or `VALIDATION.md` for this run, and continue to Step 6.
+
 ```bash
 grep -l "## Validation Architecture" "${PHASE_DIR}"/*-RESEARCH.md 2>/dev/null
 ```
@@ -255,9 +431,49 @@ grep -l "## Validation Architecture" "${PHASE_DIR}"/*-RESEARCH.md 2>/dev/null
 test -f "${PHASE_DIR}/${PADDED_PHASE}-VALIDATION.md" && echo "VALIDATION_CREATED=true" || echo "VALIDATION_CREATED=false"
 ```
 5. If `VALIDATION_CREATED=false`: STOP — do not proceed to Step 6
-6. If `commit_docs`: `commit-docs "docs(phase-${PHASE}): add validation strategy"`
+6. If `commit_docs`: `commit "docs(phase-${PHASE}): add validation strategy"`
 
 **If not found:** Warn and continue — plans may fail Dimension 8.
+
+## 5.6. UI Design Contract Gate
+
+> Skip if `workflow.ui_phase` is explicitly `false` AND `workflow.ui_safety_gate` is explicitly `false` in `.planning/config.json`. If keys are absent, treat as enabled.
+
+```bash
+UI_PHASE_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.ui_phase 2>/dev/null || echo "true")
+UI_GATE_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.ui_safety_gate 2>/dev/null || echo "true")
+```
+
+**If both are `false`:** Skip to step 6.
+
+Check if phase has frontend indicators:
+
+```bash
+PHASE_SECTION=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" 2>/dev/null)
+echo "$PHASE_SECTION" | grep -iE "UI|interface|frontend|component|layout|page|screen|view|form|dashboard|widget" > /dev/null 2>&1
+HAS_UI=$?
+```
+
+**If `HAS_UI` is 0 (frontend indicators found):**
+
+Check for existing UI-SPEC:
+```bash
+UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
+```
+
+**If UI-SPEC.md found:** Set `UI_SPEC_PATH=$UI_SPEC_FILE`. Display: `Using UI design contract: ${UI_SPEC_PATH}`
+
+**If UI-SPEC.md missing AND `UI_GATE_CFG` is `true`:**
+
+Use AskUserQuestion:
+- header: "UI Design Contract"
+- question: "Phase {N} has frontend indicators but no UI-SPEC.md. Generate a design contract before planning?"
+- options:
+  - "Generate UI-SPEC first" → Display: "Run `/gsd:ui-phase {N}` then re-run `/gsd:plan-phase {N}`". Exit workflow.
+  - "Continue without UI-SPEC" → Continue to step 6.
+  - "Not a frontend phase" → Continue to step 6.
+
+**If `HAS_UI` is 1 (no frontend indicators):** Skip silently to step 6.
 
 ## 6. Check Existing Plans
 
@@ -279,19 +495,28 @@ RESEARCH_PATH=$(printf '%s\n' "$INIT" | jq -r '.research_path // empty')
 VERIFICATION_PATH=$(printf '%s\n' "$INIT" | jq -r '.verification_path // empty')
 UAT_PATH=$(printf '%s\n' "$INIT" | jq -r '.uat_path // empty')
 CONTEXT_PATH=$(printf '%s\n' "$INIT" | jq -r '.context_path // empty')
+GAP_RESEARCH_PATH=$(printf '%s\n' "$INIT" | jq -r '.gap_research_path // empty')
 ```
 
 ## 7.5. Verify Nyquist Artifacts
 
 Skip if `nyquist_validation_enabled` is false OR `research_enabled` is false.
 
+Also skip if all of the following are true:
+- `research_enabled` is false
+- `has_research` is false
+- no `--research` flag was provided
+
+In that no-research path, Nyquist artifacts are **not required** for this run.
+
 ```bash
 VALIDATION_EXISTS=$(ls "${PHASE_DIR}"/*-VALIDATION.md 2>/dev/null | head -1)
 ```
 
-If missing and Nyquist enabled — ask user:
-1. Re-run with research: `/gsd:plan-phase {PHASE} --research`
-2. Disable Nyquist: `node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow.nyquist_validation false`
+If missing and Nyquist is still enabled/applicable — ask user:
+1. Re-run: `/gsd:plan-phase {PHASE} --research`
+2. Disable Nyquist with the exact command:
+   `node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow.nyquist_validation false`
 3. Continue anyway (plans fail Dimension 8)
 
 Proceed to Step 8 only if user selects 2 or 3.
@@ -322,6 +547,8 @@ Planner prompt:
 - {research_path} (Technical Research)
 - {verification_path} (Verification Gaps - if --gaps)
 - {uat_path} (UAT Gaps - if --gaps)
+- {GAP_RESEARCH_PATH} (Gap Research (focused on verification gaps): — if --gaps --research)
+- {UI_SPEC_PATH} (UI Design Contract — visual/interaction specs, if exists)
 </files_to_read>
 
 **Phase requirement IDs (every ID MUST appear in a plan's `requirements` field):** {phase_req_ids}
@@ -505,7 +732,7 @@ Check for auto-advance trigger:
 1. Parse `--auto` flag from $ARGUMENTS
 2. **Sync chain flag with intent** — if user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference):
    ```bash
-   if [[ ! "$ARGUMENTS" =~ --auto ]]; then
+   if [[ "$ARGUMENTS" != *"--auto"* ]]; then
      node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow._auto_chain_active false 2>/dev/null
    fi
    ```
@@ -580,9 +807,9 @@ Verification: {Passed | Passed with override | Skipped}
 
 **Execute Phase {X}** — run all {N} plans
 
-/gsd:execute-phase {X}
+`/gsd:execute-phase {X}`
 
-<sub>/clear first → fresh context window</sub>
+<sub>`/clear` first → fresh context window</sub>
 
 ───────────────────────────────────────────────────────────────
 
@@ -598,7 +825,7 @@ Verification: {Passed | Passed with override | Skipped}
 - [ ] Phase validated against roadmap
 - [ ] Phase directory created if needed
 - [ ] CONTEXT.md loaded early (step 4) and passed to ALL agents
-- [ ] Research completed (unless --skip-research or --gaps or exists)
+- [ ] Research completed (unless --skip-research or --gaps without --research or exists)
 - [ ] gsd-phase-researcher spawned with CONTEXT.md
 - [ ] Existing plans checked
 - [ ] gsd-planner spawned with CONTEXT.md + RESEARCH.md

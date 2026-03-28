@@ -1,6 +1,6 @@
 # Context Window Monitor
 
-A post-tool hook (`PostToolUse` for Claude Code, `AfterTool` for Gemini CLI) that warns the agent when context window usage is high.
+A `PostToolUse` hook that warns the agent when context window usage is high.
 
 ## Problem
 
@@ -37,7 +37,7 @@ Statusline Hook (gsd-statusline.js)
 /tmp/claude-ctx-{session_id}.json
     ^ reads
     |
-Context Monitor (gsd-context-monitor.js, PostToolUse/AfterTool)
+Context Monitor (gsd-context-monitor.js, PostToolUse)
     | injects
     v
 additionalContext -> Agent sees warning
@@ -60,12 +60,12 @@ GSD's `/gsd:pause-work` command saves execution state. The WARNING message sugge
 
 ## Setup
 
-Both hooks are automatically registered during `npx get-shit-done-cc` installation:
+Both hooks are automatically registered during `npx get-shit-done-ng` installation:
 
 - **Statusline** (writes bridge file): Registered as `statusLine` in settings.json
-- **Context Monitor** (reads bridge file): Registered as `PostToolUse` hook in settings.json (`AfterTool` for Gemini)
+- **Context Monitor** (reads bridge file): Registered as `PostToolUse` hook in settings.json
 
-Manual registration in `~/.claude/settings.json` (Claude Code):
+Manual registration in `~/.claude/settings.json`:
 
 ```json
 {
@@ -80,25 +80,6 @@ Manual registration in `~/.claude/settings.json` (Claude Code):
           {
             "type": "command",
             "command": "node ~/.claude/hooks/gsd-context-monitor.js"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-For Gemini CLI (`~/.gemini/settings.json`), use `AfterTool` instead of `PostToolUse`:
-
-```json
-{
-  "hooks": {
-    "AfterTool": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ~/.gemini/hooks/gsd-context-monitor.js"
           }
         ]
       }

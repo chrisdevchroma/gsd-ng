@@ -10,6 +10,35 @@
 
 </required_reading>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <purpose>
 
 Mark current phase complete and advance to next. This is the natural point where progress tracking and PROJECT.md evolution happen.
@@ -86,7 +115,7 @@ Wait for confirmation before proceeding.
 **SAFETY RAIL: always_confirm_destructive applies here.**
 Skipping incomplete plans is destructive — ALWAYS prompt regardless of mode.
 
-Present:
+Present the incomplete plans summary as plain text:
 
 ```
 Phase [X] has incomplete plans:
@@ -95,12 +124,15 @@ Phase [X] has incomplete plans:
 - {phase}-03-SUMMARY.md ✗ Missing
 
 ⚠️ Safety rail: Skipping plans requires confirmation (destructive action)
-
-Options:
-1. Continue current phase (execute remaining plans)
-2. Mark complete anyway (skip remaining plans)
-3. Review what's left
 ```
+
+Then use AskUserQuestion:
+- header: "Incomplete"
+- question: "Phase [X] has [N] incomplete plans. What would you like to do?"
+- options:
+  - "Continue phase" — execute the remaining plans before transitioning
+  - "Mark complete" — skip remaining plans and mark the phase done anyway
+  - "Review what's left" — show details of the missing plans
 
 Wait for user decision.
 
@@ -509,16 +541,21 @@ Progress tracking is IMPLICIT: planning phase N implies phases 1-(N-1) complete.
 
 If user wants to move on but phase isn't fully complete:
 
+Present the incomplete plans as plain text:
+
 ```
 Phase [X] has incomplete plans:
 - {phase}-02-PLAN.md (not executed)
 - {phase}-03-PLAN.md (not executed)
-
-Options:
-1. Mark complete anyway (plans weren't needed)
-2. Defer work to later phase
-3. Stay and finish current phase
 ```
+
+Then use AskUserQuestion:
+- header: "Move On?"
+- question: "Phase [X] has plans that weren't executed. How would you like to proceed?"
+- options:
+  - "Mark complete" — the plans weren't needed; mark phase done
+  - "Defer to later" — move unexecuted plans to a future phase
+  - "Stay and finish" — continue working through the remaining plans
 
 Respect user judgment — they know if work matters.
 

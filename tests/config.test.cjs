@@ -59,7 +59,6 @@ describe('config-ensure-section command', () => {
     assert.strictEqual(typeof config.workflow.nyquist_validation, 'boolean');
     // These hardcoded defaults are always present (may be overridden by user defaults)
     assert.ok('model_profile' in config, 'model_profile should exist');
-    assert.ok('brave_search' in config, 'brave_search should exist');
     assert.ok('search_gitignored' in config, 'search_gitignored should exist');
   });
 
@@ -76,64 +75,17 @@ describe('config-ensure-section command', () => {
     assert.strictEqual(secondOutput.reason, 'already_exists');
   });
 
-  // NOTE: This test touches ~/.gsd/ on the real filesystem. It uses save/restore
-  // try/finally and skips if the file already exists to avoid corrupting user config.
-  test('detects Brave Search from file-based key', () => {
-    const homedir = os.homedir();
-    const gsdDir = path.join(homedir, '.gsd');
-    const braveKeyFile = path.join(gsdDir, 'brave_api_key');
-
-    // Skip if file already exists (don't mess with user's real config)
-    if (fs.existsSync(braveKeyFile)) {
-      return;
-    }
-
-    // Create .gsd dir and brave_api_key file
-    const gsdDirExisted = fs.existsSync(gsdDir);
-    try {
-      if (!gsdDirExisted) {
-        fs.mkdirSync(gsdDir, { recursive: true });
-      }
-      fs.writeFileSync(braveKeyFile, 'test-key', 'utf-8');
-
-      const result = runGsdTools('config-ensure-section', tmpDir);
-      assert.ok(result.success, `Command failed: ${result.error}`);
-
-      const config = readConfig(tmpDir);
-      assert.strictEqual(config.brave_search, true);
-    } finally {
-      // Clean up
-      try { fs.unlinkSync(braveKeyFile); } catch { /* ignore */ }
-      if (!gsdDirExisted) {
-        try { fs.rmdirSync(gsdDir); } catch { /* ignore if not empty */ }
-      }
-    }
-  });
-
-  // NOTE: This test touches ~/.gsd/ on the real filesystem. It uses save/restore
-  // try/finally and skips if the file already exists to avoid corrupting user config.
+  // Use a temp HOME so we don't touch the real ~/.gsd/ (sandbox-safe)
   test('merges user defaults from defaults.json', () => {
-    const homedir = os.homedir();
-    const gsdDir = path.join(homedir, '.gsd');
-    const defaultsFile = path.join(gsdDir, 'defaults.json');
-
-    // Save existing defaults if present
-    let existingDefaults = null;
-    const gsdDirExisted = fs.existsSync(gsdDir);
-    if (fs.existsSync(defaultsFile)) {
-      existingDefaults = fs.readFileSync(defaultsFile, 'utf-8');
-    }
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), JSON.stringify({
+      model_profile: 'quality',
+      commit_docs: false,
+    }), 'utf-8');
 
     try {
-      if (!gsdDirExisted) {
-        fs.mkdirSync(gsdDir, { recursive: true });
-      }
-      fs.writeFileSync(defaultsFile, JSON.stringify({
-        model_profile: 'quality',
-        commit_docs: false,
-      }), 'utf-8');
-
-      const result = runGsdTools('config-ensure-section', tmpDir);
+      const result = runGsdTools('config-ensure-section', tmpDir, { HOME: tmpHome });
       assert.ok(result.success, `Command failed: ${result.error}`);
 
       const config = readConfig(tmpDir);
@@ -141,40 +93,20 @@ describe('config-ensure-section command', () => {
       assert.strictEqual(config.commit_docs, false, 'commit_docs should be overridden');
       assert.strictEqual(typeof config.branching_strategy, 'string', 'branching_strategy should be a string');
     } finally {
-      // Restore
-      if (existingDefaults !== null) {
-        fs.writeFileSync(defaultsFile, existingDefaults, 'utf-8');
-      } else {
-        try { fs.unlinkSync(defaultsFile); } catch { /* ignore */ }
-      }
-      if (!gsdDirExisted) {
-        try { fs.rmdirSync(gsdDir); } catch { /* ignore */ }
-      }
+      fs.rmSync(tmpHome, { recursive: true, force: true });
     }
   });
 
-  // NOTE: This test touches ~/.gsd/ on the real filesystem. It uses save/restore
-  // try/finally and skips if the file already exists to avoid corrupting user config.
+  // Use a temp HOME so we don't touch the real ~/.gsd/ (sandbox-safe)
   test('merges nested workflow keys from defaults.json preserving unset keys', () => {
-    const homedir = os.homedir();
-    const gsdDir = path.join(homedir, '.gsd');
-    const defaultsFile = path.join(gsdDir, 'defaults.json');
-
-    let existingDefaults = null;
-    const gsdDirExisted = fs.existsSync(gsdDir);
-    if (fs.existsSync(defaultsFile)) {
-      existingDefaults = fs.readFileSync(defaultsFile, 'utf-8');
-    }
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), JSON.stringify({
+      workflow: { research: false },
+    }), 'utf-8');
 
     try {
-      if (!gsdDirExisted) {
-        fs.mkdirSync(gsdDir, { recursive: true });
-      }
-      fs.writeFileSync(defaultsFile, JSON.stringify({
-        workflow: { research: false },
-      }), 'utf-8');
-
-      const result = runGsdTools('config-ensure-section', tmpDir);
+      const result = runGsdTools('config-ensure-section', tmpDir, { HOME: tmpHome });
       assert.ok(result.success, `Command failed: ${result.error}`);
 
       const config = readConfig(tmpDir);
@@ -182,14 +114,7 @@ describe('config-ensure-section command', () => {
       assert.strictEqual(typeof config.workflow.plan_check, 'boolean', 'plan_check should be a boolean');
       assert.strictEqual(typeof config.workflow.verifier, 'boolean', 'verifier should be a boolean');
     } finally {
-      if (existingDefaults !== null) {
-        fs.writeFileSync(defaultsFile, existingDefaults, 'utf-8');
-      } else {
-        try { fs.unlinkSync(defaultsFile); } catch { /* ignore */ }
-      }
-      if (!gsdDirExisted) {
-        try { fs.rmdirSync(gsdDir); } catch { /* ignore */ }
-      }
+      fs.rmSync(tmpHome, { recursive: true, force: true });
     }
   });
 });
@@ -291,6 +216,184 @@ describe('config-set command', () => {
     const result = runGsdTools('config-set', tmpDir);
     assert.strictEqual(result.success, false);
   });
+
+  test('rejects known invalid nyquist alias keys with a suggestion', () => {
+    const result = runGsdTools('config-set workflow.nyquist_validation_enabled false', tmpDir);
+    assert.strictEqual(result.success, false);
+    assert.match(result.error, /Unknown config key: workflow\.nyquist_validation_enabled/);
+    assert.match(result.error, /workflow\.nyquist_validation/);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.workflow.nyquist_validation_enabled, undefined);
+    assert.strictEqual(config.workflow.nyquist_validation, true);
+  });
+});
+
+// ─── Phase 13 git config keys (GIT-01) ───────────────────────────────────────
+
+describe('Phase 13 git config keys (GIT-01)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Create initial config
+    runGsdTools('config-ensure-section', tmpDir);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('GIT-01 Test 1: config-set git.target_branch develop succeeds and writes git.target_branch', () => {
+    const result = runGsdTools('config-set git.target_branch develop', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.target_branch, 'develop');
+  });
+
+  test('GIT-01 Test 2: config-set git.auto_push true succeeds and writes git.auto_push as boolean', () => {
+    const result = runGsdTools('config-set git.auto_push true', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.auto_push, true);
+    assert.strictEqual(typeof config.git.auto_push, 'boolean');
+  });
+
+  test('GIT-01 Test 3: config-set git.remote upstream succeeds and writes git.remote', () => {
+    const result = runGsdTools('config-set git.remote upstream', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.remote, 'upstream');
+  });
+
+  test('GIT-01 Test 4: config-set git.review_branch_template succeeds and writes template string', () => {
+    const result = runGsdTools(['config-set', 'git.review_branch_template', '{type}/{slug}'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.review_branch_template, '{type}/{slug}');
+  });
+
+  test('GIT-01 Test 5: config-set git.pr_draft false succeeds and writes git.pr_draft as boolean', () => {
+    const result = runGsdTools('config-set git.pr_draft false', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.pr_draft, false);
+    assert.strictEqual(typeof config.git.pr_draft, 'boolean');
+  });
+
+  test('GIT-01 Test 6: config-set git.platform gitlab succeeds and writes git.platform', () => {
+    const result = runGsdTools('config-set git.platform gitlab', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.platform, 'gitlab');
+  });
+
+  test('GIT-01 Test 7: config-set git.type_aliases custom succeeds (key is registered)', () => {
+    const result = runGsdTools('config-set git.type_aliases custom', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+  });
+
+  test('GIT-01 Test 8: init execute-phase JSON includes target_branch, auto_push, remote, review_branch_template, pr_draft, platform with defaults', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    // Create a ROADMAP.md with Phase 13 entry
+    const roadmapContent = `# Milestone v2.0\n\n## Phase 13: Git Branching And Collaboration\n\n**Goal:** Add git branching support\n**Requirements:** GIT-01\n`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent, 'utf-8');
+
+    // Create the phase directory and a dummy plan
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration', '13-01-PLAN.md'),
+      '---\nphase: 13\nplan: 01\n---\n\n# Plan\n',
+      'utf-8'
+    );
+
+    const result = runGsdTools('init execute-phase 13', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('target_branch' in output, 'output should include target_branch');
+    assert.ok('auto_push' in output, 'output should include auto_push');
+    assert.ok('remote' in output, 'output should include remote');
+    assert.ok('review_branch_template' in output, 'output should include review_branch_template');
+    assert.ok('pr_draft' in output, 'output should include pr_draft');
+    assert.ok('platform' in output, 'output should include platform');
+  });
+
+  test('GIT-01 Test 9: loadConfig returns target_branch: "main" by default (verified via init output)', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    const roadmapContent = `# Milestone v2.0\n\n## Phase 13: Git Branching And Collaboration\n\n**Goal:** Add git branching support\n**Requirements:** GIT-01\n`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent, 'utf-8');
+
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration', '13-01-PLAN.md'),
+      '---\nphase: 13\nplan: 01\n---\n\n# Plan\n',
+      'utf-8'
+    );
+
+    const result = runGsdTools('init execute-phase 13', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.target_branch, 'main', 'default target_branch should be "main"');
+  });
+
+  test('GIT-01 Test 10: loadConfig returns auto_push: false by default (verified via init output)', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    const roadmapContent = `# Milestone v2.0\n\n## Phase 13: Git Branching And Collaboration\n\n**Goal:** Add git branching support\n**Requirements:** GIT-01\n`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent, 'utf-8');
+
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration', '13-01-PLAN.md'),
+      '---\nphase: 13\nplan: 01\n---\n\n# Plan\n',
+      'utf-8'
+    );
+
+    const result = runGsdTools('init execute-phase 13', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.auto_push, false, 'default auto_push should be false');
+  });
+
+  test('GIT-01 Test 11: After config-set git.target_branch develop, init execute-phase returns target_branch: "develop"', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    const roadmapContent = `# Milestone v2.0\n\n## Phase 13: Git Branching And Collaboration\n\n**Goal:** Add git branching support\n**Requirements:** GIT-01\n`;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent, 'utf-8');
+
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'phases', '13-git-branching-and-collaboration', '13-01-PLAN.md'),
+      '---\nphase: 13\nplan: 01\n---\n\n# Plan\n',
+      'utf-8'
+    );
+
+    // First set the target branch
+    const setResult = runGsdTools('config-set git.target_branch develop', tmpDir);
+    assert.ok(setResult.success, `config-set failed: ${setResult.error}`);
+
+    // Then verify init execute-phase returns the updated value
+    const initResult = runGsdTools('init execute-phase 13', tmpDir);
+    assert.ok(initResult.success, `init failed: ${initResult.error}`);
+
+    const output = JSON.parse(initResult.output);
+    assert.strictEqual(output.target_branch, 'develop', 'target_branch should be "develop" after config-set');
+  });
 });
 
 // ─── config-get ──────────────────────────────────────────────────────────────
@@ -359,5 +462,80 @@ describe('config-get command', () => {
   test('errors when no key path provided', () => {
     const result = runGsdTools('config-get', tmpDir);
     assert.strictEqual(result.success, false);
+  });
+});
+
+// ─── Phase 14 commit and versioning config keys (COMM-01) ────────────────────
+
+describe('git commit and versioning config keys', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runGsdTools('config-ensure-section', tmpDir);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('config-set git.commit_format conventional succeeds', () => {
+    const result = runGsdTools('config-set git.commit_format conventional', tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.commit_format, 'conventional');
+  });
+
+  test('config-set git.commit_template with custom string', () => {
+    const result = runGsdTools(['config-set', 'git.commit_template', '{type}: {description}'], tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.commit_template, '{type}: {description}');
+  });
+
+  test('config-set git.versioning_scheme semver succeeds', () => {
+    const result = runGsdTools('config-set git.versioning_scheme semver', tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git.versioning_scheme, 'semver');
+  });
+
+  test('config-get git.commit_format returns set value', () => {
+    writeConfig(tmpDir, { git: { commit_format: 'issue-first' } });
+    const result = runGsdTools('config-get git.commit_format', tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+    assert.strictEqual(JSON.parse(result.output), 'issue-first');
+  });
+});
+
+// ─── Phase 21-03 issue_tracker.verify_label config key (VERIFY-01) ───────────
+
+describe('issue_tracker.verify_label config key (VERIFY-01)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runGsdTools('config-ensure-section', tmpDir);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // Test 9: config-set issue_tracker.verify_label 'reviewed' succeeds
+  test('VERIFY-01 config-set issue_tracker.verify_label reviewed succeeds', () => {
+    const result = runGsdTools('config-set issue_tracker.verify_label reviewed', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.issue_tracker.verify_label, 'reviewed');
+  });
+
+  test('VERIFY-01 config-set issue_tracker.verify_label needs-verification succeeds', () => {
+    const result = runGsdTools(['config-set', 'issue_tracker.verify_label', 'needs-verification'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.issue_tracker.verify_label, 'needs-verification');
   });
 });

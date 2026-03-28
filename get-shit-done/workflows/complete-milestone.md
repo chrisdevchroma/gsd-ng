@@ -1,8 +1,37 @@
 <purpose>
 
-Mark a shipped version (v1.0, v1.1, v2.0) as complete. Creates historical record in MILESTONES.md, performs full PROJECT.md evolution review, reorganizes ROADMAP.md with milestone groupings, and tags the release in git.
+Mark a shipped version (v1.0, v1.1, v2.0) as complete. Bumps project version and generates CHANGELOG.md from SUMMARY.md one-liners, creates historical record in MILESTONES.md, performs full PROJECT.md evolution review, reorganizes ROADMAP.md with milestone groupings, and tags the release in git.
 
 </purpose>
+
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
 
 <required_reading>
 
@@ -24,6 +53,8 @@ When a milestone completes:
 4. Delete REQUIREMENTS.md (fresh one for next milestone)
 5. Perform full PROJECT.md evolution review
 6. Offer to create next milestone inline
+7. Archive UI artifacts (`*-UI-SPEC.md`, `*-UI-REVIEW.md`) alongside other phase documents
+8. Clean up `.planning/ui-reviews/` screenshot files (binary assets, never archived)
 
 **Context Efficiency:** Archives keep ROADMAP.md constant-size and REQUIREMENTS.md milestone-scoped.
 
@@ -528,11 +559,20 @@ Check branching strategy and offer merge options.
 Use `init milestone-op` for context, or load config directly:
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init execute-phase "1")
+INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init milestone-op)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
-Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, and `commit_docs` from init JSON.
+```bash
+# Load git config for branch handling
+BRANCHING_STRATEGY=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get git.branching_strategy --raw 2>/dev/null || echo "none")
+TARGET_BRANCH=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get git.target_branch --raw 2>/dev/null || echo "main")
+COMMIT_DOCS=$(echo "$INIT" | grep -o '"commit_docs":[^,}]*' | cut -d: -f2 | tr -d ' "')
+```
+
+Note: `config-get` with `--raw` returns the value directly (not JSON-wrapped). If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
+
+Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, `target_branch`, and `commit_docs` from init JSON.
 
 **If "none":** Skip to git_tag.
 
@@ -572,7 +612,7 @@ AskUserQuestion with options: Squash merge (Recommended), Merge with history, De
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current)
-git checkout main
+git checkout "$TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
@@ -594,6 +634,32 @@ if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
   git commit -m "feat: $MILESTONE_BRANCH for v[X.Y]"
 fi
 
+# Archive work branch after merge to stable branch
+STABLE_BRANCHES="main master develop"
+IS_STABLE=false
+for sb in $STABLE_BRANCHES; do
+  if [ "$TARGET_BRANCH" = "$sb" ]; then
+    IS_STABLE=true
+    break
+  fi
+done
+
+if [ "$IS_STABLE" = "true" ]; then
+  # Delete work branch — plan-completion tags preserve granular history
+  if [ "$BRANCHING_STRATEGY" = "phase" ]; then
+    for branch in $PHASE_BRANCHES; do
+      git branch -d "$branch" 2>/dev/null || true
+      echo "Archived (deleted) work branch: $branch (tags preserved)"
+    done
+  fi
+  if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
+    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
+  fi
+else
+  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
+fi
+
 git checkout "$CURRENT_BRANCH"
 ```
 
@@ -601,7 +667,7 @@ git checkout "$CURRENT_BRANCH"
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current)
-git checkout main
+git checkout "$TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
@@ -621,6 +687,32 @@ if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
     git reset HEAD .planning/ 2>/dev/null || true
   fi
   git commit -m "Merge branch '$MILESTONE_BRANCH' for v[X.Y]"
+fi
+
+# Archive work branch after merge to stable branch
+STABLE_BRANCHES="main master develop"
+IS_STABLE=false
+for sb in $STABLE_BRANCHES; do
+  if [ "$TARGET_BRANCH" = "$sb" ]; then
+    IS_STABLE=true
+    break
+  fi
+done
+
+if [ "$IS_STABLE" = "true" ]; then
+  # Delete work branch — plan-completion tags preserve granular history
+  if [ "$BRANCHING_STRATEGY" = "phase" ]; then
+    for branch in $PHASE_BRANCHES; do
+      git branch -d "$branch" 2>/dev/null || true
+      echo "Archived (deleted) work branch: $branch (tags preserved)"
+    done
+  fi
+  if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
+    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
+  fi
+else
+  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
 git checkout "$CURRENT_BRANCH"
@@ -644,12 +736,73 @@ fi
 
 </step>
 
-<step name="git_tag">
+<step name="bump_version_and_changelog">
 
-Create git tag:
+**Bump version and generate CHANGELOG.md before tagging.**
+
+**Read versioning scheme from config:**
 
 ```bash
-git tag -a v[X.Y] -m "v[X.Y] [Name]
+VERSIONING_SCHEME=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get git.versioning_scheme --raw 2>/dev/null || echo "semver")
+```
+
+**Auto-derive bump level from milestone commit types, then confirm with user:**
+
+```bash
+BUMP_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" version-bump --scheme "$VERSIONING_SCHEME")
+if [[ "$BUMP_RESULT" == @file:* ]]; then BUMP_RESULT=$(cat "${BUMP_RESULT#@file:}"); fi
+```
+
+Parse `version`, `previous`, `level`, `scheme` from result JSON.
+
+Present to user:
+
+```
+Version bump: {previous} -> {version} ({level} bump, {scheme} scheme)
+
+Override? (enter to accept, or type: major / minor / patch)
+```
+
+If user provides override level:
+
+```bash
+BUMP_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" version-bump --level {override} --scheme "$VERSIONING_SCHEME")
+if [[ "$BUMP_RESULT" == @file:* ]]; then BUMP_RESULT=$(cat "${BUMP_RESULT#@file:}"); fi
+```
+
+**Generate CHANGELOG.md entries from all SUMMARY.md files:**
+
+```bash
+NEW_VERSION=$(echo "$BUMP_RESULT" | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).version)}catch{}})")
+TODAY=$(date +%Y-%m-%d)
+CHANGELOG_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" generate-changelog "$NEW_VERSION" --date "$TODAY")
+if [[ "$CHANGELOG_RESULT" == @file:* ]]; then CHANGELOG_RESULT=$(cat "${CHANGELOG_RESULT#@file:}"); fi
+```
+
+Present changelog preview:
+
+```
+CHANGELOG.md updated with {entries} entries for v{version}
+
+Preview the changes? (yes / skip)
+```
+
+If "yes": display the new version block from CHANGELOG.md.
+
+**Commit version bump and changelog:**
+
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "chore: bump version to ${NEW_VERSION} and update CHANGELOG" --files package.json VERSION CHANGELOG.md
+```
+
+</step>
+
+<step name="git_tag">
+
+Create git tag (using `NEW_VERSION` from bump_version_and_changelog step):
+
+```bash
+git tag -a "v${NEW_VERSION}" -m "v${NEW_VERSION} [Name]
 
 Delivered: [One sentence]
 
@@ -661,13 +814,13 @@ Key accomplishments:
 See .planning/MILESTONES.md for full details."
 ```
 
-Confirm: "Tagged: v[X.Y]"
+Confirm: "Tagged: v${NEW_VERSION}"
 
 Ask: "Push tag to remote? (y/n)"
 
 If yes:
 ```bash
-git push origin v[X.Y]
+git push origin "v${NEW_VERSION}"
 ```
 
 </step>

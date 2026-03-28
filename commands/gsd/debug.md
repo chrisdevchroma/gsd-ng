@@ -5,7 +5,7 @@ argument-hint: [issue description]
 allowed-tools:
   - Read
   - Bash
-  - Task
+  - Agent
   - AskUserQuestion
 ---
 
@@ -25,6 +25,32 @@ Check for active sessions:
 ls .planning/debug/*.md 2>/dev/null | grep -v resolved | head -5
 ```
 </context>
+
+<tool_usage>
+CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+
+The AskUserQuestion tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+</tool_usage>
 
 <process>
 
@@ -63,7 +89,14 @@ After all gathered, confirm ready to investigate.
 
 ## 3. Spawn gsd-debugger Agent
 
-Fill prompt and spawn:
+Resolve workspace topology, then fill prompt and spawn:
+
+```bash
+WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+```
 
 ```markdown
 <objective>
@@ -85,13 +118,23 @@ symptoms_prefilled: true
 goal: find_and_fix
 </mode>
 
+<workspace_context>
+Workspace type: {WORKSPACE_TYPE}
+Project root: {PROJECT_ROOT}
+Submodule paths: {SUBMODULE_PATHS}
+
+CRITICAL: Always commit to the source location. Your working directory is {PROJECT_ROOT}.
+If workspace type is 'submodule', source code lives in the submodule directories listed above.
+Do NOT modify deployed copies (e.g., .claude/get-shit-done/) — always edit source first.
+</workspace_context>
+
 <debug_file>
 Create: .planning/debug/{slug}.md
 </debug_file>
 ```
 
 ```
-Task(
+Agent(
   prompt=filled_prompt,
   subagent_type="gsd-debugger",
   model="{debugger_model}",
@@ -149,7 +192,7 @@ goal: find_and_fix
 ```
 
 ```
-Task(
+Agent(
   prompt=continuation_prompt,
   subagent_type="gsd-debugger",
   model="{debugger_model}",

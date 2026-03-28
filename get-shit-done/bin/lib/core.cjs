@@ -4,7 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync, spawnSync } = require('child_process');
+const { MODEL_PROFILES } = require('./model-profiles.cjs');
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
 
@@ -13,45 +14,68 @@ function toPosixPath(p) {
   return p.split(path.sep).join('/');
 }
 
-// ─── Model Profile Table ─────────────────────────────────────────────────────
-
-const MODEL_PROFILES = {
-  'gsd-planner':              { quality: 'opus', balanced: 'opus',   budget: 'sonnet' },
-  'gsd-roadmapper':           { quality: 'opus', balanced: 'sonnet', budget: 'sonnet' },
-  'gsd-executor':             { quality: 'opus', balanced: 'sonnet', budget: 'sonnet' },
-  'gsd-phase-researcher':     { quality: 'opus', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-project-researcher':   { quality: 'opus', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-research-synthesizer': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-debugger':             { quality: 'opus', balanced: 'sonnet', budget: 'sonnet' },
-  'gsd-codebase-mapper':      { quality: 'sonnet', balanced: 'haiku', budget: 'haiku' },
-  'gsd-verifier':             { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-plan-checker':         { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-integration-checker':  { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
-  'gsd-nyquist-auditor':      { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
-};
-
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
+/**
+ * Remove stale gsd-* temp files/dirs older than maxAgeMs (default: 5 minutes).
+ * Runs opportunistically before each new temp file write to prevent unbounded accumulation.
+ * @param {string} prefix - filename prefix to match (e.g., 'gsd-')
+ * @param {object} opts
+ * @param {number} opts.maxAgeMs - max age in ms before removal (default: 5 min)
+ * @param {boolean} opts.dirsOnly - if true, only remove directories (default: false)
+ */
+function reapStaleTempFiles(prefix = 'gsd-', { maxAgeMs = 5 * 60 * 1000, dirsOnly = false } = {}) {
+  try {
+    const tmpDir = require('os').tmpdir();
+    const now = Date.now();
+    const entries = fs.readdirSync(tmpDir);
+    for (const entry of entries) {
+      if (!entry.startsWith(prefix)) continue;
+      const fullPath = path.join(tmpDir, entry);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (now - stat.mtimeMs < maxAgeMs) continue;
+        if (dirsOnly && !stat.isDirectory()) continue;
+        if (stat.isDirectory()) {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(fullPath);
+        }
+      } catch {
+        // skip files we can't stat or delete
+      }
+    }
+  } catch {
+    // non-critical: cleanup failures never break output
+  }
+}
+
 function output(result, raw, rawValue) {
+  let data;
   if (raw && rawValue !== undefined) {
-    process.stdout.write(String(rawValue));
+    data = String(rawValue);
   } else {
     const json = JSON.stringify(result, null, 2);
     // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
     // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
     if (json.length > 50000) {
+      reapStaleTempFiles();
       const tmpPath = path.join(require('os').tmpdir(), `gsd-${Date.now()}.json`);
       fs.writeFileSync(tmpPath, json, 'utf-8');
-      process.stdout.write('@file:' + tmpPath);
+      data = '@file:' + tmpPath;
     } else {
-      process.stdout.write(json);
+      data = json;
     }
   }
-  process.exit(0);
+  // process.stdout.write() is async when stdout is a pipe — process.exit()
+  // can tear down the process before the reader consumes the buffer.
+  // fs.writeSync(1, ...) blocks until the kernel accepts the bytes, and
+  // skipping process.exit() lets the event loop drain naturally.
+  fs.writeSync(1, data);
 }
 
 function error(message) {
-  process.stderr.write('Error: ' + message + '\n');
+  fs.writeSync(2, 'Error: ' + message + '\n');
   process.exit(1);
 }
 
@@ -74,12 +98,20 @@ function loadConfig(cwd) {
     branching_strategy: 'none',
     phase_branch_template: 'gsd/phase-{phase}-{slug}',
     milestone_branch_template: 'gsd/{milestone}-{slug}',
+    target_branch: 'main',
+    auto_push: false,
+    remote: 'origin',
+    review_branch_template: '{type}/{phase}-{slug}',
+    pr_draft: true,
+    platform: null,
+    commit_format: 'gsd',
+    commit_template: null,
+    versioning_scheme: 'semver',
     research: true,
     plan_checker: true,
     verifier: true,
     nyquist_validation: true,
     parallelization: true,
-    brave_search: false,
   };
 
   try {
@@ -111,17 +143,33 @@ function loadConfig(cwd) {
 
     return {
       model_profile: get('model_profile') ?? defaults.model_profile,
-      commit_docs: get('commit_docs', { section: 'planning', field: 'commit_docs' }) ?? defaults.commit_docs,
+      commit_docs: (() => {
+        const explicit = get('commit_docs', { section: 'planning', field: 'commit_docs' });
+        // If explicitly set in config, respect the user's choice
+        if (explicit !== undefined) return explicit;
+        // Auto-detection: when no explicit value and .planning/ is gitignored,
+        // default to false instead of true
+        if (isGitIgnored(cwd, '.planning/')) return false;
+        return defaults.commit_docs;
+      })(),
       search_gitignored: get('search_gitignored', { section: 'planning', field: 'search_gitignored' }) ?? defaults.search_gitignored,
       branching_strategy: get('branching_strategy', { section: 'git', field: 'branching_strategy' }) ?? defaults.branching_strategy,
       phase_branch_template: get('phase_branch_template', { section: 'git', field: 'phase_branch_template' }) ?? defaults.phase_branch_template,
       milestone_branch_template: get('milestone_branch_template', { section: 'git', field: 'milestone_branch_template' }) ?? defaults.milestone_branch_template,
+      target_branch: get('target_branch', { section: 'git', field: 'target_branch' }) ?? defaults.target_branch,
+      auto_push: get('auto_push', { section: 'git', field: 'auto_push' }) ?? defaults.auto_push,
+      remote: get('remote', { section: 'git', field: 'remote' }) ?? defaults.remote,
+      review_branch_template: get('review_branch_template', { section: 'git', field: 'review_branch_template' }) ?? defaults.review_branch_template,
+      pr_draft: get('pr_draft', { section: 'git', field: 'pr_draft' }) ?? defaults.pr_draft,
+      platform: get('platform', { section: 'git', field: 'platform' }) ?? defaults.platform,
+      commit_format: get('commit_format', { section: 'git', field: 'commit_format' }) ?? defaults.commit_format,
+      commit_template: get('commit_template', { section: 'git', field: 'commit_template' }) ?? defaults.commit_template,
+      versioning_scheme: get('versioning_scheme', { section: 'git', field: 'versioning_scheme' }) ?? defaults.versioning_scheme,
       research: get('research', { section: 'workflow', field: 'research' }) ?? defaults.research,
       plan_checker: get('plan_checker', { section: 'workflow', field: 'plan_check' }) ?? defaults.plan_checker,
       verifier: get('verifier', { section: 'workflow', field: 'verifier' }) ?? defaults.verifier,
       nyquist_validation: get('nyquist_validation', { section: 'workflow', field: 'nyquist_validation' }) ?? defaults.nyquist_validation,
       parallelization,
-      brave_search: get('brave_search') ?? defaults.brave_search,
       model_overrides: parsed.model_overrides || null,
     };
   } catch {
@@ -137,7 +185,8 @@ function isGitIgnored(cwd, targetPath) {
     // Without it, git check-ignore returns "not ignored" for tracked files even when
     // .gitignore explicitly lists them — a common source of confusion when .planning/
     // was committed before being added to .gitignore.
-    execSync('git check-ignore -q --no-index -- ' + targetPath.replace(/[^a-zA-Z0-9._\-/]/g, ''), {
+    // Use execFileSync with array args to prevent command injection via path values.
+    execFileSync('git', ['check-ignore', '-q', '--no-index', '--', targetPath], {
       cwd,
       stdio: 'pipe',
     });
@@ -148,24 +197,16 @@ function isGitIgnored(cwd, targetPath) {
 }
 
 function execGit(cwd, args) {
-  try {
-    const escaped = args.map(a => {
-      if (/^[a-zA-Z0-9._\-/=:@]+$/.test(a)) return a;
-      return "'" + a.replace(/'/g, "'\\''") + "'";
-    });
-    const stdout = execSync('git ' + escaped.join(' '), {
-      cwd,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    return { exitCode: 0, stdout: stdout.trim(), stderr: '' };
-  } catch (err) {
-    return {
-      exitCode: err.status ?? 1,
-      stdout: (err.stdout ?? '').toString().trim(),
-      stderr: (err.stderr ?? '').toString().trim(),
-    };
-  }
+  const result = spawnSync('git', args, {
+    cwd,
+    stdio: 'pipe',
+    encoding: 'utf-8',
+  });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: (result.stdout ?? '').toString().trim(),
+    stderr: (result.stderr ?? '').toString().trim(),
+  };
 }
 
 // ─── Phase utilities ──────────────────────────────────────────────────────────
@@ -226,7 +267,9 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
 
     const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').sort();
     const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').sort();
-    const hasResearch = phaseFiles.some(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
+    const hasResearch = phaseFiles.some(f =>
+      (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) || f === 'RESEARCH.md'
+    );
     const hasContext = phaseFiles.some(f => f.endsWith('-CONTEXT.md') || f === 'CONTEXT.md');
     const hasVerification = phaseFiles.some(f => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md');
 
@@ -328,6 +371,34 @@ function getArchivedPhaseDirs(cwd) {
   return results;
 }
 
+// ─── Roadmap milestone scoping ───────────────────────────────────────────────
+
+/**
+ * Strip shipped milestone content wrapped in <details> blocks.
+ * Used to isolate current milestone phases when searching ROADMAP.md
+ * for phase headings or checkboxes — prevents matching archived milestone
+ * phases that share the same numbers as current milestone phases.
+ */
+function stripShippedMilestones(content) {
+  return content.replace(/<details>[\s\S]*?<\/details>/gi, '');
+}
+
+/**
+ * Replace a pattern only in the current milestone section of ROADMAP.md
+ * (everything after the last </details> close tag). Used for write operations
+ * that must not accidentally modify archived milestone checkboxes/tables.
+ */
+function replaceInCurrentMilestone(content, pattern, replacement) {
+  const lastDetailsClose = content.lastIndexOf('</details>');
+  if (lastDetailsClose === -1) {
+    return content.replace(pattern, replacement);
+  }
+  const offset = lastDetailsClose + '</details>'.length;
+  const before = content.slice(0, offset);
+  const after = content.slice(offset);
+  return before + after.replace(pattern, replacement);
+}
+
 // ─── Roadmap & model utilities ────────────────────────────────────────────────
 
 function getRoadmapPhaseInternal(cwd, phaseNum) {
@@ -336,7 +407,7 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
   if (!fs.existsSync(roadmapPath)) return null;
 
   try {
-    const content = fs.readFileSync(roadmapPath, 'utf-8');
+    const content = stripShippedMilestones(fs.readFileSync(roadmapPath, 'utf-8'));
     const escapedPhase = escapeRegex(phaseNum.toString());
     const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*([^\\n]+)`, 'i');
     const headerMatch = content.match(phasePattern);
@@ -345,11 +416,11 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
     const phaseName = headerMatch[1].trim();
     const headerIndex = headerMatch.index;
     const restOfContent = content.slice(headerIndex);
-    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d/i);
+    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i);
     const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
     const section = content.slice(headerIndex, sectionEnd).trim();
 
-    const goalMatch = section.match(/\*\*Goal:\*\*\s*([^\n]+)/i);
+    const goalMatch = section.match(/\*\*Goal(?:\*\*:|\*?\*?:\*\*)\s*([^\n]+)/i);
     const goal = goalMatch ? goalMatch[1].trim() : null;
 
     return {
@@ -370,15 +441,15 @@ function resolveModelInternal(cwd, agentType) {
   // Check per-agent override first
   const override = config.model_overrides?.[agentType];
   if (override) {
-    return override === 'opus' ? 'inherit' : override;
+    return override;
   }
 
   // Fall back to profile lookup
   const profile = config.model_profile || 'balanced';
   const agentModels = MODEL_PROFILES[agentType];
   if (!agentModels) return 'sonnet';
-  const resolved = agentModels[profile] || agentModels['balanced'] || 'sonnet';
-  return resolved === 'opus' ? 'inherit' : resolved;
+  if (profile === 'inherit') return null;
+  return agentModels[profile] || agentModels['balanced'] || 'sonnet';
 }
 
 // ─── Misc utilities ───────────────────────────────────────────────────────────
@@ -413,7 +484,7 @@ function getMilestoneInfo(cwd) {
     }
 
     // Second: heading-format roadmaps — strip shipped milestones in <details> blocks
-    const cleaned = roadmap.replace(/<details>[\s\S]*?<\/details>/gi, '');
+    const cleaned = stripShippedMilestones(roadmap);
     // Extract version and name from the same ## heading for consistency
     const headingMatch = cleaned.match(/## .*v(\d+\.\d+)[:\s]+([^\n(]+)/);
     if (headingMatch) {
@@ -441,7 +512,7 @@ function getMilestoneInfo(cwd) {
 function getMilestonePhaseFilter(cwd) {
   const milestonePhaseNums = new Set();
   try {
-    const roadmap = fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmap = stripShippedMilestones(fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8'));
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmap)) !== null) {
@@ -468,10 +539,27 @@ function getMilestonePhaseFilter(cwd) {
   return isDirInMilestone;
 }
 
+// ─── Summary body helpers ─────────────────────────────────────────────────
+
+/**
+ * Extract a one-liner from the summary body when it's not in frontmatter.
+ * The summary template defines one-liner as a bold markdown line after the heading:
+ *   # Phase X: Name Summary
+ *   **[substantive one-liner text]**
+ */
+function extractOneLinerFromBody(content) {
+  if (!content) return null;
+  // Strip frontmatter first
+  const body = content.replace(/^---\n[\s\S]*?\n---\n*/, '');
+  // Find the first **...** line after a # heading
+  const match = body.match(/^#[^\n]*\n+\*\*([^*]+)\*\*/m);
+  return match ? match[1].trim() : null;
+}
+
 module.exports = {
-  MODEL_PROFILES,
   output,
   error,
+  reapStaleTempFiles,
   safeReadFile,
   loadConfig,
   isGitIgnored,
@@ -488,5 +576,8 @@ module.exports = {
   generateSlugInternal,
   getMilestoneInfo,
   getMilestonePhaseFilter,
+  stripShippedMilestones,
+  replaceInCurrentMilestone,
   toPosixPath,
+  extractOneLinerFromBody,
 };

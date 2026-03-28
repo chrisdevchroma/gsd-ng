@@ -451,6 +451,8 @@ describe('validate health command', () => {
     writeMinimalRoadmap(tmpDir, ['1']);
     writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
     writeValidConfigJson(tmpDir);
+    // Create CLAUDE.md so W010 doesn't fire
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n\nProject instructions.\n');
     // Create valid phase dir matching ROADMAP
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-a');
     fs.mkdirSync(phaseDir, { recursive: true });
@@ -527,6 +529,15 @@ describe('validate health --repair command', () => {
     assert.ok(fs.existsSync(configPath), 'config.json should now exist on disk');
     const diskConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     assert.strictEqual(diskConfig.model_profile, 'balanced', 'default model_profile should be balanced');
+    // Verify nested workflow structure matches config.cjs canonical format
+    assert.ok(diskConfig.workflow, 'config should have nested workflow object');
+    assert.strictEqual(diskConfig.workflow.research, true, 'workflow.research should default to true');
+    assert.strictEqual(diskConfig.workflow.plan_check, true, 'workflow.plan_check should default to true');
+    assert.strictEqual(diskConfig.workflow.verifier, true, 'workflow.verifier should default to true');
+    assert.strictEqual(diskConfig.workflow.nyquist_validation, true, 'workflow.nyquist_validation should default to true');
+    // Verify branch templates are present
+    assert.strictEqual(diskConfig.phase_branch_template, 'gsd/phase-{phase}-{slug}');
+    assert.strictEqual(diskConfig.milestone_branch_template, 'gsd/{milestone}-{slug}');
   });
 
   test('resets config.json when JSON is invalid', () => {
@@ -545,9 +556,11 @@ describe('validate health --repair command', () => {
     const resetAction = output.repairs_performed.find(r => r.action === 'resetConfig');
     assert.ok(resetAction, `Expected resetConfig action: ${JSON.stringify(output.repairs_performed)}`);
 
-    // Verify config.json is now valid JSON
+    // Verify config.json is now valid JSON with correct nested structure
     const diskConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     assert.ok(typeof diskConfig === 'object', 'config.json should be valid JSON after repair');
+    assert.ok(diskConfig.workflow, 'reset config should have nested workflow object');
+    assert.strictEqual(diskConfig.workflow.research, true, 'workflow.research should be true after reset');
   });
 
   test('regenerates STATE.md when missing', () => {
@@ -648,5 +661,542 @@ describe('validate health --repair command', () => {
       output.repairable_count >= 2,
       `Expected repairable_count >= 2, got ${output.repairable_count}. Full output: ${JSON.stringify(output)}`
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validate health — memory checks (W010-W014)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validate health — memory checks (W010-W014)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Set up a minimal valid project so only memory checks fire
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalRoadmap(tmpDir, ['1']);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // ─── Helper to write a memory file ────────────────────────────────────────
+
+  function writeMemoryFile(tmpDir, filename, description = 'Test memory', type = 'feedback') {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memDir, filename),
+      `---\nname: Test\ndescription: ${description}\ntype: ${type}\n---\n\nContent.\n`
+    );
+    return memDir;
+  }
+
+  function writeCLAUDEmd(tmpDir, content) {
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), content);
+  }
+
+  // ─── W010: CLAUDE.md missing when .planning/ exists ───────────────────────
+
+  test('W010 fires when .planning/ exists but CLAUDE.md does not exist', () => {
+    // No CLAUDE.md, no memory dir — just .planning/ existing triggers W010
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      output.warnings.some(w => w.code === 'W010'),
+      `Expected W010 in warnings: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W010 does not fire when CLAUDE.md exists', () => {
+    writeCLAUDEmd(tmpDir, '# Project\n\nSome content.\n');
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W010'),
+      `Should not have W010: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W010 repair creates CLAUDE.md with Memories section', () => {
+    writeMemoryFile(tmpDir, 'test_feedback.md', 'A test feedback entry');
+    // No CLAUDE.md
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const writeCLAUDE = output.repairs_performed && output.repairs_performed.find(r => r.action === 'writeCLAUDEmd');
+    assert.ok(writeCLAUDE, `Expected writeCLAUDEmd repair action: ${JSON.stringify(output)}`);
+    assert.strictEqual(writeCLAUDE.success, true, 'writeCLAUDEmd should succeed');
+
+    // Verify CLAUDE.md now exists and has Memories section
+    const claudePath = path.join(tmpDir, 'CLAUDE.md');
+    assert.ok(fs.existsSync(claudePath), 'CLAUDE.md should exist after repair');
+    const content = fs.readFileSync(claudePath, 'utf-8');
+    assert.ok(content.includes('## Memories'), 'CLAUDE.md should contain ## Memories section');
+    assert.ok(content.includes('test_feedback.md'), 'CLAUDE.md should reference the memory file');
+  });
+
+  // ─── W011: Orphaned memory files not referenced in CLAUDE.md ──────────────
+
+  test('W011 fires when .claude/memory/ has files not referenced in CLAUDE.md', () => {
+    writeMemoryFile(tmpDir, 'unreferenced.md', 'Unreferenced memory');
+    // CLAUDE.md exists but does not reference unreferenced.md
+    writeCLAUDEmd(tmpDir, '# Project\n\n## Memories\n\nRead `.claude/memory/` for context.\n');
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      output.warnings.some(w => w.code === 'W011'),
+      `Expected W011 in warnings: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W011 does not fire when all memory files are referenced in CLAUDE.md', () => {
+    writeMemoryFile(tmpDir, 'feedback_example.md', 'Example feedback');
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/feedback_example.md](.claude/memory/feedback_example.md) — Example feedback\n'
+    );
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W011'),
+      `Should not have W011: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W011 repair adds missing memory references to CLAUDE.md', () => {
+    writeMemoryFile(tmpDir, 'feedback_new.md', 'New feedback file');
+    // CLAUDE.md Memories section missing the reference
+    writeCLAUDEmd(tmpDir, '# Project\n\n## Memories\n\nRead `.claude/memory/` for context.\n\nNo entries yet.\n');
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const syncAction = output.repairs_performed && output.repairs_performed.find(r => r.action === 'syncCLAUDEmdMemories');
+    assert.ok(syncAction, `Expected syncCLAUDEmdMemories repair: ${JSON.stringify(output)}`);
+    assert.strictEqual(syncAction.success, true, 'syncCLAUDEmdMemories should succeed');
+
+    // Verify CLAUDE.md now references the memory file
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    assert.ok(content.includes('feedback_new.md'), 'CLAUDE.md should reference the new memory file after repair');
+  });
+
+  // ─── W012: Stale references in CLAUDE.md ──────────────────────────────────
+
+  test('W012 fires when CLAUDE.md references a memory file that does not exist on disk', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    // CLAUDE.md references a nonexistent file
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/nonexistent.md](.claude/memory/nonexistent.md) — Gone\n'
+    );
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      output.warnings.some(w => w.code === 'W012'),
+      `Expected W012 in warnings: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W012 does not fire when all CLAUDE.md references exist on disk', () => {
+    writeMemoryFile(tmpDir, 'existing.md', 'Existing memory file');
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/existing.md](.claude/memory/existing.md) — Exists\n'
+    );
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W012'),
+      `Should not have W012: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W012 repair removes stale references from CLAUDE.md', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    // CLAUDE.md references a nonexistent file (stale)
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/stale.md](.claude/memory/stale.md) — Stale reference\n'
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const syncAction = output.repairs_performed && output.repairs_performed.find(r => r.action === 'syncCLAUDEmdMemories');
+    assert.ok(syncAction, `Expected syncCLAUDEmdMemories repair: ${JSON.stringify(output)}`);
+    assert.strictEqual(syncAction.success, true, 'syncCLAUDEmdMemories should succeed');
+
+    // Verify CLAUDE.md no longer references stale.md
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    assert.ok(!content.includes('stale.md'), 'CLAUDE.md should not reference stale.md after repair');
+  });
+
+  // ─── W013: MEMORY.md drift ─────────────────────────────────────────────────
+
+  test('W013 fires when MEMORY.md is out of sync with .claude/memory/ contents', () => {
+    writeMemoryFile(tmpDir, 'feedback_a.md', 'Feedback entry A');
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    // Write a MEMORY.md that does NOT match what generateMemoryMd would produce
+    fs.writeFileSync(
+      path.join(memDir, 'MEMORY.md'),
+      '# Memory Index\n\nThis is stale content that does not match the files.\n'
+    );
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/feedback_a.md](.claude/memory/feedback_a.md) — Feedback entry A\n'
+    );
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      output.warnings.some(w => w.code === 'W013'),
+      `Expected W013 in warnings: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W013 repair regenerates MEMORY.md to match current .claude/memory/ contents', () => {
+    writeMemoryFile(tmpDir, 'feedback_b.md', 'Feedback entry B');
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    // Stale MEMORY.md
+    fs.writeFileSync(
+      path.join(memDir, 'MEMORY.md'),
+      '# Memory Index\n\nStale.\n'
+    );
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/feedback_b.md](.claude/memory/feedback_b.md) — Feedback entry B\n'
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const syncAction = output.repairs_performed && output.repairs_performed.find(r => r.action === 'syncMemoryMd');
+    assert.ok(syncAction, `Expected syncMemoryMd repair: ${JSON.stringify(output)}`);
+    assert.strictEqual(syncAction.success, true, 'syncMemoryMd should succeed');
+
+    // Verify MEMORY.md now contains the memory file reference
+    const memoryMdContent = fs.readFileSync(path.join(memDir, 'MEMORY.md'), 'utf-8');
+    assert.ok(memoryMdContent.includes('feedback_b.md'), 'MEMORY.md should contain the memory file reference after repair');
+  });
+
+  // ─── W014: Topology drift (advisory-only) ─────────────────────────────────
+
+  test('W014 fires when .gitmodules exists but no structural memory is seeded', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    // Write a memory file without "boundary" or "subdirectory" content
+    fs.writeFileSync(
+      path.join(memDir, 'feedback_x.md'),
+      '---\nname: Test\ndescription: Generic feedback\ntype: feedback\n---\n\nThis is generic content.\n'
+    );
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/feedback_x.md](.claude/memory/feedback_x.md) — Generic feedback\n'
+    );
+    // Create .gitmodules to signal submodule topology
+    fs.writeFileSync(path.join(tmpDir, '.gitmodules'), '[submodule "sub"]\n  path = sub\n  url = https://example.com/sub\n');
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      output.warnings.some(w => w.code === 'W014'),
+      `Expected W014 in warnings: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W014 does not fire for standalone workspaces (no .gitmodules, no workspaces)', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    writeCLAUDEmd(tmpDir, '# Project\n\n## Memories\n\nNo entries.\n');
+    // No .gitmodules, no pnpm-workspace.yaml, no workspaces in package.json
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W014'),
+      `Should not have W014: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W014 is NOT repairable (repairable=false)', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memDir, 'feedback_x.md'),
+      '---\nname: Test\ndescription: Generic\ntype: feedback\n---\n\nGeneric.\n'
+    );
+    writeCLAUDEmd(
+      tmpDir,
+      '# Project\n\n## Memories\n\n- [.claude/memory/feedback_x.md](.claude/memory/feedback_x.md) — Generic\n'
+    );
+    fs.writeFileSync(path.join(tmpDir, '.gitmodules'), '[submodule "sub"]\n  path = sub\n  url = https://example.com/sub\n');
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const w014 = output.warnings.find(w => w.code === 'W014');
+    assert.ok(w014, `Expected W014 in warnings: ${JSON.stringify(output.warnings)}`);
+    assert.strictEqual(w014.repairable, false, 'W014 should not be repairable');
+  });
+
+  // ─── Gating: W011-W014 skipped when CLAUDE.md does not exist ─────────────
+
+  test('W011-W014 are skipped when CLAUDE.md does not exist (only W010 fires)', () => {
+    const memDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memDir, 'feedback_x.md'),
+      '---\nname: Test\ndescription: Generic\ntype: feedback\n---\n\nGeneric.\n'
+    );
+    fs.writeFileSync(path.join(tmpDir, '.gitmodules'), '[submodule "sub"]\n  path = sub\n  url = https://example.com/sub\n');
+    // No CLAUDE.md
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    // W010 should fire
+    assert.ok(
+      output.warnings.some(w => w.code === 'W010'),
+      `Expected W010: ${JSON.stringify(output.warnings)}`
+    );
+    // W011, W012, W013, W014 should NOT fire (gated on CLAUDE.md existence)
+    // Note: W014 only gates on memoryDirExists, not claudeMdExists, so check W011/W012/W013
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W011'),
+      `Should not have W011 when CLAUDE.md missing: ${JSON.stringify(output.warnings)}`
+    );
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W012'),
+      `Should not have W012 when CLAUDE.md missing: ${JSON.stringify(output.warnings)}`
+    );
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W013'),
+      `Should not have W013 when CLAUDE.md missing: ${JSON.stringify(output.warnings)}`
+    );
+  });
+
+  test('W011-W013 are skipped when .claude/memory/ directory does not exist', () => {
+    writeCLAUDEmd(tmpDir, '# Project\n\nNo memories.\n');
+    // No .claude/memory/ dir
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W011'),
+      `Should not have W011 when memory dir missing: ${JSON.stringify(output.warnings)}`
+    );
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W012'),
+      `Should not have W012 when memory dir missing: ${JSON.stringify(output.warnings)}`
+    );
+    assert.ok(
+      !output.warnings.some(w => w.code === 'W013'),
+      `Should not have W013 when memory dir missing: ${JSON.stringify(output.warnings)}`
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validate health — orphan detection checks (W015-W018)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validate health — orphan detection checks (W015-W018)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Set up a minimal valid project so only orphan checks fire
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n\nInstructions.\n');
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // ─── Helper: write a ROADMAP with specific phases ─────────────────────────
+
+  function writeRoadmapWithPhases(tmpDir, phases) {
+    // phases is array of { number, complete, name }
+    const lines = phases.map(p => {
+      const check = p.complete ? 'x' : ' ';
+      return `- [${check}] **Phase ${p.number}: ${p.name || 'Phase ' + p.number}**`;
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n## Phases\n\n${lines.join('\n')}\n`
+    );
+  }
+
+  // ─── Helper: write a pending todo with frontmatter ────────────────────────
+
+  function writePendingTodo(tmpDir, filename, frontmatter) {
+    const pendingDir = path.join(tmpDir, '.planning', 'todos', 'pending');
+    fs.mkdirSync(pendingDir, { recursive: true });
+    const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n');
+    fs.writeFileSync(
+      path.join(pendingDir, filename),
+      `---\n${fmLines}\n---\n\nTodo content.\n`
+    );
+  }
+
+  // ─── Helper: write a completed todo with frontmatter ─────────────────────
+
+  function writeCompletedTodo(tmpDir, filename, frontmatter) {
+    const completedDir = path.join(tmpDir, '.planning', 'todos', 'completed');
+    fs.mkdirSync(completedDir, { recursive: true });
+    const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n');
+    fs.writeFileSync(
+      path.join(completedDir, filename),
+      `---\n${fmLines}\n---\n\nTodo content.\n`
+    );
+  }
+
+  // ─── W017: Phase-linked todos without matching phase ──────────────────────
+
+  test('W017 fires when pending todo references non-existent phase', () => {
+    writeRoadmapWithPhases(tmpDir, [{ number: 1, complete: false }]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), { recursive: true });
+    writePendingTodo(tmpDir, 'test-todo.md', { phase: 99 });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w017 = parsed.warnings.find(w => w.code === 'W017');
+    assert.ok(w017, `Expected W017 in warnings: ${JSON.stringify(parsed.warnings)}`);
+    assert.ok(w017.message.includes('99'), `W017 message should mention phase 99: ${w017.message}`);
+    assert.ok(w017.message.includes('phase') || w017.message.includes('Phase'), `W017 message should mention "phase": ${w017.message}`);
+  });
+
+  test('W018 fires when completed phase still has pending phase-linked todos', () => {
+    writeRoadmapWithPhases(tmpDir, [
+      { number: 5, complete: true, name: 'Done Phase' },
+    ]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '05-done'), { recursive: true });
+    writePendingTodo(tmpDir, 'stale-todo.md', { phase: 5 });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w018 = parsed.warnings.find(w => w.code === 'W018');
+    assert.ok(w018, `Expected W018 in warnings: ${JSON.stringify(parsed.warnings)}`);
+    assert.ok(w018.message.includes('5'), `W018 message should mention phase 5: ${w018.message}`);
+  });
+
+  test('W017 does NOT fire when todo phase exists in ROADMAP (not complete)', () => {
+    writeRoadmapWithPhases(tmpDir, [
+      { number: 1, complete: false, name: 'Active Phase' },
+    ]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-active'), { recursive: true });
+    writePendingTodo(tmpDir, 'valid-todo.md', { phase: 1 });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W017'),
+      `Should not have W017 for valid phase ref: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+
+  test('W015 and W016 are skipped when issue_tracker.platform is not configured', () => {
+    writeRoadmapWithPhases(tmpDir, [{ number: 1, complete: false }]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), { recursive: true });
+    // No issue_tracker.platform in config
+    writeCompletedTodo(tmpDir, 'completed-with-ref.md', {
+      external_ref: 'github:#42',
+      completed: '2026-03-22',
+    });
+    writePendingTodo(tmpDir, 'pending-with-ref.md', {
+      external_ref: 'github:#43',
+    });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W015'),
+      `W015 should be skipped when no platform configured: ${JSON.stringify(parsed.warnings)}`
+    );
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W016'),
+      `W016 should be skipped when no platform configured: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+
+  test('W017 is repairable', () => {
+    writeRoadmapWithPhases(tmpDir, [{ number: 1, complete: false }]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), { recursive: true });
+    writePendingTodo(tmpDir, 'orphan-todo.md', { phase: 99 });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w017 = parsed.warnings.find(w => w.code === 'W017');
+    assert.ok(w017, `Expected W017: ${JSON.stringify(parsed.warnings)}`);
+    assert.strictEqual(w017.repairable, true, 'W017 should be repairable');
+  });
+
+  test('W018 is repairable', () => {
+    writeRoadmapWithPhases(tmpDir, [
+      { number: 3, complete: true, name: 'Complete Phase' },
+    ]);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '03-complete'), { recursive: true });
+    writePendingTodo(tmpDir, 'linked-todo.md', { phase: 3 });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w018 = parsed.warnings.find(w => w.code === 'W018');
+    assert.ok(w018, `Expected W018: ${JSON.stringify(parsed.warnings)}`);
+    assert.strictEqual(w018.repairable, true, 'W018 should be repairable');
   });
 });

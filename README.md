@@ -1,24 +1,25 @@
 <div align="center">
 
-# GET SHIT DONE
+# GET SHIT DONE NG
 
-**A light-weight and powerful meta-prompting, context engineering and spec-driven development system for Claude Code, OpenCode, Gemini CLI, and Codex.**
+**get-shit-done-ng is a next-generation fork of GSD, optimized specifically for Claude Code.**
+
+Forked from [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done).
+
+**A light-weight and powerful meta-prompting, context engineering and spec-driven development system.**
 
 **Solves context rot — the quality degradation that happens as Claude fills its context window.**
 
-[![npm version](https://img.shields.io/npm/v/get-shit-done-cc?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-cc)
-[![npm downloads](https://img.shields.io/npm/dm/get-shit-done-cc?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-cc)
-[![Tests](https://img.shields.io/github/actions/workflow/status/glittercowboy/get-shit-done/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/glittercowboy/get-shit-done/actions/workflows/test.yml)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/gsd)
-[![X (Twitter)](https://img.shields.io/badge/X-@gsd__foundation-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/gsd_foundation)
-[![$GSD Token](https://img.shields.io/badge/$GSD-Dexscreener-1C1C1C?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIgZmlsbD0iIzAwRkYwMCIvPjwvc3ZnPg==&logoColor=00FF00)](https://dexscreener.com/solana/dwudwjvan7bzkw9zwlbyv6kspdlvhwzrqy6ebk8xzxkv)
-[![GitHub stars](https://img.shields.io/github/stars/glittercowboy/get-shit-done?style=for-the-badge&logo=github&color=181717)](https://github.com/glittercowboy/get-shit-done)
+[![npm version](https://img.shields.io/npm/v/get-shit-done-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-ng)
+[![npm downloads](https://img.shields.io/npm/dm/get-shit-done-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-ng)
+[![Tests](https://img.shields.io/github/actions/workflow/status/chrisdevchroma/get-shit-done-ng/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/chrisdevchroma/get-shit-done-ng/actions/workflows/test.yml)
+[![GitHub stars](https://img.shields.io/github/stars/chrisdevchroma/get-shit-done-ng?style=for-the-badge&logo=github&color=181717)](https://github.com/chrisdevchroma/get-shit-done-ng)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 <br>
 
 ```bash
-npx get-shit-done-cc@latest
+npx get-shit-done-ng@latest
 ```
 
 **Works on Mac, Windows, and Linux.**
@@ -27,37 +28,9 @@ npx get-shit-done-cc@latest
 
 ![GSD Install](assets/terminal.svg)
 
-<br>
-
-*"If you know clearly what you want, this WILL build it for you. No bs."*
-
-*"I've done SpecKit, OpenSpec and Taskmaster — this has produced the best results for me."*
-
-*"By far the most powerful addition to my Claude Code. Nothing over-engineered. Literally just gets shit done."*
-
-<br>
-
-**Trusted by engineers at Amazon, Google, Shopify, and Webflow.**
-
-[Why I Built This](#why-i-built-this) · [How It Works](#how-it-works) · [Commands](#commands) · [Why It Works](#why-it-works) · [User Guide](docs/USER-GUIDE.md)
+[How It Works](#how-it-works) · [Commands](#commands) · [Why It Works](#why-it-works) · [User Guide](docs/USER-GUIDE.md)
 
 </div>
-
----
-
-## Why I Built This
-
-I'm a solo developer. I don't write code — Claude Code does.
-
-Other spec-driven development tools exist; BMAD, Speckit... But they all seem to make things way more complicated than they need to be (sprint ceremonies, story points, stakeholder syncs, retrospectives, Jira workflows) or lack real big picture understanding of what you're building. I'm not a 50-person software company. I don't want to play enterprise theater. I'm just a creative person trying to build great things that work.
-
-So I built GSD. The complexity is in the system, not in your workflow. Behind the scenes: context engineering, XML prompt formatting, subagent orchestration, state management. What you see: a few commands that just work.
-
-The system gives Claude everything it needs to do the work *and* verify it. I trust the workflow. It just does a good job.
-
-That's what this is. No enterprise roleplay bullshit. Just an incredibly effective system for building cool stuff consistently using Claude Code.
-
-— **TÂCHES**
 
 ---
 
@@ -76,53 +49,31 @@ People who want to describe what they want and have it built correctly — witho
 ## Getting Started
 
 ```bash
-npx get-shit-done-cc@latest
+npx get-shit-done-ng@latest
 ```
 
-The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, Gemini, Codex, or all
-2. **Location** — Global (all projects) or local (current project only)
+The installer prompts you to choose your install location (global or local project).
 
 Verify with:
-- Claude Code / Gemini: `/gsd:help`
-- OpenCode: `/gsd-help`
-- Codex: `$gsd-help`
-
-> [!NOTE]
-> Codex installation uses skills (`skills/gsd-*/SKILL.md`) rather than custom prompts.
+- Claude Code: `/gsd:help`
 
 ### Staying Updated
 
 GSD evolves fast. Update periodically:
 
 ```bash
-npx get-shit-done-cc@latest
+npx get-shit-done-ng@latest
 ```
 
 <details>
 <summary><strong>Non-interactive Install (Docker, CI, Scripts)</strong></summary>
 
 ```bash
-# Claude Code
-npx get-shit-done-cc --claude --global   # Install to ~/.claude/
-npx get-shit-done-cc --claude --local    # Install to ./.claude/
-
-# OpenCode (open source, free models)
-npx get-shit-done-cc --opencode --global # Install to ~/.config/opencode/
-
-# Gemini CLI
-npx get-shit-done-cc --gemini --global   # Install to ~/.gemini/
-
-# Codex (skills-first)
-npx get-shit-done-cc --codex --global    # Install to ~/.codex/
-npx get-shit-done-cc --codex --local     # Install to ./.codex/
-
-# All runtimes
-npx get-shit-done-cc --all --global      # Install to all directories
+npx get-shit-done-ng --global   # Install to ~/.claude/
+npx get-shit-done-ng --local    # Install to ./.claude/
 ```
 
 Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
-Use `--claude`, `--opencode`, `--gemini`, `--codex`, or `--all` to skip the runtime prompt.
 
 </details>
 
@@ -132,58 +83,78 @@ Use `--claude`, `--opencode`, `--gemini`, `--codex`, or `--all` to skip the runt
 Clone the repository and run the installer locally:
 
 ```bash
-git clone https://github.com/glittercowboy/get-shit-done.git
-cd get-shit-done
-node bin/install.js --claude --local
+git clone https://github.com/chrisdevchroma/get-shit-done-ng.git
+cd get-shit-done-ng
+node bin/install.js --local
 ```
 
 Installs to `./.claude/` for testing modifications before contributing.
 
 </details>
 
-### Recommended: Skip Permissions Mode
+### Recommended: Sandbox Mode
 
-GSD is designed for frictionless automation. Run Claude Code with:
+GSD works best with Claude Code's sandbox mode. Copy the permissions template into your project:
+
+```bash
+cp node_modules/get-shit-done-ng/get-shit-done/templates/settings-sandbox.json .claude/settings.json
+```
+
+Or for local installs:
+
+```bash
+cp get-shit-done-ng/get-shit-done/templates/settings-sandbox.json .claude/settings.json
+```
+
+This enables sandbox isolation with pre-approved commands for all GSD operations. No approval dialogs, no security bypass.
+
+> [!TIP]
+> If GSD ever triggers an approval dialog in sandbox mode, that's a bug — [open an issue](https://github.com/chrisdevchroma/get-shit-done-ng/issues).
+
+<details>
+<summary><strong>Alternative: Skip Permissions Mode</strong></summary>
+
+If you prefer to skip all permission checks:
 
 ```bash
 claude --dangerously-skip-permissions
 ```
 
-> [!TIP]
-> This is how GSD is intended to be used — stopping to approve `date` and `git commit` 50 times defeats the purpose.
+This disables all safety checks. Sandbox mode (above) is preferred because it provides the same frictionless experience while maintaining filesystem isolation.
+
+</details>
 
 <details>
-<summary><strong>Alternative: Granular Permissions</strong></summary>
+<summary><strong>Alternative: Custom Granular Permissions</strong></summary>
 
-If you prefer not to use that flag, add this to your project's `.claude/settings.json`:
+If you want to customize which commands are allowed, add this to your project's `.claude/settings.json`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(date:*)",
-      "Bash(echo:*)",
-      "Bash(cat:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(wc:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(sort:*)",
-      "Bash(grep:*)",
-      "Bash(tr:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git status:*)",
-      "Bash(git log:*)",
-      "Bash(git diff:*)",
-      "Bash(git tag:*)"
+      "Bash(date *)",
+      "Bash(git *)",
+      "Bash(node *)",
+      "Bash(npm *)"
     ]
   }
 }
 ```
 
+See `get-shit-done-ng/get-shit-done/templates/settings-sandbox.json` for the complete list of GSD-required commands.
+
 </details>
+
+---
+
+## Quick Install (npm / npx)
+
+```bash
+npx get-shit-done-ng@latest
+```
+
+See [Getting Started](#getting-started) above for full options.
 
 ---
 
@@ -365,10 +336,16 @@ Then `/gsd:new-milestone` starts the next version — same flow as `new-project`
 Quick mode gives you GSD guarantees (atomic commits, state tracking) with a faster path:
 
 - **Same agents** — Planner + executor, same quality
-- **Skips optional steps** — No research, no plan checker, no verifier
+- **Skips optional steps** — No research, no plan checker, no verifier by default
 - **Separate tracking** — Lives in `.planning/quick/`, not phases
 
-Use for: bug fixes, small features, config changes, one-off tasks.
+**`--discuss` flag:** Lightweight discussion to surface gray areas before planning.
+
+**`--research` flag:** Spawns a focused researcher before planning. Investigates implementation approaches, library options, and pitfalls. Use when you're unsure how to approach a task.
+
+**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification.
+
+Flags are composable: `--discuss --research --full` gives discussion + research + plan-checking + verification.
 
 ```
 /gsd:quick
@@ -484,7 +461,6 @@ You're never locked in. The system adapts.
 | `/gsd:progress` | Where am I? What's next? |
 | `/gsd:help` | Show all commands and usage guide |
 | `/gsd:update` | Update GSD with changelog preview |
-| `/gsd:join-discord` | Join the GSD Discord community |
 
 ### Brownfield
 
@@ -518,7 +494,7 @@ You're never locked in. The system adapts.
 | `/gsd:add-todo [desc]` | Capture idea for later |
 | `/gsd:check-todos` | List pending todos |
 | `/gsd:debug [desc]` | Systematic debugging with persistent state |
-| `/gsd:quick [--full] [--discuss]` | Execute ad-hoc task with GSD guarantees (`--full` adds plan-checking and verification, `--discuss` gathers context first) |
+| `/gsd:quick [--full] [--discuss] [--research]` | Execute ad-hoc task with GSD guarantees (`--full` adds plan-checking and verification, `--discuss` gathers context first, `--research` investigates approaches before planning) |
 | `/gsd:health [--repair]` | Validate `.planning/` directory integrity, auto-repair with `--repair` |
 
 <sup>¹ Contributed by reddit user OracleGreyBeard</sup>
@@ -630,22 +606,21 @@ This prevents Claude from reading these files entirely, regardless of what comma
 **Commands not found after install?**
 - Restart your runtime to reload commands/skills
 - Verify files exist in `~/.claude/commands/gsd/` (global) or `./.claude/commands/gsd/` (local)
-- For Codex, verify skills exist in `~/.codex/skills/gsd-*/SKILL.md` (global) or `./.codex/skills/gsd-*/SKILL.md` (local)
 
 **Commands not working as expected?**
 - Run `/gsd:help` to verify installation
-- Re-run `npx get-shit-done-cc` to reinstall
+- Re-run `npx get-shit-done-ng` to reinstall
 
 **Updating to the latest version?**
 ```bash
-npx get-shit-done-cc@latest
+npx get-shit-done-ng@latest
 ```
 
 **Using Docker or containerized environments?**
 
 If file reads fail with tilde paths (`~/.claude/...`), set `CLAUDE_CONFIG_DIR` before installing:
 ```bash
-CLAUDE_CONFIG_DIR=/home/youruser/.claude npx get-shit-done-cc --global
+CLAUDE_CONFIG_DIR=/home/youruser/.claude npx get-shit-done-ng --global
 ```
 This ensures absolute paths are used instead of `~` which may not expand correctly in containers.
 
@@ -655,42 +630,13 @@ To remove GSD completely:
 
 ```bash
 # Global installs
-npx get-shit-done-cc --claude --global --uninstall
-npx get-shit-done-cc --opencode --global --uninstall
-npx get-shit-done-cc --codex --global --uninstall
+npx get-shit-done-ng --global --uninstall
 
 # Local installs (current project)
-npx get-shit-done-cc --claude --local --uninstall
-npx get-shit-done-cc --opencode --local --uninstall
-npx get-shit-done-cc --codex --local --uninstall
+npx get-shit-done-ng --local --uninstall
 ```
 
 This removes all GSD commands, agents, hooks, and settings while preserving your other configurations.
-
----
-
-## Community Ports
-
-OpenCode, Gemini CLI, and Codex are now natively supported via `npx get-shit-done-cc`.
-
-These community ports pioneered multi-runtime support:
-
-| Project | Platform | Description |
-|---------|----------|-------------|
-| [gsd-opencode](https://github.com/rokicool/gsd-opencode) | OpenCode | Original OpenCode adaptation |
-| gsd-gemini (archived) | Gemini CLI | Original Gemini adaptation by uberfuzzy |
-
----
-
-## Star History
-
-<a href="https://star-history.com/#glittercowboy/get-shit-done&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date" />
- </picture>
-</a>
 
 ---
 

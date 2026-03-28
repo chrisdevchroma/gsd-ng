@@ -5,7 +5,7 @@ argument-hint: "[phase]"
 allowed-tools:
   - Read
   - Bash
-  - Task
+  - Agent
 ---
 
 <objective>
@@ -135,7 +135,7 @@ Write to: .planning/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
 ```
 
 ```
-Task(
+Agent(
   prompt=filled_prompt,
   subagent_type="gsd-phase-researcher",
   model="{researcher_model}",
@@ -171,7 +171,7 @@ Continue research for Phase {phase_number}: {phase_name}
 ```
 
 ```
-Task(
+Agent(
   prompt=continuation_prompt,
   subagent_type="gsd-phase-researcher",
   model="{researcher_model}",

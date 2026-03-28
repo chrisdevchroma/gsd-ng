@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Context Monitor - PostToolUse/AfterTool hook (Gemini uses AfterTool)
+// Context Monitor - PostToolUse hook
 // Reads context metrics from the statusline bridge file and injects
 // warnings when context usage is high. This makes the AGENT aware of
 // context limits (the statusline only shows the user).
@@ -41,6 +41,20 @@ process.stdin.on('end', () => {
 
     if (!sessionId) {
       process.exit(0);
+    }
+
+    // Check if context warnings are disabled via config
+    const cwd = data.cwd || process.cwd();
+    const configPath = path.join(cwd, '.planning', 'config.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.hooks?.context_warnings === false) {
+          process.exit(0);
+        }
+      } catch (e) {
+        // Ignore config parse errors
+      }
     }
 
     const tmpDir = os.tmpdir();
@@ -91,17 +105,22 @@ process.stdin.on('end', () => {
     const severityEscalated = currentLevel === 'critical' && warnData.lastLevel === 'warning';
     if (!firstWarn && warnData.callsSinceWarn < DEBOUNCE_CALLS && !severityEscalated) {
       // Update counter and exit without warning
-      fs.writeFileSync(warnPath, JSON.stringify(warnData));
+      // GSD_SIMULATE_SANDBOX: skip warnPath write defensively per locked degradation pattern
+      if (!process.env.GSD_SIMULATE_SANDBOX) {
+        try { fs.writeFileSync(warnPath, JSON.stringify(warnData)); } catch (e) { /* silent */ }
+      }
       process.exit(0);
     }
 
     // Reset debounce counter
     warnData.callsSinceWarn = 0;
     warnData.lastLevel = currentLevel;
-    fs.writeFileSync(warnPath, JSON.stringify(warnData));
+    // GSD_SIMULATE_SANDBOX: skip warnPath write defensively per locked degradation pattern
+    if (!process.env.GSD_SIMULATE_SANDBOX) {
+      try { fs.writeFileSync(warnPath, JSON.stringify(warnData)); } catch (e) { /* silent */ }
+    }
 
     // Detect if GSD is active (has .planning/STATE.md in working directory)
-    const cwd = data.cwd || process.cwd();
     const isGsdActive = fs.existsSync(path.join(cwd, '.planning', 'STATE.md'));
 
     // Build advisory warning message (never use imperative commands that
@@ -126,13 +145,7 @@ process.stdin.on('end', () => {
           'starting new complex work.';
     }
 
-    const output = {
-      hookSpecificOutput: {
-        hookEventName: process.env.GEMINI_API_KEY ? "AfterTool" : "PostToolUse",
-        additionalContext: message
-      }
-    };
-
+    const output = { additionalContext: message };
     process.stdout.write(JSON.stringify(output));
   } catch (e) {
     // Silent fail -- never block tool execution

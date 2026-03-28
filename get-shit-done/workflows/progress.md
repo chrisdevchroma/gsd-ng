@@ -8,72 +8,42 @@ Read all files referenced by the invoking prompt's execution_context before star
 
 <process>
 
-<step name="init_context">
-**Load progress context (paths only):**
+<step name="gather_data">
+Gather all data from CLI in minimal calls:
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init progress)
+INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init progress --raw)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
-Extract from init JSON: `project_exists`, `roadmap_exists`, `state_exists`, `phases`, `current_phase`, `next_phase`, `milestone_version`, `completed_count`, `phase_count`, `paused_at`, `state_path`, `roadmap_path`, `project_path`, `config_path`.
+Extract from INIT JSON: `project_exists`, `roadmap_exists`, `state_exists`, `current_phase`, `next_phase`, `milestone_version`, `completed_count`, `phase_count`, `paused_at`, `state_path`, `roadmap_path`, `project_path`.
 
-If `project_exists` is false (no `.planning/` directory):
-
-```
-No planning structure found.
-
-Run /gsd:new-project to start a new project.
-```
-
-Exit.
-
-If missing STATE.md: suggest `/gsd:new-project`.
-
-**If ROADMAP.md missing but PROJECT.md exists:**
-
-This means a milestone was completed and archived. Go to **Route F** (between milestones).
-
-If missing both ROADMAP.md and PROJECT.md: suggest `/gsd:new-project`.
-</step>
-
-<step name="load">
-**Use structured extraction from gsd-tools:**
-
-Instead of reading full files, use targeted tools to get only the data needed for the report:
-- `ROADMAP=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap analyze)`
-- `STATE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state-snapshot)`
-
-This minimizes orchestrator context usage.
-</step>
-
-<step name="analyze_roadmap">
-**Get comprehensive roadmap analysis (replaces manual parsing):**
+If `project_exists` is false: "No planning structure found. Run /gsd:new-project to start." Exit.
+If ROADMAP.md missing but PROJECT.md exists: Go to **Route F** (between milestones).
 
 ```bash
-ROADMAP=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap analyze)
+ROADMAP=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap analyze --raw)
+if [[ "$ROADMAP" == @file:* ]]; then ROADMAP=$(cat "${ROADMAP#@file:}"); fi
+
+STATE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state-snapshot --raw)
+if [[ "$STATE" == @file:* ]]; then STATE=$(cat "${STATE#@file:}"); fi
 ```
 
-This returns structured JSON with:
-- All phases with disk status (complete/partial/planned/empty/no_directory)
-- Goal and dependencies per phase
-- Plan and summary counts per phase
-- Aggregated stats: total plans, summaries, progress percent
-- Current and next phase identification
-
-Use this instead of manually reading/parsing ROADMAP.md.
+All structured data is now in INIT, ROADMAP, and STATE JSON variables. No manual file reading or parsing needed.
 </step>
 
 <step name="recent">
-**Gather recent work context:**
+Find the 2-3 most recent SUMMARY.md files and extract one-liners:
 
-- Find the 2-3 most recent SUMMARY.md files
-- Use `summary-extract` for efficient parsing:
-  ```bash
-  node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner
-  ```
-- This shows "what we've been working on"
-  </step>
+```bash
+RECENT_SUMMARIES=$(ls -t .planning/phases/*/*-SUMMARY.md 2>/dev/null | head -3)
+```
+
+For each summary file, extract the one-liner:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner --raw
+```
+</step>
 
 <step name="position">
 **Parse current position from init context and roadmap analysis:**
@@ -107,6 +77,7 @@ Present:
 ## Current Position
 Phase [N] of [total]: [phase-name]
 Plan [M] of [phase-total]: [status]
+Target Branch: [target_branch from $STATE — e.g. "main"]
 CONTEXT: [✓ if has_context | - if not]
 
 ## Key Decisions Made

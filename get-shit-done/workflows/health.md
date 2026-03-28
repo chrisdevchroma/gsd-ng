@@ -138,6 +138,11 @@ Report final status.
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | W008 | warning | config.json: workflow.nyquist_validation absent (defaults to enabled but agents may skip) | Yes |
 | W009 | warning | Phase has Validation Architecture in RESEARCH.md but no VALIDATION.md | No |
+| W010 | warning | CLAUDE.md not found — agents missing project instructions | Yes |
+| W011 | warning | Memory files not referenced in CLAUDE.md | Yes |
+| W012 | warning | CLAUDE.md references non-existent memory files | Yes |
+| W013 | warning | MEMORY.md out of sync with .claude/memory/ contents | Yes |
+| W014 | warning | Workspace topology detected but no structural memory seeded | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 
 </error_codes>
@@ -150,10 +155,14 @@ Report final status.
 | resetConfig | Delete + recreate config.json | Loses custom settings |
 | regenerateState | Create STATE.md from ROADMAP structure | Loses session history |
 | addNyquistKey | Add workflow.nyquist_validation: true to config.json | None — matches existing default |
+| writeCLAUDEmd | Create CLAUDE.md with Memories section from .claude/memory/ | None — generates from existing files |
+| syncCLAUDEmdMemories | Update CLAUDE.md Memories section to match .claude/memory/ | Replaces Memories section in-place |
+| syncMemoryMd | Regenerate .claude/memory/MEMORY.md from .claude/memory/ files | Overwrites MEMORY.md |
 
 **Not repairable (too risky):**
 - PROJECT.md, ROADMAP.md content
 - Phase directory renaming
 - Orphaned plan cleanup
+- Topology drift (W014) — complex; suggests running /gsd:seed-memories manually
 
 </repair_actions>

@@ -20,7 +20,9 @@ INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init execute-phase "
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
-Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
+Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `target_branch`, `auto_push`, `remote`, `review_branch_template`, `pr_draft`, `platform`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
+
+Store as shell variables: `BRANCHING_STRATEGY`, `BRANCH_NAME`, `TARGET_BRANCH`, `AUTO_PUSH`, `REMOTE`.
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
@@ -28,9 +30,10 @@ Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelizat
 
 When `parallelization` is false, plans within a wave execute sequentially.
 
-**Sync chain flag with intent** — if user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference). Must happen before any config reads (checkpoint handling also reads auto-advance flags):
+**REQUIRED — Sync chain flag with intent.** If user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This prevents stale `_auto_chain_active: true` from causing unwanted auto-advance. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference). You MUST execute this bash block before any config reads:
 ```bash
-if [[ ! "$ARGUMENTS" =~ --auto ]]; then
+# REQUIRED: prevents stale auto-chain from previous --auto runs
+if [[ "$ARGUMENTS" != *"--auto"* ]]; then
   node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-set workflow._auto_chain_active false 2>/dev/null
 fi
 ```
@@ -41,18 +44,90 @@ Check `branching_strategy` from init:
 
 **"none":** Skip, continue on current branch.
 
-**"phase" or "milestone":** Use pre-computed `branch_name` from init:
+**"phase":** Use pre-computed `branch_name` from init. Base from `target_branch`:
 ```bash
-git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME"
+# Base new work branch from target_branch (not current HEAD)
+git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH" 2>/dev/null || git checkout "$BRANCH_NAME"
 ```
 
-All subsequent commits go to this branch. User handles merging.
+**"milestone":** Use pre-computed `branch_name` from init. If branch already exists (subsequent phases), just checkout. If new (first phase of milestone), create from `target_branch`:
+```bash
+if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
+  # Milestone branch already exists (not first phase) — just switch to it
+  git checkout "$BRANCH_NAME"
+else
+  # First phase of milestone — create from target_branch
+  git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH"
+fi
+```
+
+All subsequent commits go to this branch.
 </step>
 
 <step name="validate_phase">
 From init JSON: `phase_dir`, `plan_count`, `incomplete_count`.
 
 Report: "Found {plan_count} plans in {phase_dir} ({incomplete_count} incomplete)"
+
+**Update STATE.md for phase start:**
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state begin-phase --phase "${PHASE_NUMBER}" --name "${PHASE_NAME}" --plans "${PLAN_COUNT}"
+```
+This updates Status, Last Activity, Current focus, Current Position, and plan counts in STATE.md so frontmatter and body text reflect the active phase immediately.
+</step>
+
+<step name="capture_test_baseline">
+Discover test commands via CLI and capture per-directory baselines. Supports standalone, submodule, and monorepo workspaces.
+
+```bash
+# Discover test commands (config override or workspace-aware auto-detect)
+DISCOVERED=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" discover-test-command 2>/dev/null || echo "[]")
+# Resolve @file: pattern if present
+if [[ "$DISCOVERED" == @file:* ]]; then
+  DISCOVERED=$(cat "${DISCOVERED#@file:}")
+fi
+
+ENTRY_COUNT=$(node -e "console.log(JSON.parse(process.argv[1]).length)" "$DISCOVERED")
+if [[ "$ENTRY_COUNT" -eq 0 ]]; then
+  echo "No test command found — skipping test baseline capture"
+fi
+
+if [[ "$ENTRY_COUNT" -gt 0 ]]; then
+  BASELINE_FILE="${PHASE_DIR}/${PHASE_NUMBER}-test-baseline.json"
+  echo "Capturing test baselines for $ENTRY_COUNT directory(ies)..."
+
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+    const entries = JSON.parse(process.argv[1]);
+    const cwd = process.cwd();
+    const baselines = {};
+    for (const {dir, command} of entries) {
+      const runDir = dir === '.' ? cwd : path.join(cwd, dir);
+      let exitCode = 0;
+      let output = '';
+      try {
+        output = execSync(command, { cwd: runDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120000 });
+      } catch (err) {
+        exitCode = err.status || 1;
+        output = (err.stdout || '') + (err.stderr || '');
+      }
+      baselines[dir] = {
+        captured: new Date().toISOString(),
+        command: command,
+        exit_code: exitCode,
+        output: output.slice(0, 10000)
+      };
+      const status = exitCode === 0 ? 'passing' : 'failing (pre-existing)';
+      console.log('  ' + dir + ': ' + status);
+    }
+    fs.writeFileSync(process.argv[2], JSON.stringify(baselines, null, 2));
+  " "$DISCOVERED" "$BASELINE_FILE"
+fi
+```
+
+Store `$DISCOVERED`, `$ENTRY_COUNT`, and `$BASELINE_FILE` for use in the pre-UAT step.
 </step>
 
 <step name="discover_and_group_plans">
@@ -63,6 +138,14 @@ PLAN_INDEX=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" phase-plan-ind
 ```
 
 Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objective`, `files_modified`, `task_count`, `has_summary`), `waves` (map of wave number → plan IDs), `incomplete`, `has_checkpoints`.
+
+**File-overlap check:** If `PLAN_INDEX` JSON contains a non-empty `overlaps` array, log a warning for each entry:
+```
+WARNING: Same-wave file overlap detected — {overlap.plans[0]} and {overlap.plans[1]} share: {overlap.files.join(', ')}
+These plans may cause Edit conflicts or Write overwrites during parallel execution.
+Consider re-planning with /gsd:plan-phase to separate into sequential waves.
+```
+Continue execution (advisory-only, not blocking) — the planner should have prevented this, so runtime overlap is informational.
 
 **Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip non-gap_closure plans. If all filtered: "No matching incomplete plans" → exit.
 
@@ -107,6 +190,14 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    Pass paths only — executors read files themselves with their fresh 200k context.
    This keeps orchestrator context lean (~10-15%).
 
+   Resolve workspace topology for agent context injection:
+   ```bash
+   WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+   WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+   SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
+   PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+   ```
+
    ```
    Task(
      subagent_type="gsd-executor",
@@ -123,6 +214,16 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        @~/.claude/get-shit-done/references/checkpoints.md
        @~/.claude/get-shit-done/references/tdd.md
        </execution_context>
+
+       <workspace_context>
+       Workspace type: {WORKSPACE_TYPE}
+       Project root: {PROJECT_ROOT}
+       Submodule paths: {SUBMODULE_PATHS}
+
+       CRITICAL: Always commit to the source location. Your working directory is {PROJECT_ROOT}.
+       If workspace type is 'submodule', source code lives in the submodule directories listed above.
+       Do NOT modify deployed copies (e.g., .claude/get-shit-done/) — always edit source first.
+       </workspace_context>
 
        <files_to_read>
        Read these files at execution start using the Read tool:
@@ -152,6 +253,20 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    - Verify first 2 files from `key-files.created` exist on disk
    - Check `git log --oneline --all --grep="{phase}-{plan}"` returns ≥1 commit
    - Check for `## Self-Check: FAILED` marker
+   - **Breakout check** — compare committed files against plan's `files_modified`:
+     ```bash
+     PLAN_FILE="{phase_dir}/{plan_file}"
+     FILES_MODIFIED=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter get "$PLAN_FILE" --field files_modified --raw 2>/dev/null)
+
+     if [[ -n "$FILES_MODIFIED" ]]; then
+       BREAKOUT_RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/get-shit-done/bin/gsd-tools.cjs" breakout-check --plan "{phase}-{plan}" --declared-files "$FILES_MODIFIED" --raw 2>/dev/null)
+     fi
+     ```
+     - If `BREAKOUT_RESULT` is `warning`: log in wave completion output — "Note: executor modified files outside declared scope: {list}". Continue execution.
+     - If `BREAKOUT_RESULT` is `halt`: present AskUserQuestion (breakout scope escalation) to user:
+       - Question: "Executor modified {N} files outside declared plan scope. How should we proceed?"
+       - Options: "Continue" (proceed to next wave), "Investigate first" (pause — review changes before next wave), "Rollback this plan" (revert plan commits and mark failed)
+     - If `ok`: silent — no output needed.
 
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
@@ -248,6 +363,60 @@ After all waves:
 ### Issues Encountered
 [Aggregate from SUMMARYs, or "None"]
 ```
+
+**Post-phase push (when configured):**
+
+Read from init JSON: `auto_push`, `remote`, `branch_name`, `branching_strategy`.
+
+```bash
+# Only push if auto_push is enabled and we're on a GSD-managed branch
+if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
+
+  # SSH pre-push check (git.ssh_check defaults to true)
+  SSH_CHECK=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get git.ssh_check --raw 2>/dev/null || echo "true")
+  if [ "$SSH_CHECK" = "true" ]; then
+    REMOTE_URL=$(git remote get-url "${REMOTE:-origin}" 2>/dev/null || echo "")
+    if echo "$REMOTE_URL" | grep -qE '^git@|^ssh://'; then
+      SSH_STATUS=$(ssh-add -l 2>&1); SSH_EXIT=$?
+      if [ $SSH_EXIT -ne 0 ] || echo "$SSH_STATUS" | grep -q "no identities"; then
+        echo ""
+        echo "WARNING: SSH agent has no identities loaded. Git push will likely fail."
+        echo "Run in your terminal: ssh-add ~/.ssh/id_ed25519"
+        echo "(or the path to your SSH key)"
+        echo ""
+        echo "After loading your key, press Enter to retry push, or type 'skip' to skip push."
+        # Note: In Claude Code Bash tool, read may not block — the warning itself is the value.
+        # The push will proceed and fail with a clear error message if key is still not loaded.
+      fi
+      # Check SSH signing key requirement
+      SIGN_FORMAT=$(git config gpg.format 2>/dev/null || echo "")
+      if [ "$SIGN_FORMAT" = "ssh" ] && [ $SSH_EXIT -ne 0 ]; then
+        echo "Note: SSH-signed commits also require the signing key loaded in ssh-agent."
+      fi
+    fi
+  fi
+
+  echo "Pushing $BRANCH_NAME to $REMOTE..."
+
+  # Check if branch already has upstream tracking
+  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
+  if [ -n "$UPSTREAM" ]; then
+    PUSH_OUT=$(git push "$REMOTE" "$BRANCH_NAME" 2>&1)
+    PUSH_EXIT=$?
+  else
+    # First push — set upstream tracking
+    PUSH_OUT=$(git push -u "$REMOTE" "$BRANCH_NAME" 2>&1)
+    PUSH_EXIT=$?
+  fi
+
+  if [ $PUSH_EXIT -ne 0 ]; then
+    echo "Warning: Push to $REMOTE failed: $PUSH_OUT"
+    echo "Local commits are safe. Push manually: git push -u $REMOTE $BRANCH_NAME"
+  else
+    echo "Pushed $BRANCH_NAME to $REMOTE"
+  fi
+fi
+```
 </step>
 
 <step name="close_parent_artifacts">
@@ -298,6 +467,112 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 ```bash
 node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-${PARENT_PHASE}): resolve UAT gaps and debug sessions after ${PHASE_NUMBER} gap closure" --files .planning/phases/*${PARENT_PHASE}*/*-UAT.md .planning/debug/resolved/*.md
 ```
+</step>
+
+<step name="run_pre_uat_tests">
+Re-run discovered test commands after executor agents complete. Display results in GSD banner format. Triage new failures vs pre-existing.
+
+Skip this step entirely if `$ENTRY_COUNT` is 0 (no test commands were discovered).
+
+```bash
+if [[ "$ENTRY_COUNT" -gt 0 ]]; then
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+    const entries = JSON.parse(process.argv[1]);
+    const baselineFile = process.argv[2];
+    const cwd = process.cwd();
+    let baselines = {};
+    try { baselines = JSON.parse(fs.readFileSync(baselineFile, 'utf-8')); } catch {}
+
+    const results = [];
+    let hasNewFailure = false;
+
+    for (const {dir, command} of entries) {
+      const runDir = dir === '.' ? cwd : path.join(cwd, dir);
+      let exitCode = 0;
+      let output = '';
+      try {
+        output = execSync(command, { cwd: runDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120000 });
+      } catch (err) {
+        exitCode = err.status || 1;
+        output = (err.stdout || '') + (err.stderr || '');
+      }
+
+      const baseline = baselines[dir] || { exit_code: -1 };
+      const baselineStatus = baseline.exit_code === 0 ? 'pass' : (baseline.exit_code === -1 ? 'none' : 'fail');
+      const postStatus = exitCode === 0 ? 'pass' : 'fail';
+      const isNew = postStatus === 'fail' && baselineStatus !== 'fail';
+      if (isNew) hasNewFailure = true;
+
+      results.push({ dir, command, baseline: baselineStatus, post: postStatus, isNew, output: output.slice(-2000) });
+    }
+
+    // Emit GSD banner
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(' GSD ► TEST RESULTS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
+
+    // Table header
+    const pad = (s, n) => s.padEnd(n);
+    const maxDir = Math.max(10, ...results.map(r => r.dir.length));
+    const maxCmd = Math.max(8, ...results.map(r => r.command.length));
+    console.log('| ' + pad('Directory', maxDir) + ' | ' + pad('Command', maxCmd) + ' | Baseline | Pre-UAT  |');
+    console.log('|' + '-'.repeat(maxDir + 2) + '|' + '-'.repeat(maxCmd + 2) + '|----------|----------|');
+    for (const r of results) {
+      const bMark = r.baseline === 'pass' ? '✓ pass' : (r.baseline === 'none' ? '- none' : '✗ fail');
+      const pMark = r.post === 'pass' ? '✓ pass' : '✗ fail';
+      console.log('| ' + pad(r.dir, maxDir) + ' | ' + pad(r.command, maxCmd) + ' | ' + pad(bMark, 8) + ' | ' + pad(pMark, 8) + ' |');
+    }
+
+    const passing = results.filter(r => r.post === 'pass').length;
+    const preExisting = results.filter(r => r.post === 'fail' && !r.isNew).length;
+    console.log('');
+    console.log('Overall: ' + passing + '/' + results.length + ' passing' + (preExisting > 0 ? '  (pre-existing failures: ' + preExisting + ')' : ''));
+    console.log('');
+
+    // Output summary for triage decision
+    if (hasNewFailure) {
+      console.log('NEW_FAILURES=true');
+      for (const r of results.filter(x => x.isNew)) {
+        console.log('');
+        console.log('New failure in ' + r.dir + ':');
+        console.log(r.output);
+      }
+    } else {
+      console.log('NEW_FAILURES=false');
+    }
+  " "$DISCOVERED" "$BASELINE_FILE"
+fi
+```
+
+**Triage decision (only when new failures detected):**
+
+Parse `NEW_FAILURES` from the node output above. If `NEW_FAILURES=true`:
+
+```
+AskUserQuestion(
+  header: "Test Triage",
+  question: "Tests failed after execution. How should these failures be handled?",
+  multiSelect: false,
+  options: [
+    { label: "Regressions — create gaps", description: "These are new breakages from this phase. Add to VERIFICATION.md as gaps for closure." },
+    { label: "Expected breakage", description: "Intentional — will be fixed in a later plan or todo. Create tracking todo." },
+    { label: "Continue anyway", description: "Proceed to verification. Verifier will assess independently." }
+  ]
+)
+```
+
+If user selects "Regressions": Note the test failures for the verifier. The verifier's VERIFICATION.md will include these as gaps.
+
+If user selects "Expected breakage": Offer to create a todo tracking the expected breakage.
+
+If user selects "Continue anyway": Proceed normally to verify_phase_goal.
+
+If `NEW_FAILURES=false`: pre-existing failures only — do NOT prompt, proceed to verify_phase_goal.
 </step>
 
 <step name="verify_phase_goal">
@@ -384,6 +659,83 @@ node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs(phase-{X}): co
 ```
 </step>
 
+<step name="auto_sync_issues">
+After phase completion is committed, check for external issue auto-sync:
+
+```bash
+AUTO_SYNC=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --raw 2>/dev/null || echo "true")
+```
+
+If `AUTO_SYNC` is `"true"` (string comparison — config-get returns raw string):
+
+```bash
+SYNC_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" issue-sync "${PHASE_NUMBER}" --auto --raw 2>/dev/null)
+```
+
+Parse SYNC_RESULT JSON. If `synced` array has entries, display:
+```
+## Issue Tracker Sync
+
+| Issue | Action | Result |
+|-------|--------|--------|
+| {ref} | {action} | {success ? 'synced' : 'failed'} |
+
+{N} external issues updated.
+```
+
+If `synced` is empty or SYNC_RESULT is empty/failed, display nothing (silent pass-through). Auto-sync should never block phase completion — errors are logged but execution continues.
+
+If `AUTO_SYNC` is `"false"`: skip entirely, no output.
+</step>
+
+<step name="incremental_remap">
+After phase completion is committed, trigger incremental codebase re-mapping if codebase docs exist:
+
+```bash
+STALE_JSON=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" staleness-check --raw 2>/dev/null || echo '{"stale":[]}')
+STALE_COUNT=$(echo "$STALE_JSON" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stale.length)}catch{console.log(0)}})")
+```
+
+If STALE_COUNT is 0: skip silently (no stale docs, nothing to update).
+
+If STALE_COUNT > 0:
+
+```
+{STALE_COUNT} codebase doc(s) have changes since last mapping. Running incremental update...
+```
+
+For each stale doc in the `stale` array from STALE_JSON, spawn a `gsd-incremental-mapper` agent:
+
+```
+Task(
+  subagent_type="gsd-incremental-mapper",
+  model="{executor_model}",
+  run_in_background=true,
+  description="Incremental update: {doc_name}",
+  prompt="Update .planning/codebase/{doc_name} based on changes since last map.
+
+Changed files: {changed_files_list}
+
+Run: git diff --stat {last_mapped_commit}..HEAD -- {changed_files_as_args}
+
+Read the existing doc, update only sections affected by the changed files, preserve all other sections verbatim. Update last_mapped_commit to current HEAD."
+)
+```
+
+Wait for all mapper agents to complete. Report results:
+
+```
+Incremental codebase mapping: {completed}/{total} docs updated.
+```
+
+If any mapper failed, log but do not block phase completion.
+
+Commit updated codebase docs:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: incremental codebase remap after phase ${PHASE_NUMBER}" --files .planning/codebase/*.md
+```
+</step>
+
 <step name="offer_next">
 
 **Exception:** If `gaps_found`, the `verify_phase_goal` step already presents the gap-closure path (`/gsd:plan-phase {X} --gaps`). No additional routing needed — skip auto-advance.
@@ -409,6 +761,15 @@ Verification: {Passed | Gaps Found}
 
 STOP. Do not proceed to auto-advance or transition.
 
+**Create PR suggestion (when applicable):**
+
+If `branching_strategy` is not `"none"` AND push succeeded (or `auto_push` is enabled):
+```
+---
+**Create a PR:** `/gsd:create-pr {phase}` — squash work into review branch and open PR
+---
+```
+
 **If `--no-transition` flag is NOT present:**
 
 **Auto-advance detection:**
@@ -433,9 +794,137 @@ Execute the transition workflow inline (do NOT use Task — orchestrator context
 
 Read and follow `~/.claude/get-shit-done/workflows/transition.md`, passing through the `--auto` flag so it propagates to the next phase invocation.
 
-**If neither `--auto` nor `AUTO_CFG` is true:**
+**If none of `--auto`, `AUTO_CHAIN`, or `AUTO_CFG` is true:**
 
-The workflow ends. The user runs `/gsd:progress` or invokes the transition workflow manually.
+**STOP. Do not auto-advance. Do not execute transition. Do not plan next phase. Present options to the user and wait.**
+
+```
+## ✓ Phase {X}: {Name} Complete
+
+/gsd:progress — see updated roadmap
+/gsd:discuss-phase {next} — discuss next phase before planning
+/gsd:plan-phase {next} — plan next phase
+/gsd:execute-phase {next} — execute next phase
+```
+</step>
+
+<step name="close_origin_todo">
+**Origin todo closure (only when phase was started from a todo).**
+
+Check if the phase was started with a `--todo-file` argument:
+
+```bash
+ORIGIN_TODO_FILE=""
+if [[ "$ARGUMENTS" == *"--todo-file "* ]]; then
+  ORIGIN_TODO_FILE=$(echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
+fi
+```
+
+Skip if `$ORIGIN_TODO_FILE` is empty or if the phase status is NOT `passed` (verification must have passed).
+
+```bash
+ORIGIN_TODO_TITLE=""
+if [[ -n "$ORIGIN_TODO_FILE" ]]; then
+  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+fi
+```
+
+**Verification gate:** Only offer closure when the VERIFICATION.md status is `passed`. If status is `gaps_found` or `halted`, do NOT offer closure — the todo's work is not complete.
+
+```bash
+VERIFY_STATUS=$(grep "^status:" "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null | tail -1 | cut -d: -f2 | tr -d ' ')
+```
+
+If `$VERIFY_STATUS` is `passed` AND `$ORIGIN_TODO_FILE` is set:
+
+**Auto mode:**
+```bash
+AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+```
+
+If auto: close todo, log `[auto] Closed todo: $ORIGIN_TODO_TITLE`.
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close todo after phase completion" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
+```
+
+**Interactive mode:**
+```
+AskUserQuestion(
+  header: "Close Todo?",
+  question: "This phase was started from todo '$ORIGIN_TODO_TITLE'. Phase verification passed. Close it?",
+  multiSelect: false,
+  options: [
+    { label: "Yes, close it", description: "Mark todo as complete" },
+    { label: "No, keep open", description: "Leave in pending for further work" }
+  ]
+)
+```
+
+If confirmed:
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close todo after phase completion" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
+```
+
+**Phase-linked todo scan (after handling --todo-file):**
+
+Scan pending todos for `phase:` frontmatter matching the current phase number. Only fire if `$VERIFY_STATUS` is `passed`.
+
+```bash
+if [[ "$VERIFY_STATUS" == "passed" ]]; then
+  PHASE_LINKED=""
+  PENDING_DIR=".planning/todos/pending"
+  if [[ -d "$PENDING_DIR" ]]; then
+    for TODO_FILE in "$PENDING_DIR"/*.md; do
+      [[ -f "$TODO_FILE" ]] || continue
+      TODO_PHASE=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field phase --raw 2>/dev/null || echo "")
+      if [[ "$(echo "$TODO_PHASE" | tr -d '[:space:]')" == "${PHASE_NUMBER}" ]]; then
+        TODO_BASENAME=$(basename "$TODO_FILE")
+        TODO_TITLE=$(grep '^title:' "$TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+        PHASE_LINKED="${PHASE_LINKED}${TODO_BASENAME}|${TODO_TITLE}\n"
+      fi
+    done
+  fi
+fi
+```
+
+If `$PHASE_LINKED` is non-empty (at least one phase-linked todo found):
+
+**Auto mode:**
+```bash
+AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+```
+
+If auto: for each phase-linked todo, close it and commit:
+```bash
+# For each TODO_BASENAME in PHASE_LINKED:
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$TODO_BASENAME"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close phase-linked todo after phase ${PHASE_NUMBER} completion" --files ".planning/todos/completed/$TODO_BASENAME" ".planning/todos/pending/$TODO_BASENAME"
+```
+Log: `[auto] Closed phase-linked todo: $TODO_TITLE`
+
+**Interactive mode:**
+```
+AskUserQuestion(
+  header: "Phase Todos",
+  question: "These pending todos are linked to Phase ${PHASE_NUMBER}. Phase verification passed. Close them?",
+  multiSelect: true,
+  options: [
+    { label: "[todo-filename-1]", description: "[todo-title-1]" },
+    ...
+    { label: "Keep all open", description: "Leave all in pending" }
+  ]
+)
+```
+
+For each selected todo (not "Keep all open"):
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "$SELECTED_BASENAME"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: close phase-linked todo after phase ${PHASE_NUMBER} completion" --files ".planning/todos/completed/$SELECTED_BASENAME" ".planning/todos/pending/$SELECTED_BASENAME"
+```
+
+Note: `todo complete` triggers inline issue-sync automatically (from Plan 01) — no additional sync code needed here.
 </step>
 
 </process>

@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, getMilestonePhaseFilter, output, error } = require('./core.cjs');
+const { escapeRegex, getMilestonePhaseFilter, extractOneLinerFromBody, output, error } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 
@@ -33,6 +33,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
 
   let reqContent = fs.readFileSync(reqPath, 'utf-8');
   const updated = [];
+  const alreadyComplete = [];
   const notFound = [];
 
   for (const reqId of reqIds) {
@@ -60,7 +61,14 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
     if (found) {
       updated.push(reqId);
     } else {
-      notFound.push(reqId);
+      // Check if already complete before declaring not_found
+      const doneCheckbox = new RegExp(`-\\s*\\[x\\]\\s*\\*\\*${reqEscaped}\\*\\*`, 'gi');
+      const doneTable = new RegExp(`\\|\\s*${reqEscaped}\\s*\\|[^|]+\\|\\s*Complete\\s*\\|`, 'gi');
+      if (doneCheckbox.test(reqContent) || doneTable.test(reqContent)) {
+        alreadyComplete.push(reqId);
+      } else {
+        notFound.push(reqId);
+      }
     }
   }
 
@@ -71,6 +79,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
   output({
     updated: updated.length > 0,
     marked_complete: updated,
+    already_complete: alreadyComplete,
     not_found: notFound,
     total: reqIds.length,
   }, raw, `${updated.length}/${reqIds.length} requirements marked complete`);
@@ -122,12 +131,20 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
         try {
           const content = fs.readFileSync(path.join(phasesDir, dir, s), 'utf-8');
           const fm = extractFrontmatter(content);
-          if (fm['one-liner']) {
-            accomplishments.push(fm['one-liner']);
+          const oneLiner = fm['one-liner'] || extractOneLinerFromBody(content);
+          if (oneLiner) {
+            accomplishments.push(oneLiner);
           }
-          // Count tasks
-          const taskMatches = content.match(/##\s*Task\s*\d+/gi) || [];
-          totalTasks += taskMatches.length;
+          // Count tasks: prefer **Tasks:** N from Performance section,
+          // then <task XML tags, then ## Task N markdown headers
+          const tasksFieldMatch = content.match(/\*\*Tasks:\*\*\s*(\d+)/);
+          if (tasksFieldMatch) {
+            totalTasks += parseInt(tasksFieldMatch[1], 10);
+          } else {
+            const xmlTaskMatches = content.match(/<task[\s>]/gi) || [];
+            const mdTaskMatches = content.match(/##\s*Task\s*\d+/gi) || [];
+            totalTasks += xmlTaskMatches.length || mdTaskMatches.length;
+          }
         } catch {}
       }
     }

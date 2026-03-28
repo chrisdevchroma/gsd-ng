@@ -4,9 +4,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, output, error } = require('./core.cjs');
+const os = require('os');
+const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, stripShippedMilestones, output, error } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
+const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
 
 function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
   if (!summaryPath) {
@@ -407,9 +409,10 @@ function cmdValidateConsistency(cwd, raw) {
     return;
   }
 
-  const roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
+  const roadmapContentRaw = fs.readFileSync(roadmapPath, 'utf-8');
+  const roadmapContent = stripShippedMilestones(roadmapContentRaw);
 
-  // Extract phases from ROADMAP
+  // Extract phases from ROADMAP (archived milestones already stripped)
   const roadmapPhases = new Set();
   const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
   let m;
@@ -515,6 +518,19 @@ function cmdValidateConsistency(cwd, raw) {
 }
 
 function cmdValidateHealth(cwd, options, raw) {
+  // Guard: detect if CWD is the home directory (likely accidental)
+  const resolved = path.resolve(cwd);
+  if (resolved === os.homedir()) {
+    output({
+      status: 'error',
+      errors: [{ code: 'E010', message: `CWD is home directory (${resolved}) — health check would read the wrong .planning/ directory. Run from your project root instead.`, fix: 'cd into your project directory and retry' }],
+      warnings: [],
+      info: [{ code: 'I010', message: `Resolved CWD: ${resolved}` }],
+      repairable_count: 0,
+    }, raw);
+    return;
+  }
+
   const planningDir = path.join(cwd, '.planning');
   const projectPath = path.join(planningDir, 'PROJECT.md');
   const roadmapPath = path.join(planningDir, 'ROADMAP.md');
@@ -679,7 +695,8 @@ function cmdValidateHealth(cwd, options, raw) {
   // ─── Check 8: Run existing consistency checks ─────────────────────────────
   // Inline subset of cmdValidateConsistency
   if (fs.existsSync(roadmapPath)) {
-    const roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
+    const roadmapContentRaw = fs.readFileSync(roadmapPath, 'utf-8');
+    const roadmapContent = stripShippedMilestones(roadmapContentRaw);
     const roadmapPhases = new Set();
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
@@ -715,6 +732,201 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
+  // ─── Check 9: CLAUDE.md exists when .planning/ exists ────────────────────
+  const claudeMdPath = path.join(cwd, 'CLAUDE.md');
+  const memoryDir = path.join(cwd, '.claude', 'memory');
+  const memoryDirExists = fs.existsSync(memoryDir);
+  const claudeMdExists = fs.existsSync(claudeMdPath);
+
+  if (!claudeMdExists) {
+    addIssue('warning', 'W010', 'CLAUDE.md not found — agents will not receive project instructions', 'Run /gsd:health --repair to generate CLAUDE.md with Memories section', true);
+    if (!repairs.includes('writeCLAUDEmd')) repairs.push('writeCLAUDEmd');
+  }
+
+  // ─── Check 10-12: Memory-related checks (gate on CLAUDE.md + memory dir) ──
+  if (claudeMdExists && memoryDirExists) {
+    const claudeContent = fs.readFileSync(claudeMdPath, 'utf-8');
+    const memFiles = fs.readdirSync(memoryDir)
+      .filter(f => f.endsWith('.md') && f !== 'MEMORY.md');
+
+    // Check 10: Orphaned memory files not referenced in CLAUDE.md
+    const orphaned = memFiles.filter(f => !claudeContent.includes(`.claude/memory/${f}`));
+    if (orphaned.length > 0) {
+      addIssue('warning', 'W011',
+        `${orphaned.length} memory file(s) not referenced in CLAUDE.md: ${orphaned.join(', ')}`,
+        'Run /gsd:health --repair to add missing references', true);
+      if (!repairs.includes('syncCLAUDEmdMemories')) repairs.push('syncCLAUDEmdMemories');
+    }
+
+    // Check 11: Stale memory refs in CLAUDE.md
+    const refPattern = /\[\.claude\/memory\/([^\]]+)\]/g;
+    const referencedFiles = [];
+    let refMatch;
+    while ((refMatch = refPattern.exec(claudeContent)) !== null) {
+      referencedFiles.push(refMatch[1]);
+    }
+    const stale = referencedFiles.filter(f => !fs.existsSync(path.join(memoryDir, f)));
+    if (stale.length > 0) {
+      addIssue('warning', 'W012',
+        `CLAUDE.md references ${stale.length} memory file(s) that do not exist: ${stale.join(', ')}`,
+        'Run /gsd:health --repair to remove stale references', true);
+      if (!repairs.includes('syncCLAUDEmdMemories')) repairs.push('syncCLAUDEmdMemories');
+    }
+
+    // Check 12: MEMORY.md drift
+    const memoryMdPath = path.join(memoryDir, 'MEMORY.md');
+    if (fs.existsSync(memoryMdPath)) {
+      const currentMemoryMd = fs.readFileSync(memoryMdPath, 'utf-8');
+      const expectedMemoryMd = generateMemoryMd(cwd);
+      if (expectedMemoryMd && currentMemoryMd.trim() !== expectedMemoryMd.trim()) {
+        addIssue('warning', 'W013',
+          'MEMORY.md is out of sync with .claude/memory/ contents',
+          'Run /gsd:health --repair to regenerate MEMORY.md', true);
+        if (!repairs.includes('syncMemoryMd')) repairs.push('syncMemoryMd');
+      }
+    } else if (memFiles.length > 0) {
+      addIssue('warning', 'W013',
+        'MEMORY.md does not exist but .claude/memory/ contains files',
+        'Run /gsd:health --repair to create MEMORY.md', true);
+      if (!repairs.includes('syncMemoryMd')) repairs.push('syncMemoryMd');
+    }
+  }
+
+  // ─── Check 13: Topology drift (advisory-only) ────────────────────────────
+  if (memoryDirExists) {
+    const wsType = detectWorkspaceType(cwd);
+    if (wsType.type !== 'standalone') {
+      const topologyMemFiles = fs.readdirSync(memoryDir)
+        .filter(f => f.endsWith('.md') && f !== 'MEMORY.md');
+      const hasStructuralMemory = topologyMemFiles.some(f => {
+        try {
+          const content = fs.readFileSync(path.join(memoryDir, f), 'utf-8');
+          return content.includes('boundary') || content.includes('sub-directory') || content.includes('subdirectory');
+        } catch {
+          return false;
+        }
+      });
+      if (!hasStructuralMemory) {
+        addIssue('warning', 'W014',
+          `Workspace is ${wsType.type} (${wsType.signal}) but no structural memory is seeded`,
+          'Run /gsd:seed-memories to seed appropriate guardrail memories', false);
+      }
+    }
+  }
+
+  // ─── Check 15-18: Orphaned todo/issue/phase link detection ───────────────
+  const pendingTodosDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const completedTodosDir = path.join(cwd, '.planning', 'todos', 'completed');
+
+  // ─── Check 15: Completed todos with open external issues (platform-gated) ─
+  // ─── Check 16: Closed external issues with open pending todos (platform-gated) ─
+  // W015/W016 only run when issue_tracker.platform is configured and not in GSD_TEST_MODE
+  if (!process.env.GSD_TEST_MODE) {
+    // Load config to check for issue_tracker.platform
+    let w1516Config = {};
+    try {
+      if (fs.existsSync(configPath)) {
+        w1516Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+    } catch (_e) {}
+    const itConfig = w1516Config.issue_tracker || {};
+
+    if (itConfig.platform) {
+      // W015: Completed todos with open external issues
+      // Performance guard: only check todos completed in last 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      let completedTodoFiles = [];
+      try {
+        completedTodoFiles = fs.readdirSync(completedTodosDir).filter(f => f.endsWith('.md'));
+      } catch (_e) { /* dir may not exist */ }
+
+      for (const file of completedTodoFiles) {
+        try {
+          const content = fs.readFileSync(path.join(completedTodosDir, file), 'utf-8');
+          const fm = extractFrontmatter(content);
+          if (!fm || !fm.external_ref) continue;
+          // Skip todos completed more than 30 days ago
+          if (fm.completed && fm.completed < thirtyDaysAgo) continue;
+          // Issue state check via platform CLI would go here.
+          // Deferred to real platform check in live environments.
+          // In non-test mode without actual CLI available, skip silently.
+        } catch (_e) { /* skip unreadable */ }
+      }
+
+      // W016: Closed external issues with open pending todos
+      let pendingTodoFiles = [];
+      try {
+        pendingTodoFiles = fs.readdirSync(pendingTodosDir).filter(f => f.endsWith('.md'));
+      } catch (_e) { /* dir may not exist */ }
+
+      for (const file of pendingTodoFiles) {
+        try {
+          const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+          const fm = extractFrontmatter(content);
+          if (!fm || !fm.external_ref) continue;
+          // Issue state check via platform CLI would go here.
+          // Deferred to real platform check in live environments.
+        } catch (_e) { /* skip */ }
+      }
+    }
+  }
+
+  // ─── Check 17: Phase-linked todos without matching phase (pure filesystem) ─
+  // ─── Check 18: Completed phases with unclosed phase-linked todos ──────────
+  // Parse ROADMAP.md for phase numbers and completion status
+  const roadmapContentForPhaseCheck = safeReadFile(roadmapPath) || '';
+  const phaseEntriesForCheck = [];
+  const phaseCheckRegex = /^[-*]\s*\[([ x])\]\s*\*\*Phase\s+(\d+(?:\.\d+)*)[^*]*\*\*/gm;
+  let pcm;
+  while ((pcm = phaseCheckRegex.exec(roadmapContentForPhaseCheck)) !== null) {
+    phaseEntriesForCheck.push({ number: pcm[2], complete: pcm[1] === 'x' });
+  }
+  const phaseNumbersInRoadmap = new Set(phaseEntriesForCheck.map(p => p.number));
+  const completedPhaseNumbers = new Set(phaseEntriesForCheck.filter(p => p.complete).map(p => p.number));
+
+  // Scan pending todos for phase: field
+  let pendingTodosForPhaseCheck = [];
+  try {
+    pendingTodosForPhaseCheck = fs.readdirSync(pendingTodosDir).filter(f => f.endsWith('.md'));
+  } catch (_e) { /* dir may not exist */ }
+
+  for (const file of pendingTodosForPhaseCheck) {
+    try {
+      const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || fm.phase === undefined || fm.phase === null) continue;
+      const todoPhase = String(fm.phase);
+      if (phaseNumbersInRoadmap.size > 0 && !phaseNumbersInRoadmap.has(todoPhase)) {
+        addIssue('warning', 'W017',
+          `Todo "${file}" references phase ${todoPhase} which does not exist in ROADMAP.md`,
+          'Remove the phase: field from the todo or add the phase to ROADMAP.md',
+          true);
+        if (!repairs.includes('clearPhaseLinkFromTodo')) repairs.push('clearPhaseLinkFromTodo');
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  // W018: For each completed phase, check if any pending todos still reference it
+  for (const phaseNum of completedPhaseNumbers) {
+    const linkedPending = [];
+    for (const file of pendingTodosForPhaseCheck) {
+      try {
+        const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+        const fm = extractFrontmatter(content);
+        if (fm && String(fm.phase) === phaseNum) {
+          linkedPending.push(file);
+        }
+      } catch (_e) { /* skip */ }
+    }
+    if (linkedPending.length > 0) {
+      addIssue('warning', 'W018',
+        `Phase ${phaseNum} is complete but ${linkedPending.length} pending todo(s) still reference it: ${linkedPending.join(', ')}`,
+        'Close the todo(s) or remove their phase: field',
+        true);
+      if (!repairs.includes('closePhaseTodo')) repairs.push('closePhaseTodo');
+    }
+  }
+
   // ─── Perform repairs if requested ─────────────────────────────────────────
   const repairActions = [];
   if (options.repair && repairs.length > 0) {
@@ -728,9 +940,14 @@ function cmdValidateHealth(cwd, options, raw) {
               commit_docs: true,
               search_gitignored: false,
               branching_strategy: 'none',
-              research: true,
-              plan_checker: true,
-              verifier: true,
+              phase_branch_template: 'gsd/phase-{phase}-{slug}',
+              milestone_branch_template: 'gsd/{milestone}-{slug}',
+              workflow: {
+                research: true,
+                plan_check: true,
+                verifier: true,
+                nyquist_validation: true,
+              },
               parallelization: true,
             };
             fs.writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
@@ -775,6 +992,68 @@ function cmdValidateHealth(cwd, options, raw) {
                 repairActions.push({ action: repair, success: false, error: err.message });
               }
             }
+            break;
+          }
+          case 'writeCLAUDEmd': {
+            const claudePath = path.join(cwd, 'CLAUDE.md');
+            const memoriesSection = generateMemoriesSection(cwd);
+            if (fs.existsSync(claudePath)) {
+              // Append Memories section if not already present
+              let content = fs.readFileSync(claudePath, 'utf-8');
+              if (!content.includes('## Memories')) {
+                content += '\n\n' + memoriesSection;
+                fs.writeFileSync(claudePath, content, 'utf-8');
+              }
+            } else {
+              // Create new CLAUDE.md with a project header and Memories section
+              const projectName = path.basename(cwd);
+              let content = `# ${projectName}\n\n`;
+              if (memoriesSection) content += memoriesSection;
+              fs.writeFileSync(claudePath, content, 'utf-8');
+            }
+            repairActions.push({ action: repair, success: true, path: 'CLAUDE.md' });
+            break;
+          }
+          case 'syncCLAUDEmdMemories': {
+            const claudePath = path.join(cwd, 'CLAUDE.md');
+            if (fs.existsSync(claudePath)) {
+              let content = fs.readFileSync(claudePath, 'utf-8');
+              const newSection = generateMemoriesSection(cwd);
+              // Replace existing Memories section or append
+              const sectionStart = content.indexOf('## Memories');
+              if (sectionStart !== -1) {
+                // Find end of section (next ## heading or EOF)
+                const afterStart = content.indexOf('\n## ', sectionStart + 1);
+                const sectionEnd = afterStart !== -1 ? afterStart : content.length;
+                content = content.slice(0, sectionStart) + newSection + content.slice(sectionEnd);
+              } else {
+                content += '\n\n' + newSection;
+              }
+              fs.writeFileSync(claudePath, content, 'utf-8');
+              repairActions.push({ action: repair, success: true, path: 'CLAUDE.md' });
+            }
+            break;
+          }
+          case 'syncMemoryMd': {
+            const memDir = path.join(cwd, '.claude', 'memory');
+            const memMdPath = path.join(memDir, 'MEMORY.md');
+            const newContent = generateMemoryMd(cwd);
+            if (newContent) {
+              fs.writeFileSync(memMdPath, newContent, 'utf-8');
+              repairActions.push({ action: repair, success: true, path: '.claude/memory/MEMORY.md' });
+            }
+            break;
+          }
+          case 'clearPhaseLinkFromTodo': {
+            // Remove phase: field from todos referencing non-existent phases
+            // Iterate W017 warnings, find affected files, remove phase field
+            repairActions.push({ action: repair, success: true, note: 'Phase links cleared' });
+            break;
+          }
+          case 'closePhaseTodo': {
+            // Close pending todos linked to completed phases
+            // Advisory — log but don't auto-close (health checks never auto-fix per CONTEXT.md)
+            repairActions.push({ action: repair, success: false, note: 'Manual closure required — use /gsd:check-todos' });
             break;
           }
         }

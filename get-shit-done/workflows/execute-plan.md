@@ -2,6 +2,35 @@
 Execute a phase prompt (PLAN.md) and create the outcome summary (SUMMARY.md).
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 Read STATE.md before any operation to load project context.
 Read config.json for planning behavior settings.
@@ -219,9 +248,11 @@ End with: **Total deviations:** N auto-fixed (breakdown). **Impact:** assessment
 For `type: tdd` plans — RED-GREEN-REFACTOR:
 
 1. **Infrastructure** (first TDD plan only): detect project, install framework, config, verify empty suite
-2. **RED:** Read `<behavior>` → failing test(s) → run (MUST fail) → commit: `test({phase}-{plan}): add failing test for [feature]`
-3. **GREEN:** Read `<implementation>` → minimal code → run (MUST pass) → commit: `feat({phase}-{plan}): implement [feature]`
-4. **REFACTOR:** Clean up → tests MUST pass → commit: `refactor({phase}-{plan}): clean up [feature]`
+2. **RED:** Read `<behavior>` → failing test(s) → run scoped test (`node --test tests/{test-file}`, NOT `npm test`) → MUST fail → commit: `test({phase}-{plan}): add failing test for [feature]`
+3. **GREEN:** Read `<implementation>` → minimal code → run scoped test → MUST pass → commit: `feat({phase}-{plan}): implement [feature]`
+4. **REFACTOR:** Clean up → run scoped test → MUST pass → commit: `refactor({phase}-{plan}): clean up [feature]`
+
+**Scoped test runs:** During parallel execution, other agents may have intentionally-failing RED-phase tests. Running `npm test` (full suite) would surface their failures and waste cycles investigating. Scope test runs to the plan's own test file using `node --test tests/{test-file}.cjs`. The test file path is in `<feature><files>`. Fall back to `npm test` only if no test file can be identified.
 
 Errors: RED doesn't fail → investigate test/existing feature. GREEN doesn't pass → debug, iterate. REFACTOR breaks → undo.
 
@@ -279,6 +310,15 @@ TASK_COMMIT=$(git rev-parse --short HEAD)
 TASK_COMMITS+=("Task ${TASK_NUM}: ${TASK_COMMIT}")
 ```
 
+**6. Check for untracked generated files:**
+```bash
+git status --short | grep '^??'
+```
+If new untracked files appeared after running scripts or tools, decide for each:
+- **Commit it** — if it's a source file, config, or intentional artifact
+- **Add to .gitignore** — if it's a generated/runtime output (build artifacts, `.env` files, cache files, compiled output)
+- Do NOT leave generated files untracked
+
 </task_commit>
 
 <step name="checkpoint_protocol">
@@ -310,7 +350,7 @@ If verification fails:
 
 **Check if node repair is enabled** (default: on):
 ```bash
-NODE_REPAIR=$(node "./.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.node_repair 2>/dev/null || echo "true")
+NODE_REPAIR=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.node_repair 2>/dev/null || echo "true")
 ```
 
 If `NODE_REPAIR` is `true`: invoke `@./.claude/get-shit-done/workflows/node-repair.md` with:
@@ -434,6 +474,22 @@ Task code already committed per-task. Commit plan metadata:
 ```bash
 node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs({phase}-{plan}): complete [plan-name] plan" --files .planning/phases/XX-name/{phase}-{plan}-SUMMARY.md .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md
 ```
+
+**Plan-completion tag (preserves granular history through squash):**
+
+After the metadata commit, create a lightweight tag at HEAD. These tags survive branch deletion and squash operations, enabling Phase 14's per-plan commit rewriting.
+
+```bash
+# Create lightweight tag at plan completion commit
+# Zero-pad plan number for consistent sorting
+PLAN_PADDED=$(printf "%02d" "$PLAN")
+PHASE_TAG_SAFE=$(echo "$PHASE" | tr '/' '-')
+PLAN_COMPLETION_TAG="gsd/phase-${PHASE_TAG_SAFE}/plan-${PLAN_PADDED}"
+git tag "$PLAN_COMPLETION_TAG" HEAD 2>/dev/null || true
+echo "Tagged: $PLAN_COMPLETION_TAG"
+```
+
+Tags are idempotent — re-running a plan that was already tagged silently succeeds via `|| true`. Tag names follow `gsd/phase-{NN}/plan-{NN}` format.
 </step>
 
 <step name="update_codebase_map">

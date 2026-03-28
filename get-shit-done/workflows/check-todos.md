@@ -2,23 +2,56 @@
 List all pending todos, allow selection, load full context for the selected todo, and route to appropriate action.
 </purpose>
 
+<tool_usage>
+CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
+
+The AskUserQuestion tool accepts a `questions` array. Each question must have:
+- `question` (string) — the question text
+- `header` (string, max 12 chars) — short label shown above the question
+- `multiSelect` (boolean) — true for "select all that apply", false for single choice
+- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
+
+Example call structure:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text?",
+      "header": "Choose",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option A", "description": "What option A means" },
+        { "label": "Option B", "description": "What option B means" }
+      ]
+    }
+  ]
+}
+```
+
+If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
+</tool_usage>
+
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 </required_reading>
 
 <process>
 
-<step name="init_context">
-Load todo context:
+<step name="gather_todos">
+Gather todo data from CLI:
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" init todos)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+AREA_FILTER=""
+if [[ -n "$ARGUMENTS" ]]; then AREA_FILTER="$ARGUMENTS"; fi
+TODOS_JSON=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" list-todos $AREA_FILTER --raw)
+if [[ "$TODOS_JSON" == @file:* ]]; then TODOS_JSON=$(cat "${TODOS_JSON#@file:}"); fi
+RECURRING_JSON=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" recurring-due --raw 2>/dev/null || echo '{"count":0,"todos":[]}')
+PENDING_DIR=".planning/todos/pending"
 ```
 
-Extract from init JSON: `todo_count`, `todos`, `pending_dir`.
+Parse `TODOS_JSON`: extract `count` and `todos` array.
 
-If `todo_count` is 0:
+If `count` is 0 and recurring count is 0:
 ```
 No pending todos.
 
@@ -31,27 +64,32 @@ Would you like to:
 1. Continue with current phase (/gsd:progress)
 2. Add a todo now (/gsd:add-todo)
 ```
-
 Exit.
 </step>
 
-<step name="parse_filter">
-Check for area filter in arguments:
-- `/gsd:check-todos` → show all
-- `/gsd:check-todos api` → filter to area:api only
-</step>
+<step name="display_todos">
+If recurring count > 0, display the recurring reminders table first:
 
-<step name="list_todos">
-Use the `todos` array from init context (already filtered by area if specified).
+```
+## Recurring Reminders Due
 
-Parse and display as numbered list:
+The following recurring todos are past their interval and need attention:
 
+| # | Title | Interval | Last Completed |
+|---|-------|----------|----------------|
+| 1 | {title} | {interval} | {last_completed} |
+
+These todos will NOT be archived when completed — they will reset and resurface after their interval.
+
+---
+```
+
+Then display the pending list from TODOS_JSON as a numbered list:
 ```
 Pending Todos:
 
-1. Add auth token refresh (api, 2d ago)
-2. Fix modal z-index issue (ui, 1d ago)
-3. Refactor database connection pool (database, 5h ago)
+1. {title} ({area}, {relative_age})
+2. {title} ({area}, {relative_age})
 
 ---
 
@@ -59,8 +97,6 @@ Reply with a number to view details, or:
 - `/gsd:check-todos [area]` to filter by area
 - `q` to exit
 ```
-
-Format age as relative time from created timestamp.
 </step>
 
 <step name="handle_selection">
@@ -100,35 +136,136 @@ If `.planning/ROADMAP.md` exists:
 </step>
 
 <step name="offer_actions">
+**Analyze todo content to recommend a workflow:**
+
+Examine the todo's title and description for routing signals:
+- Bug-like language (`fix`, `broken`, `error`, `bug`, `crash`, `fails`, `exception`, `regression`) → recommend Debug
+- Small scope language (`add`, `update`, `change`, `rename`, `move`, `tweak`, `adjust`, `remove`) → recommend Quick
+- Large scope, multi-file, or architectural language (`refactor`, `redesign`, `migrate`, `implement`, `create`, `build`) → recommend Plan as phase
+
+Mark the recommended option with a star character in its label.
+
+**Check context usage for launch warnings:**
+
+```bash
+# Read context percentage from statusline bridge file
+SESSION_ID=$(echo "$ARGUMENTS" | grep -oP '(?<=session_id=)\S+' 2>/dev/null || echo "")
+CONTEXT_PCT=0
+if [[ -n "$SESSION_ID" ]]; then
+  BRIDGE_FILE="/tmp/claude-ctx-${SESSION_ID}.json"
+  if [[ -f "$BRIDGE_FILE" ]]; then
+    CONTEXT_PCT=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('$BRIDGE_FILE','utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}")
+  fi
+fi
+```
+
+Note: `CONTEXT_PCT` represents used percentage (0-100). If bridge file unavailable, default to 0 (no warning).
+
+**Present routing options:**
+
 **If todo maps to a roadmap phase:**
 
 Use AskUserQuestion:
 - header: "Action"
 - question: "This todo relates to Phase [N]: [name]. What would you like to do?"
-- options:
-  - "Work on it now" — move to done, start working
-  - "Add to phase plan" — include when planning Phase [N]
-  - "Brainstorm approach" — think through before deciding
-  - "Put it back" — return to list
+- options (always show ALL, star marks recommended):
+  - "[star if recommended] Debug this" — "Investigate and fix via /gsd:debug"
+  - "[star if recommended] Handle as quick task" — "Small ad-hoc fix via /gsd:quick"
+  - "[star if recommended] Plan as phase" — "Create planned work via /gsd:plan-phase"
+  - "Work on it now" — "Start working immediately (existing behavior)"
+  - "Add to phase plan" — "Include when planning Phase [N]"
+  - "Brainstorm approach" — "Think through before deciding"
+  - "Put it back" — "Return to list"
 
 **If no roadmap match:**
 
 Use AskUserQuestion:
 - header: "Action"
 - question: "What would you like to do with this todo?"
+- options (always show ALL, star marks recommended):
+  - "[star if recommended] Debug this" — "Investigate and fix via /gsd:debug"
+  - "[star if recommended] Handle as quick task" — "Small ad-hoc fix via /gsd:quick"
+  - "[star if recommended] Plan as phase" — "Create planned work via /gsd:plan-phase"
+  - "Work on it now" — "Start working immediately (existing behavior)"
+  - "Create a phase" — "Add as new roadmap phase via /gsd:add-phase"
+  - "Brainstorm approach" — "Think through before deciding"
+  - "Put it back" — "Return to list"
+
+**Handle routing selection (new options):**
+
+If user selects "Debug this", "Handle as quick task", or "Plan as phase":
+
+Determine the command and compose the launch instruction:
+- Debug: `/gsd:debug --todo-file {filename} {todo title}`
+- Quick: `/gsd:quick --todo-file {filename} {todo title}`
+- Plan as phase: `/gsd:plan-phase` (todo becomes phase scope)
+
+Display in "Next Up" style:
+
+```
+---
+## Next Up
+
+`{command}`
+
+<sub>`/clear` first → fresh context window</sub>
+```
+
+Then add context-aware launch option:
+
+If `CONTEXT_PCT` < 40:
+```
+Launch now? (Current context: {CONTEXT_PCT}% used)
+```
+
+If `CONTEXT_PCT` between 40-70:
+```
+Launch now? (Current context: {CONTEXT_PCT}% used — consider /clear for a fresh session)
+```
+
+If `CONTEXT_PCT` between 70-85:
+```
+Launch now? (Current context: {CONTEXT_PCT}% used — recommended: /clear first, or switch to Opus/higher context model for best results)
+```
+
+If `CONTEXT_PCT` > 85:
+```
+Launch now? (Current context: {CONTEXT_PCT}% used — strongly recommended: /clear first, or switch to Opus/higher context model. Quality degrades significantly above 85%.)
+```
+
+Use AskUserQuestion:
+- header: "Launch"
+- question: "{context-aware message from above}"
 - options:
-  - "Work on it now" — move to done, start working
-  - "Create a phase" — /gsd:add-phase with this scope
-  - "Brainstorm approach" — think through before deciding
-  - "Put it back" — return to list
+  - "Launch now" — "Start in current session"
+  - "Copy command" — "I'll run it after /clear"
+
+If user selects "Launch now": Invoke the workflow using Task tool (for debug/quick) or display the command.
+If user selects "Copy command": Display the command and exit.
+
+**Existing options (Work on it now, Add to phase plan, Brainstorm, Put it back, Create a phase):**
+
+Handle exactly as before — no changes to existing behavior.
 </step>
 
 <step name="execute_action">
 **Work on it now:**
+
+Complete the todo using gsd-tools, which handles both recurring and non-recurring cases:
+
 ```bash
-mv ".planning/todos/pending/[filename]" ".planning/todos/done/"
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" todo complete "[filename]"
 ```
-Update STATE.md todo count. Present problem/solution context. Begin work or ask how to proceed.
+
+For **recurring todos** (those with `recurring: true` in frontmatter): the file stays in `pending/` with `last_completed` updated — it will resurface automatically after its interval. No manual archiving or git tracking needed.
+
+For **non-recurring todos**: the file is moved to `completed/` as before.
+
+Update STATE.md todo count.
+
+Note: External issue sync happens automatically via `cmdTodoComplete` when the todo has an `external_ref` — no workflow-level sync needed.
+
+Present problem/solution context. Begin work or ask how to proceed.
 
 **Add to phase plan:**
 Note todo reference in phase planning notes. Keep in pending. Return to list or exit.
@@ -141,21 +278,27 @@ Keep in pending. User runs command in fresh context.
 Keep in pending. Start discussion about problem and approaches.
 
 **Put it back:**
-Return to list_todos step.
+Return to display_todos step.
 </step>
 
 <step name="update_state">
 After any action that changes todo count:
 
-Re-run `init todos` to get updated count, then update STATE.md "### Pending Todos" section if exists.
+Re-run `list-todos` to get updated count, then update STATE.md "### Pending Todos" section if exists.
 </step>
 
 <step name="git_commit">
-If todo was moved to done/, commit the change:
+If todo was completed (non-recurring moved to completed/, or recurring reset):
 
+For **non-recurring todos** (moved to completed/):
 ```bash
 git rm --cached .planning/todos/pending/[filename] 2>/dev/null || true
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: start work on todo - [title]" --files .planning/todos/done/[filename] .planning/STATE.md
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: start work on todo - [title]" --files .planning/todos/completed/[filename] .planning/STATE.md
+```
+
+For **recurring todos** (updated in pending/):
+```bash
+node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: reset recurring todo - [title]" --files .planning/todos/pending/[filename] .planning/STATE.md
 ```
 
 Tool respects `commit_docs` config and gitignore automatically.

@@ -94,19 +94,25 @@ After completion, create SUMMARY.md with:
 **RED - Write failing test:**
 1. Create test file following project conventions
 2. Write test describing expected behavior (from `<behavior>` element)
-3. Run test - it MUST fail
+3. Run test scoped to the feature's test file — do NOT run the full suite:
+   ```bash
+   node --test tests/{feature-test-file}.cjs
+   ```
+   The test file path comes from `<feature><files>` (TDD plans) or `<files>` (tdd="true" tasks).
+   Full suite runs happen at the orchestrator level (pre-UAT step), not during RED/GREEN self-checks.
+   The scoped test MUST fail.
 4. If test passes: feature exists or test is wrong. Investigate.
 5. Commit: `test({phase}-{plan}): add failing test for [feature]`
 
 **GREEN - Implement to pass:**
 1. Write minimal code to make test pass
 2. No cleverness, no optimization - just make it work
-3. Run test - it MUST pass
+3. Run scoped test: `node --test tests/{feature-test-file}.cjs` — it MUST pass
 4. Commit: `feat({phase}-{plan}): implement [feature]`
 
 **REFACTOR (if needed):**
 1. Clean up implementation if obvious improvements exist
-2. Run tests - MUST still pass
+2. Run scoped test: `node --test tests/{feature-test-file}.cjs` — MUST still pass
 3. Only commit if changes made: `refactor({phase}-{plan}): clean up [feature]`
 
 **Result:** Each TDD plan produces 2-3 atomic commits.
