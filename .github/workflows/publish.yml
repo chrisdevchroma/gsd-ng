@@ -25,4 +25,14 @@ jobs:
         run: npm ci
 
       - name: Publish to npm
-        run: npm publish --access public
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            TAG=$(echo "$VERSION" | sed 's/.*-\([a-z]*\).*/\1/')
+            echo "Publishing $VERSION under '$TAG' tag"
+            npm publish --access public --tag "$TAG"
+          else
+            echo "Publishing $VERSION under 'latest' tag"
+            npm publish --access public
+          fi
