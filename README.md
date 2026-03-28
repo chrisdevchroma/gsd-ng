@@ -22,7 +22,7 @@ Forked from [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done
 npx gsd-ng@latest
 ```
 
-**Works on Mac, Windows, and Linux.**
+**Works on Mac and Linux.**
 
 <br>
 
