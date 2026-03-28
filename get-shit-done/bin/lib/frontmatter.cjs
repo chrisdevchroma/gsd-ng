@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { safeReadFile, output, error } = require('./core.cjs');
+const { validateFieldName, validatePath } = require('./security.cjs');
 
 // ─── Parsing engine ───────────────────────────────────────────────────────────
 
@@ -247,6 +248,16 @@ function cmdFrontmatterGet(cwd, filePath, field, raw) {
 
 function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
   if (!filePath || !field || value === undefined) { error('file, field, and value required'); }
+  const fieldCheck = validateFieldName(field);
+  if (!fieldCheck.valid) {
+    error(`Invalid field name: ${fieldCheck.error}`);
+  }
+  if (!path.isAbsolute(filePath)) {
+    const pathCheck = validatePath(filePath, cwd);
+    if (!pathCheck.safe) {
+      error(`Invalid file path: ${pathCheck.error}`);
+    }
+  }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }, raw); return; }
   const content = fs.readFileSync(fullPath, 'utf-8');
@@ -261,6 +272,12 @@ function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
 
 function cmdFrontmatterMerge(cwd, filePath, data, raw) {
   if (!filePath || !data) { error('file and data required'); }
+  if (!path.isAbsolute(filePath)) {
+    const pathCheck = validatePath(filePath, cwd);
+    if (!pathCheck.safe) {
+      error(`Invalid file path: ${pathCheck.error}`);
+    }
+  }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }, raw); return; }
   const content = fs.readFileSync(fullPath, 'utf-8');

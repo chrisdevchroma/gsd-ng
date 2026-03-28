@@ -4,8 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, output, error } = require('./core.cjs');
+const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, output, error, planningPaths } = require('./core.cjs');
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
+const { scanForInjection } = require('./security.cjs');
 
 // Shared helper: extract a field value from STATE.md content.
 // Supports both **Field:** bold and plain Field: format.
@@ -21,15 +22,15 @@ function stateExtractField(content, fieldName) {
 
 function cmdStateLoad(cwd, raw) {
   const config = loadConfig(cwd);
-  const planningDir = path.join(cwd, '.planning');
+  const { state: stateMdPath, config: configPath, roadmap: roadmapPath } = planningPaths(cwd);
 
   let stateRaw = '';
   try {
-    stateRaw = fs.readFileSync(path.join(planningDir, 'STATE.md'), 'utf-8');
+    stateRaw = fs.readFileSync(stateMdPath, 'utf-8');
   } catch {}
 
-  const configExists = fs.existsSync(path.join(planningDir, 'config.json'));
-  const roadmapExists = fs.existsSync(path.join(planningDir, 'ROADMAP.md'));
+  const configExists = fs.existsSync(configPath);
+  const roadmapExists = fs.existsSync(roadmapPath);
   const stateExists = stateRaw.length > 0;
 
   const result = {
@@ -65,17 +66,68 @@ function cmdStateLoad(cwd, raw) {
   output(result);
 }
 
-function cmdStateGet(cwd, section, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
-  try {
-    const content = fs.readFileSync(statePath, 'utf-8');
+/**
+ * Parse markdown section content into structured data.
+ * - Bullet lists (- item) -> array of strings
+ * - Key: value lines -> object of key-value pairs
+ * - Mixed content -> { items: [], fields: {}, text: string }
+ */
+function parseSectionContent(content) {
+  const lines = content.split('\n');
+  const items = [];
+  const fields = {};
+  const textLines = [];
+  let hasItems = false;
+  let hasFields = false;
 
-    if (!section) {
-      output({ content }, raw, content);
-      return;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Bullet list item: - text or * text
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+    if (bulletMatch) {
+      items.push(bulletMatch[1].trim());
+      hasItems = true;
+      continue;
     }
 
-    // Try to find markdown section or field
+    // Key: value pair (but not markdown headers ##)
+    const kvMatch = trimmed.match(/^([^#|\-*][^:]{0,60}):\s+(.+)/);
+    if (kvMatch) {
+      fields[kvMatch[1].trim()] = kvMatch[2].trim();
+      hasFields = true;
+      continue;
+    }
+
+    textLines.push(trimmed);
+  }
+
+  // Return the simplest useful structure
+  if (hasItems && !hasFields && textLines.length === 0) {
+    return items;  // Pure bullet list -> array
+  }
+  if (hasFields && !hasItems && textLines.length === 0) {
+    return fields;  // Pure key-value -> object
+  }
+  // Mixed content
+  const result = {};
+  if (hasItems) result.items = items;
+  if (hasFields) result.fields = fields;
+  if (textLines.length > 0) result.text = textLines.join('\n');
+  return Object.keys(result).length > 0 ? result : content;  // Fallback to raw string if nothing parsed
+}
+
+function cmdStateGet(cwd, section, raw) {
+  const { state: statePath } = planningPaths(cwd);
+
+  if (!section) {
+    // No section arg: delegate to cmdStateSnapshot (already returns structured JSON)
+    return cmdStateSnapshot(cwd, raw);
+  }
+
+  try {
+    const content = fs.readFileSync(statePath, 'utf-8');
     const fieldEscaped = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Check for **field:** value (bold format)
@@ -94,11 +146,13 @@ function cmdStateGet(cwd, section, raw) {
       return;
     }
 
-    // Check for ## Section
+    // Check for ## Section -- parse into structured data
     const sectionPattern = new RegExp(`##\\s*${fieldEscaped}\\s*\n([\\s\\S]*?)(?=\\n##|$)`, 'i');
     const sectionMatch = content.match(sectionPattern);
     if (sectionMatch) {
-      output({ [section]: sectionMatch[1].trim() }, raw, sectionMatch[1].trim());
+      const sectionContent = sectionMatch[1].trim();
+      const structured = parseSectionContent(sectionContent);
+      output({ [section]: structured }, raw, JSON.stringify(structured));
       return;
     }
 
@@ -120,7 +174,7 @@ function readTextArgOrFile(cwd, value, filePath, label) {
 }
 
 function cmdStatePatch(cwd, patches, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   try {
     let content = fs.readFileSync(statePath, 'utf-8');
     const results = { updated: [], failed: [] };
@@ -157,7 +211,7 @@ function cmdStateUpdate(cwd, field, value) {
     error('field and value required for state update');
   }
 
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   try {
     let content = fs.readFileSync(statePath, 'utf-8');
     const fieldEscaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -208,8 +262,19 @@ function stateReplaceField(content, fieldName, newValue) {
   return null;
 }
 
+/**
+ * Replace a field in STATE.md content, appending it if absent.
+ * Uses bold format (**fieldName:** value) for appended fields to match STATE.md conventions.
+ * Use stateReplaceField directly when field-must-exist is correct behavior.
+ */
+function stateReplaceFieldWithFallback(content, fieldName, newValue) {
+  const result = stateReplaceField(content, fieldName, newValue);
+  if (result !== null) return result;
+  return content.trimEnd() + '\n**' + fieldName + ':** ' + newValue + '\n';
+}
+
 function cmdStateAdvancePlan(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -243,7 +308,7 @@ function cmdStateAdvancePlan(cwd, raw) {
     let r = stateReplaceField(c, primary, value);
     if (r) return r;
     if (fallback) { r = stateReplaceField(c, fallback, value); if (r) return r; }
-    return c;
+    return stateReplaceFieldWithFallback(c, primary, value);
   };
 
   if (currentPlan >= totalPlans) {
@@ -268,7 +333,7 @@ function cmdStateAdvancePlan(cwd, raw) {
 }
 
 function cmdStateRecordMetric(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -302,13 +367,12 @@ function cmdStateRecordMetric(cwd, options, raw) {
 }
 
 function cmdStateUpdateProgress(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath, phases: phasesDir } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
 
   // Count summaries across current milestone phases only
-  const phasesDir = path.join(cwd, '.planning', 'phases');
   let totalPlans = 0;
   let totalSummaries = 0;
 
@@ -347,7 +411,7 @@ function cmdStateUpdateProgress(cwd, raw) {
 }
 
 function cmdStateAddDecision(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   const { phase, summary, summary_file, rationale, rationale_file } = options;
@@ -385,7 +449,7 @@ function cmdStateAddDecision(cwd, options, raw) {
 }
 
 function cmdStateAddBlocker(cwd, text, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
   const blockerOptions = typeof text === 'object' && text !== null ? text : { text };
   let blockerText = null;
@@ -418,7 +482,7 @@ function cmdStateAddBlocker(cwd, text, raw) {
 }
 
 function cmdStateResolveBlocker(cwd, text, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
   if (!text) { output({ error: 'text required' }, raw); return; }
 
@@ -450,7 +514,7 @@ function cmdStateResolveBlocker(cwd, text, raw) {
 }
 
 function cmdStateRecordSession(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -485,7 +549,7 @@ function cmdStateRecordSession(cwd, options, raw) {
 }
 
 function cmdStateSnapshot(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
 
   if (!fs.existsSync(statePath)) {
     output({ error: 'STATE.md not found' }, raw);
@@ -622,7 +686,7 @@ function buildStateFrontmatter(bodyContent, cwd) {
 
   if (cwd) {
     try {
-      const phasesDir = path.join(cwd, '.planning', 'phases');
+      const { phases: phasesDir } = planningPaths(cwd);
       if (fs.existsSync(phasesDir)) {
         const isDirInMilestone = getMilestonePhaseFilter(cwd);
         const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
@@ -724,14 +788,22 @@ function syncStateFrontmatter(content, cwd) {
 /**
  * Write STATE.md with synchronized YAML frontmatter.
  * All STATE.md writes should use this instead of raw writeFileSync.
+ * Scans content for injection patterns before writing — advisory only, never blocks.
  */
 function writeStateMd(statePath, content, cwd) {
+  // Scan-on-write: detect potential injection in content being persisted
+  const { clean, findings } = scanForInjection(content);
+  if (!clean) {
+    process.stderr.write(
+      `[security] Advisory: potential injection in STATE.md: ${findings.join('; ')}\n`
+    );
+  }
   const synced = syncStateFrontmatter(content, cwd);
   fs.writeFileSync(statePath, synced, 'utf-8');
 }
 
 function cmdStateJson(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) {
     output({ error: 'STATE.md not found' }, raw, 'STATE.md not found');
     return;
@@ -758,7 +830,7 @@ function cmdStateJson(cwd, raw) {
  * and Current Position section.
  */
 function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) {
     output({ updated: false, error: 'STATE.md not found' }, raw);
     return;
@@ -791,12 +863,7 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
 
   const failed = [];
   for (const [field, value] of replacements) {
-    const result = stateReplaceField(content, field, value);
-    if (result !== null) {
-      content = result;
-    } else {
-      failed.push(field);
-    }
+    content = stateReplaceFieldWithFallback(content, field, value);
   }
 
   // Update ## Current Position section body
@@ -820,6 +887,7 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
 module.exports = {
   stateExtractField,
   stateReplaceField,
+  stateReplaceFieldWithFallback,
   writeStateMd,
   cmdStateLoad,
   cmdStateGet,

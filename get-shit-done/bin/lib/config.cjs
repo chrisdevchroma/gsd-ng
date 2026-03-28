@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error } = require('./core.cjs');
+const { output, error, planningPaths } = require('./core.cjs');
 const {
   VALID_PROFILES,
   getAgentToModelMapForProfile,
@@ -56,8 +56,7 @@ function validateKnownConfigKeyPath(keyPath) {
  * the happy path. But note that `error()` will still `exit(1)` out of the process.
  */
 function ensureConfigFile(cwd) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
-  const planningDir = path.join(cwd, '.planning');
+  const { config: configPath, root: planningDir } = planningPaths(cwd);
 
   // Ensure .planning directory exists
   try {
@@ -147,7 +146,7 @@ function cmdConfigEnsureSection(cwd, raw) {
  * the happy path. But note that `error()` will still `exit(1)` out of the process.
  */
 function setConfigValue(cwd, keyPath, parsedValue) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const { config: configPath } = planningPaths(cwd);
 
   // Load existing config or start with empty object
   let config = {};
@@ -210,7 +209,7 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
 }
 
 function cmdConfigGet(cwd, keyPath, raw) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const { config: configPath } = planningPaths(cwd);
 
   if (!keyPath) {
     error('Usage: config-get <key.path>');

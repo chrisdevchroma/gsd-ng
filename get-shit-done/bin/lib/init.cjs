@@ -5,12 +5,18 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, normalizePhaseName, toPosixPath, output, error } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
+const { validatePhaseNumber } = require('./security.cjs');
 
 function cmdInitExecutePhase(cwd, phase, raw) {
   if (!phase) {
     error('phase required for init execute-phase');
   }
+  const phaseCheck = validatePhaseNumber(String(phase));
+  if (!phaseCheck.valid) {
+    error(`Invalid phase number: ${phaseCheck.error}`);
+  }
+  phase = phaseCheck.normalized;
 
   const config = loadConfig(cwd);
   let phaseInfo = findPhaseInternal(cwd, phase);
@@ -109,6 +115,11 @@ function cmdInitPlanPhase(cwd, phase, raw) {
   if (!phase) {
     error('phase required for init plan-phase');
   }
+  const phaseCheck = validatePhaseNumber(String(phase));
+  if (!phaseCheck.valid) {
+    error(`Invalid phase number: ${phaseCheck.error}`);
+  }
+  phase = phaseCheck.normalized;
 
   const config = loadConfig(cwd);
   let phaseInfo = findPhaseInternal(cwd, phase);
@@ -361,7 +372,7 @@ function cmdInitResume(cwd, raw) {
   // Check for interrupted agent
   let interruptedAgentId = null;
   try {
-    interruptedAgentId = fs.readFileSync(path.join(cwd, '.planning', 'current-agent-id.txt'), 'utf-8').trim();
+    interruptedAgentId = fs.readFileSync(path.join(planningPaths(cwd).root, 'current-agent-id.txt'), 'utf-8').trim();
   } catch {}
 
   const result = {
@@ -391,6 +402,11 @@ function cmdInitVerifyWork(cwd, phase, raw) {
   if (!phase) {
     error('phase required for init verify-work');
   }
+  const phaseCheck = validatePhaseNumber(String(phase));
+  if (!phaseCheck.valid) {
+    error(`Invalid phase number: ${phaseCheck.error}`);
+  }
+  phase = phaseCheck.normalized;
 
   const config = loadConfig(cwd);
   let phaseInfo = findPhaseInternal(cwd, phase);
@@ -438,6 +454,13 @@ function cmdInitVerifyWork(cwd, phase, raw) {
 }
 
 function cmdInitPhaseOp(cwd, phase, raw) {
+  if (phase) {
+    const phaseCheck = validatePhaseNumber(String(phase));
+    if (!phaseCheck.valid) {
+      error(`Invalid phase number: ${phaseCheck.error}`);
+    }
+    phase = phaseCheck.normalized;
+  }
   const config = loadConfig(cwd);
   let phaseInfo = findPhaseInternal(cwd, phase);
 
@@ -557,7 +580,7 @@ function cmdInitTodos(cwd, area, raw) {
   const now = new Date();
 
   // List todos (reuse existing logic)
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const { todosPending: pendingDir } = planningPaths(cwd);
   let count = 0;
   const todos = [];
 
@@ -618,7 +641,7 @@ function cmdInitMilestoneOp(cwd, raw) {
   // Count phases
   let phaseCount = 0;
   let completedPhases = 0;
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir, archive: archiveDir } = planningPaths(cwd);
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
@@ -635,7 +658,6 @@ function cmdInitMilestoneOp(cwd, raw) {
   } catch {}
 
   // Check archive
-  const archiveDir = path.join(cwd, '.planning', 'archive');
   let archivedMilestones = [];
   try {
     archivedMilestones = fs.readdirSync(archiveDir, { withFileTypes: true })
@@ -676,7 +698,7 @@ function cmdInitMapCodebase(cwd, raw) {
   const config = loadConfig(cwd);
 
   // Check for existing codebase maps
-  const codebaseDir = path.join(cwd, '.planning', 'codebase');
+  const { codebase: codebaseDir } = planningPaths(cwd);
   let existingMaps = [];
   try {
     existingMaps = fs.readdirSync(codebaseDir).filter(f => f.endsWith('.md'));
@@ -711,7 +733,7 @@ function cmdInitProgress(cwd, raw) {
   const milestone = getMilestoneInfo(cwd);
 
   // Analyze phases — filter to current milestone and include ROADMAP-only phases
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir, roadmap: roadmapPath } = planningPaths(cwd);
   const phases = [];
   let currentPhase = null;
   let nextPhase = null;
@@ -720,8 +742,8 @@ function cmdInitProgress(cwd, raw) {
   const roadmapPhaseNums = new Set();
   const roadmapPhaseNames = new Map();
   try {
-    const roadmapContent = stripShippedMilestones(
-      fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8')
+    const roadmapContent = extractCurrentMilestone(
+      fs.readFileSync(roadmapPath, 'utf-8')
     );
     const headingPattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
     let hm;
@@ -812,7 +834,7 @@ function cmdInitProgress(cwd, raw) {
   // Check for paused work
   let pausedAt = null;
   try {
-    const state = fs.readFileSync(path.join(cwd, '.planning', 'STATE.md'), 'utf-8');
+    const state = fs.readFileSync(planningPaths(cwd).state, 'utf-8');
     const pauseMatch = state.match(/\*\*Paused At:\*\*\s*(.+)/);
     if (pauseMatch) pausedAt = pauseMatch[1].trim();
   } catch {}

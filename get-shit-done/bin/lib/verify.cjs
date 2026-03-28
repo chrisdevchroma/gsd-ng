@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, stripShippedMilestones, output, error } = require('./core.cjs');
+const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, extractCurrentMilestone, output, error, planningPaths } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
@@ -397,8 +397,7 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
 }
 
 function cmdValidateConsistency(cwd, raw) {
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { roadmap: roadmapPath, phases: phasesDir } = planningPaths(cwd);
   const errors = [];
   const warnings = [];
 
@@ -410,7 +409,7 @@ function cmdValidateConsistency(cwd, raw) {
   }
 
   const roadmapContentRaw = fs.readFileSync(roadmapPath, 'utf-8');
-  const roadmapContent = stripShippedMilestones(roadmapContentRaw);
+  const roadmapContent = extractCurrentMilestone(roadmapContentRaw);
 
   // Extract phases from ROADMAP (archived milestones already stripped)
   const roadmapPhases = new Set();
@@ -531,12 +530,7 @@ function cmdValidateHealth(cwd, options, raw) {
     return;
   }
 
-  const planningDir = path.join(cwd, '.planning');
-  const projectPath = path.join(planningDir, 'PROJECT.md');
-  const roadmapPath = path.join(planningDir, 'ROADMAP.md');
-  const statePath = path.join(planningDir, 'STATE.md');
-  const configPath = path.join(planningDir, 'config.json');
-  const phasesDir = path.join(planningDir, 'phases');
+  const { root: planningDir, project: projectPath, roadmap: roadmapPath, state: statePath, config: configPath, phases: phasesDir } = planningPaths(cwd);
 
   const errors = [];
   const warnings = [];
@@ -696,7 +690,7 @@ function cmdValidateHealth(cwd, options, raw) {
   // Inline subset of cmdValidateConsistency
   if (fs.existsSync(roadmapPath)) {
     const roadmapContentRaw = fs.readFileSync(roadmapPath, 'utf-8');
-    const roadmapContent = stripShippedMilestones(roadmapContentRaw);
+    const roadmapContent = extractCurrentMilestone(roadmapContentRaw);
     const roadmapPhases = new Set();
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
@@ -815,8 +809,7 @@ function cmdValidateHealth(cwd, options, raw) {
   }
 
   // ─── Check 15-18: Orphaned todo/issue/phase link detection ───────────────
-  const pendingTodosDir = path.join(cwd, '.planning', 'todos', 'pending');
-  const completedTodosDir = path.join(cwd, '.planning', 'todos', 'completed');
+  const { todosPending: pendingTodosDir, todosCompleted: completedTodosDir } = planningPaths(cwd);
 
   // ─── Check 15: Completed todos with open external issues (platform-gated) ─
   // ─── Check 16: Closed external issues with open pending todos (platform-gated) ─

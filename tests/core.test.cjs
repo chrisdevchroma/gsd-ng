@@ -25,6 +25,8 @@ const {
   getRoadmapPhaseInternal,
   searchPhaseInDir,
   findPhaseInternal,
+  planningPaths,
+  extractCurrentMilestone,
 } = require('../get-shit-done/bin/lib/core.cjs');
 
 // ─── loadConfig ────────────────────────────────────────────────────────────────
@@ -798,5 +800,130 @@ describe('getMilestonePhaseFilter', () => {
 
     const filter = getMilestonePhaseFilter(tmpDir);
     assert.strictEqual(filter.phaseCount, 0);
+  });
+});
+
+// ─── planningPaths ─────────────────────────────────────────────────────────────
+
+describe('planningPaths', () => {
+  test('is exported from core.cjs', () => {
+    assert.strictEqual(typeof planningPaths, 'function');
+  });
+
+  test('root equals path.join(cwd, .planning)', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.root, path.join('/project', '.planning'));
+  });
+
+  test('state equals .planning/STATE.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.state, path.join('/project', '.planning', 'STATE.md'));
+  });
+
+  test('roadmap equals .planning/ROADMAP.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.roadmap, path.join('/project', '.planning', 'ROADMAP.md'));
+  });
+
+  test('config equals .planning/config.json', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.config, path.join('/project', '.planning', 'config.json'));
+  });
+
+  test('requirements equals .planning/REQUIREMENTS.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.requirements, path.join('/project', '.planning', 'REQUIREMENTS.md'));
+  });
+
+  test('phases equals .planning/phases', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.phases, path.join('/project', '.planning', 'phases'));
+  });
+
+  test('todos equals .planning/todos', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todos, path.join('/project', '.planning', 'todos'));
+  });
+
+  test('todosPending equals .planning/todos/pending', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todosPending, path.join('/project', '.planning', 'todos', 'pending'));
+  });
+
+  test('todosCompleted equals .planning/todos/completed', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.todosCompleted, path.join('/project', '.planning', 'todos', 'completed'));
+  });
+
+  test('codebase equals .planning/codebase', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.codebase, path.join('/project', '.planning', 'codebase'));
+  });
+
+  test('divergence equals .planning/DIVERGENCE.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.divergence, path.join('/project', '.planning', 'DIVERGENCE.md'));
+  });
+
+  test('milestones equals .planning/milestones', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.milestones, path.join('/project', '.planning', 'milestones'));
+  });
+
+  test('project equals .planning/PROJECT.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.project, path.join('/project', '.planning', 'PROJECT.md'));
+  });
+
+  test('archive equals .planning/archive', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.archive, path.join('/project', '.planning', 'archive'));
+  });
+
+  test('milestonesFile equals .planning/MILESTONES.md', () => {
+    const result = planningPaths('/project');
+    assert.strictEqual(result.milestonesFile, path.join('/project', '.planning', 'MILESTONES.md'));
+  });
+
+  test('works with different cwd values', () => {
+    const a = planningPaths('/home/user/myproject');
+    const b = planningPaths('/tmp/other');
+    assert.strictEqual(a.root, path.join('/home/user/myproject', '.planning'));
+    assert.strictEqual(b.root, path.join('/tmp/other', '.planning'));
+    assert.notStrictEqual(a.root, b.root);
+  });
+});
+
+// ─── extractCurrentMilestone ──────────────────────────────────────────────────
+
+describe('extractCurrentMilestone', () => {
+  test('returns full content unchanged when no details blocks present', () => {
+    const content = '## v2.0\n### Phase 1\n- [ ] Task A\n';
+    assert.strictEqual(extractCurrentMilestone(content), content);
+  });
+
+  test('strips a single details block (archived milestone)', () => {
+    const content = '## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<details>'), 'should remove details block');
+    assert.ok(!result.includes('old stuff'), 'should remove archived content');
+    assert.ok(result.includes('## v2.0'), 'should preserve current milestone heading');
+  });
+
+  test('strips multiple details blocks', () => {
+    const content = '<details><summary>v0.9</summary>\nvery old\n</details>\n## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\nActive content\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<details>'), 'should remove all details blocks');
+    assert.ok(!result.includes('very old'), 'should remove first archived content');
+    assert.ok(!result.includes('old stuff'), 'should remove second archived content');
+    assert.ok(result.includes('Active content'), 'should preserve active content');
+  });
+
+  test('is case-insensitive for DETAILS tags', () => {
+    const content = '## v2.0\n<DETAILS><summary>v1.0</summary>\nold stuff\n</DETAILS>\nCurrent content\n';
+    const result = extractCurrentMilestone(content);
+    assert.ok(!result.includes('<DETAILS>'), 'should remove uppercase DETAILS block');
+    assert.ok(!result.includes('old stuff'), 'should remove archived content');
+    assert.ok(result.includes('Current content'), 'should preserve current content');
   });
 });

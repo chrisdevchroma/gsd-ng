@@ -269,3 +269,14 @@ body`;
     assert.ok(parsed.error, 'Should have error field');
   });
 });
+
+// ─── frontmatter set validates field name (SEC-02) ──────────────────────────
+
+describe('frontmatter set validates field name (SEC-02)', () => {
+  test('rejects field name with colon (YAML injection)', () => {
+    const testFile = writeTempFile('---\nstatus: draft\n---\nContent\n');
+    const result = runGsdTools(['frontmatter', 'set', testFile, '--field', 'bad:field', '--value', 'value']);
+    assert.ok(!result.success || result.output.includes('Invalid field name'),
+      'should reject field name containing colon');
+  });
+});

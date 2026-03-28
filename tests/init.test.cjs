@@ -1046,5 +1046,33 @@ describe('cmdInitPlanPhase gap research detection', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// init phase-op validates phase number (SEC-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('init phase-op validates phase number (SEC-02)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('rejects path traversal phase input', () => {
+    const result = runGsdTools('init phase-op --phase ../../etc', tmpDir);
+    assert.ok(!result.success || result.output.includes('Invalid phase number'),
+      'should reject path traversal in phase number');
+  });
+
+  test('rejects shell injection phase input', () => {
+    const result = runGsdTools(['init', 'phase-op', '--phase', 'rm -rf /'], tmpDir);
+    assert.ok(!result.success || result.output.includes('Invalid phase number'),
+      'should reject shell injection in phase number');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // roadmap analyze command
 // ─────────────────────────────────────────────────────────────────────────────

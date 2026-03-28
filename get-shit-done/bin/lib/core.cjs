@@ -14,6 +14,33 @@ function toPosixPath(p) {
   return p.split(path.sep).join('/');
 }
 
+/**
+ * Return a flat object containing all common .planning/ subpaths for a given cwd.
+ * Call once per function entry and destructure the properties needed.
+ * @param {string} cwd - project root directory
+ * @returns {{ root, phases, config, state, roadmap, requirements, todos, todosPending, todosCompleted, codebase, divergence, milestones, milestonesFile, project, archive }}
+ */
+function planningPaths(cwd) {
+  const root = path.join(cwd, '.planning');
+  return {
+    root,
+    phases:         path.join(root, 'phases'),
+    config:         path.join(root, 'config.json'),
+    state:          path.join(root, 'STATE.md'),
+    roadmap:        path.join(root, 'ROADMAP.md'),
+    requirements:   path.join(root, 'REQUIREMENTS.md'),
+    todos:          path.join(root, 'todos'),
+    todosPending:   path.join(root, 'todos', 'pending'),
+    todosCompleted: path.join(root, 'todos', 'completed'),
+    codebase:       path.join(root, 'codebase'),
+    divergence:     path.join(root, 'DIVERGENCE.md'),
+    milestones:     path.join(root, 'milestones'),
+    milestonesFile: path.join(root, 'MILESTONES.md'),
+    project:        path.join(root, 'PROJECT.md'),
+    archive:        path.join(root, 'archive'),
+  };
+}
+
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
 /**
@@ -90,7 +117,7 @@ function safeReadFile(filePath) {
 }
 
 function loadConfig(cwd) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const { config: configPath } = planningPaths(cwd);
   const defaults = {
     model_profile: 'balanced',
     commit_docs: true,
@@ -302,7 +329,7 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
 function findPhaseInternal(cwd, phase) {
   if (!phase) return null;
 
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir, milestones: milestonesDir } = planningPaths(cwd);
   const normalized = normalizePhaseName(phase);
 
   // Search current phases first
@@ -310,7 +337,6 @@ function findPhaseInternal(cwd, phase) {
   if (current) return current;
 
   // Search archived milestone phases (newest first)
-  const milestonesDir = path.join(cwd, '.planning', 'milestones');
   if (!fs.existsSync(milestonesDir)) return null;
 
   try {
@@ -337,7 +363,7 @@ function findPhaseInternal(cwd, phase) {
 }
 
 function getArchivedPhaseDirs(cwd) {
-  const milestonesDir = path.join(cwd, '.planning', 'milestones');
+  const { milestones: milestonesDir } = planningPaths(cwd);
   const results = [];
 
   if (!fs.existsSync(milestonesDir)) return results;
@@ -374,12 +400,11 @@ function getArchivedPhaseDirs(cwd) {
 // ─── Roadmap milestone scoping ───────────────────────────────────────────────
 
 /**
- * Strip shipped milestone content wrapped in <details> blocks.
- * Used to isolate current milestone phases when searching ROADMAP.md
- * for phase headings or checkboxes — prevents matching archived milestone
- * phases that share the same numbers as current milestone phases.
+ * Extract the current (active) milestone content from ROADMAP.md.
+ * Strips shipped milestone sections wrapped in <details> blocks.
+ * Returns the remaining content which is the active milestone.
  */
-function stripShippedMilestones(content) {
+function extractCurrentMilestone(content) {
   return content.replace(/<details>[\s\S]*?<\/details>/gi, '');
 }
 
@@ -403,11 +428,11 @@ function replaceInCurrentMilestone(content, pattern, replacement) {
 
 function getRoadmapPhaseInternal(cwd, phaseNum) {
   if (!phaseNum) return null;
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const { roadmap: roadmapPath } = planningPaths(cwd);
   if (!fs.existsSync(roadmapPath)) return null;
 
   try {
-    const content = stripShippedMilestones(fs.readFileSync(roadmapPath, 'utf-8'));
+    const content = extractCurrentMilestone(fs.readFileSync(roadmapPath, 'utf-8'));
     const escapedPhase = escapeRegex(phaseNum.toString());
     const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*([^\\n]+)`, 'i');
     const headerMatch = content.match(phasePattern);
@@ -471,7 +496,7 @@ function generateSlugInternal(text) {
 
 function getMilestoneInfo(cwd) {
   try {
-    const roadmap = fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmap = fs.readFileSync(planningPaths(cwd).roadmap, 'utf-8');
 
     // First: check for list-format roadmaps using 🚧 (in-progress) marker
     // e.g. "- 🚧 **v2.1 Belgium** — Phases 24-28 (in progress)"
@@ -484,7 +509,7 @@ function getMilestoneInfo(cwd) {
     }
 
     // Second: heading-format roadmaps — strip shipped milestones in <details> blocks
-    const cleaned = stripShippedMilestones(roadmap);
+    const cleaned = extractCurrentMilestone(roadmap);
     // Extract version and name from the same ## heading for consistency
     const headingMatch = cleaned.match(/## .*v(\d+\.\d+)[:\s]+([^\n(]+)/);
     if (headingMatch) {
@@ -512,7 +537,7 @@ function getMilestoneInfo(cwd) {
 function getMilestonePhaseFilter(cwd) {
   const milestonePhaseNums = new Set();
   try {
-    const roadmap = stripShippedMilestones(fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8'));
+    const roadmap = extractCurrentMilestone(fs.readFileSync(planningPaths(cwd).roadmap, 'utf-8'));
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmap)) !== null) {
@@ -576,8 +601,9 @@ module.exports = {
   generateSlugInternal,
   getMilestoneInfo,
   getMilestonePhaseFilter,
-  stripShippedMilestones,
+  extractCurrentMilestone,
   replaceInCurrentMilestone,
   toPosixPath,
   extractOneLinerFromBody,
+  planningPaths,
 };

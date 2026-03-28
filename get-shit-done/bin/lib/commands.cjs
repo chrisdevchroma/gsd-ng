@@ -5,9 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 const os = require('os');
-const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, stripShippedMilestones, toPosixPath, output, error, findPhaseInternal } = require('./core.cjs');
+const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, extractCurrentMilestone, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES } = require('./model-profiles.cjs');
+const { validatePath } = require('./security.cjs');
 
 function cmdGenerateSlug(text, raw) {
   if (!text) {
@@ -44,7 +45,7 @@ function cmdCurrentTimestamp(format, raw) {
 }
 
 function cmdListTodos(cwd, area, raw) {
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const { todosPending: pendingDir } = planningPaths(cwd);
 
   let count = 0;
   const todos = [];
@@ -85,6 +86,15 @@ function cmdVerifyPathExists(cwd, targetPath, raw) {
     error('path required for verification');
   }
 
+  // Defense-in-depth: validate path does not escape cwd
+  if (!path.isAbsolute(targetPath)) {
+    const pathCheck = validatePath(targetPath, cwd);
+    if (!pathCheck.safe) {
+      output({ exists: false, type: null, error: pathCheck.error }, raw, 'false');
+      return;
+    }
+  }
+
   const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath);
 
   try {
@@ -99,7 +109,7 @@ function cmdVerifyPathExists(cwd, targetPath, raw) {
 }
 
 function cmdHistoryDigest(cwd, raw) {
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir } = planningPaths(cwd);
   const digest = { phases: {}, decisions: [], tech_stack: new Set() };
 
   // Collect all phase directories: archived + current
@@ -431,8 +441,7 @@ async function cmdWebsearch(query, options, raw) {
 }
 
 function cmdProgressRender(cwd, format, raw) {
-  const phasesDir = path.join(cwd, '.planning', 'phases');
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const { phases: phasesDir, roadmap: roadmapPath } = planningPaths(cwd);
   const milestone = getMilestoneInfo(cwd);
 
   const phases = [];
@@ -534,8 +543,7 @@ function cmdTodoComplete(cwd, filename, raw) {
     error('filename required for todo complete');
   }
 
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
-  const completedDir = path.join(cwd, '.planning', 'todos', 'completed');
+  const { todosPending: pendingDir, todosCompleted: completedDir } = planningPaths(cwd);
   const sourcePath = path.join(pendingDir, filename);
 
   if (!fs.existsSync(sourcePath)) {
@@ -589,7 +597,7 @@ function cmdTodoComplete(cwd, filename, raw) {
     // object and does not expose the raw issue_tracker section.
     let itConfig = {};
     try {
-      const rawConfig = JSON.parse(fs.readFileSync(path.join(cwd, '.planning', 'config.json'), 'utf-8'));
+      const rawConfig = JSON.parse(fs.readFileSync(planningPaths(cwd).config, 'utf-8'));
       itConfig = rawConfig.issue_tracker || {};
     } catch { /* no config.json, use empty defaults */ }
     if (itConfig.auto_sync !== false) {
@@ -614,7 +622,7 @@ function cmdTodoComplete(cwd, filename, raw) {
  * @param {boolean} raw
  */
 function cmdRecurringDue(cwd, raw) {
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const { todosPending: pendingDir } = planningPaths(cwd);
   const due = [];
 
   try {
@@ -686,7 +694,7 @@ function cmdScaffold(cwd, type, options, raw) {
       }
       const slug = generateSlugInternal(name);
       const dirName = `${padded}-${slug}`;
-      const phasesParent = path.join(cwd, '.planning', 'phases');
+      const phasesParent = planningPaths(cwd).phases;
       fs.mkdirSync(phasesParent, { recursive: true });
       const dirPath = path.join(phasesParent, dirName);
       fs.mkdirSync(dirPath, { recursive: true });
@@ -708,10 +716,7 @@ function cmdScaffold(cwd, type, options, raw) {
 }
 
 function cmdStats(cwd, format, raw) {
-  const phasesDir = path.join(cwd, '.planning', 'phases');
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
-  const reqPath = path.join(cwd, '.planning', 'REQUIREMENTS.md');
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const { phases: phasesDir, roadmap: roadmapPath, requirements: reqPath, state: statePath } = planningPaths(cwd);
   const milestone = getMilestoneInfo(cwd);
   const isDirInMilestone = getMilestonePhaseFilter(cwd);
 
@@ -721,7 +726,7 @@ function cmdStats(cwd, format, raw) {
   let totalSummaries = 0;
 
   try {
-    const roadmapContent = stripShippedMilestones(fs.readFileSync(roadmapPath, 'utf-8'));
+    const roadmapContent = extractCurrentMilestone(fs.readFileSync(roadmapPath, 'utf-8'));
     const headingPattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
     let match;
     while ((match = headingPattern.exec(roadmapContent)) !== null) {
@@ -1247,7 +1252,7 @@ function cmdSquash(cwd, phase, options, raw) {
   const currentBranch = branchResult.stdout || 'unknown';
 
   // Find phase directory
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir } = planningPaths(cwd);
   let phaseDir = null;
   try {
     const dirs = fs.readdirSync(phasesDir).filter(d =>
@@ -1508,7 +1513,7 @@ function cmdVersionBump(cwd, options, raw, silent) {
   // If no explicit level, derive from summaries
   let level = explicitLevel;
   if (!level) {
-    const phasesDir = path.join(cwd, '.planning', 'phases');
+    const { phases: phasesDir } = planningPaths(cwd);
     const summaries = [];
     try {
       const dirs = fs.readdirSync(phasesDir, { withFileTypes: true })
@@ -1570,7 +1575,7 @@ function cmdGenerateChangelog(cwd, version, options, raw) {
   if (!version) error('version required for generate-changelog');
 
   // Collect summaries from all phase directories
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { phases: phasesDir } = planningPaths(cwd);
   const summaries = [];
   try {
     const dirs = fs.readdirSync(phasesDir, { withFileTypes: true })
@@ -1681,7 +1686,7 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
   // returns a flat structured object and does not expose the raw issue_tracker section.
   let itConfig = {};
   try {
-    const rawConfig = JSON.parse(fs.readFileSync(path.join(cwd, '.planning', 'config.json'), 'utf-8'));
+    const rawConfig = JSON.parse(fs.readFileSync(planningPaths(cwd).config, 'utf-8'));
     itConfig = rawConfig.issue_tracker || {};
   } catch { /* no config.json, use empty defaults */ }
   const commentStyle = itConfig.comment_style || 'external';
@@ -1754,7 +1759,7 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
   const platformDisplay = platform.charAt(0).toUpperCase() + platform.slice(1);
 
   // Write todo file
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const { todosPending: pendingDir } = planningPaths(cwd);
   fs.mkdirSync(pendingDir, { recursive: true });
   const todoFilePath = path.join(pendingDir, filename);
   const created = new Date().toISOString();
@@ -1983,8 +1988,9 @@ function cmdIssueSync(cwd, phase, options, raw) {
   // Read issue_tracker config directly from config.json since loadConfig
   // returns a flat structured object and does not expose the raw issue_tracker section.
   let itConfig = {};
+  const paths = planningPaths(cwd);
   try {
-    const rawConfig = JSON.parse(fs.readFileSync(path.join(cwd, '.planning', 'config.json'), 'utf-8'));
+    const rawConfig = JSON.parse(fs.readFileSync(paths.config, 'utf-8'));
     itConfig = rawConfig.issue_tracker || {};
   } catch { /* no config.json, use empty defaults */ }
 
@@ -1997,7 +2003,7 @@ function cmdIssueSync(cwd, phase, options, raw) {
   const commentContext = { commitHash, phaseName: phase };
 
   // 1. Scan REQUIREMENTS.md
-  const reqPath = path.join(cwd, '.planning', 'REQUIREMENTS.md');
+  const reqPath = paths.requirements;
   const reqContent = safeReadFile(reqPath);
   if (reqContent) {
     const rows = parseRequirementsExternalRefs(reqContent);
@@ -2012,7 +2018,7 @@ function cmdIssueSync(cwd, phase, options, raw) {
   }
 
   // 2. Scan completed todos
-  const doneTodosDir = path.join(cwd, '.planning', 'todos', 'completed');
+  const doneTodosDir = paths.todosCompleted;
   let doneTodoFiles = [];
   try {
     doneTodoFiles = fs.readdirSync(doneTodosDir).filter(f => f.endsWith('.md'));
@@ -2067,7 +2073,7 @@ function cmdIssueListRefs(cwd, raw) {
   }
 
   // 1. Scan REQUIREMENTS.md
-  const reqPath = path.join(cwd, '.planning', 'REQUIREMENTS.md');
+  const { requirements: reqPath, todosPending, todosCompleted } = planningPaths(cwd);
   const reqContent = safeReadFile(reqPath);
   if (reqContent) {
     const rows = parseRequirementsExternalRefs(reqContent);
@@ -2083,8 +2089,7 @@ function cmdIssueListRefs(cwd, raw) {
   }
 
   // 2. Scan todos/pending and todos/completed
-  for (const subDir of ['pending', 'completed']) {
-    const dir = path.join(cwd, '.planning', 'todos', subDir);
+  for (const [subDir, dir] of [['pending', todosPending], ['completed', todosCompleted]]) {
     let files = [];
     try {
       files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
@@ -2113,7 +2118,7 @@ function cmdIssueListRefs(cwd, raw) {
 }
 
 function cmdStalenessCheck(cwd, raw) {
-  const codebaseDir = path.join(cwd, '.planning', 'codebase');
+  const { codebase: codebaseDir } = planningPaths(cwd);
   if (!fs.existsSync(codebaseDir)) {
     output({ stale: [], all_stale: false }, raw, 'no codebase directory');
     return;
@@ -2551,7 +2556,7 @@ function rewriteDivergenceTable(filePath, triageState) {
  * @param {boolean} raw
  */
 function cmdDivergence(cwd, opts, raw) {
-  const divergencePath = path.join(cwd, '.planning', 'DIVERGENCE.md');
+  const { divergence: divergencePath } = planningPaths(cwd);
 
   // ── Branch mode: track drift between base and branch ──────────────────────
   if (opts.branch) {
@@ -3238,7 +3243,7 @@ function cmdGenerateAllowlist(cwd, raw) {
   }
 
   // Read config for any platform-specific settings
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const configPath = planningPaths(cwd).config;
   try {
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -3384,7 +3389,7 @@ function resolveWorkspacePaths(cwd, signal) {
  */
 function discoverTestCommand(cwd) {
   // 1. Config override takes priority
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const configPath = planningPaths(cwd).config;
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const nested = config.verification;
@@ -3430,9 +3435,7 @@ function discoverTestCommand(cwd) {
  */
 function cmdCleanup(cwd, options, raw) {
   const { dryRun } = options || {};
-  const milestonesFilePath = path.join(cwd, '.planning', 'MILESTONES.md');
-  const milestonesDir = path.join(cwd, '.planning', 'milestones');
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const { milestonesFile: milestonesFilePath, milestones: milestonesDir, phases: phasesDir } = planningPaths(cwd);
 
   // Read MILESTONES.md
   let milestonesContent;
