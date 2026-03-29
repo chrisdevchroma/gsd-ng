@@ -1074,5 +1074,31 @@ describe('init phase-op validates phase number (SEC-02)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// init execute-phase submodule fields (SUB-06)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('init execute-phase submodule fields', () => {
+  // Test via CLI since cmdInitExecutePhase calls output() -> process.exit()
+  test('init execute-phase output includes submodule fields', () => {
+    // Use the actual workspace as test target — it has real .planning/ and .gitmodules
+    // gsd-ng/tests/ -> gsd-ng/ -> workspace root
+    const workspaceRoot = path.join(__dirname, '..', '..');
+    const result = runGsdTools(['init', 'execute-phase', '41'], workspaceRoot);
+    assert.ok(result.success, `init should succeed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    // Must have submodule fields
+    assert.ok('submodule_is_active' in parsed, 'missing submodule_is_active field');
+    assert.ok('submodule_git_cwd' in parsed, 'missing submodule_git_cwd field');
+    assert.ok('submodule_remote' in parsed, 'missing submodule_remote field');
+    assert.ok('submodule_remote_url' in parsed, 'missing submodule_remote_url field');
+    assert.ok('submodule_target_branch' in parsed, 'missing submodule_target_branch field');
+    assert.ok('submodule_ambiguous' in parsed, 'missing submodule_ambiguous field');
+    // This workspace IS a submodule workspace
+    assert.strictEqual(parsed.submodule_is_active, true);
+    assert.ok(parsed.submodule_git_cwd && parsed.submodule_git_cwd.endsWith('gsd-ng'), `git_cwd should end with gsd-ng, got: ${parsed.submodule_git_cwd}`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // roadmap analyze command
 // ─────────────────────────────────────────────────────────────────────────────

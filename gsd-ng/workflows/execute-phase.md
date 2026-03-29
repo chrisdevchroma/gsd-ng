@@ -336,54 +336,43 @@ After all waves:
 
 **Post-phase push (when configured):**
 
-Read from init JSON: `auto_push`, `remote`, `branch_name`, `branching_strategy`.
+Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 
 ```bash
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # SSH pre-push check (git.ssh_check defaults to true)
+  # Resolve submodule-aware git routing
+  GIT_CTX=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context)
+  if [[ "$GIT_CTX" == @file:* ]]; then GIT_CTX=$(cat "${GIT_CTX#@file:}"); fi
+  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.git_cwd||'.')}catch{process.stdout.write('.')}" "$GIT_CTX")
+  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.remote||'origin')}catch{process.stdout.write('origin')}" "$GIT_CTX")
+  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ambiguous||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
+  SSH_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ssh_url||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
+```
+
+**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$GIT_CTX` and list them. Skip the push. Do not proceed.
+
+**SSH pre-push check:** Read SSH check setting:
+
+```bash
   SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --raw 2>/dev/null || echo "true")
-  if [ "$SSH_CHECK" = "true" ]; then
-    REMOTE_URL=$(git remote get-url "${REMOTE:-origin}" 2>/dev/null || echo "")
-    if echo "$REMOTE_URL" | grep -qE '^git@|^ssh://'; then
-      SSH_STATUS=$(ssh-add -l 2>&1); SSH_EXIT=$?
-      if [ $SSH_EXIT -ne 0 ] || echo "$SSH_STATUS" | grep -q "no identities"; then
-        echo ""
-        echo "WARNING: SSH agent has no identities loaded. Git push will likely fail."
-        echo "Run in your terminal: ssh-add ~/.ssh/id_ed25519"
-        echo "(or the path to your SSH key)"
-        echo ""
-        echo "After loading your key, press Enter to retry push, or type 'skip' to skip push."
-        # Note: In Claude Code Bash tool, read may not block — the warning itself is the value.
-        # The push will proceed and fail with a clear error message if key is still not loaded.
-      fi
-      # Check SSH signing key requirement
-      SIGN_FORMAT=$(git config gpg.format 2>/dev/null || echo "")
-      if [ "$SIGN_FORMAT" = "ssh" ] && [ $SSH_EXIT -ne 0 ]; then
-        echo "Note: SSH-signed commits also require the signing key loaded in ssh-agent."
-      fi
-    fi
-  fi
+```
 
-  echo "Pushing $BRANCH_NAME to $REMOTE..."
+If `$SSH_CHECK` is `"true"` and `$SSH_URL` is `"true"`, check SSH agent status with `ssh-add -l`. If no identities are loaded, warn the user to load their SSH key before pushing. Also check if `gpg.format` is `ssh` via `git -C "$GIT_CWD" config gpg.format` — if so, note that the signing key also needs to be loaded.
 
-  # Check if branch already has upstream tracking
-  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
-  if [ -n "$UPSTREAM" ]; then
-    PUSH_OUT=$(git push "$REMOTE" "$BRANCH_NAME" 2>&1)
-    PUSH_EXIT=$?
-  else
-    # First push — set upstream tracking
-    PUSH_OUT=$(git push -u "$REMOTE" "$BRANCH_NAME" 2>&1)
-    PUSH_EXIT=$?
-  fi
+```bash
+  echo "Pushing $BRANCH_NAME to $PUSH_REMOTE..."
+
+  # Push with upstream tracking (safe to use -u unconditionally — git ignores it when upstream exists)
+  PUSH_OUT=$(git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$BRANCH_NAME" 2>&1)
+  PUSH_EXIT=$?
 
   if [ $PUSH_EXIT -ne 0 ]; then
-    echo "Warning: Push to $REMOTE failed: $PUSH_OUT"
-    echo "Local commits are safe. Push manually: git push -u $REMOTE $BRANCH_NAME"
+    echo "Warning: Push to $PUSH_REMOTE failed: $PUSH_OUT"
+    echo "Local commits are safe. Push manually: git -C \"$GIT_CWD\" push -u $PUSH_REMOTE $BRANCH_NAME"
   else
-    echo "Pushed $BRANCH_NAME to $REMOTE"
+    echo "Pushed $BRANCH_NAME to $PUSH_REMOTE"
   fi
 fi
 ```

@@ -4,8 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error } = require('./core.cjs');
+const { output, error, execGit, loadConfig, planningPaths } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
+const { cmdDetectPlatform } = require('./commands.cjs');
 
 // ─── Workspace topology detection ────────────────────────────────────────────
 
@@ -226,7 +227,148 @@ function seedMemoryTemplate(templatePath, targetDir, filename) {
   }
 }
 
-// ─── CLI command ──────────────────────────────────────────────────────────────
+// ─── Git context resolution ───────────────────────────────────────────────────
+
+/**
+ * Resolve the git context for the current workspace. Handles standalone,
+ * submodule (single), and submodule (multiple / ambiguous) workspace types.
+ *
+ * Returns a resolved object with remote, branch, platform and routing metadata
+ * so git-touching workflows can operate on the correct repository.
+ *
+ * @param {string} cwd - Project root directory
+ * @returns {object} Resolved git context object
+ */
+function resolveGitContext(cwd) {
+  const { type, submodule_paths: submodulePaths } = detectWorkspaceType(cwd);
+
+  // ── Standalone workspace ───────────────────────────────────────────────────
+  if (type !== 'submodule' || submodulePaths.length === 0) {
+    const config = loadConfig(cwd);
+    const remote = config.remote || 'origin';
+    const targetBranch = config.target_branch || 'main';
+
+    const remoteResult = execGit(cwd, ['remote', 'get-url', remote]);
+    const remoteUrl = remoteResult.exitCode === 0 ? (remoteResult.stdout || null) : null;
+
+    const branchResult = execGit(cwd, ['branch', '--show-current']);
+    const currentBranch = branchResult.exitCode === 0 ? (branchResult.stdout || null) : null;
+
+    const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+
+    const platformInfo = cmdDetectPlatform(cwd, remote, null, true) || {};
+
+    return {
+      is_submodule: false,
+      submodule_path: null,
+      git_cwd: cwd,
+      remote,
+      remote_url: remoteUrl,
+      ssh_url: sshUrl,
+      target_branch: targetBranch,
+      current_branch: currentBranch,
+      ambiguous: false,
+      ambiguous_paths: [],
+      platform: platformInfo.platform || null,
+      cli: platformInfo.cli || null,
+      cli_installed: platformInfo.cli_installed || false,
+      cli_install_url: platformInfo.cli_install_url || null,
+    };
+  }
+
+  // ── Submodule workspace ────────────────────────────────────────────────────
+
+  // Detect which submodule(s) have changes in the workspace diff
+  const headDiff = execGit(cwd, ['diff', '--name-only', 'HEAD']);
+  const cachedDiff = execGit(cwd, ['diff', '--cached', '--name-only']);
+
+  const changedFiles = [
+    ...(headDiff.exitCode === 0 && headDiff.stdout ? headDiff.stdout.split('\n').filter(Boolean) : []),
+    ...(cachedDiff.exitCode === 0 && cachedDiff.stdout ? cachedDiff.stdout.split('\n').filter(Boolean) : []),
+  ];
+
+  const hitPaths = submodulePaths.filter(sp =>
+    changedFiles.some(f => f === sp || f.startsWith(sp + '/'))
+  );
+
+  // Ambiguous: multiple submodules have changes
+  if (hitPaths.length > 1) {
+    return {
+      is_submodule: true,
+      submodule_path: null,
+      git_cwd: null,
+      remote: null,
+      remote_url: null,
+      ssh_url: false,
+      target_branch: null,
+      current_branch: null,
+      ambiguous: true,
+      ambiguous_paths: hitPaths,
+      platform: null,
+      cli: null,
+      cli_installed: false,
+      cli_install_url: null,
+    };
+  }
+
+  // Resolve active submodule: matched submodule or fallback to first
+  const activePath = hitPaths[0] || submodulePaths[0];
+  const subCwd = path.join(cwd, activePath);
+
+  // Read submodule config overrides from .planning/config.json
+  let configSubmodule = {};
+  try {
+    const pp = planningPaths(cwd);
+    const rawConfig = fs.readFileSync(pp.config, 'utf-8');
+    const parsedConfig = JSON.parse(rawConfig);
+    configSubmodule = (parsedConfig.git && parsedConfig.git.submodule) || {};
+  } catch {
+    // No config or malformed — use defaults
+  }
+
+  const remote = configSubmodule.remote || 'origin';
+
+  const remoteResult = execGit(subCwd, ['remote', 'get-url', remote]);
+  const remoteUrl = remoteResult.exitCode === 0 ? (remoteResult.stdout || null) : null;
+
+  const branchResult = execGit(subCwd, ['branch', '--show-current']);
+  const currentBranch = branchResult.exitCode === 0 ? (branchResult.stdout || null) : null;
+
+  // Resolve target branch: config override > git tracking > fallback 'main'
+  let targetBranch = configSubmodule.target_branch || null;
+  if (!targetBranch && currentBranch) {
+    const mergeResult = execGit(subCwd, ['config', `branch.${currentBranch}.merge`]);
+    if (mergeResult.exitCode === 0 && mergeResult.stdout) {
+      targetBranch = mergeResult.stdout.replace(/^refs\/heads\//, '') || null;
+    }
+  }
+  if (!targetBranch) {
+    targetBranch = 'main';
+  }
+
+  const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+
+  const platformInfo = cmdDetectPlatform(subCwd, remote, null, true) || {};
+
+  return {
+    is_submodule: true,
+    submodule_path: activePath,
+    git_cwd: subCwd,
+    remote,
+    remote_url: remoteUrl,
+    ssh_url: sshUrl,
+    target_branch: targetBranch,
+    current_branch: currentBranch,
+    ambiguous: false,
+    ambiguous_paths: [],
+    platform: platformInfo.platform || null,
+    cli: platformInfo.cli || null,
+    cli_installed: platformInfo.cli_installed || false,
+    cli_install_url: platformInfo.cli_install_url || null,
+  };
+}
+
+// ─── CLI commands ─────────────────────────────────────────────────────────────
 
 /**
  * CLI wrapper for detectWorkspaceType. Outputs JSON via output().
@@ -239,6 +381,17 @@ function cmdDetectWorkspace(cwd, raw) {
   output(result, raw);
 }
 
+/**
+ * CLI wrapper for resolveGitContext. Outputs JSON via output().
+ *
+ * @param {string} cwd - Working directory
+ * @param {boolean} raw - Whether to output raw value
+ */
+function cmdGitContext(cwd, raw) {
+  const result = resolveGitContext(cwd);
+  output(result, raw);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -247,4 +400,6 @@ module.exports = {
   generateMemoryMd,
   seedMemoryTemplate,
   cmdDetectWorkspace,
+  resolveGitContext,
+  cmdGitContext,
 };

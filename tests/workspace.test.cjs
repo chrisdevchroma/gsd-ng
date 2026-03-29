@@ -6,7 +6,8 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { execSync } = require('child_process');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // detectWorkspaceType — workspace topology detection
@@ -485,5 +486,279 @@ describe('cmdDetectWorkspace via gsd-tools', () => {
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.type, 'submodule');
     assert.deepStrictEqual(parsed.submodule_paths, ['mylib']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveGitContext / cmdGitContext — git context routing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper: create a temp git repo with a remote.
+ * Returns the temp dir path.
+ */
+function createTempGitRepo(remoteUrl) {
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-git-test-'));
+  fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
+  execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+  execSync('git config user.email "test@test.com"', { cwd: tmpDir, stdio: 'pipe' });
+  execSync('git config user.name "Test"', { cwd: tmpDir, stdio: 'pipe' });
+  execSync('git config commit.gpgsign false', { cwd: tmpDir, stdio: 'pipe' });
+  execSync(`git remote add origin "${remoteUrl}"`, { cwd: tmpDir, stdio: 'pipe' });
+  // Create initial commit so branch exists
+  fs.writeFileSync(path.join(tmpDir, 'README.md'), '# Test\n');
+  execSync('git add README.md', { cwd: tmpDir, stdio: 'pipe' });
+  execSync('git commit -m "initial"', { cwd: tmpDir, stdio: 'pipe' });
+  return tmpDir;
+}
+
+/**
+ * Helper: create a submodule workspace with one or more submodule repos.
+ *
+ * Each submodule directory is initialized as its own git repo AND
+ * registered as a gitlink in the workspace index (simulating `git submodule add`
+ * without requiring a real accessible remote).
+ *
+ * Returns { workspaceDir, subDirs[] }
+ */
+function createSubmoduleWorkspace(submoduleDefs) {
+  // submoduleDefs = [{ name, path, remoteUrl }]
+  const workspaceDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-ws-test-'));
+  fs.mkdirSync(path.join(workspaceDir, '.planning', 'phases'), { recursive: true });
+  execSync('git init', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config user.email "test@test.com"', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config user.name "Test"', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config commit.gpgsign false', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git remote add origin "https://github.com/workspace/root.git"', { cwd: workspaceDir, stdio: 'pipe' });
+
+  // Build .gitmodules content
+  let gitmodulesContent = '';
+  const subDirs = [];
+
+  for (const def of submoduleDefs) {
+    const subDir = path.join(workspaceDir, def.path);
+    fs.mkdirSync(subDir, { recursive: true });
+
+    // Init submodule repo
+    execSync('git init', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config commit.gpgsign false', { cwd: subDir, stdio: 'pipe' });
+    execSync(`git remote add origin "${def.remoteUrl}"`, { cwd: subDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(subDir, 'README.md'), `# ${def.name}\n`);
+    execSync('git add README.md', { cwd: subDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: subDir, stdio: 'pipe' });
+
+    // Register the submodule as a gitlink in the workspace index.
+    // This uses `git update-index --add --cacheinfo 160000,<sha>,<path>` to
+    // create a gitlink (mode 160000) pointing to the submodule's HEAD commit.
+    const subHeadResult = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    execSync(
+      `git update-index --add --cacheinfo 160000,${subHeadResult},${def.path}`,
+      { cwd: workspaceDir, stdio: 'pipe' }
+    );
+
+    gitmodulesContent += `[submodule "${def.name}"]\n\tpath = ${def.path}\n\turl = ${def.remoteUrl}\n`;
+    subDirs.push(subDir);
+  }
+
+  fs.writeFileSync(path.join(workspaceDir, '.gitmodules'), gitmodulesContent);
+  execSync('git add .gitmodules', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git commit -m "add submodules"', { cwd: workspaceDir, stdio: 'pipe' });
+
+  return { workspaceDir, subDirs };
+}
+
+/**
+ * Helper: simulate a submodule update in the workspace git (advances the gitlink).
+ * Creates a new commit in the submodule and updates the workspace gitlink,
+ * making the submodule path appear in `git diff --name-only HEAD`.
+ */
+function touchSubmodule(workspaceDir, submodulePath) {
+  const subDir = path.join(workspaceDir, submodulePath);
+  // Create a new commit in the submodule to advance its HEAD
+  fs.writeFileSync(path.join(subDir, 'touched.txt'), String(Date.now()));
+  execSync('git add touched.txt', { cwd: subDir, stdio: 'pipe' });
+  execSync('git commit -m "touched"', { cwd: subDir, stdio: 'pipe' });
+  // Update the workspace gitlink to point to the new commit (staged, not committed)
+  const newSha = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+  execSync(
+    `git update-index --cacheinfo 160000,${newSha},${submodulePath}`,
+    { cwd: workspaceDir, stdio: 'pipe' }
+  );
+}
+
+describe('resolveGitContext', () => {
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  afterEach(() => {
+    if (tmpDir) cleanup(tmpDir);
+    tmpDir = null;
+  });
+
+  test('Test 1: standalone workspace returns is_submodule=false, git_cwd=cwd, correct remote/branch', () => {
+    tmpDir = createTempGitRepo('https://github.com/user/standalone.git');
+    const result = workspace.resolveGitContext(tmpDir);
+
+    assert.strictEqual(result.is_submodule, false, 'is_submodule should be false');
+    assert.strictEqual(result.git_cwd, tmpDir, 'git_cwd should be cwd');
+    assert.ok(result.remote, 'remote should be set');
+    assert.ok(result.remote_url, 'remote_url should be set');
+    assert.ok(result.current_branch, 'current_branch should be set');
+    assert.ok(result.target_branch, 'target_branch should be set');
+    assert.strictEqual(result.ssh_url, false, 'ssh_url should be false for https remote');
+  });
+
+  test('Test 2: submodule workspace with diff in submodule returns is_submodule=true, correct submodule_path', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+
+    // Advance the submodule and update gitlink in workspace index (simulate submodule change)
+    touchSubmodule(workspaceDir, 'mylib');
+
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+    assert.strictEqual(result.submodule_path, 'mylib', 'submodule_path should be mylib');
+    assert.ok(result.git_cwd, 'git_cwd should be set');
+    assert.ok(result.git_cwd.endsWith('mylib'), 'git_cwd should end with submodule path');
+  });
+
+  test('Test 3: submodule workspace with diff in one of multiple submodules returns correct active submodule', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'lib-a', path: 'lib-a', remoteUrl: 'https://github.com/user/lib-a.git' },
+      { name: 'lib-b', path: 'lib-b', remoteUrl: 'https://github.com/user/lib-b.git' },
+    ]);
+    tmpDir = workspaceDir;
+
+    // Only advance lib-b
+    touchSubmodule(workspaceDir, 'lib-b');
+
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+    assert.strictEqual(result.submodule_path, 'lib-b', 'should resolve to lib-b (only one with diff)');
+    assert.strictEqual(result.ambiguous, false, 'should not be ambiguous');
+  });
+
+  test('Test 4: submodule workspace with diffs in multiple submodules sets ambiguous=true', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'lib-a', path: 'lib-a', remoteUrl: 'https://github.com/user/lib-a.git' },
+      { name: 'lib-b', path: 'lib-b', remoteUrl: 'https://github.com/user/lib-b.git' },
+    ]);
+    tmpDir = workspaceDir;
+
+    // Advance both submodules
+    touchSubmodule(workspaceDir, 'lib-a');
+    touchSubmodule(workspaceDir, 'lib-b');
+
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+    assert.strictEqual(result.ambiguous, true, 'should be ambiguous');
+    assert.ok(result.ambiguous_paths.includes('lib-a'), 'ambiguous_paths should include lib-a');
+    assert.ok(result.ambiguous_paths.includes('lib-b'), 'ambiguous_paths should include lib-b');
+  });
+
+  test('Test 5: submodule workspace with no diff match but single submodule falls back to that submodule', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    // No staged changes — should fall back to the only submodule
+
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+    assert.strictEqual(result.submodule_path, 'mylib', 'should fall back to the only submodule');
+    assert.strictEqual(result.ambiguous, false, 'should not be ambiguous');
+  });
+
+  test('Test 6: resolveGitContext reads git.submodule.target_branch from config as override', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+
+    // Write config with target_branch override
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: {
+        submodule: {
+          target_branch: 'develop',
+        },
+      },
+    }, null, 2));
+
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+    assert.strictEqual(result.target_branch, 'develop', 'target_branch should be from config override');
+  });
+
+  test('Test 7: resolveGitContext includes platform, cli, cli_installed fields for github remote', () => {
+    tmpDir = createTempGitRepo('https://github.com/user/myrepo.git');
+    const result = workspace.resolveGitContext(tmpDir);
+
+    assert.ok('platform' in result, 'result should have platform field');
+    assert.ok('cli' in result, 'result should have cli field');
+    assert.ok('cli_installed' in result, 'result should have cli_installed field');
+    assert.strictEqual(result.platform, 'github', 'platform should be github for github.com remote');
+    assert.strictEqual(result.cli, 'gh', 'cli should be gh for github platform');
+  });
+
+  test('Test 8: ssh_url is true for git@ URL, false for https://', () => {
+    // SSH URL
+    const sshDir = createTempGitRepo('git@github.com:user/repo.git');
+    try {
+      const sshResult = workspace.resolveGitContext(sshDir);
+      assert.strictEqual(sshResult.ssh_url, true, 'ssh_url should be true for git@ URL');
+    } finally {
+      cleanup(sshDir);
+    }
+
+    // HTTPS URL
+    tmpDir = createTempGitRepo('https://github.com/user/repo.git');
+    const httpsResult = workspace.resolveGitContext(tmpDir);
+    assert.strictEqual(httpsResult.ssh_url, false, 'ssh_url should be false for https:// URL');
+  });
+});
+
+describe('cmdGitContext CLI integration', () => {
+  let tmpDir;
+
+  afterEach(() => {
+    if (tmpDir) cleanup(tmpDir);
+    tmpDir = null;
+  });
+
+  test('Test 9: CLI git-context outputs valid JSON with expected top-level keys including platform, cli, ssh_url', () => {
+    tmpDir = createTempGitRepo('https://github.com/user/myrepo.git');
+
+    const result = runGsdTools(['git-context', '--cwd', tmpDir], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = JSON.parse(result.output);
+    }, 'output should be valid JSON');
+
+    // Check all required top-level keys
+    const requiredKeys = [
+      'is_submodule', 'submodule_path', 'git_cwd', 'remote', 'remote_url',
+      'ssh_url', 'target_branch', 'current_branch', 'ambiguous', 'ambiguous_paths',
+      'platform', 'cli', 'cli_installed', 'cli_install_url',
+    ];
+    for (const key of requiredKeys) {
+      assert.ok(key in parsed, `result should have key: ${key}`);
+    }
+
+    assert.strictEqual(parsed.is_submodule, false, 'standalone workspace is_submodule should be false');
+    assert.strictEqual(parsed.platform, 'github', 'platform should be github');
+    assert.strictEqual(parsed.cli, 'gh', 'cli should be gh');
+    assert.ok(typeof parsed.ssh_url === 'boolean', 'ssh_url should be a boolean');
   });
 });

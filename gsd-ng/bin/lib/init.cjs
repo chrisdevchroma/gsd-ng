@@ -8,6 +8,7 @@ const { execSync } = require('child_process');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
 const { validatePhaseNumber } = require('./security.cjs');
 const { adjustQuickTable } = require('./state.cjs');
+const { resolveGitContext } = require('./workspace.cjs');
 
 function cmdInitExecutePhase(cwd, phase, raw) {
   if (!phase) {
@@ -108,6 +109,30 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     roadmap_path: '.planning/ROADMAP.md',
     config_path: '.planning/config.json',
   };
+
+  // Resolve submodule git context for workflows that need push/PR routing
+  let gitCtx = null;
+  try {
+    gitCtx = resolveGitContext(cwd);
+  } catch {
+    // If git-context resolution fails, leave fields null — workflows fall back to workspace-level config
+  }
+
+  if (gitCtx) {
+    result.submodule_is_active = gitCtx.is_submodule;
+    result.submodule_git_cwd = gitCtx.git_cwd;
+    result.submodule_remote = gitCtx.remote;
+    result.submodule_remote_url = gitCtx.remote_url;
+    result.submodule_target_branch = gitCtx.target_branch;
+    result.submodule_ambiguous = gitCtx.ambiguous;
+  } else {
+    result.submodule_is_active = false;
+    result.submodule_git_cwd = null;
+    result.submodule_remote = null;
+    result.submodule_remote_url = null;
+    result.submodule_target_branch = null;
+    result.submodule_ambiguous = false;
+  }
 
   output(result, raw);
 }

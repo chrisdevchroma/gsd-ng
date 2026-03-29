@@ -1036,6 +1036,11 @@ async function main() {
       break;
     }
 
+    case 'git-context': {
+      workspace.cmdGitContext(cwd, raw);
+      break;
+    }
+
     case 'discover-test-command': {
       const result = commands.discoverTestCommand(cwd);
       coreOutput(result, raw);

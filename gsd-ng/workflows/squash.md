@@ -128,9 +128,12 @@ Push squashed branch with --force-with-lease?
 
 If yes:
 ```bash
-REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.remote --raw 2>/dev/null || echo "origin")
-BRANCH=$(git branch --show-current)
-git push --force-with-lease "$REMOTE" "$BRANCH"
+GIT_CTX=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context)
+if [[ "$GIT_CTX" == @file:* ]]; then GIT_CTX=$(cat "${GIT_CTX#@file:}"); fi
+GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.git_cwd||'.')}catch{process.stdout.write('.')}" "$GIT_CTX")
+PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.remote||'origin')}catch{process.stdout.write('origin')}" "$GIT_CTX")
+BRANCH=$(git -C "$GIT_CWD" branch --show-current)
+git -C "$GIT_CWD" push --force-with-lease "$PUSH_REMOTE" "$BRANCH"
 ```
 </step>
 
