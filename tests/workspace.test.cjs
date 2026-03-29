@@ -725,6 +725,84 @@ describe('resolveGitContext', () => {
     const httpsResult = workspace.resolveGitContext(tmpDir);
     assert.strictEqual(httpsResult.ssh_url, false, 'ssh_url should be false for https:// URL');
   });
+
+  test('Test 9: multiple submodules with no diffs returns ambiguous=true', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'lib-a', path: 'lib-a', remoteUrl: 'https://github.com/user/lib-a.git' },
+      { name: 'lib-b', path: 'lib-b', remoteUrl: 'https://github.com/user/lib-b.git' },
+    ]);
+    tmpDir = workspaceDir;
+
+    // Do NOT touch either submodule — no diffs
+    const result = workspace.resolveGitContext(workspaceDir);
+
+    assert.strictEqual(result.ambiguous, true, 'should be ambiguous when multiple submodules have no diffs');
+    assert.strictEqual(result.ambiguous_paths.length, 2, 'should list both submodule paths');
+    assert.ok(result.ambiguous_paths.includes('lib-a'), 'should include lib-a');
+    assert.ok(result.ambiguous_paths.includes('lib-b'), 'should include lib-b');
+    assert.strictEqual(result.submodule_path, null, 'should not pick a submodule');
+    assert.strictEqual(result.git_cwd, null, 'should not resolve git_cwd');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --field extraction — scalar extraction from git-context and detect-workspace
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('--field extraction on git-context and detect-workspace', () => {
+  test('git-context --field is_submodule --raw returns scalar string', () => {
+    const result = runGsdTools(['git-context', '--field', 'is_submodule', '--raw']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    // Output should be "true" or "false", not JSON
+    assert.ok(['true', 'false'].includes(result.output.trim()), `expected boolean string, got: ${result.output}`);
+  });
+
+  test('detect-workspace --field type --raw returns workspace type string', () => {
+    const result = runGsdTools(['detect-workspace', '--field', 'type', '--raw']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    assert.ok(['standalone', 'submodule'].includes(result.output.trim()), `expected type string, got: ${result.output}`);
+  });
+
+  test('detect-workspace --field type --raw returns no JSON braces', () => {
+    const result = runGsdTools(['detect-workspace', '--field', 'type', '--raw']);
+    assert.ok(result.success);
+    assert.ok(!result.output.includes('{'), 'output should not contain JSON braces');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ssh-check command — SSH agent status detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ssh-check command', () => {
+  test('ssh-check with HTTPS URL returns not_required', () => {
+    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.ssh_required, false);
+    assert.strictEqual(parsed.status, 'not_required');
+  });
+
+  test('ssh-check with SSH URL returns ssh_required=true', () => {
+    const result = runGsdTools(['ssh-check', 'git@github.com:user/repo.git']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.ssh_required, true);
+    assert.ok(['ok', 'no_identities', 'agent_not_running'].includes(parsed.status), `unexpected status: ${parsed.status}`);
+  });
+
+  test('ssh-check with --field status --raw returns scalar', () => {
+    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git', '--field', 'status', '--raw']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    assert.strictEqual(result.output.trim(), 'not_required');
+  });
+
+  test('ssh-check with no URL returns not_required', () => {
+    const result = runGsdTools(['ssh-check']);
+    assert.ok(result.success, `should succeed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'not_required');
+  });
 });
 
 describe('cmdGitContext CLI integration', () => {
