@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, output, error, planningPaths } = require('./core.cjs');
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
-const { scanForInjection } = require('./security.cjs');
+const { scanForInjection, sanitizeForPrompt } = require('./security.cjs');
 
 // Shared helper: extract a field value from STATE.md content.
 // Supports both **Field:** bold and plain Field: format.
@@ -33,9 +33,11 @@ function cmdStateLoad(cwd, raw) {
   const roadmapExists = fs.existsSync(roadmapPath);
   const stateExists = stateRaw.length > 0;
 
+  // Scan-on-read: sanitize STATE.md content before returning to callers.
+  // Never blocks — prepends [SECURITY WARNING:...] prefix if injection detected.
   const result = {
     config,
-    state_raw: stateRaw,
+    state_raw: sanitizeForPrompt(stateRaw),
     state_exists: stateExists,
     roadmap_exists: roadmapExists,
     config_exists: configExists,
@@ -134,7 +136,8 @@ function cmdStateGet(cwd, section, raw) {
     const boldPattern = new RegExp(`\\*\\*${fieldEscaped}:\\*\\*\\s*(.*)`, 'i');
     const boldMatch = content.match(boldPattern);
     if (boldMatch) {
-      output({ [section]: boldMatch[1].trim() }, raw, boldMatch[1].trim());
+      const value = sanitizeForPrompt(boldMatch[1].trim());
+      output({ [section]: value }, raw, value);
       return;
     }
 
@@ -142,7 +145,8 @@ function cmdStateGet(cwd, section, raw) {
     const plainPattern = new RegExp(`^${fieldEscaped}:\\s*(.*)`, 'im');
     const plainMatch = content.match(plainPattern);
     if (plainMatch) {
-      output({ [section]: plainMatch[1].trim() }, raw, plainMatch[1].trim());
+      const value = sanitizeForPrompt(plainMatch[1].trim());
+      output({ [section]: value }, raw, value);
       return;
     }
 
@@ -150,7 +154,7 @@ function cmdStateGet(cwd, section, raw) {
     const sectionPattern = new RegExp(`##\\s*${fieldEscaped}\\s*\n([\\s\\S]*?)(?=\\n##|$)`, 'i');
     const sectionMatch = content.match(sectionPattern);
     if (sectionMatch) {
-      const sectionContent = sectionMatch[1].trim();
+      const sectionContent = sanitizeForPrompt(sectionMatch[1].trim());
       const structured = parseSectionContent(sectionContent);
       output({ [section]: structured }, raw, JSON.stringify(structured));
       return;

@@ -920,6 +920,26 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
+  // --- Check 20: Security events log — high-confidence detections ---
+  const secLogDir = process.env.GSD_SECURITY_LOG_DIR || path.join(cwd, '.claude', 'logs');
+  const secLogPath = path.join(secLogDir, 'security-events.log');
+  if (fs.existsSync(secLogPath)) {
+    try {
+      const logLines = fs.readFileSync(secLogPath, 'utf-8').trim().split('\n').filter(Boolean);
+      const highTierEvents = logLines
+        .map(line => { try { return JSON.parse(line); } catch { return null; } })
+        .filter(e => e && e.tier === 'high');
+      if (highTierEvents.length > 0) {
+        const latest = highTierEvents[highTierEvents.length - 1];
+        addIssue('warning', 'W020',
+          `security-events.log: ${highTierEvents.length} high-confidence injection event(s) recorded. Latest: ${latest.source || 'unknown'}`,
+          'Review .claude/logs/security-events.log and investigate flagged content');
+      }
+    } catch {
+      // Corrupt log file — skip silently
+    }
+  }
+
   // ─── Perform repairs if requested ─────────────────────────────────────────
   const repairActions = [];
   if (options.repair && repairs.length > 0) {
