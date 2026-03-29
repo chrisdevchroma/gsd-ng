@@ -68,6 +68,27 @@ if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 Extract PHASE_NUMBER, PHASE_NAME, PHASE_SLUG, TARGET_BRANCH, REMOTE from init JSON.
 </step>
 
+<step name="detect_workspace">
+Detect the workspace topology so git operations target the correct repository. When workspace type is 'submodule', git operations (push, branch) must target the submodule directory so they operate against the correct repository and remote.
+
+```bash
+WORKSPACE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+SUBMODULE_PATH=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p[0]||'')}catch{process.stdout.write('')}" "$WORKSPACE_JSON")
+```
+
+When WORKSPACE_TYPE is "submodule" and SUBMODULE_PATH is non-empty:
+```bash
+if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+  # Override REMOTE from the submodule's git context
+  REMOTE=$(git -C "$SUBMODULE_PATH" remote | head -1)
+  GIT_PREFIX="git -C $SUBMODULE_PATH"
+else
+  GIT_PREFIX="git"
+fi
+```
+</step>
+
 <step name="select_strategy">
 If --strategy flag provided, use it.
 
@@ -128,9 +149,9 @@ Push squashed branch with --force-with-lease?
 
 If yes:
 ```bash
-REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.remote --raw 2>/dev/null || echo "origin")
-BRANCH=$(git branch --show-current)
-git push --force-with-lease "$REMOTE" "$BRANCH"
+# REMOTE already resolved in detect_phase + detect_workspace steps
+BRANCH=$($GIT_PREFIX branch --show-current)
+$GIT_PREFIX push --force-with-lease "$REMOTE" "$BRANCH"
 ```
 </step>
 
@@ -159,4 +180,5 @@ Cleanup:  git tag -d ${BACKUP_TAG}
 - [ ] Squash executed with correct strategy
 - [ ] --force-with-lease used for push (never bare --force)
 - [ ] Restore command displayed for safety
+- [ ] Submodule workspace detected and push targets submodule remote
 </success_criteria>

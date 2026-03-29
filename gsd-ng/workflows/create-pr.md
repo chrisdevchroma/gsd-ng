@@ -63,6 +63,28 @@ fi
 ```
 </step>
 
+<step name="detect_workspace">
+Detect the workspace topology so git operations target the correct repository. When workspace type is 'submodule', git operations (push, ls-remote, checkout, merge) must target the submodule directory so they operate against the correct repository and remote.
+
+```bash
+WORKSPACE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
+SUBMODULE_PATH=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p[0]||'')}catch{process.stdout.write('')}" "$WORKSPACE_JSON")
+```
+
+When WORKSPACE_TYPE is "submodule" and SUBMODULE_PATH is non-empty:
+```bash
+if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+  # Override REMOTE and TARGET_BRANCH from the submodule's git context
+  REMOTE=$(git -C "$SUBMODULE_PATH" remote | head -1)
+  TARGET_BRANCH=$(git -C "$SUBMODULE_PATH" symbolic-ref refs/remotes/${REMOTE}/HEAD 2>/dev/null | sed "s|refs/remotes/${REMOTE}/||" || echo "main")
+  GIT_PREFIX="git -C $SUBMODULE_PATH"
+else
+  GIT_PREFIX="git"
+fi
+```
+</step>
+
 <step name="detect_platform">
 Detect the git hosting platform:
 
@@ -97,10 +119,10 @@ STOP — return without creating PR. Do NOT fall back to curl/API.
 Verify the target branch exists on the remote before attempting PR creation:
 
 ```bash
-if ! git ls-remote --heads "$REMOTE" "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
+if ! $GIT_PREFIX ls-remote --heads "$REMOTE" "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
   echo "Error: Target branch '$TARGET_BRANCH' not found on remote '$REMOTE'."
   echo "Available branches:"
-  git ls-remote --heads "$REMOTE" | head -10
+  $GIT_PREFIX ls-remote --heads "$REMOTE" | head -10
   echo "Set target branch: node gsd-tools.cjs config-set git.target_branch {branch}"
   exit 1
 fi
@@ -116,7 +138,7 @@ No review branch, no squash. Open PR directly from current branch.
 
 ```bash
 if [ "$BRANCHING_STRATEGY" = "none" ]; then
-  CURRENT_BRANCH=$(git branch --show-current)
+  CURRENT_BRANCH=$($GIT_PREFIX branch --show-current)
   HEAD_BRANCH="$CURRENT_BRANCH"
   # Skip to build_pr_description — no review branch needed
 fi
@@ -171,24 +193,24 @@ REVIEW_BRANCH=$(echo "$REVIEW_BRANCH_TEMPLATE" | \
 
 Save the current work branch for later:
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$($GIT_PREFIX branch --show-current)
 ```
 
 Create or reset review branch from target_branch:
 ```bash
-if git show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH" 2>/dev/null; then
+if $GIT_PREFIX show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH" 2>/dev/null; then
   # Review branch exists — this is an update (re-squash)
-  git checkout "$REVIEW_BRANCH"
-  git reset --hard "$TARGET_BRANCH"
+  $GIT_PREFIX checkout "$REVIEW_BRANCH"
+  $GIT_PREFIX reset --hard "$TARGET_BRANCH"
 else
-  git checkout -b "$REVIEW_BRANCH" "$TARGET_BRANCH"
+  $GIT_PREFIX checkout -b "$REVIEW_BRANCH" "$TARGET_BRANCH"
 fi
 ```
 
 Squash work branch onto review branch:
 ```bash
 # Single squash of all work from the GSD work branch
-git merge --squash "$CURRENT_BRANCH" 2>&1
+$GIT_PREFIX merge --squash "$CURRENT_BRANCH" 2>&1
 
 # Build squash commit message from plan summaries
 SQUASH_MSG=""
@@ -204,7 +226,7 @@ if [ -z "$SQUASH_MSG" ]; then
   SQUASH_MSG="Phase ${PHASE_NUMBER}: ${PHASE_NAME}"
 fi
 
-git commit -m "$(printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}")"
+$GIT_PREFIX commit -m "$(printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}")"
 ```
 
 Set HEAD_BRANCH for PR creation:
@@ -219,14 +241,14 @@ Push the review branch (or current branch for none strategy) to remote:
 ```bash
 # For review branches, use --force-with-lease (squash rewrites history)
 if [ "$BRANCHING_STRATEGY" != "none" ]; then
-  PUSH_OUT=$(git push --force-with-lease -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
+  PUSH_OUT=$($GIT_PREFIX push --force-with-lease -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
 else
   # For none strategy, regular push
-  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
+  UPSTREAM=$($GIT_PREFIX rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
   if [ -n "$UPSTREAM" ]; then
-    PUSH_OUT=$(git push "$REMOTE" "$HEAD_BRANCH" 2>&1)
+    PUSH_OUT=$($GIT_PREFIX push "$REMOTE" "$HEAD_BRANCH" 2>&1)
   else
-    PUSH_OUT=$(git push -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
+    PUSH_OUT=$($GIT_PREFIX push -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
   fi
 fi
 PUSH_EXIT=$?
@@ -235,7 +257,7 @@ if [ $PUSH_EXIT -ne 0 ]; then
   echo "Error: Push failed — $PUSH_OUT"
   echo "Fix the issue and retry: /gsd:create-pr ${PHASE_ARG}"
   # Return to work branch before exiting
-  git checkout "$CURRENT_BRANCH" 2>/dev/null
+  $GIT_PREFIX checkout "$CURRENT_BRANCH" 2>/dev/null
   exit 1
 fi
 ```
@@ -245,7 +267,7 @@ STOP on push failure — cannot create PR without pushed branch.
 Return to work branch after push (for phase/milestone strategies):
 ```bash
 if [ "$BRANCHING_STRATEGY" != "none" ]; then
-  git checkout "$CURRENT_BRANCH" 2>/dev/null || true
+  $GIT_PREFIX checkout "$CURRENT_BRANCH" 2>/dev/null || true
 fi
 ```
 </step>
@@ -347,42 +369,87 @@ if [ "$PR_DRAFT" = "true" ]; then
   DRAFT_FLAG="--draft"
 fi
 
+# When in a submodule workspace, run the PR CLI from inside the submodule
+# so the CLI detects the correct repository context and remote.
+PR_CLI_PREFIX=""
+if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+  PR_CLI_PREFIX="(cd \"$SUBMODULE_PATH\" &&"
+  PR_CLI_SUFFIX=")"
+else
+  PR_CLI_PREFIX=""
+  PR_CLI_SUFFIX=""
+fi
+
 case "$PLATFORM" in
   github)
-    PR_URL=$(gh pr create \
-      --base "$TARGET_BRANCH" \
-      --head "$HEAD_BRANCH" \
-      --title "$PR_TITLE" \
-      --body-file "$PR_BODY_FILE" \
-      $DRAFT_FLAG 2>&1)
+    if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+      PR_URL=$(cd "$SUBMODULE_PATH" && gh pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --body-file "$PR_BODY_FILE" \
+        $DRAFT_FLAG 2>&1)
+    else
+      PR_URL=$(gh pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --body-file "$PR_BODY_FILE" \
+        $DRAFT_FLAG 2>&1)
+    fi
     PR_EXIT=$?
     ;;
 
   gitlab)
-    PR_URL=$(glab mr create \
-      --target-branch "$TARGET_BRANCH" \
-      --source-branch "$HEAD_BRANCH" \
-      --title "$PR_TITLE" \
-      --description "$(cat "$PR_BODY_FILE")" \
-      $DRAFT_FLAG 2>&1)
+    if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+      PR_URL=$(cd "$SUBMODULE_PATH" && glab mr create \
+        --target-branch "$TARGET_BRANCH" \
+        --source-branch "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --description "$(cat "$PR_BODY_FILE")" \
+        $DRAFT_FLAG 2>&1)
+    else
+      PR_URL=$(glab mr create \
+        --target-branch "$TARGET_BRANCH" \
+        --source-branch "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --description "$(cat "$PR_BODY_FILE")" \
+        $DRAFT_FLAG 2>&1)
+    fi
     PR_EXIT=$?
     ;;
 
   forgejo)
-    PR_URL=$(fj pr create \
-      --base "$TARGET_BRANCH" \
-      --head "$HEAD_BRANCH" \
-      --title "$PR_TITLE" \
-      --body "$(cat "$PR_BODY_FILE")" 2>&1)
+    if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+      PR_URL=$(cd "$SUBMODULE_PATH" && fj pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --body "$(cat "$PR_BODY_FILE")" 2>&1)
+    else
+      PR_URL=$(fj pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --body "$(cat "$PR_BODY_FILE")" 2>&1)
+    fi
     PR_EXIT=$?
     ;;
 
   gitea)
-    PR_URL=$(tea pr create \
-      --base "$TARGET_BRANCH" \
-      --head "$HEAD_BRANCH" \
-      --title "$PR_TITLE" \
-      --description "$(cat "$PR_BODY_FILE")" 2>&1)
+    if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
+      PR_URL=$(cd "$SUBMODULE_PATH" && tea pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --description "$(cat "$PR_BODY_FILE")" 2>&1)
+    else
+      PR_URL=$(tea pr create \
+        --base "$TARGET_BRANCH" \
+        --head "$HEAD_BRANCH" \
+        --title "$PR_TITLE" \
+        --description "$(cat "$PR_BODY_FILE")" 2>&1)
+    fi
     PR_EXIT=$?
     ;;
 
@@ -445,4 +512,5 @@ fi
 - [ ] Work branch restored as current branch after PR creation
 - [ ] force-with-lease used for review branch re-push (squash rewrites history)
 - [ ] Repo template detection with notice when overridden by user config
+- [ ] Submodule workspace detected and git operations target submodule remote
 </success_criteria>
