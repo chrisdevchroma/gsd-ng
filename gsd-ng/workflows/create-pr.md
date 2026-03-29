@@ -75,9 +75,12 @@ SUBMODULE_PATH=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.subm
 When WORKSPACE_TYPE is "submodule" and SUBMODULE_PATH is non-empty:
 ```bash
 if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
-  # Override REMOTE and TARGET_BRANCH from the submodule's git context
+  # Override REMOTE from the submodule's git context
   REMOTE=$(git -C "$SUBMODULE_PATH" remote | head -1)
-  TARGET_BRANCH=$(git -C "$SUBMODULE_PATH" symbolic-ref refs/remotes/${REMOTE}/HEAD 2>/dev/null | sed "s|refs/remotes/${REMOTE}/||" || echo "main")
+  # Preserve user-configured TARGET_BRANCH; only auto-detect if not already set
+  if ! git -C "$SUBMODULE_PATH" ls-remote --heads "$REMOTE" "$TARGET_BRANCH" 2>/dev/null | grep -q "$TARGET_BRANCH"; then
+    TARGET_BRANCH=$(git -C "$SUBMODULE_PATH" symbolic-ref refs/remotes/${REMOTE}/HEAD 2>/dev/null | sed "s|refs/remotes/${REMOTE}/||" || echo "main")
+  fi
   GIT_PREFIX="git -C $SUBMODULE_PATH"
 else
   GIT_PREFIX="git"
