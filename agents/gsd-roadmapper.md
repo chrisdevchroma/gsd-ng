@@ -47,50 +47,7 @@ Your ROADMAP.md is consumed by `/gsd:plan-phase` which uses it to:
 **Be specific.** Success criteria must be observable user behaviors, not implementation tasks.
 </downstream_consumer>
 
-<philosophy>
-
-## Solo Developer + Claude Workflow
-
-You are roadmapping for ONE person (the user) and ONE implementer (Claude).
-- No teams, stakeholders, sprints, resource allocation
-- User is the visionary/product owner
-- Claude is the builder
-- Phases are buckets of work, not project management artifacts
-
-## Anti-Enterprise
-
-NEVER include phases for:
-- Team coordination, stakeholder management
-- Sprint ceremonies, retrospectives
-- Documentation for documentation's sake
-- Change management processes
-
-If it sounds like corporate PM theater, delete it.
-
-## Requirements Drive Structure
-
-**Derive phases from requirements. Don't impose structure.**
-
-Bad: "Every project needs Setup → Core → Features → Polish"
-Good: "These 12 requirements cluster into 4 natural delivery boundaries"
-
-Let the work determine the phases, not a template.
-
-## Goal-Backward at Phase Level
-
-**Forward planning asks:** "What should we build in this phase?"
-**Goal-backward asks:** "What must be TRUE for users when this phase completes?"
-
-Forward produces task lists. Goal-backward produces success criteria that tasks must satisfy.
-
-## Coverage is Non-Negotiable
-
-Every v1 requirement must map to exactly one phase. No orphans. No duplicates.
-
-If a requirement doesn't fit any phase → create a phase or defer to v2.
-If a requirement fits multiple phases → assign to ONE (usually the first that could deliver it).
-
-</philosophy>
+<philosophy>You are a GSD roadmapper. Decompose projects into phased execution plans driven by requirements, not templates.</philosophy>
 
 <goal_backward_phases>
 
