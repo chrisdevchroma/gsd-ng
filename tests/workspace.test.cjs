@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, createSubmoduleWorkspace, touchSubmodule } = require('./helpers.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // detectWorkspaceType — workspace topology detection
@@ -512,81 +512,7 @@ function createTempGitRepo(remoteUrl) {
   return tmpDir;
 }
 
-/**
- * Helper: create a submodule workspace with one or more submodule repos.
- *
- * Each submodule directory is initialized as its own git repo AND
- * registered as a gitlink in the workspace index (simulating `git submodule add`
- * without requiring a real accessible remote).
- *
- * Returns { workspaceDir, subDirs[] }
- */
-function createSubmoduleWorkspace(submoduleDefs) {
-  // submoduleDefs = [{ name, path, remoteUrl }]
-  const workspaceDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-ws-test-'));
-  fs.mkdirSync(path.join(workspaceDir, '.planning', 'phases'), { recursive: true });
-  execSync('git init', { cwd: workspaceDir, stdio: 'pipe' });
-  execSync('git config user.email "test@test.com"', { cwd: workspaceDir, stdio: 'pipe' });
-  execSync('git config user.name "Test"', { cwd: workspaceDir, stdio: 'pipe' });
-  execSync('git config commit.gpgsign false', { cwd: workspaceDir, stdio: 'pipe' });
-  execSync('git remote add origin "https://github.com/workspace/root.git"', { cwd: workspaceDir, stdio: 'pipe' });
-
-  // Build .gitmodules content
-  let gitmodulesContent = '';
-  const subDirs = [];
-
-  for (const def of submoduleDefs) {
-    const subDir = path.join(workspaceDir, def.path);
-    fs.mkdirSync(subDir, { recursive: true });
-
-    // Init submodule repo
-    execSync('git init', { cwd: subDir, stdio: 'pipe' });
-    execSync('git config user.email "test@test.com"', { cwd: subDir, stdio: 'pipe' });
-    execSync('git config user.name "Test"', { cwd: subDir, stdio: 'pipe' });
-    execSync('git config commit.gpgsign false', { cwd: subDir, stdio: 'pipe' });
-    execSync(`git remote add origin "${def.remoteUrl}"`, { cwd: subDir, stdio: 'pipe' });
-    fs.writeFileSync(path.join(subDir, 'README.md'), `# ${def.name}\n`);
-    execSync('git add README.md', { cwd: subDir, stdio: 'pipe' });
-    execSync('git commit -m "initial"', { cwd: subDir, stdio: 'pipe' });
-
-    // Register the submodule as a gitlink in the workspace index.
-    // This uses `git update-index --add --cacheinfo 160000,<sha>,<path>` to
-    // create a gitlink (mode 160000) pointing to the submodule's HEAD commit.
-    const subHeadResult = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
-    execSync(
-      `git update-index --add --cacheinfo 160000,${subHeadResult},${def.path}`,
-      { cwd: workspaceDir, stdio: 'pipe' }
-    );
-
-    gitmodulesContent += `[submodule "${def.name}"]\n\tpath = ${def.path}\n\turl = ${def.remoteUrl}\n`;
-    subDirs.push(subDir);
-  }
-
-  fs.writeFileSync(path.join(workspaceDir, '.gitmodules'), gitmodulesContent);
-  execSync('git add .gitmodules', { cwd: workspaceDir, stdio: 'pipe' });
-  execSync('git commit -m "add submodules"', { cwd: workspaceDir, stdio: 'pipe' });
-
-  return { workspaceDir, subDirs };
-}
-
-/**
- * Helper: simulate a submodule update in the workspace git (advances the gitlink).
- * Creates a new commit in the submodule and updates the workspace gitlink,
- * making the submodule path appear in `git diff --name-only HEAD`.
- */
-function touchSubmodule(workspaceDir, submodulePath) {
-  const subDir = path.join(workspaceDir, submodulePath);
-  // Create a new commit in the submodule to advance its HEAD
-  fs.writeFileSync(path.join(subDir, 'touched.txt'), String(Date.now()));
-  execSync('git add touched.txt', { cwd: subDir, stdio: 'pipe' });
-  execSync('git commit -m "touched"', { cwd: subDir, stdio: 'pipe' });
-  // Update the workspace gitlink to point to the new commit (staged, not committed)
-  const newSha = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
-  execSync(
-    `git update-index --cacheinfo 160000,${newSha},${submodulePath}`,
-    { cwd: workspaceDir, stdio: 'pipe' }
-  );
-}
+// createSubmoduleWorkspace and touchSubmodule are imported from ./helpers.cjs
 
 describe('resolveGitContext', () => {
   const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
