@@ -105,36 +105,7 @@ Phase: "API documentation"
 - Scope (roadmap defines this)
 </gray_area_identification>
 
-<tool_usage>
-CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
-
-The AskUserQuestion tool accepts a `questions` array. Each question must have:
-- `question` (string) — the question text
-- `header` (string, max 12 chars) — short label shown above the question
-- `multiSelect` (boolean) — true for "select all that apply", false for single choice
-- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
-
-Example call structure:
-```json
-{
-  "questions": [
-    {
-      "question": "Which areas do you want to discuss?",
-      "header": "Discuss",
-      "multiSelect": true,
-      "options": [
-        { "label": "Layout style", "description": "Cards vs list vs timeline" },
-        { "label": "Loading behavior", "description": "Infinite scroll or pagination" }
-      ]
-    }
-  ]
-}
-```
-
-If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
-
-**UI rendering constraint:** Keep output before each AskUserQuestion call to 2-3 lines maximum. The Claude Code dialog can occlude preceding text when it is long. Embed context summaries in the `question` string rather than outputting them as preceding prose.
-</tool_usage>
+@~/.claude/gsd-ng/references/ask-user-question.md
 
 <answer_validation>
 **IMPORTANT: Answer validation** — After every AskUserQuestion call, check if the response is empty or whitespace-only. If so:
@@ -278,6 +249,84 @@ For each linked todo in auto mode:
 ```bash
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "${PHASE}"
 ```
+
+**Surface related: link suggestions (interactive mode only)**
+
+After the phase: linking is done, check if this phase has a source todo and surface potential `related:` links.
+
+In **--auto mode**: skip this section entirely. Related: linking during discussion requires user confirmation — it is not a closure workflow.
+
+In **interactive mode**:
+
+1. Find the source todo for this phase by checking ROADMAP.md:
+```bash
+SOURCE_TODO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
+  process.stdin.on('data', d => {
+    try { const r = JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
+  });
+")
+```
+
+2. If `$SOURCE_TODO` is non-empty, read its existing `related:` field:
+```bash
+EXISTING_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+```
+
+3. From the phase: linking candidates above (1-3 todos that were evaluated), filter for any that:
+   - Were NOT selected for phase: linking
+   - Are NOT already in the source todo's `related:` field
+
+4. If 1-3 such candidates exist:
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "These pending todos may be related to the source todo for Phase ${PHASE}. Link them via related: field?",
+  multiSelect: true,
+  options: [
+    { label: "[todo-filename-1]", description: "[todo title 1]" },
+    ...
+    { label: "None of these", description: "Skip related linking" }
+  ]
+)
+```
+
+5. For each selected todo (not "None of these"), set `related:` bidirectionally using the safe read-append-write pattern:
+```bash
+# Append selected todo filename to source todo's related: field
+SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+UPDATED_SOURCE=$(echo "$SOURCE_RELATED_RAW" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      if (!arr.includes('$SELECTED_FILE')) arr.push('$SELECTED_FILE');
+      console.log(JSON.stringify(arr));
+    } catch { console.log(JSON.stringify(['$SELECTED_FILE'])); }
+  });
+")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
+
+# Append source todo filename to selected todo's related: field (backlink)
+SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --raw 2>/dev/null || echo "")
+UPDATED_SELECTED=$(echo "$SELECTED_RELATED_RAW" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      if (!arr.includes('$SOURCE_TODO')) arr.push('$SOURCE_TODO');
+      console.log(JSON.stringify(arr));
+    } catch { console.log(JSON.stringify(['$SOURCE_TODO'])); }
+  });
+")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
+```
+
+Log: `Linked related: $SOURCE_TODO <-> $SELECTED_FILE`
 
 Continue to load_prior_context.
 </step>

@@ -41,7 +41,7 @@ Output: [What artifacts will be created]
 @~/.claude/gsd-ng/workflows/execute-plan.md
 @~/.claude/gsd-ng/templates/summary.md
 [If plan contains checkpoint tasks (type="checkpoint:*"), add:]
-@~/.claude/gsd-ng/references/checkpoints.md
+@~/.claude/gsd-ng/references/checkpoints-core.md
 </execution_context>
 
 <context>
@@ -85,7 +85,7 @@ Output: [What artifacts will be created]
   <done>[Acceptance criteria]</done>
 </task>
 
-<!-- For checkpoint task examples and patterns, see @~/.claude/gsd-ng/references/checkpoints.md -->
+<!-- For checkpoint task examples and patterns, see @~/.claude/gsd-ng/references/checkpoints-deep.md -->
 
 <task type="checkpoint:decision" gate="blocking">
   <decision>[What needs deciding]</decision>
@@ -384,7 +384,7 @@ Output: Working dashboard component.
 <execution_context>
 @~/.claude/gsd-ng/workflows/execute-plan.md
 @~/.claude/gsd-ng/templates/summary.md
-@~/.claude/gsd-ng/references/checkpoints.md
+@~/.claude/gsd-ng/references/checkpoints-core.md
 </execution_context>
 
 <context>
@@ -403,7 +403,7 @@ Output: Working dashboard component.
   <done>Dashboard renders without errors</done>
 </task>
 
-<!-- Checkpoint pattern: Claude starts server, user visits URL. See checkpoints.md for full patterns. -->
+<!-- Checkpoint pattern: Claude starts server, user visits URL. See checkpoints-deep.md for full patterns. -->
 <task type="auto">
   <name>Start dev server</name>
   <action>Run `npm run dev` in background, wait for ready</action>

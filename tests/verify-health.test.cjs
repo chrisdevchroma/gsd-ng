@@ -1200,3 +1200,163 @@ describe('validate health — orphan detection checks (W015-W018)', () => {
     assert.strictEqual(w018.repairable, true, 'W018 should be repairable');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validate health — related link checks (W021-W022)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validate health — related link checks (W021-W022)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n\nInstructions.\n');
+    // Write a minimal ROADMAP with one phase so W017/W018 don't interfere
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n## Phases\n\n- [ ] **Phase 1: Test Phase**\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-test'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // ─── Helper: write a pending todo with frontmatter ────────────────────────
+
+  function writePendingTodo(tmpDir, filename, frontmatter) {
+    const pendingDir = path.join(tmpDir, '.planning', 'todos', 'pending');
+    fs.mkdirSync(pendingDir, { recursive: true });
+    const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n');
+    fs.writeFileSync(
+      path.join(pendingDir, filename),
+      `---\n${fmLines}\n---\n\nTodo content.\n`
+    );
+  }
+
+  // ─── Helper: write a completed todo with frontmatter ─────────────────────
+
+  function writeCompletedTodo(tmpDir, filename, frontmatter) {
+    const completedDir = path.join(tmpDir, '.planning', 'todos', 'completed');
+    fs.mkdirSync(completedDir, { recursive: true });
+    const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n');
+    fs.writeFileSync(
+      path.join(completedDir, filename),
+      `---\n${fmLines}\n---\n\nTodo content.\n`
+    );
+  }
+
+  // ─── W021: broken related links ───────────────────────────────────────────
+
+  test('W021 fires when pending todo related: references non-existent file', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[ghost.md]' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w021 = parsed.warnings.find(w => w.code === 'W021');
+    assert.ok(w021, `Expected W021 in warnings: ${JSON.stringify(parsed.warnings)}`);
+    assert.ok(w021.message.includes('ghost.md'), `W021 message should mention "ghost.md": ${w021.message}`);
+    assert.ok(w021.message.includes('does not exist'), `W021 message should include "does not exist": ${w021.message}`);
+    assert.strictEqual(w021.repairable, true, 'W021 should be repairable');
+  });
+
+  test('W021 does NOT fire when related: references file that exists in completed/', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[other.md]' });
+    writeCompletedTodo(tmpDir, 'other.md', { completed: '2026-03-29' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W021'),
+      `Should not have W021 when ref exists in completed/: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+
+  test('W021 does NOT fire when related: references file that exists in pending/', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[todo-b.md]' });
+    writePendingTodo(tmpDir, 'todo-b.md', { related: '[todo-a.md]' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W021'),
+      `Should not have W021 when ref exists in pending/: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+
+  test('W021 is repairable', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[ghost.md]' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w021 = parsed.warnings.find(w => w.code === 'W021');
+    assert.ok(w021, `Expected W021: ${JSON.stringify(parsed.warnings)}`);
+    assert.strictEqual(w021.repairable, true, 'W021 should be repairable');
+  });
+
+  // ─── W022: asymmetric related links ───────────────────────────────────────
+
+  test('W022 fires when related: link is asymmetric (A references B but B does not reference A back)', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[todo-b.md]' });
+    writePendingTodo(tmpDir, 'todo-b.md', { title: 'Todo B' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    const w022 = parsed.warnings.find(w => w.code === 'W022');
+    assert.ok(w022, `Expected W022 in warnings: ${JSON.stringify(parsed.warnings)}`);
+    assert.ok(
+      w022.message.toLowerCase().includes('asymmetric'),
+      `W022 message should include "asymmetric": ${w022.message}`
+    );
+    assert.ok(w022.message.includes('todo-a.md'), `W022 message should mention "todo-a.md": ${w022.message}`);
+    assert.ok(w022.message.includes('todo-b.md'), `W022 message should mention "todo-b.md": ${w022.message}`);
+    assert.strictEqual(w022.repairable, true, 'W022 should be repairable');
+  });
+
+  test('W022 does NOT fire when related: references are symmetric', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[todo-b.md]' });
+    writePendingTodo(tmpDir, 'todo-b.md', { related: '[todo-a.md]' });
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W022'),
+      `Should not have W022 for symmetric related refs: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+
+  test('W022 skips refs not in pending/ (no double-warn with W021 for missing files)', () => {
+    writePendingTodo(tmpDir, 'todo-a.md', { related: '[ghost.md]' });
+    // ghost.md does not exist in pending/ or completed/
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const parsed = JSON.parse(result.output);
+    // W021 should fire (broken link), W022 should NOT fire (ghost not in pending/)
+    assert.ok(
+      parsed.warnings.some(w => w.code === 'W021'),
+      `Expected W021 for missing ref: ${JSON.stringify(parsed.warnings)}`
+    );
+    assert.ok(
+      !parsed.warnings.some(w => w.code === 'W022'),
+      `Should not have W022 when ref not in pending/: ${JSON.stringify(parsed.warnings)}`
+    );
+  });
+});

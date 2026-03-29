@@ -920,6 +920,55 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
+  // --- Check 21: Broken related links (related: references non-existent todos) ---
+  for (const file of pendingTodosForPhaseCheck) {
+    try {
+      const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.related) continue;
+      const relatedList = Array.isArray(fm.related) ? fm.related : (fm.related ? [fm.related] : []);
+      for (const ref of relatedList) {
+        const existsInPending = fs.existsSync(path.join(pendingTodosDir, ref));
+        const existsInCompleted = fs.existsSync(path.join(completedTodosDir, ref));
+        if (!existsInPending && !existsInCompleted) {
+          addIssue('warning', 'W021',
+            `Todo "${file}" has related: "${ref}" which does not exist in pending/ or completed/`,
+            'Remove the stale related: reference or recreate the missing todo',
+            true);
+          if (!repairs.includes('clearRelatedLink')) repairs.push('clearRelatedLink');
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  // --- Check 22: Asymmetric related links (A references B but B does not reference A back) ---
+  for (const file of pendingTodosForPhaseCheck) {
+    try {
+      const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.related) continue;
+      const relatedList = Array.isArray(fm.related) ? fm.related : (fm.related ? [fm.related] : []);
+      for (const ref of relatedList) {
+        const refPath = path.join(pendingTodosDir, ref);
+        if (!fs.existsSync(refPath)) continue; // W021 covers missing refs — skip here
+        try {
+          const refContent = fs.readFileSync(refPath, 'utf-8');
+          const refFm = extractFrontmatter(refContent);
+          const refRelatedList = refFm && refFm.related
+            ? (Array.isArray(refFm.related) ? refFm.related : [refFm.related])
+            : [];
+          if (!refRelatedList.includes(file)) {
+            addIssue('warning', 'W022',
+              `Asymmetric related link: "${file}" references "${ref}" but "${ref}" does not reference back`,
+              'Run /gsd:health --repair to add the missing backlink, or add it manually',
+              true);
+            if (!repairs.includes('addBacklink')) repairs.push('addBacklink');
+          }
+        } catch (_e) { /* skip unreadable ref */ }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
   // --- Check 20: Security events log — high-confidence detections ---
   const secLogDir = process.env.GSD_SECURITY_LOG_DIR || path.join(cwd, '.claude', 'logs');
   const secLogPath = path.join(secLogDir, 'security-events.log');

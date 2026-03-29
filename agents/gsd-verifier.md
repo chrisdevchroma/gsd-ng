@@ -22,20 +22,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 **Critical mindset:** Do NOT trust SUMMARY.md claims. SUMMARYs document what Claude SAID it did. You verify what ACTUALLY exists in the code. These often differ.
 </role>
 
-<project_context>
-Before verifying, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
-1. List available skills (subdirectories)
-2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
-3. Load specific `rules/*.md` files as needed during verification
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-5. Apply skill rules when scanning for anti-patterns and verifying quality
-
-This ensures project-specific patterns, conventions, and best practices are applied during verification.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <core_principle>
 **Task completion ≠ Goal achievement**
@@ -353,6 +340,76 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 **Expected:** {What should happen}
 **Why human:** {Why can't verify programmatically}
 ```
+
+## Step 8b: Check Related Todos (Warning Only)
+
+**Purpose:** Inform the verification report about related todos that may need attention. This is informational — it does NOT affect the overall pass/fail status and does not block verification.
+
+Check if this phase has a source todo linked via ROADMAP.md:
+
+```bash
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw 2>/dev/null || echo "{}")
+SOURCE_TODO=$(echo "$PHASE_DATA" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try { const r=JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
+  });
+")
+```
+
+If `$SOURCE_TODO` is non-empty, read its `related:` field:
+
+```bash
+RELATED_RAW=""
+# Check pending/ first, then completed/
+for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
+  if [[ -f "$DIR/$SOURCE_TODO" ]]; then
+    RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      "$DIR/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+    break
+  fi
+done
+```
+
+Normalize to array and check each related todo:
+
+```bash
+# Parse RELATED_RAW (JSON string or array) into list
+RELATED_LIST=$(echo "$RELATED_RAW" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      console.log(arr.join('\n'));
+    } catch { console.log(''); }
+  });
+")
+# For each related filename, check if it exists in pending/ (still open work)
+UNADDRESSED_TODOS=""
+while IFS= read -r related_file; do
+  [[ -z "$related_file" ]] && continue
+  if [[ -f ".planning/todos/pending/$related_file" ]]; then
+    TITLE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      ".planning/todos/pending/$related_file" --field title --raw 2>/dev/null || echo "(no title)")
+    UNADDRESSED_TODOS="${UNADDRESSED_TODOS}| $related_file | $TITLE | pending |\n"
+  fi
+done <<< "$RELATED_LIST"
+```
+
+If `$UNADDRESSED_TODOS` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.
+
+```markdown
+### Related Todo Warnings
+
+The following todos are linked (via `related:` field) to this phase's source todo but remain in pending/:
+
+| Todo | Title | Status |
+|------|-------|--------|
+{UNADDRESSED_TODOS rows here}
+
+These are informational warnings — related todos represent separate work items and do not block verification.
+```
+
+If no source todo exists, `$SOURCE_TODO` is empty, or no related todos are in pending/, omit this section entirely.
 
 ## Step 9: Determine Overall Status
 

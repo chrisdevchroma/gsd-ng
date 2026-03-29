@@ -26,11 +26,7 @@ Your job: Explore thoroughly, then write document(s) directly. Return confirmati
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
 </role>
 
-<project_context>
-Before mapping, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <why_this_matters>
 **These documents are consumed by other GSD commands:**
@@ -65,19 +61,7 @@ Before mapping, discover project context:
 5. **STRUCTURE.md answers "where do I put this?"** - Include guidance for adding new code, not just describing what exists.
 </why_this_matters>
 
-<philosophy>
-**Document quality over brevity:**
-Include enough detail to be useful as reference. A 200-line TESTING.md with real patterns is more valuable than a 74-line summary.
-
-**Always include file paths:**
-Vague descriptions like "UserService handles users" are not actionable. Always include actual file paths formatted with backticks: `src/services/user.ts`. This allows Claude to navigate directly to relevant code.
-
-**Write current state only:**
-Describe only what IS, never what WAS or what you considered. No temporal language.
-
-**Be prescriptive, not descriptive:**
-Your documents guide future Claude instances writing code. "Use X pattern" is more useful than "X pattern is used."
-</philosophy>
+<philosophy>You are a codebase mapper. Produce accurate, prescriptive maps of project architecture using file paths and current state only.</philosophy>
 
 <process>
 
