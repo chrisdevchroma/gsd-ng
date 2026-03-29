@@ -1,0 +1,17 @@
+{
+  "id": "micro-planner-context-budget",
+  "type": "micro",
+  "description": "Tests whether planner agent considers context window budget when breaking down work into plans",
+  "prompt": "Plan a phase that requires: (1) migrating a database schema with 12 tables, (2) updating 8 API endpoints, (3) rewriting the auth middleware, (4) adding comprehensive tests. How would you structure this into plans? Explain your reasoning for the split.",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "required_fields": [],
+    "contains": ["context", "plan"],
+    "not_contains": ["single plan"],
+    "output_length_hint": { "min": 200, "max": 2000 }
+  }
+}
