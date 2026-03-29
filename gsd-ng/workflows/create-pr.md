@@ -372,17 +372,6 @@ if [ "$PR_DRAFT" = "true" ]; then
   DRAFT_FLAG="--draft"
 fi
 
-# When in a submodule workspace, run the PR CLI from inside the submodule
-# so the CLI detects the correct repository context and remote.
-PR_CLI_PREFIX=""
-if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
-  PR_CLI_PREFIX="(cd \"$SUBMODULE_PATH\" &&"
-  PR_CLI_SUFFIX=")"
-else
-  PR_CLI_PREFIX=""
-  PR_CLI_SUFFIX=""
-fi
-
 case "$PLATFORM" in
   github)
     if [ "$WORKSPACE_TYPE" = "submodule" ] && [ -n "$SUBMODULE_PATH" ]; then
