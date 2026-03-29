@@ -334,7 +334,7 @@ Display: `CHECKPOINT: [Type]` box → Progress {X}/{Y} → Task name → type-sp
 
 After response: verify if specified. Pass → continue. Fail → inform, wait. WAIT for user — do NOT hallucinate completion.
 
-See ~/.claude/gsd-ng/references/checkpoints.md for details.
+See ~/.claude/gsd-ng/references/checkpoints-core.md for details.
 </step>
 
 <step name="checkpoint_return_for_orchestrator">

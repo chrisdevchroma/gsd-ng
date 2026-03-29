@@ -181,7 +181,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        <execution_context>
        @~/.claude/gsd-ng/workflows/execute-plan.md
        @~/.claude/gsd-ng/templates/summary.md
-       @~/.claude/gsd-ng/references/checkpoints.md
+       @~/.claude/gsd-ng/references/checkpoints-core.md
        @~/.claude/gsd-ng/references/tdd.md
        </execution_context>
 

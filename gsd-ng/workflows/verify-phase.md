@@ -18,7 +18,7 @@ Then verify each level against the actual codebase.
 </core_principle>
 
 <required_reading>
-@~/.claude/gsd-ng/references/verification-patterns.md
+@~/.claude/gsd-ng/references/verification-patterns-core.md
 @~/.claude/gsd-ng/templates/verification-report.md
 </required_reading>
 
