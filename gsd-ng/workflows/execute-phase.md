@@ -833,6 +833,105 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close phase-linked t
 ```
 
 Note: `todo complete` triggers inline issue-sync automatically (from Plan 01) — no additional sync code needed here.
+
+**Related Todos scan (after phase-linked scan):**
+
+Fire when `$VERIFY_STATUS` is `passed` AND `$ORIGIN_TODO_FILE` is set. The origin todo may now be in completed/ (just closed above), so check both locations.
+
+**Step 1 — Read outbound links from origin todo:**
+```bash
+RELATED_OUTBOUND=""
+if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS" == "passed" ]]; then
+  # Origin todo may have been moved to completed/ in the closure step above
+  ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
+  if [[ ! -f "$ORIGIN_PATH" ]]; then
+    ORIGIN_PATH=".planning/todos/completed/$ORIGIN_TODO_FILE"
+  fi
+  RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --raw 2>/dev/null || echo "")
+  if [[ -n "$RELATED_RAW" ]] && [[ "$RELATED_RAW" != "null" ]]; then
+    # Normalize: parse JSON (string or array) into newline-separated filenames
+    RELATED_OUTBOUND=$(echo "$RELATED_RAW" | node -e "
+      let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+        try { const v=JSON.parse(d); const arr=Array.isArray(v)?v:(v?[v]:[]); console.log(arr.join('\n')); } catch { console.log(''); }
+      });
+    ")
+  fi
+fi
+```
+
+**Step 2 — Scan all pending todos for inbound links to origin:**
+```bash
+RELATED_INBOUND=""
+PENDING_DIR=".planning/todos/pending"
+if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS" == "passed" ]]; then
+  for TODO_FILE in "$PENDING_DIR"/*.md; do
+    [[ -f "$TODO_FILE" ]] || continue
+    TODO_BASENAME=$(basename "$TODO_FILE")
+    # Skip the origin todo itself
+    [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
+    TODO_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --raw 2>/dev/null || echo "")
+    if [[ -n "$TODO_RELATED" ]] && [[ "$TODO_RELATED" != "null" ]]; then
+      if echo "$TODO_RELATED" | grep -q "$ORIGIN_TODO_FILE"; then
+        RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
+      fi
+    fi
+  done
+fi
+```
+
+**Step 3 — Deduplicate and filter (only pending/ files):**
+```bash
+RELATED_ALL=""
+if [[ -n "$RELATED_OUTBOUND" ]] || [[ -n "$RELATED_INBOUND" ]]; then
+  # Combine outbound + inbound, deduplicate, filter to files still in pending/
+  RELATED_ALL=$(printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
+    [[ -z "$REL_FILE" ]] && continue
+    [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
+    if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
+      echo "$REL_FILE"
+    fi
+  done)
+fi
+```
+
+**Step 4 — Present for closure (auto or interactive):**
+
+If `$RELATED_ALL` is non-empty:
+
+**Auto mode:**
+```bash
+if [[ "$AUTO_CFG" == "true" ]]; then
+  while IFS= read -r REL_TODO; do
+    [[ -z "$REL_TODO" ]] && continue
+    REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after phase completion" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
+    echo "[auto] Closed related todo: $REL_TITLE"
+  done <<< "$RELATED_ALL"
+fi
+```
+
+**Interactive mode** — build options list and use AskUserQuestion:
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "Closing '$ORIGIN_TODO_TITLE' — these todos are linked via related:. Close them too?",
+  multiSelect: true,
+  options: [
+    { label: "[rel-filename-1]", description: "[rel-title-1]" },
+    ...
+    { label: "Keep all open", description: "Leave all in pending" }
+  ]
+)
+```
+
+For each selected todo (not "Keep all open"):
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$SELECTED_REL"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after phase completion" --files ".planning/todos/completed/$SELECTED_REL" ".planning/todos/pending/$SELECTED_REL"
+```
+
+Note: `todo complete` triggers inline issue-sync automatically — no additional sync code needed.
 </step>
 
 </process>
