@@ -32,11 +32,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Return structured draft for user approval
 </role>
 
-<project_context>
-Before planning, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <downstream_consumer>
 Your ROADMAP.md is consumed by `/gsd:plan-phase` which uses it to:

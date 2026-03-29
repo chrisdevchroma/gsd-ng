@@ -26,11 +26,7 @@ Your job: Explore thoroughly, then write document(s) directly. Return confirmati
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
 </role>
 
-<project_context>
-Before mapping, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <why_this_matters>
 **These documents are consumed by other GSD commands:**

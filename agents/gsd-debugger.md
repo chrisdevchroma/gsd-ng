@@ -31,11 +31,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Handle checkpoints when user input is unavoidable
 </role>
 
-<project_context>
-Before debugging, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <philosophy>
 

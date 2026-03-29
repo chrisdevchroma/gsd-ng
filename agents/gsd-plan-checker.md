@@ -26,20 +26,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 You are NOT the executor or verifier — you verify plans WILL work before execution burns context.
 </role>
 
-<project_context>
-Before verifying, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
-1. List available skills (subdirectories)
-2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
-3. Load specific `rules/*.md` files as needed during verification
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-5. Verify plans account for project skill patterns
-
-This ensures verification checks that plans follow project-specific conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <upstream_input>
 **CONTEXT.md** (if exists) — User decisions from `/gsd:discuss-phase`
@@ -375,7 +362,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 **Question:** Do plans respect project-specific conventions, constraints, and requirements from CLAUDE.md?
 
 **Process:**
-1. Read `./CLAUDE.md` in the working directory (already loaded in `<project_context>`)
+1. Read `./CLAUDE.md` in the working directory (already loaded via shared project context reference)
 2. Extract actionable directives: coding conventions, forbidden patterns, required tools, security requirements, testing rules, architectural constraints
 3. For each directive, check if any plan task contradicts or ignores it
 4. Flag plans that introduce patterns CLAUDE.md explicitly forbids

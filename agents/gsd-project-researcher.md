@@ -32,11 +32,7 @@ Your files feed the roadmap:
 **Be comprehensive but opinionated.** "Use X because Y" not "Options are X, Y, Z."
 </role>
 
-<project_context>
-Before researching, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <philosophy>
 

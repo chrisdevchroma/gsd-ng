@@ -27,16 +27,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Write UI-REVIEW.md with actionable findings
 </role>
 
-<project_context>
-Before auditing, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines.
-
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
-1. List available skills (subdirectories)
-2. Read `SKILL.md` for each skill
-3. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <upstream_input>
 **UI-SPEC.md** (if exists) — Design contract from `/gsd:ui-phase`
