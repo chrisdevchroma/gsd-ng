@@ -1078,24 +1078,38 @@ describe('init phase-op validates phase number (SEC-02)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('init execute-phase submodule fields', () => {
+  const { createSubmoduleWorkspace } = require('./helpers.cjs');
+  const cleanupDir = (dir) => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+
   // Test via CLI since cmdInitExecutePhase calls output() -> process.exit()
   test('init execute-phase output includes submodule fields', () => {
-    // Use the actual workspace as test target — it has real .planning/ and .gitmodules
-    // gsd-ng/tests/ -> gsd-ng/ -> workspace root
-    const workspaceRoot = path.join(__dirname, '..', '..');
-    const result = runGsdTools(['init', 'execute-phase', '41'], workspaceRoot);
-    assert.ok(result.success, `init should succeed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    // Must have submodule fields
-    assert.ok('submodule_is_active' in parsed, 'missing submodule_is_active field');
-    assert.ok('submodule_git_cwd' in parsed, 'missing submodule_git_cwd field');
-    assert.ok('submodule_remote' in parsed, 'missing submodule_remote field');
-    assert.ok('submodule_remote_url' in parsed, 'missing submodule_remote_url field');
-    assert.ok('submodule_target_branch' in parsed, 'missing submodule_target_branch field');
-    assert.ok('submodule_ambiguous' in parsed, 'missing submodule_ambiguous field');
-    // This workspace IS a submodule workspace
-    assert.strictEqual(parsed.submodule_is_active, true);
-    assert.ok(parsed.submodule_git_cwd && parsed.submodule_git_cwd.endsWith('gsd-ng'), `git_cwd should end with gsd-ng, got: ${parsed.submodule_git_cwd}`);
+    // Use isolated temp submodule workspace — no dependency on real workspace or phase numbers
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ], { roadmap: true, state: true, phaseDir: '01-test' });
+    try {
+      const result = runGsdTools(['init', 'execute-phase', '1'], workspaceDir);
+      assert.ok(result.success, `init should succeed: ${result.error}`);
+      const parsed = JSON.parse(result.output);
+
+      // Verify all submodule_* fields are present
+      assert.ok('submodule_is_active' in parsed, 'missing submodule_is_active field');
+      assert.ok('submodule_git_cwd' in parsed, 'missing submodule_git_cwd field');
+      assert.ok('submodule_remote' in parsed, 'missing submodule_remote field');
+      assert.ok('submodule_remote_url' in parsed, 'missing submodule_remote_url field');
+      assert.ok('submodule_target_branch' in parsed, 'missing submodule_target_branch field');
+      assert.ok('submodule_ambiguous' in parsed, 'missing submodule_ambiguous field');
+
+      // This is a submodule workspace
+      assert.strictEqual(parsed.submodule_is_active, true, 'should detect submodule workspace');
+      // git_cwd should point to the submodule directory
+      assert.ok(
+        parsed.submodule_git_cwd && parsed.submodule_git_cwd.includes('mylib'),
+        `submodule_git_cwd should reference mylib, got: ${parsed.submodule_git_cwd}`
+      );
+    } finally {
+      cleanupDir(workspaceDir);
+    }
   });
 });
 
