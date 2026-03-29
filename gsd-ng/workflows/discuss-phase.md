@@ -250,6 +250,84 @@ For each linked todo in auto mode:
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "${PHASE}"
 ```
 
+**Surface related: link suggestions (interactive mode only)**
+
+After the phase: linking is done, check if this phase has a source todo and surface potential `related:` links.
+
+In **--auto mode**: skip this section entirely. Related: linking during discussion requires user confirmation — it is not a closure workflow.
+
+In **interactive mode**:
+
+1. Find the source todo for this phase by checking ROADMAP.md:
+```bash
+SOURCE_TODO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
+  process.stdin.on('data', d => {
+    try { const r = JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
+  });
+")
+```
+
+2. If `$SOURCE_TODO` is non-empty, read its existing `related:` field:
+```bash
+EXISTING_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+```
+
+3. From the phase: linking candidates above (1-3 todos that were evaluated), filter for any that:
+   - Were NOT selected for phase: linking
+   - Are NOT already in the source todo's `related:` field
+
+4. If 1-3 such candidates exist:
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "These pending todos may be related to the source todo for Phase ${PHASE}. Link them via related: field?",
+  multiSelect: true,
+  options: [
+    { label: "[todo-filename-1]", description: "[todo title 1]" },
+    ...
+    { label: "None of these", description: "Skip related linking" }
+  ]
+)
+```
+
+5. For each selected todo (not "None of these"), set `related:` bidirectionally using the safe read-append-write pattern:
+```bash
+# Append selected todo filename to source todo's related: field
+SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+UPDATED_SOURCE=$(echo "$SOURCE_RELATED_RAW" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      if (!arr.includes('$SELECTED_FILE')) arr.push('$SELECTED_FILE');
+      console.log(JSON.stringify(arr));
+    } catch { console.log(JSON.stringify(['$SELECTED_FILE'])); }
+  });
+")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
+
+# Append source todo filename to selected todo's related: field (backlink)
+SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --raw 2>/dev/null || echo "")
+UPDATED_SELECTED=$(echo "$SELECTED_RELATED_RAW" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      if (!arr.includes('$SOURCE_TODO')) arr.push('$SOURCE_TODO');
+      console.log(JSON.stringify(arr));
+    } catch { console.log(JSON.stringify(['$SOURCE_TODO'])); }
+  });
+")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
+```
+
+Log: `Linked related: $SOURCE_TODO <-> $SELECTED_FILE`
+
 Continue to load_prior_context.
 </step>
 

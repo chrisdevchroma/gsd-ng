@@ -73,12 +73,27 @@ If potential duplicate found:
 2. Compare scope
 
 If overlapping, use AskUserQuestion:
-- header: "Duplicate?"
-- question: "Similar todo exists: [title]. What would you like to do?"
-- options:
-  - "Skip" — keep existing todo
-  - "Replace" — update existing with new context
-  - "Add anyway" — create as separate todo
+```
+AskUserQuestion(
+  header: "Duplicate?",
+  question: "Similar todo exists: [title]. What would you like to do?",
+  multiSelect: false,
+  options: [
+    { label: "Skip", description: "Keep existing todo" },
+    { label: "Replace", description: "Update existing with new context" },
+    { label: "Add anyway", description: "Create as separate todo" },
+    { label: "Link as related", description: "Create new todo and link both as related" }
+  ]
+)
+```
+
+Handle responses:
+- **"Skip"**: Do not create new todo. Exit workflow.
+- **"Replace"**: Update the existing todo file with new context. Exit workflow.
+- **"Add anyway"**: Continue to `create_file` step as normal.
+- **"Link as related"**: Set `LINK_AS_RELATED=true` and `EXISTING_TODO_FOR_LINK="[existing-todo-filename]"` (basename only, e.g. `2026-03-29-auth-refresh.md`). Continue to `create_file` step.
+
+Note: If "Link as related" was selected, `$LINK_AS_RELATED` is set to `true` and `$EXISTING_TODO_FOR_LINK` holds the existing todo filename. The auto-backlink runs in the `git_commit` step after `create_file`.
 </step>
 
 <step name="create_file">
@@ -126,10 +141,44 @@ If `.planning/STATE.md` exists:
 </step>
 
 <step name="git_commit">
-Commit the todo and any updated state:
+**If `$LINK_AS_RELATED` is true**, run the auto-backlink BEFORE committing:
 
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: capture todo - [title]" --files .planning/todos/pending/[filename] .planning/STATE.md
+# NEW_TODO_FILE is the filename just created (e.g., "2026-03-29-my-new-todo.md")
+# EXISTING_TODO_FOR_LINK is the similar todo found during duplicate check (basename only)
+
+# Set related: on the new todo (fresh file, no existing related: field)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$NEW_TODO_FILE" --field related --value "[\"$EXISTING_TODO_FOR_LINK\"]"
+
+# Append to related: on the existing todo (may already have related: entries)
+EXISTING_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --raw 2>/dev/null || echo "")
+UPDATED_RELATED=$(echo "$EXISTING_RELATED" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const v = JSON.parse(d);
+      const arr = Array.isArray(v) ? v : (v ? [v] : []);
+      if (!arr.includes('$NEW_TODO_FILE')) arr.push('$NEW_TODO_FILE');
+      console.log(JSON.stringify(arr));
+    } catch { console.log(JSON.stringify(['$NEW_TODO_FILE'])); }
+  });
+")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
+  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --value "$UPDATED_RELATED"
+```
+
+Log: `Linked: $NEW_TODO_FILE <-> $EXISTING_TODO_FOR_LINK`
+
+Commit the todo, any updated state, and (if linking) the existing todo:
+
+```bash
+if [[ "$LINK_AS_RELATED" == "true" ]]; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: capture todo - [title] (linked to $EXISTING_TODO_FOR_LINK)" \
+    --files ".planning/todos/pending/$NEW_TODO_FILE" ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" .planning/STATE.md
+else
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: capture todo - [title]" --files .planning/todos/pending/[filename] .planning/STATE.md
+fi
 ```
 
 Tool respects `commit_docs` config and gitignore automatically.
