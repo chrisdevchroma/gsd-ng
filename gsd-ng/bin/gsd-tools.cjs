@@ -1032,7 +1032,48 @@ async function main() {
     }
 
     case 'detect-workspace': {
+      // Support --field <name> --raw for scalar extraction
+      const dwFieldIdx = args.indexOf('--field');
+      const dwField = dwFieldIdx !== -1 ? args[dwFieldIdx + 1] : null;
+      if (dwField && raw) {
+        const dwResult = workspace.cmdDetectWorkspace(cwd, false, true);
+        if (dwResult && dwResult[dwField] !== undefined) {
+          process.stdout.write(String(dwResult[dwField]));
+        }
+        process.exit(0);
+      }
       workspace.cmdDetectWorkspace(cwd, raw);
+      break;
+    }
+
+    case 'git-context': {
+      // Support --field <name> --raw for scalar extraction
+      const gcFieldIdx = args.indexOf('--field');
+      const gcField = gcFieldIdx !== -1 ? args[gcFieldIdx + 1] : null;
+      if (gcField && raw) {
+        const gcResult = workspace.cmdGitContext(cwd, false, true);
+        if (gcResult && gcResult[gcField] !== undefined) {
+          process.stdout.write(String(gcResult[gcField]));
+        }
+        process.exit(0);
+      }
+      workspace.cmdGitContext(cwd, raw);
+      break;
+    }
+
+    case 'ssh-check': {
+      const sshUrl = args[1] && !args[1].startsWith('--') ? args[1] : '';
+      // Support --field <name> --raw for scalar extraction
+      const scFieldIdx = args.indexOf('--field');
+      const scField = scFieldIdx !== -1 ? args[scFieldIdx + 1] : null;
+      if (scField && raw) {
+        const scResult = workspace.cmdSshCheck(sshUrl, false, true);
+        if (scResult && scResult[scField] !== undefined) {
+          process.stdout.write(String(scResult[scField]));
+        }
+        process.exit(0);
+      }
+      workspace.cmdSshCheck(sshUrl, raw);
       break;
     }
 

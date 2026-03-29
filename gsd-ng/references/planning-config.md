@@ -319,4 +319,26 @@ Snapshot builds append `+{short_hash}` (e.g., `1.2.3+abc1234`) per SemVer 2.0.0 
 
 </commit_format_config>
 
+<submodule_git_config>
+
+### Submodule-Aware Git Operations
+
+When the workspace contains git submodules (`.gitmodules` exists), GSD automatically routes git push, PR creation, and branch operations to the correct repository:
+
+1. **Auto-detection:** `git-context` inspects `git diff` to identify which submodule has changes
+2. **Remote resolution:** Uses the submodule's own `origin` remote, not the workspace remote
+3. **Target branch:** Reads from `git.submodule.target_branch` config, falls back to git tracking info, then `main`
+4. **Platform detection:** `git-context` includes `platform`, `cli`, `cli_installed` fields derived from the submodule's remote URL
+
+| Config Key | Default | Description |
+|------------|---------|-------------|
+| `git.submodule.target_branch` | (auto-detect) | Override the target branch for submodule PRs |
+| `git.submodule.remote` | `"origin"` | Override the remote name used for submodule git operations |
+
+**When to configure:** Set `git.submodule.target_branch` when the submodule's integration branch differs from what git tracking reports. Common case: submodule tracks `develop` but git reports `main`.
+
+**Multi-submodule workspaces:** If multiple submodules have uncommitted changes, GSD surfaces the ambiguity and asks the user to resolve before continuing with push or PR creation.
+
+</submodule_git_config>
+
 </planning_config>

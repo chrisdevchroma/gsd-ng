@@ -87,7 +87,17 @@ function output(result, raw, rawValue) {
     // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
     if (json.length > 50000) {
       reapStaleTempFiles();
-      const tmpPath = path.join(require('os').tmpdir(), `gsd-${Date.now()}.json`);
+      let tmpDir = require('os').tmpdir();
+      try {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      } catch {
+        // os.tmpdir() directory may not be writable (e.g. sandbox sets TMPDIR=/tmp/claude
+        // but /tmp is restricted). Fall back to a known-writable sibling directory.
+        const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+        tmpDir = path.join(path.dirname(tmpDir), path.basename(tmpDir) + '-' + uid);
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      const tmpPath = path.join(tmpDir, `gsd-${Date.now()}.json`);
       fs.writeFileSync(tmpPath, json, 'utf-8');
       data = '@file:' + tmpPath;
     } else {

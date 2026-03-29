@@ -162,8 +162,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    Resolve workspace topology for agent context injection:
    ```bash
+   WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type --raw 2>/dev/null || echo "standalone")
    WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
-   WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
    SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
    PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
    ```
@@ -336,54 +336,51 @@ After all waves:
 
 **Post-phase push (when configured):**
 
-Read from init JSON: `auto_push`, `remote`, `branch_name`, `branching_strategy`.
+Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 
 ```bash
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # SSH pre-push check (git.ssh_check defaults to true)
+  # Read submodule fields from $INIT (already loaded with @file: handling)
+  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
+  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+  SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+```
+
+**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.
+
+**SSH pre-push check:**
+
+```bash
   SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --raw 2>/dev/null || echo "true")
-  if [ "$SSH_CHECK" = "true" ]; then
-    REMOTE_URL=$(git remote get-url "${REMOTE:-origin}" 2>/dev/null || echo "")
-    if echo "$REMOTE_URL" | grep -qE '^git@|^ssh://'; then
-      SSH_STATUS=$(ssh-add -l 2>&1); SSH_EXIT=$?
-      if [ $SSH_EXIT -ne 0 ] || echo "$SSH_STATUS" | grep -q "no identities"; then
-        echo ""
-        echo "WARNING: SSH agent has no identities loaded. Git push will likely fail."
-        echo "Run in your terminal: ssh-add ~/.ssh/id_ed25519"
-        echo "(or the path to your SSH key)"
-        echo ""
-        echo "After loading your key, press Enter to retry push, or type 'skip' to skip push."
-        # Note: In Claude Code Bash tool, read may not block — the warning itself is the value.
-        # The push will proceed and fail with a clear error message if key is still not loaded.
-      fi
-      # Check SSH signing key requirement
-      SIGN_FORMAT=$(git config gpg.format 2>/dev/null || echo "")
-      if [ "$SIGN_FORMAT" = "ssh" ] && [ $SSH_EXIT -ne 0 ]; then
-        echo "Note: SSH-signed commits also require the signing key loaded in ssh-agent."
+  if [ "$SSH_CHECK" = "true" ] && [ -n "$SUBMODULE_REMOTE_URL" ]; then
+    SSH_STATUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status --raw)
+    if [ "$SSH_STATUS" != "ok" ] && [ "$SSH_STATUS" != "not_required" ]; then
+      SSH_MSG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message --raw)
+      echo "WARNING: SSH check failed — $SSH_MSG"
+      # Also check for SSH signing
+      GPG_FORMAT=$(git -C "$GIT_CWD" config gpg.format 2>/dev/null || echo "")
+      if [ "$GPG_FORMAT" = "ssh" ]; then
+        echo "NOTE: gpg.format=ssh detected — your signing key also needs to be loaded in the SSH agent."
       fi
     fi
   fi
+```
 
-  echo "Pushing $BRANCH_NAME to $REMOTE..."
+```bash
+  echo "Pushing $BRANCH_NAME to $PUSH_REMOTE..."
 
-  # Check if branch already has upstream tracking
-  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
-  if [ -n "$UPSTREAM" ]; then
-    PUSH_OUT=$(git push "$REMOTE" "$BRANCH_NAME" 2>&1)
-    PUSH_EXIT=$?
-  else
-    # First push — set upstream tracking
-    PUSH_OUT=$(git push -u "$REMOTE" "$BRANCH_NAME" 2>&1)
-    PUSH_EXIT=$?
-  fi
+  # Push with upstream tracking (safe to use -u unconditionally — git ignores it when upstream exists)
+  PUSH_OUT=$(git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$BRANCH_NAME" 2>&1)
+  PUSH_EXIT=$?
 
   if [ $PUSH_EXIT -ne 0 ]; then
-    echo "Warning: Push to $REMOTE failed: $PUSH_OUT"
-    echo "Local commits are safe. Push manually: git push -u $REMOTE $BRANCH_NAME"
+    echo "Warning: Push to $PUSH_REMOTE failed: $PUSH_OUT"
+    echo "Local commits are safe. Push manually: git -C \"$GIT_CWD\" push -u $PUSH_REMOTE $BRANCH_NAME"
   else
-    echo "Pushed $BRANCH_NAME to $REMOTE"
+    echo "Pushed $BRANCH_NAME to $PUSH_REMOTE"
   fi
 fi
 ```

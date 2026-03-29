@@ -88,4 +88,107 @@ function cleanup(tmpDir) {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, TOOLS_PATH };
+/**
+ * Create a submodule workspace with one or more submodule repos.
+ *
+ * Each submodule directory is initialized as its own git repo AND
+ * registered as a gitlink in the workspace index (simulating `git submodule add`
+ * without requiring a real accessible remote).
+ *
+ * @param {Array<{name: string, path: string, remoteUrl: string}>} submoduleDefs - Submodule definitions
+ * @param {object} opts - Optional scaffolding
+ * @param {boolean} opts.roadmap - If true, seed .planning/ROADMAP.md with minimal phase content
+ * @param {boolean} opts.state - If true, seed .planning/STATE.md with minimal content
+ * @param {string} opts.phaseDir - If provided, create this phase directory under .planning/phases/
+ * @returns {{ workspaceDir: string, subDirs: string[] }}
+ */
+function createSubmoduleWorkspace(submoduleDefs, opts = {}) {
+  // submoduleDefs = [{ name, path, remoteUrl }]
+  const workspaceDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-ws-test-'));
+  fs.mkdirSync(path.join(workspaceDir, '.planning', 'phases'), { recursive: true });
+  execSync('git init', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config user.email "test@test.com"', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config user.name "Test"', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git config commit.gpgsign false', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git remote add origin "https://github.com/workspace/root.git"', { cwd: workspaceDir, stdio: 'pipe' });
+
+  // Build .gitmodules content
+  let gitmodulesContent = '';
+  const subDirs = [];
+
+  for (const def of submoduleDefs) {
+    const subDir = path.join(workspaceDir, def.path);
+    fs.mkdirSync(subDir, { recursive: true });
+
+    // Init submodule repo
+    execSync('git init', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config commit.gpgsign false', { cwd: subDir, stdio: 'pipe' });
+    execSync(`git remote add origin "${def.remoteUrl}"`, { cwd: subDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(subDir, 'README.md'), `# ${def.name}\n`);
+    execSync('git add README.md', { cwd: subDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: subDir, stdio: 'pipe' });
+
+    // Register the submodule as a gitlink in the workspace index.
+    // This uses `git update-index --add --cacheinfo 160000,<sha>,<path>` to
+    // create a gitlink (mode 160000) pointing to the submodule's HEAD commit.
+    const subHeadResult = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    execSync(
+      `git update-index --add --cacheinfo 160000,${subHeadResult},${def.path}`,
+      { cwd: workspaceDir, stdio: 'pipe' }
+    );
+
+    gitmodulesContent += `[submodule "${def.name}"]\n\tpath = ${def.path}\n\turl = ${def.remoteUrl}\n`;
+    subDirs.push(subDir);
+  }
+
+  fs.writeFileSync(path.join(workspaceDir, '.gitmodules'), gitmodulesContent);
+  execSync('git add .gitmodules', { cwd: workspaceDir, stdio: 'pipe' });
+  execSync('git commit -m "add submodules"', { cwd: workspaceDir, stdio: 'pipe' });
+
+  // Optional scaffolding for init tests
+  if (opts.roadmap) {
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n## Phase Details\n\n### Phase 1: Test\n**Goal:** Test phase\n**Requirements:** none\n**Depends on:** nothing\n**Plans:** 1 plans\n\nPlans:\n- [ ] 01-01-PLAN.md\n'
+    );
+  }
+  if (opts.state) {
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'STATE.md'),
+      '---\ngsd_state_version: 1.0\nmilestone: test\ncurrent_phase: 1\ncurrent_plan: Not started\nstatus: testing\n---\n\n# Project State\n'
+    );
+  }
+  if (opts.phaseDir) {
+    const pDir = path.join(workspaceDir, '.planning', 'phases', opts.phaseDir);
+    fs.mkdirSync(pDir, { recursive: true });
+    fs.writeFileSync(path.join(pDir, '01-01-PLAN.md'), '---\nphase: 01-test\nplan: 01\ntype: execute\nwave: 1\ndepends_on: []\nfiles_modified: []\nautonomous: true\nrequirements: []\nmust_haves:\n  truths: []\n  artifacts: []\n  key_links: []\n---\n\n<objective>Test</objective>\n');
+  }
+
+  return { workspaceDir, subDirs };
+}
+
+/**
+ * Simulate a submodule update in the workspace git (advances the gitlink).
+ * Creates a new commit in the submodule and updates the workspace gitlink,
+ * making the submodule path appear in `git diff --name-only HEAD`.
+ *
+ * @param {string} workspaceDir - Root workspace directory
+ * @param {string} submodulePath - Relative path to the submodule within workspace
+ */
+function touchSubmodule(workspaceDir, submodulePath) {
+  const subDir = path.join(workspaceDir, submodulePath);
+  // Create a new commit in the submodule to advance its HEAD
+  fs.writeFileSync(path.join(subDir, 'touched.txt'), String(Date.now()));
+  execSync('git add touched.txt', { cwd: subDir, stdio: 'pipe' });
+  execSync('git commit -m "touched"', { cwd: subDir, stdio: 'pipe' });
+  // Update the workspace gitlink to point to the new commit (staged, not committed)
+  const newSha = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+  execSync(
+    `git update-index --cacheinfo 160000,${newSha},${submodulePath}`,
+    { cwd: workspaceDir, stdio: 'pipe' }
+  );
+}
+
+module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, TOOLS_PATH, createSubmoduleWorkspace, touchSubmodule };

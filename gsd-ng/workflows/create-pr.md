@@ -31,8 +31,6 @@ if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 
 Extract from init JSON:
 - `BRANCHING_STRATEGY` ← `branching_strategy`
-- `TARGET_BRANCH` ← `target_branch`
-- `REMOTE` ← `remote`
 - `BRANCH_NAME` ← `branch_name` (GSD work branch)
 - `REVIEW_BRANCH_TEMPLATE` ← `review_branch_template`
 - `PR_DRAFT` ← `pr_draft`
@@ -40,6 +38,28 @@ Extract from init JSON:
 - `PHASE_NAME` ← `phase_name`
 - `PHASE_SLUG` ← `phase_slug`
 - `PHASE_DIR_NAME` ← basename of `phase_dir`
+
+Resolve submodule-aware git routing from $INIT (already loaded with @file: handling above):
+
+```bash
+# Read submodule fields from $INIT (already loaded with @file: handling above)
+IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
+GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
+PUSH_TARGET=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
+AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+
+# Platform/CLI fields from detect-platform (per user decision: stays separate from init)
+PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform --raw)
+CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli --raw)
+CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed --raw)
+CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url --raw)
+```
+
+Use `$PUSH_REMOTE`, `$PUSH_TARGET`, and `$GIT_CWD` for all git and platform operations below instead of `$REMOTE` and `$TARGET_BRANCH`.
+
+**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, tell the user: "Multiple submodules have changes. Cannot determine target repo for PR. Commit to only one submodule, or specify manually." Then stop — do not proceed with PR creation.
 
 Parse flags:
 - `--draft` / `--no-draft`: Override `pr_draft` config
@@ -65,44 +85,30 @@ fi
 </step>
 
 <step name="detect_platform">
-Detect the git hosting platform:
+Platform, CLI, and CLI availability are already extracted from the detect-platform calls above (`$PLATFORM`, `$CLI`, `$CLI_INSTALLED`, `$CLI_INSTALL_URL`). No additional call is needed.
 
-```bash
-PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform "$REMOTE" --field platform --raw 2>/dev/null || echo "")
-CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform "$REMOTE" --field cli --raw 2>/dev/null || echo "")
-CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform "$REMOTE" --field cli_installed --raw 2>/dev/null || echo "false")
-PLATFORM_SOURCE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform "$REMOTE" --field source --raw 2>/dev/null || echo "unknown")
-CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform "$REMOTE" --field cli_install_url --raw 2>/dev/null || echo "")
-```
+**If `$PLATFORM` is empty:**
 
-**If platform is null (unknown):**
-```
-Warning: Could not detect git hosting platform from remote URL.
-Set platform manually: node gsd-tools.cjs config-set git.platform github
-Supported values: github, gitlab, forgejo, gitea
-PR creation disabled for this session. Push features still work.
-```
-STOP — return without creating PR.
+Warn the user: "Could not detect git hosting platform from remote URL. Set platform manually: `node gsd-tools.cjs config-set git.platform github`. Supported: github, gitlab, forgejo, gitea." Stop — return without creating PR.
 
-**If CLI not installed:**
-```
-Warning: {cli} CLI not found. Install from {cli_install_url} to enable PR creation.
-Push-only features still work. PR creation disabled for this session.
+**If `$CLI_INSTALLED` is `"false"`:**
 
-Do NOT use raw API calls as a workaround — install the CLI tool.
-```
-STOP — return without creating PR. Do NOT fall back to curl/API.
+Warn the user: "{CLI} CLI not found. Install from {CLI_INSTALL_URL} to enable PR creation. Do NOT use raw API calls as a workaround — install the CLI tool." Stop — return without creating PR.
 </step>
 
 <step name="validate_target_branch">
 Verify the target branch exists on the remote before attempting PR creation:
 
 ```bash
-if ! git ls-remote --heads "$REMOTE" "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
-  echo "Error: Target branch '$TARGET_BRANCH' not found on remote '$REMOTE'."
+if ! git -C "$GIT_CWD" ls-remote --heads "$PUSH_REMOTE" "$PUSH_TARGET" | grep -q "$PUSH_TARGET"; then
+  echo "Error: Target branch '$PUSH_TARGET' not found on remote '$PUSH_REMOTE'."
   echo "Available branches:"
-  git ls-remote --heads "$REMOTE" | head -10
-  echo "Set target branch: node gsd-tools.cjs config-set git.target_branch {branch}"
+  git -C "$GIT_CWD" ls-remote --heads "$PUSH_REMOTE" | head -10
+  if [ "$IS_SUBMODULE" = "true" ]; then
+    echo "Set target branch: node gsd-tools.cjs config-set git.submodule.target_branch {branch}"
+  else
+    echo "Set target branch: node gsd-tools.cjs config-set git.target_branch {branch}"
+  fi
   exit 1
 fi
 ```
@@ -117,14 +123,14 @@ No review branch, no squash. Open PR directly from current branch.
 
 ```bash
 if [ "$BRANCHING_STRATEGY" = "none" ]; then
-  CURRENT_BRANCH=$(git branch --show-current)
+  CURRENT_BRANCH=$(git -C "$GIT_CWD" branch --show-current)
   HEAD_BRANCH="$CURRENT_BRANCH"
   # Skip to build_pr_description — no review branch needed
 fi
 ```
 
 For none strategy: skip `determine_type`, `create_review_branch`, and `push_review_branch` steps.
-Skip to `build_pr_description` step. The PR will be opened from the current branch against `target_branch`.
+Skip to `build_pr_description` step. The PR will be opened from the current branch against `$PUSH_TARGET`.
 </step>
 
 <step name="determine_type">
@@ -172,24 +178,24 @@ REVIEW_BRANCH=$(echo "$REVIEW_BRANCH_TEMPLATE" | \
 
 Save the current work branch for later:
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(git -C "$GIT_CWD" branch --show-current)
 ```
 
 Create or reset review branch from target_branch:
 ```bash
-if git show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH" 2>/dev/null; then
+if git -C "$GIT_CWD" show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH" 2>/dev/null; then
   # Review branch exists — this is an update (re-squash)
-  git checkout "$REVIEW_BRANCH"
-  git reset --hard "$TARGET_BRANCH"
+  git -C "$GIT_CWD" checkout "$REVIEW_BRANCH"
+  git -C "$GIT_CWD" reset --hard "$PUSH_TARGET"
 else
-  git checkout -b "$REVIEW_BRANCH" "$TARGET_BRANCH"
+  git -C "$GIT_CWD" checkout -b "$REVIEW_BRANCH" "$PUSH_TARGET"
 fi
 ```
 
 Squash work branch onto review branch:
 ```bash
 # Single squash of all work from the GSD work branch
-git merge --squash "$CURRENT_BRANCH" 2>&1
+git -C "$GIT_CWD" merge --squash "$CURRENT_BRANCH" 2>&1
 
 # Build squash commit message from plan summaries
 SQUASH_MSG=""
@@ -205,7 +211,7 @@ if [ -z "$SQUASH_MSG" ]; then
   SQUASH_MSG="Phase ${PHASE_NUMBER}: ${PHASE_NAME}"
 fi
 
-git commit -m "$(printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}")"
+git -C "$GIT_CWD" commit -m "$(printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}")"
 ```
 
 Set HEAD_BRANCH for PR creation:
@@ -220,14 +226,14 @@ Push the review branch (or current branch for none strategy) to remote:
 ```bash
 # For review branches, use --force-with-lease (squash rewrites history)
 if [ "$BRANCHING_STRATEGY" != "none" ]; then
-  PUSH_OUT=$(git push --force-with-lease -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
+  PUSH_OUT=$(git -C "$GIT_CWD" push --force-with-lease -u "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
 else
-  # For none strategy, regular push
-  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
+  # For none strategy, regular push with upstream tracking (safe to use -u unconditionally)
+  UPSTREAM=$(git -C "$GIT_CWD" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
   if [ -n "$UPSTREAM" ]; then
-    PUSH_OUT=$(git push "$REMOTE" "$HEAD_BRANCH" 2>&1)
+    PUSH_OUT=$(git -C "$GIT_CWD" push "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
   else
-    PUSH_OUT=$(git push -u "$REMOTE" "$HEAD_BRANCH" 2>&1)
+    PUSH_OUT=$(git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
   fi
 fi
 PUSH_EXIT=$?
@@ -236,7 +242,7 @@ if [ $PUSH_EXIT -ne 0 ]; then
   echo "Error: Push failed — $PUSH_OUT"
   echo "Fix the issue and retry: /gsd:create-pr ${PHASE_ARG}"
   # Return to work branch before exiting
-  git checkout "$CURRENT_BRANCH" 2>/dev/null
+  git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
   exit 1
 fi
 ```
@@ -246,7 +252,7 @@ STOP on push failure — cannot create PR without pushed branch.
 Return to work branch after push (for phase/milestone strategies):
 ```bash
 if [ "$BRANCHING_STRATEGY" != "none" ]; then
-  git checkout "$CURRENT_BRANCH" 2>/dev/null || true
+  git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
 fi
 ```
 </step>
@@ -378,7 +384,7 @@ fi
 case "$PLATFORM" in
   github)
     PR_URL=$(gh pr create \
-      --base "$TARGET_BRANCH" \
+      --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
       --body-file "$PR_BODY_FILE" \
@@ -388,7 +394,7 @@ case "$PLATFORM" in
 
   gitlab)
     PR_URL=$(glab mr create \
-      --target-branch "$TARGET_BRANCH" \
+      --target-branch "$PUSH_TARGET" \
       --source-branch "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
       --description "$(cat "$PR_BODY_FILE")" \
@@ -398,7 +404,7 @@ case "$PLATFORM" in
 
   forgejo)
     PR_URL=$(fj pr create \
-      --base "$TARGET_BRANCH" \
+      --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
       --body "$(cat "$PR_BODY_FILE")" 2>&1)
@@ -407,7 +413,7 @@ case "$PLATFORM" in
 
   gitea)
     PR_URL=$(tea pr create \
-      --base "$TARGET_BRANCH" \
+      --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
       --description "$(cat "$PR_BODY_FILE")" 2>&1)
@@ -436,7 +442,7 @@ else
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
   echo "  Phase:  ${PHASE_NUMBER} - ${PHASE_NAME}"
-  echo "  Branch: ${HEAD_BRANCH} -> ${TARGET_BRANCH}"
+  echo "  Branch: ${HEAD_BRANCH} -> ${PUSH_TARGET}"
   echo "  Draft:  ${PR_DRAFT}"
   echo "  URL:    ${PR_URL}"
   echo ""
