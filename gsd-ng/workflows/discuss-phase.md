@@ -105,36 +105,7 @@ Phase: "API documentation"
 - Scope (roadmap defines this)
 </gray_area_identification>
 
-<tool_usage>
-CRITICAL: Every user choice in this workflow MUST be made via the AskUserQuestion tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
-
-The AskUserQuestion tool accepts a `questions` array. Each question must have:
-- `question` (string) — the question text
-- `header` (string, max 12 chars) — short label shown above the question
-- `multiSelect` (boolean) — true for "select all that apply", false for single choice
-- `options` (array of `{label, description}`) — 2-4 choices; "Other" is added automatically, do NOT add it yourself
-
-Example call structure:
-```json
-{
-  "questions": [
-    {
-      "question": "Which areas do you want to discuss?",
-      "header": "Discuss",
-      "multiSelect": true,
-      "options": [
-        { "label": "Layout style", "description": "Cards vs list vs timeline" },
-        { "label": "Loading behavior", "description": "Infinite scroll or pagination" }
-      ]
-    }
-  ]
-}
-```
-
-If the user picks "Other" (free text): follow up as plain text — NOT another AskUserQuestion.
-
-**UI rendering constraint:** Keep output before each AskUserQuestion call to 2-3 lines maximum. The Claude Code dialog can occlude preceding text when it is long. Embed context summaries in the `question` string rather than outputting them as preceding prose.
-</tool_usage>
+@~/.claude/gsd-ng/references/ask-user-question.md
 
 <answer_validation>
 **IMPORTANT: Answer validation** — After every AskUserQuestion call, check if the response is empty or whitespace-only. If so:
