@@ -152,7 +152,6 @@ Wiring verification checks that components actually communicate. This is where m
 
 
 **Red flags:**
-</div>
 
 </wiring_verification>
 

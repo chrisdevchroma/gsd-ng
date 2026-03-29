@@ -76,9 +76,6 @@ When Claude encounters `type="checkpoint:*"`:
 | Supabase | `supabase secrets set` | `supabase secrets set MY_SECRET=value` |
 
 **Secret collection pattern:**
-</task>
-</task>
-</task>
 
 ## Dev Server Automation
 
@@ -123,10 +120,6 @@ When Claude encounters `type="checkpoint:*"`:
 | Network timeout | Retry with backoff, then checkpoint if persistent |
 
 **Never present a checkpoint with broken verification environment.** If `curl localhost:3000` fails, don't ask user to "visit localhost:3000".
-
-</task>
-</task>
-</task>
 
 ## Automatable Quick Reference
 
