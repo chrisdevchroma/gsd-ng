@@ -10,6 +10,7 @@
     [Exact steps to test - URLs, commands, expected behavior]
   </how-to-verify>
   <resume-signal>[How to continue - "approved", "yes", or describe issues]</resume-signal>
+</task>
 ```
 ```xml
 <task type="auto">
@@ -18,12 +19,14 @@
   <action>Create dashboard with sidebar, header, and content area. Use Tailwind responsive classes for mobile.</action>
   <verify>npm run build succeeds, no TypeScript errors</verify>
   <done>Dashboard component builds without errors</done>
+</task>
 
 <task type="auto">
   <name>Start dev server for verification</name>
   <action>Run `npm run dev` in background, wait for "ready" message, capture port</action>
   <verify>curl http://localhost:3000 returns 200</verify>
   <done>Dev server running at http://localhost:3000</done>
+</task>
 
 <task type="checkpoint:human-verify" gate="blocking">
   <what-built>Responsive dashboard layout - dev server running at http://localhost:3000</what-built>
@@ -35,6 +38,7 @@
     4. No layout shift or horizontal scroll at any size
   </how-to-verify>
   <resume-signal>Type "approved" or describe layout issues</resume-signal>
+</task>
 ```
 ```xml
 <task type="auto">
@@ -43,6 +47,7 @@
   <action>Run `xcodebuild -project App.xcodeproj -scheme App build`. Check for compilation errors in output.</action>
   <verify>Build output contains "BUILD SUCCEEDED", no errors</verify>
   <done>App builds successfully</done>
+</task>
 
 <task type="checkpoint:human-verify" gate="blocking">
   <what-built>Built macOS app at DerivedData/Build/Products/Debug/App.app</what-built>
@@ -54,6 +59,7 @@
     - No visual glitches or layout issues
   </how-to-verify>
   <resume-signal>Type "approved" or describe issues</resume-signal>
+</task>
 ```
 ```xml
 <task type="checkpoint:decision" gate="blocking">
@@ -72,6 +78,7 @@
     </option>
   </options>
   <resume-signal>[How to indicate choice]</resume-signal>
+</task>
 ```
 ```xml
 <task type="checkpoint:decision" gate="blocking">
@@ -97,6 +104,7 @@
     </option>
   </options>
   <resume-signal>Select: supabase, clerk, or nextauth</resume-signal>
+</task>
 ```
 ```xml
 <task type="checkpoint:decision" gate="blocking">
@@ -123,6 +131,7 @@
     </option>
   </options>
   <resume-signal>Select: supabase, planetscale, or convex</resume-signal>
+</task>
 ```
 ```xml
 <task type="checkpoint:human-action" gate="blocking">
@@ -133,6 +142,7 @@
   </instructions>
   <verification>[What Claude can check afterward]</verification>
   <resume-signal>[How to continue]</resume-signal>
+</task>
 ```
 ```xml
 <task type="auto">
@@ -140,6 +150,7 @@
   <action>Use SendGrid API to create subuser account with provided email. Request verification email.</action>
   <verify>API returns 201, account created</verify>
   <done>Account created, verification email sent</done>
+</task>
 
 <task type="checkpoint:human-action" gate="blocking">
   <action>Complete email verification for SendGrid account</action>
@@ -149,6 +160,7 @@
   </instructions>
   <verification>SendGrid API key works: curl test succeeds</verification>
   <resume-signal>Type "done" when email verified</resume-signal>
+</task>
 ```
 ```xml
 <task type="auto">
@@ -156,6 +168,7 @@
   <files>.vercel/, vercel.json</files>
   <action>Run `vercel --yes` to deploy</action>
   <verify>vercel ls shows deployment, curl returns 200</verify>
+</task>
 
 <!-- If vercel returns "Error: Not authenticated", Claude creates checkpoint on the fly -->
 
@@ -168,6 +181,7 @@
   </instructions>
   <verification>vercel whoami returns your account email</verification>
   <resume-signal>Type "done" when authenticated</resume-signal>
+</task>
 
 <!-- After authentication, Claude retries the deployment -->
 
@@ -175,6 +189,7 @@
   <name>Retry Vercel deployment</name>
   <action>Run `vercel --yes` (now authenticated)</action>
   <verify>vercel ls shows deployment, curl returns 200</verify>
+</task>
 ```
 ```
 ╔═══════════════════════════════════════════════════════╗
@@ -252,6 +267,7 @@ I'll verify: vercel whoami returns your account
 <task type="checkpoint:human-action">
   <action>Add OPENAI_API_KEY to Convex dashboard</action>
   <instructions>Go to dashboard.convex.dev → Settings → Environment Variables → Add</instructions>
+</task>
 
 <!-- RIGHT: Claude asks for value, then adds via CLI -->
 <task type="checkpoint:human-action">
@@ -263,11 +279,13 @@ I'll verify: vercel whoami returns your account
   </instructions>
   <verification>I'll add it via `npx convex env set` and verify</verification>
   <resume-signal>Paste your API key</resume-signal>
+</task>
 
 <task type="auto">
   <name>Configure OpenAI key in Convex</name>
   <action>Run `npx convex env set OPENAI_API_KEY {user-provided-key}`</action>
   <verify>`npx convex env get OPENAI_API_KEY` returns the key (masked)</verify>
+</task>
 ```
 ```bash
 # Run in background, capture PID
@@ -282,16 +300,19 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
 <task type="checkpoint:human-verify">
   <what-built>Dashboard (server failed to start)</what-built>
   <how-to-verify>Visit http://localhost:3000...</how-to-verify>
+</task>
 
 <!-- RIGHT: Fix first, then checkpoint -->
 <task type="auto">
   <name>Fix server startup issue</name>
   <action>Investigate error, fix root cause, restart server</action>
   <verify>curl http://localhost:3000 returns 200</verify>
+</task>
 
 <task type="checkpoint:human-verify">
   <what-built>Dashboard - server running at http://localhost:3000</what-built>
   <how-to-verify>Visit http://localhost:3000/dashboard...</how-to-verify>
+</task>
 ```
 <examples>
 
