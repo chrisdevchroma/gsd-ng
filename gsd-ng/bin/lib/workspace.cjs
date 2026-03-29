@@ -311,6 +311,26 @@ function resolveGitContext(cwd) {
     };
   }
 
+  // Ambiguous: multiple submodules exist but none have changes — can't determine target
+  if (submodulePaths.length > 1 && hitPaths.length === 0) {
+    return {
+      is_submodule: true,
+      submodule_path: null,
+      git_cwd: null,
+      remote: null,
+      remote_url: null,
+      ssh_url: false,
+      target_branch: null,
+      current_branch: null,
+      ambiguous: true,
+      ambiguous_paths: submodulePaths,
+      platform: null,
+      cli: null,
+      cli_installed: false,
+      cli_install_url: null,
+    };
+  }
+
   // Resolve active submodule: matched submodule or fallback to first
   const activePath = hitPaths[0] || submodulePaths[0];
   const subCwd = path.join(cwd, activePath);
@@ -375,9 +395,11 @@ function resolveGitContext(cwd) {
  *
  * @param {string} cwd - Working directory
  * @param {boolean} raw - Whether to output raw value
+ * @param {boolean} silent - If true, return result without calling output()
  */
-function cmdDetectWorkspace(cwd, raw) {
+function cmdDetectWorkspace(cwd, raw, silent) {
   const result = detectWorkspaceType(cwd);
+  if (silent) return result;
   output(result, raw);
 }
 
@@ -386,9 +408,64 @@ function cmdDetectWorkspace(cwd, raw) {
  *
  * @param {string} cwd - Working directory
  * @param {boolean} raw - Whether to output raw value
+ * @param {boolean} silent - If true, return result without calling output()
  */
-function cmdGitContext(cwd, raw) {
+function cmdGitContext(cwd, raw, silent) {
   const result = resolveGitContext(cwd);
+  if (silent) return result;
+  output(result, raw);
+}
+
+/**
+ * Check SSH agent status for a given remote URL.
+ * Returns structured JSON with ssh_required, agent_running, status, message.
+ *
+ * @param {string} remoteUrl - The git remote URL to check
+ * @param {boolean} raw - Whether to output raw JSON
+ * @param {boolean} silent - If true, return result without output()/process.exit()
+ */
+function cmdSshCheck(remoteUrl, raw, silent) {
+  const sshRequired = !!(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+
+  if (!sshRequired) {
+    const result = { ssh_required: false, agent_running: false, status: 'not_required', message: 'Remote does not use SSH' };
+    if (silent) return result;
+    output(result, raw);
+    return;
+  }
+
+  let agentRunning = false;
+  let status = 'agent_not_running';
+  let message = 'SSH agent is not running';
+
+  try {
+    const { execSync } = require('child_process');
+    execSync('ssh-add -l', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    // Exit code 0: identities loaded
+    agentRunning = true;
+    status = 'ok';
+    message = 'SSH agent has identities loaded';
+  } catch (err) {
+    if (err.status === 1) {
+      // Exit code 1: agent running but no identities
+      agentRunning = true;
+      status = 'no_identities';
+      message = 'SSH agent is running but no identities are loaded. Run: ssh-add';
+    } else {
+      // Exit code 2 or stderr contains agent socket error: agent not running
+      const stderr = (err.stderr || '').toString();
+      if (err.status === 2 || stderr.includes('Could not open') || stderr.includes('not open')) {
+        status = 'agent_not_running';
+        message = 'SSH agent is not running. Run: eval "$(ssh-agent -s)" && ssh-add';
+      } else {
+        status = 'agent_not_running';
+        message = 'SSH agent check failed: ' + (stderr || err.message);
+      }
+    }
+  }
+
+  const result = { ssh_required: true, agent_running: agentRunning, status, message };
+  if (silent) return result;
   output(result, raw);
 }
 
@@ -402,4 +479,5 @@ module.exports = {
   cmdDetectWorkspace,
   resolveGitContext,
   cmdGitContext,
+  cmdSshCheck,
 };
