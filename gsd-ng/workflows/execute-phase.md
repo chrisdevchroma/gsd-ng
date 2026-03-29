@@ -162,8 +162,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    Resolve workspace topology for agent context injection:
    ```bash
+   WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type --raw 2>/dev/null || echo "standalone")
    WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
-   WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
    SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
    PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
    ```
@@ -342,24 +342,32 @@ Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # Resolve submodule-aware git routing
-  GIT_CTX=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context)
-  if [[ "$GIT_CTX" == @file:* ]]; then GIT_CTX=$(cat "${GIT_CTX#@file:}"); fi
-  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.git_cwd||'.')}catch{process.stdout.write('.')}" "$GIT_CTX")
-  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.remote||'origin')}catch{process.stdout.write('origin')}" "$GIT_CTX")
-  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ambiguous||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
-  SSH_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ssh_url||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
+  # Read submodule fields from $INIT (already loaded with @file: handling)
+  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
+  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+  SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
 ```
 
-**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$GIT_CTX` and list them. Skip the push. Do not proceed.
+**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.
 
-**SSH pre-push check:** Read SSH check setting:
+**SSH pre-push check:**
 
 ```bash
   SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --raw 2>/dev/null || echo "true")
+  if [ "$SSH_CHECK" = "true" ] && [ -n "$SUBMODULE_REMOTE_URL" ]; then
+    SSH_STATUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status --raw)
+    if [ "$SSH_STATUS" != "ok" ] && [ "$SSH_STATUS" != "not_required" ]; then
+      SSH_MSG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message --raw)
+      echo "WARNING: SSH check failed — $SSH_MSG"
+      # Also check for SSH signing
+      GPG_FORMAT=$(git -C "$GIT_CWD" config gpg.format 2>/dev/null || echo "")
+      if [ "$GPG_FORMAT" = "ssh" ]; then
+        echo "NOTE: gpg.format=ssh detected — your signing key also needs to be loaded in the SSH agent."
+      fi
+    fi
+  fi
 ```
-
-If `$SSH_CHECK` is `"true"` and `$SSH_URL` is `"true"`, check SSH agent status with `ssh-add -l`. If no identities are loaded, warn the user to load their SSH key before pushing. Also check if `gpg.format` is `ssh` via `git -C "$GIT_CWD" config gpg.format` — if so, note that the signing key also needs to be loaded.
 
 ```bash
   echo "Pushing $BRANCH_NAME to $PUSH_REMOTE..."

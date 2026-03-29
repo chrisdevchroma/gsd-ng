@@ -39,20 +39,22 @@ Extract from init JSON:
 - `PHASE_SLUG` ← `phase_slug`
 - `PHASE_DIR_NAME` ← basename of `phase_dir`
 
-Resolve submodule-aware git routing via git-context:
+Resolve submodule-aware git routing from $INIT (already loaded with @file: handling above):
 
 ```bash
-GIT_CTX=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context)
-if [[ "$GIT_CTX" == @file:* ]]; then GIT_CTX=$(cat "${GIT_CTX#@file:}"); fi
-GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.git_cwd||'.')}catch{process.stdout.write('.')}" "$GIT_CTX")
-PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.remote||'origin')}catch{process.stdout.write('origin')}" "$GIT_CTX")
-PUSH_TARGET=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.target_branch||'main')}catch{process.stdout.write('main')}" "$GIT_CTX")
-AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ambiguous||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
-SSH_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.ssh_url||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
-PLATFORM=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.platform||'')}catch{process.stdout.write('')}" "$GIT_CTX")
-CLI=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.cli||'')}catch{process.stdout.write('')}" "$GIT_CTX")
-CLI_INSTALLED=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.cli_installed||false))}catch{process.stdout.write('false')}" "$GIT_CTX")
-CLI_INSTALL_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.cli_install_url||'')}catch{process.stdout.write('')}" "$GIT_CTX")
+# Read submodule fields from $INIT (already loaded with @file: handling above)
+IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
+GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
+PUSH_TARGET=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
+AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+
+# Platform/CLI fields from detect-platform (per user decision: stays separate from init)
+PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform --raw)
+CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli --raw)
+CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed --raw)
+CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url --raw)
 ```
 
 Use `$PUSH_REMOTE`, `$PUSH_TARGET`, and `$GIT_CWD` for all git and platform operations below instead of `$REMOTE` and `$TARGET_BRANCH`.
@@ -83,7 +85,7 @@ fi
 </step>
 
 <step name="detect_platform">
-Platform, CLI, and CLI availability are already extracted from git-context output above (`$PLATFORM`, `$CLI`, `$CLI_INSTALLED`, `$CLI_INSTALL_URL`). No separate detect-platform call is needed.
+Platform, CLI, and CLI availability are already extracted from the detect-platform calls above (`$PLATFORM`, `$CLI`, `$CLI_INSTALLED`, `$CLI_INSTALL_URL`). No additional call is needed.
 
 **If `$PLATFORM` is empty:**
 
@@ -102,7 +104,11 @@ if ! git -C "$GIT_CWD" ls-remote --heads "$PUSH_REMOTE" "$PUSH_TARGET" | grep -q
   echo "Error: Target branch '$PUSH_TARGET' not found on remote '$PUSH_REMOTE'."
   echo "Available branches:"
   git -C "$GIT_CWD" ls-remote --heads "$PUSH_REMOTE" | head -10
-  echo "Set target branch: node gsd-tools.cjs config-set git.submodule.target_branch {branch}"
+  if [ "$IS_SUBMODULE" = "true" ]; then
+    echo "Set target branch: node gsd-tools.cjs config-set git.submodule.target_branch {branch}"
+  else
+    echo "Set target branch: node gsd-tools.cjs config-set git.target_branch {branch}"
+  fi
   exit 1
 fi
 ```
