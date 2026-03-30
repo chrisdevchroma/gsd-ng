@@ -13,11 +13,6 @@ When Claude encounters `type="checkpoint:*"`:
 4. **Verify if possible** - check files, run tests, whatever is specified
 5. **Resume execution** - continue to next task only after confirmation
 
-**For checkpoint:human-verify:**
-
-**For checkpoint:decision:**
-
-**For checkpoint:human-action:**
 </execution_protocol>
 
 <authentication_gates>
@@ -75,8 +70,6 @@ When Claude encounters `type="checkpoint:*"`:
 | Fly | `fly secrets set` | `fly secrets set DATABASE_URL=...` |
 | Supabase | `supabase secrets set` | `supabase secrets set MY_SECRET=value` |
 
-**Secret collection pattern:**
-
 ## Dev Server Automation
 
 | Framework | Start Command | Ready Signal | Default URL |
@@ -86,8 +79,6 @@ When Claude encounters `type="checkpoint:*"`:
 | Convex | `npx convex dev` | "Convex functions ready" | N/A (backend only) |
 | Express | `npm start` | "listening on port" | http://localhost:3000 |
 | Django | `python manage.py runserver` | "Starting development server" | http://localhost:8000 |
-
-**Server lifecycle:**
 
 **Port conflicts:** Kill stale process (`lsof -ti:3000 | xargs kill`) or use alternate port (`--port 3001`).
 

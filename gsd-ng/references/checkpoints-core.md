@@ -32,16 +32,10 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 - Accessibility testing
 
 **Structure:**
-</task>
 
 **Example: UI Component (shows key pattern: Claude starts server BEFORE checkpoint)**
-</task>
-</task>
-</task>
 
 **Example: Xcode Build**
-</task>
-</task>
 </type>
 
 <type name="decision">
@@ -57,13 +51,10 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 - Data model decisions (schema structure)
 
 **Structure:**
-</task>
 
 **Example: Auth Provider Selection**
-</task>
 
 **Example: Database Selection**
-</task>
 </type>
 
 <type name="human-action">
@@ -86,16 +77,10 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 - Creating files (use Write tool)
 
 **Structure:**
-</task>
 
 **Example: Email Verification**
-</task>
-</task>
 
 **Example: Authentication Gate (Dynamic Checkpoint)**
-</task>
-</task>
-</task>
 
 **Key distinction:** Auth gates are created dynamically when Claude encounters auth errors. NOT pre-planned — Claude automates first, asks for credentials only when blocked.
 </type>
