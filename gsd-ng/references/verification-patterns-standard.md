@@ -25,27 +25,11 @@ Levels 1-3 can be checked programmatically. Level 4 often requires human verific
 
 These patterns indicate placeholder code regardless of file type:
 
-**Comment-based stubs:**
-
-**Placeholder text in output:**
-
-**Empty or trivial implementations:**
-
-**Hardcoded values where dynamic expected:**
-
 </stub_detection>
 
 <react_components>
 
 ## React/Next.js Components
-
-**Existence check:**
-
-**Substantive check:**
-
-**Stub patterns specific to React:**
-
-**Wiring check:**
 
 **Functional verification (human required):**
 - Does the component render visible content?
@@ -59,14 +43,6 @@ These patterns indicate placeholder code regardless of file type:
 
 ## API Routes (Next.js App Router / Express / etc.)
 
-**Existence check:**
-
-**Substantive check:**
-
-**Stub patterns specific to API routes:**
-
-**Wiring check:**
-
 **Functional verification (human or automated):**
 - Does GET return real data from database?
 - Does POST actually create a record?
@@ -79,43 +55,17 @@ These patterns indicate placeholder code regardless of file type:
 
 ## Database Schema (Prisma / Drizzle / SQL)
 
-**Existence check:**
-
-**Substantive check:**
-
-**Stub patterns specific to schemas:**
-
-**Wiring check:**
-
-**Functional verification:**
-
 </database_schema>
 
 <hooks_utilities>
 
 ## Custom Hooks and Utilities
 
-**Existence check:**
-
-**Substantive check:**
-
-**Stub patterns specific to hooks:**
-
-**Wiring check:**
-
 </hooks_utilities>
 
 <environment_config>
 
 ## Environment Variables and Configuration
-
-**Existence check:**
-
-**Substantive check:**
-
-**Stub patterns specific to env:**
-
-**Wiring check:**
 
 </environment_config>
 
@@ -129,29 +79,17 @@ Wiring verification checks that components actually communicate. This is where m
 
 **Check:** Does the component actually call the API?
 
-
-**Red flags:**
-
 ### Pattern: API → Database
 
 **Check:** Does the API route actually query the database?
-
-
-**Red flags:**
 
 ### Pattern: Form → Handler
 
 **Check:** Does the form submission actually do something?
 
-
-**Red flags:**
-
 ### Pattern: State → Render
 
 **Check:** Does the component render state, not hardcoded content?
-
-
-**Red flags:**
 
 </wiring_verification>
 
@@ -208,9 +146,6 @@ For each artifact type, run through this checklist:
 
 ## Automated Verification Approach
 
-For the verification subagent, use this pattern:
-
-
 Run these checks against each must-have artifact. Aggregate results into VERIFICATION.md.
 
 </automated_verification_script>
@@ -235,8 +170,6 @@ Some things can't be verified programmatically. Flag these for human testing:
 - Edge cases and error states
 - Mobile responsiveness
 - Accessibility
-
-**Format for human verification request:**
 
 </human_verification_triggers>
 
