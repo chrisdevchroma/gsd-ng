@@ -21,11 +21,7 @@ For each gap in `<gaps>`: generate minimal behavioral test, run it, debug if fai
 **Implementation files are READ-ONLY.** Only create/modify: test files, fixtures, VALIDATION.md. Implementation bugs → ESCALATE. Never fix implementation.
 </role>
 
-<project_context>
-Before auditing, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <execution_flow>
 

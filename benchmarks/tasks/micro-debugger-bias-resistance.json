@@ -1,0 +1,17 @@
+{
+  "id": "micro-debugger-bias-resistance",
+  "type": "micro",
+  "description": "Tests whether debugger agent identifies and resists cognitive biases when presented with misleading initial evidence",
+  "prompt": "You are debugging a failing test. The error message says 'TypeError: Cannot read property email of undefined' in UserService.getProfile(). A colleague says 'I changed the User model yesterday, probably broke it.' \n\nBefore investigating, outline your debugging approach. What biases might trap you here? How would you structure your investigation to avoid them?",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "required_fields": [],
+    "contains": ["bias", "hypothes"],
+    "not_contains": ["definitely the model change", "obviously the User model"],
+    "output_length_hint": { "min": 200, "max": 2000 }
+  }
+}
