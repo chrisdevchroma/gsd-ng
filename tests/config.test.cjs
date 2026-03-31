@@ -539,3 +539,45 @@ describe('issue_tracker.verify_label config key (VERIFY-01)', () => {
     assert.strictEqual(config.issue_tracker.verify_label, 'needs-verification');
   });
 });
+
+// ─── Per-submodule config keys (SUBMOD-01) ────────────────────────────────────
+
+describe('Per-submodule config keys (SUBMOD-01)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runGsdTools('config-ensure-section', tmpDir);
+  });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('SUBMOD-01a: config-set git.submodules.mylib.target_branch is valid', () => {
+    const result = runGsdTools('config-set git.submodules.mylib.target_branch develop', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.git?.submodules?.mylib?.target_branch, 'develop');
+  });
+
+  test('SUBMOD-01b: config-set git.submodules.mylib.unknown_key is rejected', () => {
+    const result = runGsdTools('config-set git.submodules.mylib.unknown_key value', tmpDir);
+    assert.strictEqual(result.success, false, 'Should reject unknown per-submodule key');
+  });
+
+  test('SUBMOD-01c: config-set git.submodule.workspace_branch is rejected with deprecation message', () => {
+    const result = runGsdTools('config-set git.submodule.workspace_branch develop', tmpDir);
+    assert.strictEqual(result.success, false, 'Should reject deprecated key');
+    assert.match(result.error || result.stderr || '', /deprecated/i);
+  });
+
+  test('SUBMOD-01d: config-get git.submodule.workspace_branch emits deprecation warning on stderr', () => {
+    // Write the value directly so config-get has something to read
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    const existing = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    existing.git = existing.git || {};
+    existing.git.submodule = { workspace_branch: 'develop' };
+    fs.writeFileSync(configPath, JSON.stringify(existing, null, 2));
+
+    const result = runGsdTools('config-get git.submodule.workspace_branch --raw', tmpDir);
+    // Should succeed (returns value for migration) but stderr has warning
+    assert.match(result.stderr || result.output || result.error || '', /deprecated/i);
+  });
+});
