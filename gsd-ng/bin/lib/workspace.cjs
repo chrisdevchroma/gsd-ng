@@ -341,7 +341,11 @@ function resolveGitContext(cwd) {
     const pp = planningPaths(cwd);
     const rawConfig = fs.readFileSync(pp.config, 'utf-8');
     const parsedConfig = JSON.parse(rawConfig);
-    configSubmodule = (parsedConfig.git && parsedConfig.git.submodule) || {};
+    const globalGit = (parsedConfig.git) || {};
+    const submoduleName = activePath ? activePath.split('/').pop() : null;
+    const perSubmodule = (submoduleName && globalGit.submodules && globalGit.submodules[submoduleName]) || {};
+    // Merged: global git.* fields as base, per-submodule overrides on top
+    configSubmodule = { ...globalGit, ...perSubmodule };
   } catch {
     // No config or malformed — use defaults
   }
@@ -385,6 +389,13 @@ function resolveGitContext(cwd) {
     cli: platformInfo.cli || null,
     cli_installed: platformInfo.cli_installed || false,
     cli_install_url: platformInfo.cli_install_url || null,
+    branching_strategy: configSubmodule.branching_strategy || 'none',
+    auto_push: configSubmodule.auto_push !== undefined ? configSubmodule.auto_push : false,
+    phase_branch_template: configSubmodule.phase_branch_template || 'phase/{phase}-{slug}',
+    milestone_branch_template: configSubmodule.milestone_branch_template || 'milestone/{milestone}-{slug}',
+    review_branch_template: configSubmodule.review_branch_template || null,
+    pr_draft: configSubmodule.pr_draft !== undefined ? configSubmodule.pr_draft : true,
+    pr_template: configSubmodule.pr_template || null,
   };
 }
 

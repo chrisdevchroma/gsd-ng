@@ -134,6 +134,31 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.submodule_ambiguous = false;
   }
 
+  if (gitCtx && gitCtx.is_submodule) {
+    // Submodule active — use merged per-submodule config from gitCtx
+    result.branching_strategy = gitCtx.branching_strategy;
+    result.phase_branch_template = gitCtx.phase_branch_template;
+    result.milestone_branch_template = gitCtx.milestone_branch_template;
+    result.target_branch = gitCtx.target_branch;
+    result.auto_push = gitCtx.auto_push;
+    result.remote = gitCtx.remote;
+    result.review_branch_template = gitCtx.review_branch_template;
+    result.pr_draft = gitCtx.pr_draft;
+    result.platform = gitCtx.platform;
+
+    // Recompute branch_name using overridden values
+    const bs = result.branching_strategy;
+    result.branch_name = bs === 'phase' && phaseInfo
+      ? result.phase_branch_template
+          .replace('{phase}', phaseInfo.phase_number)
+          .replace('{slug}', phaseInfo.phase_slug || 'phase')
+      : bs === 'milestone'
+        ? result.milestone_branch_template
+            .replace('{milestone}', result.milestone_version)
+            .replace('{slug}', generateSlugInternal(result.milestone_name) || 'milestone')
+        : null;
+  }
+
   output(result, raw);
 }
 
@@ -723,6 +748,15 @@ function cmdInitMilestoneOp(cwd, raw) {
     // Config
     commit_docs: config.commit_docs,
 
+    // Git config fields — will be overridden by gitCtx merge if submodule is active
+    branching_strategy: config.branching_strategy,
+    target_branch: config.target_branch,
+    auto_push: config.auto_push,
+    remote: config.remote,
+    platform: config.platform,
+    phase_branch_template: config.phase_branch_template,
+    milestone_branch_template: config.milestone_branch_template,
+
     // Current milestone
     milestone_version: milestone.version,
     milestone_name: milestone.name,
@@ -767,6 +801,16 @@ function cmdInitMilestoneOp(cwd, raw) {
     result.submodule_remote_url = null;
     result.submodule_target_branch = null;
     result.submodule_ambiguous = false;
+  }
+
+  if (gitCtx && gitCtx.is_submodule) {
+    result.branching_strategy = gitCtx.branching_strategy;
+    result.target_branch = gitCtx.target_branch;
+    result.auto_push = gitCtx.auto_push;
+    result.remote = gitCtx.remote;
+    result.platform = gitCtx.platform;
+    result.phase_branch_template = gitCtx.phase_branch_template;
+    result.milestone_branch_template = gitCtx.milestone_branch_template;
   }
 
   output(result, raw);

@@ -603,22 +603,25 @@ describe('resolveGitContext', () => {
     assert.strictEqual(result.ambiguous, false, 'should not be ambiguous');
   });
 
-  test('Test 6: resolveGitContext reads git.submodule.target_branch from config as override', () => {
+  test('Test 6: resolveGitContext reads git.submodules.NAME.target_branch from config as override', () => {
     const { workspaceDir, subDirs } = createSubmoduleWorkspace([
       { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
     ]);
     tmpDir = workspaceDir;
 
-    // Write config with target_branch override
+    // Write config with per-submodule target_branch override (new git.submodules.NAME.* format)
     const configPath = path.join(workspaceDir, '.planning', 'config.json');
     fs.writeFileSync(configPath, JSON.stringify({
       git: {
-        submodule: {
-          target_branch: 'develop',
+        submodules: {
+          mylib: {
+            target_branch: 'develop',
+          },
         },
       },
     }, null, 2));
 
+    touchSubmodule(workspaceDir, 'mylib');
     const result = workspace.resolveGitContext(workspaceDir);
 
     assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
@@ -668,6 +671,61 @@ describe('resolveGitContext', () => {
     assert.ok(result.ambiguous_paths.includes('lib-b'), 'should include lib-b');
     assert.strictEqual(result.submodule_path, null, 'should not pick a submodule');
     assert.strictEqual(result.git_cwd, null, 'should not resolve git_cwd');
+  });
+
+  test('Test 10: per-submodule config overrides global git.target_branch', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: {
+        target_branch: 'global-branch',
+        submodules: {
+          mylib: { target_branch: 'per-submodule-branch' },
+        },
+      },
+    }, null, 2));
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.strictEqual(result.target_branch, 'per-submodule-branch',
+      'per-submodule target_branch should win over global');
+  });
+
+  test('Test 11: global git.target_branch used when no per-submodule override exists', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: { target_branch: 'staging' },
+    }, null, 2));
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.strictEqual(result.target_branch, 'staging',
+      'global target_branch should be used when no submodule override');
+  });
+
+  test('Test 12: per-submodule branching_strategy exposed in resolveGitContext result', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: {
+        branching_strategy: 'none',
+        submodules: {
+          mylib: { branching_strategy: 'phase' },
+        },
+      },
+    }, null, 2));
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.strictEqual(result.branching_strategy, 'phase',
+      'branching_strategy should be per-submodule override value');
   });
 });
 
