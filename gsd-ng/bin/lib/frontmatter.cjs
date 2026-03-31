@@ -231,7 +231,7 @@ const FRONTMATTER_SCHEMAS = {
   verification: { required: ['phase', 'verified', 'status', 'score'] },
 };
 
-function cmdFrontmatterGet(cwd, filePath, field, raw) {
+function cmdFrontmatterGet(cwd, filePath, field, raw, format) {
   if (!filePath) { error('file path required'); }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
@@ -240,7 +240,10 @@ function cmdFrontmatterGet(cwd, filePath, field, raw) {
   if (field) {
     const value = fm[field];
     if (value === undefined) { output({ error: 'Field not found', field }, raw); return; }
-    output({ [field]: value }, raw, Array.isArray(value) ? value.join(', ') : String(value));
+    const rawString = (format === 'newline' && Array.isArray(value))
+      ? value.join('\n')
+      : (Array.isArray(value) ? value.join(', ') : String(value));
+    output({ [field]: value }, raw, rawString);
   } else {
     output(fm, raw);
   }

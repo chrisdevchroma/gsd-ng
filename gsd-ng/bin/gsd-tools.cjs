@@ -631,7 +631,8 @@ async function main() {
       const file = args[2];
       if (subcommand === 'get') {
         const fieldIdx = args.indexOf('--field');
-        frontmatter.cmdFrontmatterGet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, raw);
+        const formatIdx = args.indexOf('--format');
+        frontmatter.cmdFrontmatterGet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, raw, formatIdx !== -1 ? args[formatIdx + 1] : null);
       } else if (subcommand === 'set') {
         const fieldIdx = args.indexOf('--field');
         const valueIdx = args.indexOf('--value');
