@@ -35,8 +35,6 @@ const VALID_CONFIG_KEYS = new Set([
   'statusline.components.api_limits',
   'git.ssh_check',
   'git.submodule.workspace_branch',
-  'git.submodule.remote',
-  'git.submodule.target_branch',
 ]);
 
 const CONFIG_KEY_SUGGESTIONS = {

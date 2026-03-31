@@ -575,6 +575,30 @@ else
 fi
 ```
 
+**Effective target branch:** Use the submodule target branch when in submodule context:
+
+```bash
+# Effective target branch: use submodule target branch when in submodule context
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null || echo "main")
+  EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
+else
+  EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
+fi
+```
+
+**Workspace branch switch:** When submodule is active, switch workspace to configured branch:
+
+```bash
+# Switch workspace to configured branch when submodule is active
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+  WORKSPACE_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.submodule.workspace_branch --raw 2>/dev/null || echo "")
+  if [ -n "$WORKSPACE_BRANCH" ]; then
+    git checkout "$WORKSPACE_BRANCH" 2>/dev/null || echo "Note: Could not switch workspace to $WORKSPACE_BRANCH"
+  fi
+fi
+```
+
 **If "none":** Skip to git_tag.
 
 **For "phase" strategy:**
@@ -613,7 +637,7 @@ AskUserQuestion with options: Squash merge (Recommended), Merge with history, De
 
 ```bash
 CURRENT_BRANCH=$(gitcmd branch --show-current)
-gitcmd checkout "$TARGET_BRANCH"
+gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
@@ -641,7 +665,7 @@ fi
 STABLE_BRANCHES="main master develop"
 IS_STABLE=false
 for sb in $STABLE_BRANCHES; do
-  if [ "$TARGET_BRANCH" = "$sb" ]; then
+  if [ "$EFFECTIVE_TARGET_BRANCH" = "$sb" ]; then
     IS_STABLE=true
     break
   fi
@@ -660,7 +684,7 @@ if [ "$IS_STABLE" = "true" ]; then
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
-  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
+  echo "Target branch '$EFFECTIVE_TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
 gitcmd checkout "$CURRENT_BRANCH"
@@ -670,7 +694,7 @@ gitcmd checkout "$CURRENT_BRANCH"
 
 ```bash
 CURRENT_BRANCH=$(gitcmd branch --show-current)
-gitcmd checkout "$TARGET_BRANCH"
+gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
@@ -698,7 +722,7 @@ fi
 STABLE_BRANCHES="main master develop"
 IS_STABLE=false
 for sb in $STABLE_BRANCHES; do
-  if [ "$TARGET_BRANCH" = "$sb" ]; then
+  if [ "$EFFECTIVE_TARGET_BRANCH" = "$sb" ]; then
     IS_STABLE=true
     break
   fi
@@ -717,7 +741,7 @@ if [ "$IS_STABLE" = "true" ]; then
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
-  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
+  echo "Target branch '$EFFECTIVE_TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
 gitcmd checkout "$CURRENT_BRANCH"
