@@ -547,20 +547,48 @@ Note: `config-get` with `--raw` returns the value directly (not JSON-wrapped). I
 
 Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, `target_branch`, and `commit_docs` from init JSON.
 
+**Submodule-aware routing:** Extract submodule context from `$INIT`:
+
+```bash
+SUBMODULE_IS_ACTIVE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
+SUBMODULE_GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+SUBMODULE_AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+```
+
+**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branch routing cannot be determined. Warn and skip to git_tag:
+
+```bash
+if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
+  echo "Warning: Multiple submodules have changes — cannot determine branch routing. Skipping branch handling."
+  # Skip to git_tag
+fi
+```
+
+**Routing helper:** Define a shell function to route git commands to the correct repository:
+
+```bash
+# Define git command routing
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+  gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
+else
+  gitcmd() { git "$@"; }
+fi
+```
+
 **If "none":** Skip to git_tag.
 
 **For "phase" strategy:**
 
 ```bash
 BRANCH_PREFIX=$(echo "$PHASE_BRANCH_TEMPLATE" | sed 's/{.*//')
-PHASE_BRANCHES=$(git branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ')
+PHASE_BRANCHES=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ')
 ```
 
 **For "milestone" strategy:**
 
 ```bash
 BRANCH_PREFIX=$(echo "$MILESTONE_BRANCH_TEMPLATE" | sed 's/{.*//')
-MILESTONE_BRANCH=$(git branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ' | head -1)
+MILESTONE_BRANCH=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ' | head -1)
 ```
 
 **If no branches found:** Skip to git_tag.
@@ -584,27 +612,29 @@ AskUserQuestion with options: Squash merge (Recommended), Merge with history, De
 **Squash merge:**
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-git checkout "$TARGET_BRANCH"
+CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd checkout "$TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git merge --squash "$branch"
+    gitcmd merge --squash "$branch"
     # Strip .planning/ from staging if commit_docs is false
-    if [ "$COMMIT_DOCS" = "false" ]; then
+    # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+    if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
       git reset HEAD .planning/ 2>/dev/null || true
     fi
-    git commit -m "feat: $branch for v[X.Y]"
+    gitcmd commit -m "feat: $branch for v[X.Y]"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git merge --squash "$MILESTONE_BRANCH"
+  gitcmd merge --squash "$MILESTONE_BRANCH"
   # Strip .planning/ from staging if commit_docs is false
-  if [ "$COMMIT_DOCS" = "false" ]; then
+  # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+  if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
     git reset HEAD .planning/ 2>/dev/null || true
   fi
-  git commit -m "feat: $MILESTONE_BRANCH for v[X.Y]"
+  gitcmd commit -m "feat: $MILESTONE_BRANCH for v[X.Y]"
 fi
 
 # Archive work branch after merge to stable branch
@@ -621,45 +651,47 @@ if [ "$IS_STABLE" = "true" ]; then
   # Delete work branch — plan-completion tags preserve granular history
   if [ "$BRANCHING_STRATEGY" = "phase" ]; then
     for branch in $PHASE_BRANCHES; do
-      git branch -d "$branch" 2>/dev/null || true
+      gitcmd branch -d "$branch" 2>/dev/null || true
       echo "Archived (deleted) work branch: $branch (tags preserved)"
     done
   fi
   if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
   echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
-git checkout "$CURRENT_BRANCH"
+gitcmd checkout "$CURRENT_BRANCH"
 ```
 
 **Merge with history:**
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-git checkout "$TARGET_BRANCH"
+CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd checkout "$TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git merge --no-ff --no-commit "$branch"
+    gitcmd merge --no-ff --no-commit "$branch"
     # Strip .planning/ from staging if commit_docs is false
-    if [ "$COMMIT_DOCS" = "false" ]; then
+    # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+    if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
       git reset HEAD .planning/ 2>/dev/null || true
     fi
-    git commit -m "Merge branch '$branch' for v[X.Y]"
+    gitcmd commit -m "Merge branch '$branch' for v[X.Y]"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git merge --no-ff --no-commit "$MILESTONE_BRANCH"
+  gitcmd merge --no-ff --no-commit "$MILESTONE_BRANCH"
   # Strip .planning/ from staging if commit_docs is false
-  if [ "$COMMIT_DOCS" = "false" ]; then
+  # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+  if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
     git reset HEAD .planning/ 2>/dev/null || true
   fi
-  git commit -m "Merge branch '$MILESTONE_BRANCH' for v[X.Y]"
+  gitcmd commit -m "Merge branch '$MILESTONE_BRANCH' for v[X.Y]"
 fi
 
 # Archive work branch after merge to stable branch
@@ -676,19 +708,19 @@ if [ "$IS_STABLE" = "true" ]; then
   # Delete work branch — plan-completion tags preserve granular history
   if [ "$BRANCHING_STRATEGY" = "phase" ]; then
     for branch in $PHASE_BRANCHES; do
-      git branch -d "$branch" 2>/dev/null || true
+      gitcmd branch -d "$branch" 2>/dev/null || true
       echo "Archived (deleted) work branch: $branch (tags preserved)"
     done
   fi
   if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
   echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
-git checkout "$CURRENT_BRANCH"
+gitcmd checkout "$CURRENT_BRANCH"
 ```
 
 **Delete without merging:**
@@ -696,12 +728,12 @@ git checkout "$CURRENT_BRANCH"
 ```bash
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git branch -d "$branch" 2>/dev/null || git branch -D "$branch"
+    gitcmd branch -d "$branch" 2>/dev/null || gitcmd branch -D "$branch"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git branch -d "$MILESTONE_BRANCH" 2>/dev/null || git branch -D "$MILESTONE_BRANCH"
+  gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || gitcmd branch -D "$MILESTONE_BRANCH"
 fi
 ```
 
