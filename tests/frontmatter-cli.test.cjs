@@ -270,6 +270,39 @@ body`;
   });
 });
 
+// ─── frontmatter get --format newline ───────────────────────────────────────
+
+describe('frontmatter get --format newline', () => {
+  test('outputs array values one per line with --format newline --raw', () => {
+    const file = writeTempFile('---\ntags:\n  - alpha\n  - beta\n  - gamma\n---\nbody');
+    const result = runGsdTools(`frontmatter get ${file} --field tags --format newline --raw`);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'alpha\nbeta\ngamma');
+  });
+
+  test('passes scalar through unchanged with --format newline --raw', () => {
+    const file = writeTempFile('---\ntitle: My Title\n---\nbody');
+    const result = runGsdTools(`frontmatter get ${file} --field title --format newline --raw`);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'My Title');
+  });
+
+  test('comma-separated output without --format flag is backward compatible', () => {
+    const file = writeTempFile('---\ntags:\n  - alpha\n  - beta\n  - gamma\n---\nbody');
+    const result = runGsdTools(`frontmatter get ${file} --field tags --raw`);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'alpha, beta, gamma');
+  });
+
+  test('returns JSON object with --format newline but no --raw', () => {
+    const file = writeTempFile('---\ntags:\n  - alpha\n  - beta\n  - gamma\n---\nbody');
+    const result = runGsdTools(`frontmatter get ${file} --field tags --format newline`);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.deepStrictEqual(parsed, { tags: ['alpha', 'beta', 'gamma'] });
+  });
+});
+
 // ─── frontmatter set validates field name (SEC-02) ──────────────────────────
 
 describe('frontmatter set validates field name (SEC-02)', () => {
