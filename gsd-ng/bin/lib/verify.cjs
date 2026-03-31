@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, extractCurrentMilestone, output, error, planningPaths } = require('./core.cjs');
-const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
+const { extractFrontmatter, spliceFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
 
@@ -920,6 +920,55 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
+  // --- Check 21: Broken related links (related: references non-existent todos) ---
+  for (const file of pendingTodosForPhaseCheck) {
+    try {
+      const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.related) continue;
+      const relatedList = Array.isArray(fm.related) ? fm.related : (fm.related ? [fm.related] : []);
+      for (const ref of relatedList) {
+        const existsInPending = fs.existsSync(path.join(pendingTodosDir, ref));
+        const existsInCompleted = fs.existsSync(path.join(completedTodosDir, ref));
+        if (!existsInPending && !existsInCompleted) {
+          addIssue('warning', 'W021',
+            `Todo "${file}" has related: "${ref}" which does not exist in pending/ or completed/`,
+            'Remove the stale related: reference or recreate the missing todo',
+            true);
+          if (!repairs.includes('clearRelatedLink')) repairs.push('clearRelatedLink');
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  // --- Check 22: Asymmetric related links (A references B but B does not reference A back) ---
+  for (const file of pendingTodosForPhaseCheck) {
+    try {
+      const content = fs.readFileSync(path.join(pendingTodosDir, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.related) continue;
+      const relatedList = Array.isArray(fm.related) ? fm.related : (fm.related ? [fm.related] : []);
+      for (const ref of relatedList) {
+        const refPath = path.join(pendingTodosDir, ref);
+        if (!fs.existsSync(refPath)) continue; // W021 covers missing refs — skip here
+        try {
+          const refContent = fs.readFileSync(refPath, 'utf-8');
+          const refFm = extractFrontmatter(refContent);
+          const refRelatedList = refFm && refFm.related
+            ? (Array.isArray(refFm.related) ? refFm.related : [refFm.related])
+            : [];
+          if (!refRelatedList.includes(file)) {
+            addIssue('warning', 'W022',
+              `Asymmetric related link: "${file}" references "${ref}" but "${ref}" does not reference back`,
+              'Run /gsd:health --repair to add the missing backlink, or add it manually',
+              true);
+            if (!repairs.includes('addBacklink')) repairs.push('addBacklink');
+          }
+        } catch (_e) { /* skip unreadable ref */ }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
   // --- Check 20: Security events log — high-confidence detections ---
   const secLogDir = process.env.GSD_SECURITY_LOG_DIR || path.join(cwd, '.claude', 'logs');
   const secLogPath = path.join(secLogDir, 'security-events.log');
@@ -1067,6 +1116,54 @@ function cmdValidateHealth(cwd, options, raw) {
             // Close pending todos linked to completed phases
             // Advisory — log but don't auto-close (health checks never auto-fix per CONTEXT.md)
             repairActions.push({ action: repair, success: false, note: 'Manual closure required — use /gsd:check-todos' });
+            break;
+          }
+          case 'clearRelatedLink': {
+            // Re-scan W021 warnings to find all (file, stale_ref) pairs
+            const w021Warnings = warnings.filter(w => w.code === 'W021');
+            for (const w of w021Warnings) {
+              const match = /Todo "([^"]+)" has related: "([^"]+)"/.exec(w.message);
+              if (!match) continue;
+              const [, todoFile, staleRef] = match;
+              const todoPath = path.join(pendingTodosDir, todoFile);
+              try {
+                const content = fs.readFileSync(todoPath, 'utf-8');
+                const fm = extractFrontmatter(content);
+                if (!fm || !fm.related) continue;
+                const relatedList = Array.isArray(fm.related) ? fm.related : [fm.related];
+                fm.related = relatedList.filter(r => r !== staleRef);
+                if (fm.related.length === 0) delete fm.related;
+                const newContent = spliceFrontmatter(content, fm);
+                fs.writeFileSync(todoPath, newContent, 'utf-8');
+              } catch (_e) { /* skip unreadable files */ }
+            }
+            repairActions.push({ action: repair, success: true });
+            break;
+          }
+          case 'addBacklink': {
+            // Re-scan W022 warnings to find all (source, target) pairs
+            const w022Warnings = warnings.filter(w => w.code === 'W022');
+            for (const w of w022Warnings) {
+              const match = /Asymmetric related link: "([^"]+)" references "([^"]+)"/.exec(w.message);
+              if (!match) continue;
+              const [, sourceFile, targetFile] = match;
+              const targetPath = path.join(pendingTodosDir, targetFile);
+              try {
+                const content = fs.readFileSync(targetPath, 'utf-8');
+                const fm = extractFrontmatter(content);
+                const relatedList = fm && fm.related
+                  ? (Array.isArray(fm.related) ? fm.related : [fm.related])
+                  : [];
+                if (!relatedList.includes(sourceFile)) {
+                  relatedList.push(sourceFile);
+                }
+                if (!fm) continue;
+                fm.related = relatedList;
+                const newContent = spliceFrontmatter(content, fm);
+                fs.writeFileSync(targetPath, newContent, 'utf-8');
+              } catch (_e) { /* skip unreadable files */ }
+            }
+            repairActions.push({ action: repair, success: true });
             break;
           }
         }

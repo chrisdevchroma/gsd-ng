@@ -341,6 +341,67 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 **Why human:** {Why can't verify programmatically}
 ```
 
+## Step 8b: Check Related Todos (Warning Only)
+
+**Purpose:** Inform the verification report about related todos that may need attention. This is informational — it does NOT affect the overall pass/fail status and does not block verification.
+
+Check if this phase has a source todo linked via ROADMAP.md:
+
+```bash
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw 2>/dev/null || echo "{}")
+SOURCE_TODO=$(echo "$PHASE_DATA" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try { const r=JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
+  });
+")
+```
+
+If `$SOURCE_TODO` is non-empty, read its `related:` field:
+
+```bash
+RELATED_RAW=""
+# Check pending/ first, then completed/
+for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
+  if [[ -f "$DIR/$SOURCE_TODO" ]]; then
+    RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      "$DIR/$SOURCE_TODO" --field related --format newline --raw 2>/dev/null || echo "")
+    break
+  fi
+done
+RELATED_LIST="$RELATED_RAW"
+```
+
+Check each related todo:
+
+```bash
+# For each related filename, check if it exists in pending/ (still open work)
+UNADDRESSED_TODOS=""
+while IFS= read -r related_file; do
+  [[ -z "$related_file" ]] && continue
+  if [[ -f ".planning/todos/pending/$related_file" ]]; then
+    TITLE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      ".planning/todos/pending/$related_file" --field title --raw 2>/dev/null || echo "(no title)")
+    UNADDRESSED_TODOS="${UNADDRESSED_TODOS}| $related_file | $TITLE | pending |\n"
+  fi
+done <<< "$RELATED_LIST"
+```
+
+If `$UNADDRESSED_TODOS` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.
+
+```markdown
+### Related Todo Warnings
+
+The following todos are linked (via `related:` field) to this phase's source todo but remain in pending/:
+
+| Todo | Title | Status |
+|------|-------|--------|
+{UNADDRESSED_TODOS rows here}
+
+These are informational warnings — related todos represent separate work items and do not block verification.
+```
+
+If no source todo exists, `$SOURCE_TODO` is empty, or no related todos are in pending/, omit this section entirely.
+
 ## Step 9: Determine Overall Status
 
 **Status: passed** — All truths VERIFIED, all artifacts pass levels 1-3, all key links WIRED, no blocker anti-patterns.
