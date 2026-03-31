@@ -955,6 +955,25 @@ function cmdInitProgress(cwd, raw) {
   output(result, raw);
 }
 
+function cmdInitGet(jsonStr, fieldName, raw) {
+  if (!jsonStr || !fieldName) {
+    error('Usage: init-get <json> <field> [--raw]');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    error('init-get: failed to parse JSON argument');
+  }
+  const value = parsed[fieldName];
+  if (value === undefined || value === null) {
+    // Return empty string for missing fields — callers use || fallback defaults
+    output('', raw, '');
+    return;
+  }
+  output(value, raw, String(value));
+}
+
 module.exports = {
   cmdInitExecutePhase,
   cmdInitPlanPhase,
@@ -968,4 +987,5 @@ module.exports = {
   cmdInitMilestoneOp,
   cmdInitMapCodebase,
   cmdInitProgress,
+  cmdInitGet,
 };

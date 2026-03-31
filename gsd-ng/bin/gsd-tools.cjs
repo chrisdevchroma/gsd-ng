@@ -156,6 +156,7 @@
  *   init milestone-op                  All context for milestone operations
  *   init map-codebase                  All context for map-codebase workflow
  *   init progress                      All context for progress workflow
+ *   init-get <json> <field>            Extract field from init JSON as plain string
  */
 
 const fs = require('fs');
@@ -182,7 +183,7 @@ const ALL_COMMANDS = [
   'template', 'frontmatter', 'verify', 'generate-slug', 'current-timestamp',
   'list-todos', 'recurring-due', 'staleness-check', 'verify-path-exists',
   'config-ensure-section', 'config-set', 'config-set-model-profile',
-  'config-get', 'history-digest', 'phases', 'roadmap', 'requirements',
+  'config-get', 'init-get', 'history-digest', 'phases', 'roadmap', 'requirements',
   'phase', 'milestone', 'validate', 'progress', 'stats', 'todo', 'update',
   'scaffold', 'init', 'phase-plan-index', 'state-snapshot', 'summary-extract',
   'detect-platform', 'detect-workspace', 'discover-test-command', 'websearch',
@@ -732,6 +733,11 @@ async function main() {
 
     case 'config-get': {
       config.cmdConfigGet(cwd, args[1], raw);
+      break;
+    }
+
+    case 'init-get': {
+      init.cmdInitGet(args[1], args[2], raw);
       break;
     }
 

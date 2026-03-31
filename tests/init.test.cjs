@@ -1114,5 +1114,57 @@ describe('init execute-phase submodule fields', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// init-get command
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('init-get command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns boolean field as plain string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"submodule_is_active":true}', 'submodule_is_active', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'true');
+  });
+
+  test('returns string field as plain string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"submodule_git_cwd":"/path/to/repo"}', 'submodule_git_cwd', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '/path/to/repo');
+  });
+
+  test('returns empty string for missing field without error exit', () => {
+    const result = runGsdTools(['init-get', '{"foo":"bar"}', 'missing_field', '--raw'], tmpDir);
+    assert.ok(result.success, `Command should not fail for missing field: ${result.error}`);
+    assert.strictEqual(result.output, '');
+  });
+
+  test('coerces number to string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"count":42}', 'count', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '42');
+  });
+
+  test('exits nonzero with usage message when called with no args', () => {
+    const result = runGsdTools(['init-get'], tmpDir);
+    assert.ok(!result.success, 'Command should fail with no args');
+    assert.ok(result.error.includes('Usage') || result.error.includes('usage') || result.error.includes('init-get'), `Expected usage message, got: ${result.error}`);
+  });
+
+  test('exits nonzero with parse error for invalid JSON', () => {
+    const result = runGsdTools(['init-get', 'not-json', 'field', '--raw'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for invalid JSON');
+    assert.ok(result.error.includes('parse') || result.error.includes('JSON') || result.error.includes('init-get'), `Expected parse error, got: ${result.error}`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // roadmap analyze command
 // ─────────────────────────────────────────────────────────────────────────────
