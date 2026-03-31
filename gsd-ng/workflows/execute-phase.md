@@ -44,10 +44,10 @@ Check `branching_strategy` from init:
 **Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
-SUBMODULE_GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-SUBMODULE_TARGET_BRANCH=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
-SUBMODULE_AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null || echo "false")
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null || echo ".")
+SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null || echo "main")
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null || echo "false")
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Warn the user and skip branching entirely:
@@ -385,11 +385,11 @@ Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # Read submodule fields from $INIT (already loaded with @file: handling)
-  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
-  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
-  SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+  # Reuse variables extracted in handle_branching step
+  GIT_CWD="${SUBMODULE_GIT_CWD}"
+  AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
+  PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null || echo "origin")
+  SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null || echo "")
 ```
 
 **Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.
