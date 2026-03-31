@@ -125,6 +125,7 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.submodule_remote_url = gitCtx.remote_url;
     result.submodule_target_branch = gitCtx.target_branch;
     result.submodule_ambiguous = gitCtx.ambiguous;
+    result.ambiguous_paths = gitCtx.ambiguous_paths || [];
   } else {
     result.submodule_is_active = false;
     result.submodule_git_cwd = null;
@@ -132,6 +133,7 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.submodule_remote_url = null;
     result.submodule_target_branch = null;
     result.submodule_ambiguous = false;
+    result.ambiguous_paths = [];
   }
 
   if (gitCtx && gitCtx.is_submodule) {
@@ -794,6 +796,7 @@ function cmdInitMilestoneOp(cwd, raw) {
     result.submodule_remote_url = gitCtx.remote_url;
     result.submodule_target_branch = gitCtx.target_branch;
     result.submodule_ambiguous = gitCtx.ambiguous;
+    result.ambiguous_paths = gitCtx.ambiguous_paths || [];
   } else {
     result.submodule_is_active = false;
     result.submodule_git_cwd = null;
@@ -801,6 +804,7 @@ function cmdInitMilestoneOp(cwd, raw) {
     result.submodule_remote_url = null;
     result.submodule_target_branch = null;
     result.submodule_ambiguous = false;
+    result.ambiguous_paths = [];
   }
 
   if (gitCtx && gitCtx.is_submodule) {
