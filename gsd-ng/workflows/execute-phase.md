@@ -41,20 +41,63 @@ Check `branching_strategy` from init:
 
 **"none":** Skip, continue on current branch.
 
-**"phase":** Use pre-computed `branch_name` from init. Base from `target_branch`:
+**Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
+
 ```bash
-# Base new work branch from target_branch (not current HEAD)
-git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH" 2>/dev/null || git checkout "$BRANCH_NAME"
+SUBMODULE_IS_ACTIVE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
+SUBMODULE_GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
+SUBMODULE_TARGET_BRANCH=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
+SUBMODULE_AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
 ```
 
-**"milestone":** Use pre-computed `branch_name` from init. If branch already exists (subsequent phases), just checkout. If new (first phase of milestone), create from `target_branch`:
+**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Warn the user and skip branching entirely:
+
 ```bash
-if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
-  # Milestone branch already exists (not first phase) — just switch to it
-  git checkout "$BRANCH_NAME"
+if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
+  echo "Warning: Multiple submodules have changes — cannot determine branch routing. Skipping branching."
+  # Continue on current branch
+fi
+```
+
+**Routing helper and effective target branch:** Define a shell function to route git commands to the correct repository:
+
+```bash
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+  gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
+  EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
-  # First phase of milestone — create from target_branch
-  git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH"
+  gitcmd() { git "$@"; }
+  EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
+fi
+```
+
+**Optional workspace branch:** When submodule is active, optionally switch the workspace to a known stable branch before doing submodule work:
+
+```bash
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+  WORKSPACE_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.submodule.workspace_branch --raw 2>/dev/null || echo "")
+  if [ -n "$WORKSPACE_BRANCH" ]; then
+    git checkout "$WORKSPACE_BRANCH" 2>/dev/null || echo "Note: Could not switch workspace to $WORKSPACE_BRANCH"
+  fi
+fi
+```
+
+**"phase":** Use pre-computed `branch_name` from init. Base from `EFFECTIVE_TARGET_BRANCH`:
+
+```bash
+# Base new work branch from effective target branch (not current HEAD)
+gitcmd checkout -b "$BRANCH_NAME" "$EFFECTIVE_TARGET_BRANCH" 2>/dev/null || gitcmd checkout "$BRANCH_NAME"
+```
+
+**"milestone":** Use pre-computed `branch_name` from init. If branch already exists (subsequent phases), just checkout. If new (first phase of milestone), create from `EFFECTIVE_TARGET_BRANCH`:
+
+```bash
+if gitcmd show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
+  # Milestone branch already exists (not first phase) — just switch to it
+  gitcmd checkout "$BRANCH_NAME"
+else
+  # First phase of milestone — create from effective target branch
+  gitcmd checkout -b "$BRANCH_NAME" "$EFFECTIVE_TARGET_BRANCH"
 fi
 ```
 
