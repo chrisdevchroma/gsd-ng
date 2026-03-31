@@ -824,14 +824,8 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
   fi
-  RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --raw 2>/dev/null || echo "")
-  if [[ -n "$RELATED_RAW" ]] && [[ "$RELATED_RAW" != "null" ]]; then
-    RELATED_OUTBOUND=$(echo "$RELATED_RAW" | node -e "
-      let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-        try { const v=JSON.parse(d); const arr=Array.isArray(v)?v:(v?[v]:[]); console.log(arr.join('\n')); } catch { console.log(''); }
-      });
-    ")
-  fi
+  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --raw 2>/dev/null || echo "")
+  if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
 
@@ -844,11 +838,8 @@ if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED
     [[ -f "$TODO_FILE" ]] || continue
     TODO_BASENAME=$(basename "$TODO_FILE")
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
-    TODO_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --raw 2>/dev/null || echo "")
-    if [[ -n "$TODO_RELATED" ]] && [[ "$TODO_RELATED" != "null" ]]; then
-      if echo "$TODO_RELATED" | grep -q "$ORIGIN_TODO_FILE"; then
-        RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
-      fi
+    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --raw 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
+      RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
     fi
   done
 fi

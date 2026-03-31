@@ -297,15 +297,16 @@ AskUserQuestion(
 SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
 UPDATED_SOURCE=$(echo "$SOURCE_RELATED_RAW" | node -e "
+  const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
     try {
       const v = JSON.parse(d);
       const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes('$SELECTED_FILE')) arr.push('$SELECTED_FILE');
+      if (!arr.includes(newFile)) arr.push(newFile);
       console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify(['$SELECTED_FILE'])); }
+    } catch { console.log(JSON.stringify([newFile])); }
   });
-")
+" "$SELECTED_FILE")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
 
@@ -313,15 +314,16 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
 SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$SELECTED_FILE" --field related --raw 2>/dev/null || echo "")
 UPDATED_SELECTED=$(echo "$SELECTED_RELATED_RAW" | node -e "
+  const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
     try {
       const v = JSON.parse(d);
       const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes('$SOURCE_TODO')) arr.push('$SOURCE_TODO');
+      if (!arr.includes(newFile)) arr.push(newFile);
       console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify(['$SOURCE_TODO'])); }
+    } catch { console.log(JSON.stringify([newFile])); }
   });
-")
+" "$SOURCE_TODO")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
 ```

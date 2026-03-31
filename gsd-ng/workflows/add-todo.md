@@ -155,15 +155,16 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
 EXISTING_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --raw 2>/dev/null || echo "")
 UPDATED_RELATED=$(echo "$EXISTING_RELATED" | node -e "
+  const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
     try {
       const v = JSON.parse(d);
       const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes('$NEW_TODO_FILE')) arr.push('$NEW_TODO_FILE');
+      if (!arr.includes(newFile)) arr.push(newFile);
       console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify(['$NEW_TODO_FILE'])); }
+    } catch { console.log(JSON.stringify([newFile])); }
   });
-")
+" "$NEW_TODO_FILE")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --value "$UPDATED_RELATED"
 ```

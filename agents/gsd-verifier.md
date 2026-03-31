@@ -364,25 +364,16 @@ RELATED_RAW=""
 for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
   if [[ -f "$DIR/$SOURCE_TODO" ]]; then
     RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-      "$DIR/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+      "$DIR/$SOURCE_TODO" --field related --format newline --raw 2>/dev/null || echo "")
     break
   fi
 done
+RELATED_LIST="$RELATED_RAW"
 ```
 
-Normalize to array and check each related todo:
+Check each related todo:
 
 ```bash
-# Parse RELATED_RAW (JSON string or array) into list
-RELATED_LIST=$(echo "$RELATED_RAW" | node -e "
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try {
-      const v = JSON.parse(d);
-      const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      console.log(arr.join('\n'));
-    } catch { console.log(''); }
-  });
-")
 # For each related filename, check if it exists in pending/ (still open work)
 UNADDRESSED_TODOS=""
 while IFS= read -r related_file; do
