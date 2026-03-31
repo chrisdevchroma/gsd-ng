@@ -50,12 +50,32 @@ SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get
 SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null || echo "false")
 ```
 
-**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Warn the user and skip branching entirely:
+**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  echo "Warning: Multiple submodules have changes — cannot determine branch routing. Skipping branching."
-  # Continue on current branch
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null || echo "[]")
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null || echo "0")
+  if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null || echo "")
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null || echo "")
+    AskUserQuestion(
+      question="Multiple submodules have changes. Which submodule(s) should be branched?",
+      options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
+    )
+    # If user selects a specific path or "All of them": loop gitcmd over selected paths to create/checkout branch
+    # If "Skip branching": continue on current branch
+  else
+    # 3+ ambiguous paths: text list + binary choice
+    echo "Multiple submodules have changes:"
+    echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));a.forEach(p=>console.log('  - '+p));" 2>/dev/null
+    AskUserQuestion(
+      question="Multiple submodules have uncommitted changes. How should branching proceed?",
+      options=["Branch all of them", "Skip branching"]
+    )
+    # If "Branch all of them": loop gitcmd over all paths in AMBIGUOUS_PATHS
+    # If "Skip branching": continue on current branch
+  fi
 fi
 ```
 
@@ -71,16 +91,6 @@ else
 fi
 ```
 
-**Optional workspace branch:** When submodule is active, optionally switch the workspace to a known stable branch before doing submodule work:
-
-```bash
-if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
-  WORKSPACE_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.submodule.workspace_branch --raw 2>/dev/null || echo "")
-  if [ -n "$WORKSPACE_BRANCH" ]; then
-    git checkout "$WORKSPACE_BRANCH" 2>/dev/null || echo "Note: Could not switch workspace to $WORKSPACE_BRANCH"
-  fi
-fi
-```
 
 **"phase":** Use pre-computed `branch_name` from init. Base from `EFFECTIVE_TARGET_BRANCH`:
 
