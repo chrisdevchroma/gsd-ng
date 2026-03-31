@@ -1369,8 +1369,8 @@ describe('validate health — related link checks (W021-W022)', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const parsed = JSON.parse(result.output);
-    const clearAction = parsed.repairActions && parsed.repairActions.find(a => a.action === 'clearRelatedLink');
-    assert.ok(clearAction, `Expected clearRelatedLink repairAction: ${JSON.stringify(parsed.repairActions)}`);
+    const clearAction = parsed.repairs_performed && parsed.repairs_performed.find(a => a.action === 'clearRelatedLink');
+    assert.ok(clearAction, `Expected clearRelatedLink in repairs_performed: ${JSON.stringify(parsed.repairs_performed)}`);
     assert.strictEqual(clearAction.success, true, 'clearRelatedLink should succeed');
 
     const { extractFrontmatter: efm } = require('../gsd-ng/bin/lib/frontmatter.cjs');
@@ -1410,8 +1410,8 @@ describe('validate health — related link checks (W021-W022)', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const parsed = JSON.parse(result.output);
-    const backlinkAction = parsed.repairActions && parsed.repairActions.find(a => a.action === 'addBacklink');
-    assert.ok(backlinkAction, `Expected addBacklink repairAction: ${JSON.stringify(parsed.repairActions)}`);
+    const backlinkAction = parsed.repairs_performed && parsed.repairs_performed.find(a => a.action === 'addBacklink');
+    assert.ok(backlinkAction, `Expected addBacklink in repairs_performed: ${JSON.stringify(parsed.repairs_performed)}`);
     assert.strictEqual(backlinkAction.success, true, 'addBacklink should succeed');
 
     const { extractFrontmatter: efm } = require('../gsd-ng/bin/lib/frontmatter.cjs');

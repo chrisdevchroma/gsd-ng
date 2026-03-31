@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, extractCurrentMilestone, output, error, planningPaths } = require('./core.cjs');
-const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
+const { extractFrontmatter, spliceFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
 
@@ -1116,6 +1116,54 @@ function cmdValidateHealth(cwd, options, raw) {
             // Close pending todos linked to completed phases
             // Advisory — log but don't auto-close (health checks never auto-fix per CONTEXT.md)
             repairActions.push({ action: repair, success: false, note: 'Manual closure required — use /gsd:check-todos' });
+            break;
+          }
+          case 'clearRelatedLink': {
+            // Re-scan W021 warnings to find all (file, stale_ref) pairs
+            const w021Warnings = warnings.filter(w => w.code === 'W021');
+            for (const w of w021Warnings) {
+              const match = /Todo "([^"]+)" has related: "([^"]+)"/.exec(w.message);
+              if (!match) continue;
+              const [, todoFile, staleRef] = match;
+              const todoPath = path.join(pendingTodosDir, todoFile);
+              try {
+                const content = fs.readFileSync(todoPath, 'utf-8');
+                const fm = extractFrontmatter(content);
+                if (!fm || !fm.related) continue;
+                const relatedList = Array.isArray(fm.related) ? fm.related : [fm.related];
+                fm.related = relatedList.filter(r => r !== staleRef);
+                if (fm.related.length === 0) delete fm.related;
+                const newContent = spliceFrontmatter(content, fm);
+                fs.writeFileSync(todoPath, newContent, 'utf-8');
+              } catch (_e) { /* skip unreadable files */ }
+            }
+            repairActions.push({ action: repair, success: true });
+            break;
+          }
+          case 'addBacklink': {
+            // Re-scan W022 warnings to find all (source, target) pairs
+            const w022Warnings = warnings.filter(w => w.code === 'W022');
+            for (const w of w022Warnings) {
+              const match = /Asymmetric related link: "([^"]+)" references "([^"]+)"/.exec(w.message);
+              if (!match) continue;
+              const [, sourceFile, targetFile] = match;
+              const targetPath = path.join(pendingTodosDir, targetFile);
+              try {
+                const content = fs.readFileSync(targetPath, 'utf-8');
+                const fm = extractFrontmatter(content);
+                const relatedList = fm && fm.related
+                  ? (Array.isArray(fm.related) ? fm.related : [fm.related])
+                  : [];
+                if (!relatedList.includes(sourceFile)) {
+                  relatedList.push(sourceFile);
+                }
+                if (!fm) continue;
+                fm.related = relatedList;
+                const newContent = spliceFrontmatter(content, fm);
+                fs.writeFileSync(targetPath, newContent, 'utf-8');
+              } catch (_e) { /* skip unreadable files */ }
+            }
+            repairActions.push({ action: repair, success: true });
             break;
           }
         }
