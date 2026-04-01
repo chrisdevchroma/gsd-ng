@@ -538,8 +538,8 @@ if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 
 ```bash
 # Load git config for branch handling (read from $INIT so per-submodule overrides apply)
-BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy --raw 2>/dev/null || echo "none")
-TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null || echo "main")
+BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy --raw 2>/dev/null)
+TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null)
 COMMIT_DOCS=$(echo "$INIT" | grep -o '"commit_docs":[^,}]*' | cut -d: -f2 | tr -d ' "')
 ```
 
@@ -550,20 +550,20 @@ Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_templat
 **Submodule-aware routing:** Extract submodule context from `$INIT`:
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null || echo "false")
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null || echo ".")
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null || echo "false")
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branch routing cannot be determined. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null || echo "[]")
-  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null || echo "0")
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
-    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null || echo "")
-    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null || echo "")
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null)
     AskUserQuestion(
       question="Multiple submodules have changes. Which submodule(s) should be branched?",
       options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
@@ -600,7 +600,7 @@ fi
 ```bash
 # Effective target branch: use submodule target branch when in submodule context
 if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
-  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null || echo "main")
+  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
   EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
   EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"

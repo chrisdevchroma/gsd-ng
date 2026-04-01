@@ -44,21 +44,21 @@ Check `branching_strategy` from init:
 **Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null || echo "false")
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null || echo ".")
-SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null || echo "main")
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null || echo "false")
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
+SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null || echo "[]")
-  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null || echo "0")
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
-    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null || echo "")
-    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null || echo "")
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null)
     AskUserQuestion(
       question="Multiple submodules have changes. Which submodule(s) should be branched?",
       options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
@@ -398,8 +398,8 @@ if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BR
   # Reuse variables extracted in handle_branching step
   GIT_CWD="${SUBMODULE_GIT_CWD}"
   AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
-  PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null || echo "origin")
-  SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null || echo "")
+  PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null)
+  SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null)
 ```
 
 **Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.

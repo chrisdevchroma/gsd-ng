@@ -45,13 +45,13 @@ Resolve submodule-aware git routing from $INIT (already loaded with @file: handl
 # Read submodule fields from $INIT (already loaded with @file: handling above)
 IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
 GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null || echo "origin")
+PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
 PUSH_TARGET=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
 AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
 SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
 
 # Platform: read from $INIT (per-submodule override applies), fall back to detect-platform
-PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" platform --raw 2>/dev/null || echo "")
+PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" platform --raw 2>/dev/null)
 if [ -z "$PLATFORM" ]; then
   PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform --raw)
 fi
@@ -72,7 +72,7 @@ Parse flags:
 
 ```bash
 # Flag parsing
-PR_DRAFT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_draft --raw 2>/dev/null || echo "true")
+PR_DRAFT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_draft --raw 2>/dev/null)
 
 if [[ "$ARGUMENTS" == *"--draft"* ]] && [[ "$ARGUMENTS" != *"--no-draft"* ]]; then
   PR_DRAFT="true"
@@ -267,7 +267,7 @@ Build PR description following template precedence: user config > repo template 
 PR_BODY_FILE=$(mktemp)
 
 # 1. Check user config template
-PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template --raw 2>/dev/null || echo "")
+PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template --raw 2>/dev/null)
 
 if [ -n "$PR_TEMPLATE_PATH" ] && [ -f "$PR_TEMPLATE_PATH" ]; then
   # User config template — copy and apply variable substitution below

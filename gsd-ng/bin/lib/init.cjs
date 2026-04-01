@@ -1005,23 +1005,97 @@ function cmdInitProgress(cwd, raw) {
   output(result, raw);
 }
 
+const INIT_FIELD_DEFAULTS = {
+  // booleans
+  submodule_is_active: false,
+  submodule_ambiguous: false,
+  auto_push: false,
+  pr_draft: true,
+  commit_docs: true,
+  parallelization: true,
+  verifier_enabled: false,
+  phase_found: false,
+  state_exists: false,
+  roadmap_exists: false,
+  config_exists: false,
+  planning_exists: false,
+  all_phases_complete: false,
+  archive_exists: false,
+  phases_dir_exists: false,
+  // arrays
+  ambiguous_paths: [],
+  plans: [],
+  summaries: [],
+  incomplete_plans: [],
+  archived_milestones: [],
+  // nullable strings (raw output: "")
+  submodule_git_cwd: null,
+  submodule_remote: null,
+  submodule_remote_url: null,
+  submodule_target_branch: null,
+  phase_dir: null,
+  phase_number: null,
+  phase_name: null,
+  phase_slug: null,
+  phase_req_ids: null,
+  branch_name: null,
+  review_branch_template: null,
+  platform: null,
+  pr_template: null,
+  type_aliases: null,
+  executor_model: null,
+  verifier_model: null,
+  researcher_model: null,
+  planner_model: null,
+  // plain strings with defaults
+  branching_strategy: 'none',
+  target_branch: 'main',
+  remote: 'origin',
+  phase_branch_template: 'phase/{phase}-{slug}',
+  milestone_branch_template: 'milestone/{milestone}-{slug}',
+  // numbers
+  plan_count: 0,
+  incomplete_count: 0,
+  phase_count: 0,
+  completed_phases: 0,
+  archive_count: 0,
+  // file paths
+  state_path: '.planning/STATE.md',
+  roadmap_path: '.planning/ROADMAP.md',
+  config_path: '.planning/config.json',
+  requirements_path: '.planning/REQUIREMENTS.md',
+};
+
 function cmdInitGet(jsonStr, fieldName, raw) {
-  if (!jsonStr || !fieldName) {
+  if (!fieldName) {
     error('Usage: init-get <json> <field> [--raw]');
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    error('init-get: failed to parse JSON argument');
+  let parsed = null;
+  if (jsonStr) {
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Malformed/empty JSON — fall through to registry lookup
+    }
   }
-  const value = parsed[fieldName];
-  if (value === undefined || value === null) {
-    // Return empty string for missing fields — callers use || fallback defaults
-    output('', raw, '');
+  // If parse succeeded, try to get the value
+  if (parsed !== null) {
+    const value = parsed[fieldName];
+    if (value !== undefined && value !== null) {
+      const rawStr = Array.isArray(value) ? JSON.stringify(value) : String(value);
+      output(value, raw, rawStr);
+      return;
+    }
+  }
+  // Field absent or parse failed — use registry default
+  if (Object.prototype.hasOwnProperty.call(INIT_FIELD_DEFAULTS, fieldName)) {
+    const def = INIT_FIELD_DEFAULTS[fieldName];
+    const rawStr = Array.isArray(def) ? JSON.stringify(def) : (def === null ? '' : String(def));
+    output(def, raw, rawStr);
     return;
   }
-  output(value, raw, String(value));
+  // Unknown field — return null (raw: empty string)
+  output(null, raw, '');
 }
 
 module.exports = {
@@ -1038,4 +1112,5 @@ module.exports = {
   cmdInitMapCodebase,
   cmdInitProgress,
   cmdInitGet,
+  INIT_FIELD_DEFAULTS,
 };
