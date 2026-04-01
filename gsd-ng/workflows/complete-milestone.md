@@ -607,7 +607,7 @@ fi
 
 ```bash
 # Effective target branch: use submodule target branch when in submodule context
-if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
   SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
   EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
