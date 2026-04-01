@@ -207,7 +207,7 @@ const SUBCOMMANDS = {
   validate: ['consistency', 'health'],
   todo: ['complete'],
   init: ['execute-phase', 'plan-phase', 'new-project', 'new-milestone', 'quick', 'resume', 'verify-work', 'phase-op', 'todos', 'milestone-op', 'map-codebase', 'progress'],
-  guard: ['sync-chain'],
+  guard: ['sync-chain', 'init-valid'],
 };
 
 // ─── Levenshtein Distance (for typo detection) ────────────────────────────────
@@ -1261,6 +1261,8 @@ async function main() {
       const subcommand = args[1];
       if (subcommand === 'sync-chain') {
         guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '), raw);
+      } else if (subcommand === 'init-valid') {
+        guard.cmdGuardInitValid(args[2], raw);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'guard');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {

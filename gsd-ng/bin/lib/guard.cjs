@@ -1,5 +1,5 @@
 'use strict';
-const { output } = require('./core.cjs');
+const { output, error } = require('./core.cjs');
 const { setConfigValue } = require('./config.cjs');
 
 /**
@@ -30,4 +30,26 @@ function cmdGuardSyncChain(cwd, argumentsStr, raw) {
   output({ synced: true, had_auto: hasAuto }, raw);
 }
 
-module.exports = { cmdGuardSyncChain };
+/**
+ * Guard: init-valid — Validate that $INIT is non-empty and parses as valid JSON.
+ *
+ * Exits 0 if the input is a non-empty, valid JSON string.
+ * Exits 1 with a clear error message if the input is empty, whitespace-only,
+ * or fails JSON.parse — indicating that the preceding init command failed.
+ *
+ * @param {string} jsonStr - The $INIT string to validate
+ * @param {boolean} raw - Raw output flag
+ */
+function cmdGuardInitValid(jsonStr, raw) {
+  if (!jsonStr || !jsonStr.trim()) {
+    error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
+  }
+  try {
+    JSON.parse(jsonStr);
+  } catch {
+    error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
+  }
+  output({ valid: true }, raw);
+}
+
+module.exports = { cmdGuardSyncChain, cmdGuardInitValid };

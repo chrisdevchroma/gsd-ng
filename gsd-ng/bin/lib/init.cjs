@@ -1075,8 +1075,12 @@ function cmdInitGet(jsonStr, fieldName, raw) {
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      // Malformed/empty JSON — fall through to registry lookup
+      // Malformed JSON — parsed remains null, will exit 1 below
     }
+  }
+  // Empty string or malformed JSON — surface as failure, do not silently fall to defaults
+  if (parsed === null) {
+    error('init-get: invalid JSON input — $INIT may be empty or init failed');
   }
   // If parse succeeded, try to get the value
   if (parsed !== null) {
@@ -1087,7 +1091,7 @@ function cmdInitGet(jsonStr, fieldName, raw) {
       return;
     }
   }
-  // Field absent or parse failed — use registry default
+  // Field absent — use registry default (parse succeeded, field just not present)
   if (Object.prototype.hasOwnProperty.call(INIT_FIELD_DEFAULTS, fieldName)) {
     const def = INIT_FIELD_DEFAULTS[fieldName];
     const rawStr = Array.isArray(def) ? JSON.stringify(def) : (def === null ? '' : String(def));

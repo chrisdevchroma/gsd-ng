@@ -1194,10 +1194,10 @@ describe('init-get command', () => {
     assert.ok(result.error.includes('Usage') || result.error.includes('usage') || result.error.includes('init-get'), `Expected usage message, got: ${result.error}`);
   });
 
-  test('returns typed default and exits 0 for invalid JSON', () => {
+  test('exits nonzero for invalid JSON', () => {
     const result = runGsdTools(['init-get', 'not-json', 'branching_strategy', '--raw'], tmpDir);
-    assert.ok(result.success, 'Command should succeed for invalid JSON (falls to registry)');
-    assert.strictEqual(result.output, 'none', `Expected registry default 'none', got: ${result.output}`);
+    assert.ok(!result.success, 'Command should fail for invalid JSON');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
   });
 
   test('array field returns JSON string when --raw', () => {
@@ -1230,22 +1230,55 @@ describe('init-get command', () => {
     assert.strictEqual(result.output, 'none');
   });
 
-  test('empty string $INIT returns typed default and exits 0', () => {
+  test('exits nonzero for empty string $INIT', () => {
     const result = runGsdTools(['init-get', '', 'target_branch', '--raw'], tmpDir);
-    assert.ok(result.success, `Command should succeed for empty JSON: ${result.error}`);
-    assert.strictEqual(result.output, 'main');
+    assert.ok(!result.success, 'Command should fail for empty string $INIT');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
   });
 
-  test('malformed JSON $INIT returns typed default and exits 0', () => {
+  test('exits nonzero for malformed JSON $INIT', () => {
     const result = runGsdTools(['init-get', 'NOTJSON', 'commit_docs', '--raw'], tmpDir);
-    assert.ok(result.success, `Command should succeed for malformed JSON: ${result.error}`);
-    assert.strictEqual(result.output, 'true');
+    assert.ok(!result.success, 'Command should fail for malformed JSON $INIT');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
   });
 
   test('unknown field not in registry returns empty string and exits 0', () => {
     const result = runGsdTools(['init-get', '{}', 'completely_unknown_field', '--raw'], tmpDir);
     assert.ok(result.success, `Command should succeed for unknown field: ${result.error}`);
     assert.strictEqual(result.output, '');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// guard init-valid command
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('guard init-valid command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('exits 0 for valid JSON object', () => {
+    const result = runGsdTools(['guard', 'init-valid', '{"phase":"01","plan":"01"}'], tmpDir);
+    assert.ok(result.success, `Command should succeed for valid JSON: ${result.error}`);
+  });
+
+  test('exits nonzero for empty string', () => {
+    const result = runGsdTools(['guard', 'init-valid', ''], tmpDir);
+    assert.ok(!result.success, 'Command should fail for empty string');
+    assert.ok(result.error.includes('guard init-valid') || result.error.includes('empty or malformed'), `Expected guard error, got: ${result.error}`);
+  });
+
+  test('exits nonzero for malformed JSON', () => {
+    const result = runGsdTools(['guard', 'init-valid', 'INVALID{'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for malformed JSON');
+    assert.ok(result.error.includes('guard init-valid') || result.error.includes('empty or malformed'), `Expected guard error, got: ${result.error}`);
   });
 });
 
