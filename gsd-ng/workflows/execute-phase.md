@@ -90,7 +90,7 @@ fi
 **Routing helper and effective target branch:** Define a shell function to route git commands to the correct repository:
 
 ```bash
-if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
   gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
   EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
@@ -403,11 +403,17 @@ Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # Reuse variables extracted in handle_branching step
-  GIT_CWD="${SUBMODULE_GIT_CWD}"
+  # Route push to correct repository
+  if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
+    GIT_CWD="${SUBMODULE_GIT_CWD}"
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null)
+    SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null)
+  else
+    GIT_CWD="."
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
+    SUBMODULE_REMOTE_URL=""
+  fi
   AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
-  PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null)
-  SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null)
 ```
 
 **Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.

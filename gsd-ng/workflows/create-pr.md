@@ -275,7 +275,7 @@ Build PR description following template precedence: user config > repo template 
 PR_BODY_FILE=$(mktemp)
 
 # 1. Check user config template
-PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template --raw 2>/dev/null)
+PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.pr_template --raw 2>/dev/null)
 
 if [ -n "$PR_TEMPLATE_PATH" ] && [ -f "$PR_TEMPLATE_PATH" ]; then
   # User config template — copy and apply variable substitution below

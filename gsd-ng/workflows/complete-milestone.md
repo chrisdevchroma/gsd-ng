@@ -548,7 +548,7 @@ fi
 # Load git config for branch handling (read from $INIT so per-submodule overrides apply)
 BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy --raw 2>/dev/null)
 TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null)
-COMMIT_DOCS=$(echo "$INIT" | grep -o '"commit_docs":[^,}]*' | cut -d: -f2 | tr -d ' "')
+COMMIT_DOCS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" commit_docs --raw 2>/dev/null)
 ```
 
 Note: `config-get` with `--raw` returns the value directly (not JSON-wrapped). If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
@@ -596,7 +596,7 @@ fi
 
 ```bash
 # Define git command routing
-if [ "$SUBMODULE_IS_ACTIVE" = "true" ]; then
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
   gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
 else
   gitcmd() { git "$@"; }
