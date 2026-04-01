@@ -54,7 +54,7 @@ Resolve submodule-aware git routing from $INIT (already loaded with @file: handl
 IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
 GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
 PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
-PUSH_TARGET=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_target_branch||'main')}catch{process.stdout.write('main')}" "$INIT")
+PUSH_TARGET=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null); if [ -z "$PUSH_TARGET" ]; then PUSH_TARGET="main"; fi
 AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
 SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
 
@@ -275,7 +275,7 @@ Build PR description following template precedence: user config > repo template 
 PR_BODY_FILE=$(mktemp)
 
 # 1. Check user config template
-PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.pr_template --raw 2>/dev/null)
+PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template --raw 2>/dev/null)
 
 if [ -n "$PR_TEMPLATE_PATH" ] && [ -f "$PR_TEMPLATE_PATH" ]; then
   # User config template — copy and apply variable substitution below
