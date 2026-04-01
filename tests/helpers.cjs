@@ -2,7 +2,7 @@
  * GSD Tools Test Helpers
  */
 
-const { execSync, execFileSync, spawnSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,7 +13,7 @@ const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
  * Run gsd-tools command.
  *
  * @param {string|string[]} args - Command string (shell-interpreted) or array
- *   of arguments (shell-bypassed via execFileSync, safe for JSON and dollar signs).
+ *   of arguments (shell-bypassed via spawnSync, safe for JSON and dollar signs).
  * @param {string} cwd - Working directory.
  * @param {object} envOverrides - Extra env vars merged on top of process.env (default: {}).
  */
