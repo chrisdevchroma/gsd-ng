@@ -396,6 +396,7 @@ function resolveGitContext(cwd) {
     review_branch_template: configSubmodule.review_branch_template || null,
     pr_draft: configSubmodule.pr_draft !== undefined ? configSubmodule.pr_draft : true,
     pr_template: configSubmodule.pr_template || null,
+    type_aliases: configSubmodule.type_aliases || null,
   };
 }
 

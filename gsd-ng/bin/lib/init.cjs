@@ -147,6 +147,7 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.review_branch_template = gitCtx.review_branch_template;
     result.pr_draft = gitCtx.pr_draft;
     result.platform = gitCtx.platform;
+    result.type_aliases = gitCtx.type_aliases;
 
     // Recompute branch_name using overridden values
     const bs = result.branching_strategy;
@@ -815,6 +816,7 @@ function cmdInitMilestoneOp(cwd, raw) {
     result.platform = gitCtx.platform;
     result.phase_branch_template = gitCtx.phase_branch_template;
     result.milestone_branch_template = gitCtx.milestone_branch_template;
+    result.type_aliases = gitCtx.type_aliases;
   }
 
   output(result, raw);
