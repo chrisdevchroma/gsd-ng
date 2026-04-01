@@ -727,6 +727,106 @@ describe('resolveGitContext', () => {
     assert.strictEqual(result.branching_strategy, 'phase',
       'branching_strategy should be per-submodule override value');
   });
+
+  test('Test 13: resolveGitContext error path — non-git dir causes cmdInitExecutePhase to return submodule_is_active: false', () => {
+    // resolveGitContext propagates throws (no internal try/catch).
+    // The wrapping cmdInitExecutePhase has try/catch that returns defaults.
+    // We test this via the CLI: a non-git cwd returns submodule_is_active: false.
+    const nonGitDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-nongit-'));
+    fs.mkdirSync(path.join(nonGitDir, '.planning', 'phases'), { recursive: true });
+    try {
+      // For init execute-phase to not immediately error on "phase not found",
+      // create a minimal phase dir and roadmap
+      const phaseDir = path.join(nonGitDir, '.planning', 'phases', '01-test');
+      fs.mkdirSync(phaseDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(nonGitDir, '.planning', 'ROADMAP.md'),
+        '# Roadmap\n\n## Phase Details\n\n### Phase 1: Test\n**Goal:** Test\n**Requirements:** none\n**Depends on:** nothing\n**Plans:** 1 plans\n\nPlans:\n- [ ] 01-01-PLAN.md\n'
+      );
+      fs.writeFileSync(
+        path.join(nonGitDir, '.planning', 'STATE.md'),
+        '---\ngsd_state_version: 1.0\nmilestone: test\ncurrent_phase: 1\ncurrent_plan: Not started\nstatus: testing\n---\n\n# Project State\n'
+      );
+      const result = runGsdTools(['init', 'execute-phase', '1'], nonGitDir);
+      // The command should succeed (error caught internally)
+      assert.ok(result.success, `init should succeed even for non-git dir: ${result.error}`);
+      const parsed = JSON.parse(result.output);
+      assert.strictEqual(parsed.submodule_is_active, false,
+        'submodule_is_active should be false when git context resolution fails');
+    } finally {
+      fs.rmSync(nonGitDir, { recursive: true, force: true });
+    }
+  });
+
+  test('Test 14: submodule with no remote configured returns remote_url: null', () => {
+    const { workspaceDir, subDirs } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    // Remove the remote from the submodule dir
+    execSync('git remote remove origin', { cwd: subDirs[0], stdio: 'pipe' });
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.strictEqual(result.remote_url, null,
+      'remote_url should be null when no remote is configured');
+  });
+
+  test('Test 15: special characters in submodule path', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'my-lib', path: 'my-lib', remoteUrl: 'https://github.com/user/my-lib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'my-lib');
+    // Should not throw
+    let result;
+    assert.doesNotThrow(() => {
+      result = workspace.resolveGitContext(workspaceDir);
+    }, 'resolveGitContext should not throw for submodule path with hyphens');
+    assert.strictEqual(result.is_submodule, true, 'is_submodule should be true');
+  });
+
+  test('Test 16: per-submodule config for nonexistent submodule name is silently ignored', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: {
+        target_branch: 'global-branch',
+        submodules: {
+          nonexistent: { target_branch: 'custom-branch' },
+        },
+      },
+    }, null, 2));
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.notStrictEqual(result.target_branch, 'custom-branch',
+      'nonexistent submodule config should not affect active submodule');
+    assert.strictEqual(result.target_branch, 'global-branch',
+      'global target_branch should be used when submodule name has no matching config');
+  });
+
+  test('Test 17: type_aliases merge in resolveGitContext return', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ]);
+    tmpDir = workspaceDir;
+    touchSubmodule(workspaceDir, 'mylib');
+    const configPath = path.join(workspaceDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      git: {
+        submodules: {
+          mylib: { type_aliases: { feat: 'feature-custom' } },
+        },
+      },
+    }, null, 2));
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.notStrictEqual(result.type_aliases, null,
+      'type_aliases should not be null when set in per-submodule config');
+    assert.strictEqual(result.type_aliases.feat, 'feature-custom',
+      'type_aliases.feat should reflect per-submodule override');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
