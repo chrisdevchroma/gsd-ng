@@ -154,7 +154,7 @@ if [[ "$ENTRY_COUNT" -gt 0 ]]; then
   BASELINE_FILE="${PHASE_DIR}/${PHASE_NUMBER}-test-baseline.json"
   echo "Capturing test baselines for $ENTRY_COUNT directory(ies)..."
 
-  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-capture-test-baseline.cjs" "$DISCOVERED" "$BASELINE_FILE"
+  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" test capture-baseline "$DISCOVERED" "$BASELINE_FILE"
 fi
 ```
 
@@ -510,7 +510,7 @@ Skip this step entirely if `$ENTRY_COUNT` is 0 (no test commands were discovered
 
 ```bash
 if [[ "$ENTRY_COUNT" -gt 0 ]]; then
-  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-compare-test-baseline.cjs" "$DISCOVERED" "$BASELINE_FILE"
+  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" test compare-baseline "$DISCOVERED" "$BASELINE_FILE"
 fi
 ```
 

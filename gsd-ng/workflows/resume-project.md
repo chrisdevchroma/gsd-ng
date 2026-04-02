@@ -41,22 +41,21 @@ Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_ex
 
 <step name="load_state">
 
-Read and parse STATE.md, then PROJECT.md:
+Read and parse state snapshot, then PROJECT.md:
 
 ```bash
-cat .planning/STATE.md
+STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
 cat .planning/PROJECT.md
 ```
 
-**From STATE.md extract:**
+**From STATE_SNAPSHOT JSON extract:**
 
 - **Project Reference**: Core value and current focus
-- **Current Position**: Phase X of Y, Plan A of B, Status
-- **Progress**: Visual progress bar
-- **Recent Decisions**: Key decisions affecting current work
-- **Pending Todos**: Ideas captured during sessions
-- **Blockers/Concerns**: Issues carried forward
-- **Session Continuity**: Where we left off, any resume files
+- **Current Position**: Phase X of Y (`current_phase`, `current_phase_name`), Plan A of B (`current_plan`), Status (`status`)
+- **Progress**: Visual progress bar (`progress`)
+- **Recent Decisions**: Key decisions affecting current work (`decisions[]`)
+- **Blockers/Concerns**: Issues carried forward (`blockers[]`)
+- **Session Continuity**: Where we left off (`session`)
 
 **From PROJECT.md extract:**
 

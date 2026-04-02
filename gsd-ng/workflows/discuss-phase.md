@@ -349,13 +349,13 @@ Read project-level and prior phase context to avoid re-asking decided questions 
 # Core project files
 cat .planning/PROJECT.md 2>/dev/null
 cat .planning/REQUIREMENTS.md 2>/dev/null
-cat .planning/STATE.md 2>/dev/null
+STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
 ```
 
 Extract from these:
 - **PROJECT.md** — Vision, principles, non-negotiables, user preferences
 - **REQUIREMENTS.md** — Acceptance criteria, constraints, must-haves vs nice-to-haves
-- **STATE.md** — Current progress, any flags or session notes
+- **STATE_SNAPSHOT JSON** — Current progress (`current_phase`, `current_plan`, `status`), decisions, blockers, session notes
 
 **Step 2: Read all prior CONTEXT.md files**
 ```bash

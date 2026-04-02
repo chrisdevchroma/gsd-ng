@@ -552,7 +552,7 @@ function cmdStateRecordSession(cwd, options, raw) {
   }
 }
 
-function cmdStateSnapshot(cwd, raw) {
+function cmdStateSnapshot(cwd, raw, phaseFilter) {
   const { state: statePath } = planningPaths(cwd);
 
   if (!fs.existsSync(statePath)) {
@@ -634,6 +634,10 @@ function cmdStateSnapshot(cwd, raw) {
     if (resumeFileMatch) session.resume_file = resumeFileMatch[1].trim();
   }
 
+  const filteredDecisions = phaseFilter
+    ? decisions.filter(d => d.phase === phaseFilter || d.phase === String(phaseFilter))
+    : decisions;
+
   const result = {
     current_phase: currentPhase,
     current_phase_name: currentPhaseName,
@@ -645,7 +649,7 @@ function cmdStateSnapshot(cwd, raw) {
     last_activity: lastActivity,
     last_activity_desc: lastActivityDesc,
     target_branch: targetBranch,
-    decisions,
+    decisions: filteredDecisions,
     blockers,
     paused_at: pausedAt,
     session,

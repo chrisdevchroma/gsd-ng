@@ -296,8 +296,8 @@ elif [ -d ".gitlab/merge_request_templates" ]; then
 
 else
   # GSD default professional template
-  # Extract phase goal from ROADMAP
-  PHASE_OBJECTIVE=$(grep -A 5 "Phase ${PHASE_NUMBER}:" .planning/ROADMAP.md 2>/dev/null | grep "Goal" | sed 's/.*Goal.*:\*\* *//' | head -1)
+  # Extract phase goal using --pick (handles @file: dereferencing internally)
+  PHASE_OBJECTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE_NUMBER}" --pick goal --raw 2>/dev/null || echo "")
 
   # Extract plan summaries
   PLAN_SUMMARIES=""

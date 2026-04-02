@@ -27,11 +27,11 @@ Mark current phase complete and advance to next. This is the natural point where
 Before transition, read project state:
 
 ```bash
-cat .planning/STATE.md 2>/dev/null
+STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
 cat .planning/PROJECT.md 2>/dev/null
 ```
 
-Parse current position to verify we're transitioning the right phase.
+Parse current position from STATE_SNAPSHOT JSON to verify we're transitioning the right phase.
 Note accumulated context that may need updating after transition.
 
 </step>

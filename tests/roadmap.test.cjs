@@ -560,7 +560,9 @@ describe('roadmap update-plan-progress command', () => {
   test('missing phase number returns error', () => {
     const result = runGsdTools('roadmap update-plan-progress', tmpDir);
     assert.strictEqual(result.success, false, 'should fail without phase number');
-    assert.ok(result.error.includes('phase number required'), 'error should mention phase number required');
+    // Arg validation layer fires before the handler, producing a "Too few arguments" error
+    const hasError = result.error.includes('Too few arguments') || result.error.includes('phase number required');
+    assert.ok(hasError, `error should mention missing phase number, got: ${result.error}`);
   });
 
   test('nonexistent phase returns error', () => {
