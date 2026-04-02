@@ -36,6 +36,8 @@ const VALID_CONFIG_KEYS = new Set([
   'git.ssh_check',
 ]);
 
+const SUBMODULE_KEY_PATTERN = /^git\.submodules\.[^.]+\.(target_branch|branching_strategy|phase_branch_template|milestone_branch_template|review_branch_template|remote|auto_push|platform|pr_template|pr_draft|commit_format|commit_template|versioning_scheme|type_aliases|ssh_check)$/;
+
 const CONFIG_KEY_SUGGESTIONS = {
   'workflow.nyquist_validation_enabled': 'workflow.nyquist_validation',
   'agents.nyquist_validation_enabled': 'workflow.nyquist_validation',
@@ -194,7 +196,11 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
 
   validateKnownConfigKeyPath(keyPath);
 
-  if (!VALID_CONFIG_KEYS.has(keyPath)) {
+  if (keyPath === 'git.submodule.workspace_branch') {
+    error('git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.');
+  }
+
+  if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath)) {
     error(`Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`);
   }
 
@@ -213,6 +219,10 @@ function cmdConfigGet(cwd, keyPath, raw) {
 
   if (!keyPath) {
     error('Usage: config-get <key.path>');
+  }
+
+  if (keyPath === 'git.submodule.workspace_branch') {
+    process.stderr.write('Warning: git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.\n');
   }
 
   let config = {};

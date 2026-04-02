@@ -18,6 +18,14 @@ Load all context in one call:
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
+  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
+  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+    echo "Error: init failed twice. Check gsd-tools installation."
+    exit 1
+  fi
+fi
 ```
 
 Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `target_branch`, `auto_push`, `remote`, `review_branch_template`, `pr_draft`, `platform`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
@@ -41,20 +49,73 @@ Check `branching_strategy` from init:
 
 **"none":** Skip, continue on current branch.
 
-**"phase":** Use pre-computed `branch_name` from init. Base from `target_branch`:
+**Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
+
 ```bash
-# Base new work branch from target_branch (not current HEAD)
-git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH" 2>/dev/null || git checkout "$BRANCH_NAME"
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
+SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
 ```
 
-**"milestone":** Use pre-computed `branch_name` from init. If branch already exists (subsequent phases), just checkout. If new (first phase of milestone), create from `target_branch`:
+**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Ask the user to select which submodule(s) to branch:
+
 ```bash
-if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
-  # Milestone branch already exists (not first phase) — just switch to it
-  git checkout "$BRANCH_NAME"
+if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
+  if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null)
+    AskUserQuestion(
+      question="Multiple submodules have changes. Which submodule(s) should be branched?",
+      options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
+    )
+    # If user selects a specific path or "All of them": loop gitcmd over selected paths to create/checkout branch
+    # If "Skip branching": continue on current branch
+  else
+    # 3+ ambiguous paths: text list + binary choice
+    echo "Multiple submodules have changes:"
+    echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));a.forEach(p=>console.log('  - '+p));" 2>/dev/null
+    AskUserQuestion(
+      question="Multiple submodules have uncommitted changes. How should branching proceed?",
+      options=["Branch all of them", "Skip branching"]
+    )
+    # If "Branch all of them": loop gitcmd over all paths in AMBIGUOUS_PATHS
+    # If "Skip branching": continue on current branch
+  fi
+fi
+```
+
+**Routing helper and effective target branch:** Define a shell function to route git commands to the correct repository:
+
+```bash
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
+  gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
+  EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
-  # First phase of milestone — create from target_branch
-  git checkout -b "$BRANCH_NAME" "$TARGET_BRANCH"
+  gitcmd() { git "$@"; }
+  EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
+fi
+```
+
+
+**"phase":** Use pre-computed `branch_name` from init. Base from `EFFECTIVE_TARGET_BRANCH`:
+
+```bash
+# Base new work branch from effective target branch (not current HEAD)
+gitcmd checkout -b "$BRANCH_NAME" "$EFFECTIVE_TARGET_BRANCH" 2>/dev/null || gitcmd checkout "$BRANCH_NAME"
+```
+
+**"milestone":** Use pre-computed `branch_name` from init. If branch already exists (subsequent phases), just checkout. If new (first phase of milestone), create from `EFFECTIVE_TARGET_BRANCH`:
+
+```bash
+if gitcmd show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
+  # Milestone branch already exists (not first phase) — just switch to it
+  gitcmd checkout "$BRANCH_NAME"
+else
+  # First phase of milestone — create from effective target branch
+  gitcmd checkout -b "$BRANCH_NAME" "$EFFECTIVE_TARGET_BRANCH"
 fi
 ```
 
@@ -342,11 +403,17 @@ Read from init JSON: `auto_push`, `branch_name`, `branching_strategy`.
 # Only push if auto_push is enabled and we're on a GSD-managed branch
 if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BRANCH_NAME" ]; then
 
-  # Read submodule fields from $INIT (already loaded with @file: handling)
-  GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-  PUSH_REMOTE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote||'origin')}catch{process.stdout.write('origin')}" "$INIT")
-  AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
-  SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+  # Route push to correct repository
+  if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
+    GIT_CWD="${SUBMODULE_GIT_CWD}"
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null)
+    SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null)
+  else
+    GIT_CWD="."
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
+    SUBMODULE_REMOTE_URL=""
+  fi
+  AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
 ```
 
 **Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.

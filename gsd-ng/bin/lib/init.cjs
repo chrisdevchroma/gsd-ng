@@ -125,6 +125,7 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.submodule_remote_url = gitCtx.remote_url;
     result.submodule_target_branch = gitCtx.target_branch;
     result.submodule_ambiguous = gitCtx.ambiguous;
+    result.ambiguous_paths = gitCtx.ambiguous_paths || [];
   } else {
     result.submodule_is_active = false;
     result.submodule_git_cwd = null;
@@ -132,6 +133,33 @@ function cmdInitExecutePhase(cwd, phase, raw) {
     result.submodule_remote_url = null;
     result.submodule_target_branch = null;
     result.submodule_ambiguous = false;
+    result.ambiguous_paths = [];
+  }
+
+  if (gitCtx && gitCtx.is_submodule) {
+    // Submodule active — use merged per-submodule config from gitCtx
+    result.branching_strategy = gitCtx.branching_strategy;
+    result.phase_branch_template = gitCtx.phase_branch_template;
+    result.milestone_branch_template = gitCtx.milestone_branch_template;
+    result.target_branch = gitCtx.target_branch;
+    result.auto_push = gitCtx.auto_push;
+    result.remote = gitCtx.remote;
+    result.review_branch_template = gitCtx.review_branch_template;
+    result.pr_draft = gitCtx.pr_draft;
+    result.platform = gitCtx.platform;
+    result.type_aliases = gitCtx.type_aliases;
+
+    // Recompute branch_name using overridden values
+    const bs = result.branching_strategy;
+    result.branch_name = bs === 'phase' && phaseInfo
+      ? result.phase_branch_template
+          .replace('{phase}', phaseInfo.phase_number)
+          .replace('{slug}', phaseInfo.phase_slug || 'phase')
+      : bs === 'milestone'
+        ? result.milestone_branch_template
+            .replace('{milestone}', result.milestone_version)
+            .replace('{slug}', generateSlugInternal(result.milestone_name) || 'milestone')
+        : null;
   }
 
   output(result, raw);
@@ -723,6 +751,15 @@ function cmdInitMilestoneOp(cwd, raw) {
     // Config
     commit_docs: config.commit_docs,
 
+    // Git config fields — will be overridden by gitCtx merge if submodule is active
+    branching_strategy: config.branching_strategy,
+    target_branch: config.target_branch,
+    auto_push: config.auto_push,
+    remote: config.remote,
+    platform: config.platform,
+    phase_branch_template: config.phase_branch_template,
+    milestone_branch_template: config.milestone_branch_template,
+
     // Current milestone
     milestone_version: milestone.version,
     milestone_name: milestone.name,
@@ -744,6 +781,43 @@ function cmdInitMilestoneOp(cwd, raw) {
     archive_exists: pathExistsInternal(cwd, '.planning/archive'),
     phases_dir_exists: pathExistsInternal(cwd, '.planning/phases'),
   };
+
+  // Resolve submodule git context for workflows that need branch routing
+  let gitCtx = null;
+  try {
+    gitCtx = resolveGitContext(cwd);
+  } catch {
+    // If git-context resolution fails, leave fields null — workflows fall back to workspace-level config
+  }
+
+  if (gitCtx) {
+    result.submodule_is_active = gitCtx.is_submodule;
+    result.submodule_git_cwd = gitCtx.git_cwd;
+    result.submodule_remote = gitCtx.remote;
+    result.submodule_remote_url = gitCtx.remote_url;
+    result.submodule_target_branch = gitCtx.target_branch;
+    result.submodule_ambiguous = gitCtx.ambiguous;
+    result.ambiguous_paths = gitCtx.ambiguous_paths || [];
+  } else {
+    result.submodule_is_active = false;
+    result.submodule_git_cwd = null;
+    result.submodule_remote = null;
+    result.submodule_remote_url = null;
+    result.submodule_target_branch = null;
+    result.submodule_ambiguous = false;
+    result.ambiguous_paths = [];
+  }
+
+  if (gitCtx && gitCtx.is_submodule) {
+    result.branching_strategy = gitCtx.branching_strategy;
+    result.target_branch = gitCtx.target_branch;
+    result.auto_push = gitCtx.auto_push;
+    result.remote = gitCtx.remote;
+    result.platform = gitCtx.platform;
+    result.phase_branch_template = gitCtx.phase_branch_template;
+    result.milestone_branch_template = gitCtx.milestone_branch_template;
+    result.type_aliases = gitCtx.type_aliases;
+  }
 
   output(result, raw);
 }
@@ -931,6 +1005,103 @@ function cmdInitProgress(cwd, raw) {
   output(result, raw);
 }
 
+const INIT_FIELD_DEFAULTS = {
+  // booleans
+  submodule_is_active: false,
+  submodule_ambiguous: false,
+  auto_push: false,
+  pr_draft: true,
+  commit_docs: true,
+  parallelization: true,
+  verifier_enabled: false,
+  phase_found: false,
+  state_exists: false,
+  roadmap_exists: false,
+  config_exists: false,
+  planning_exists: false,
+  all_phases_complete: false,
+  archive_exists: false,
+  phases_dir_exists: false,
+  // arrays
+  ambiguous_paths: [],
+  plans: [],
+  summaries: [],
+  incomplete_plans: [],
+  archived_milestones: [],
+  // nullable strings (raw output: "")
+  submodule_git_cwd: null,
+  submodule_remote: null,
+  submodule_remote_url: null,
+  submodule_target_branch: null,
+  phase_dir: null,
+  phase_number: null,
+  phase_name: null,
+  phase_slug: null,
+  phase_req_ids: null,
+  branch_name: null,
+  review_branch_template: null,
+  platform: null,
+  pr_template: null,
+  type_aliases: null,
+  executor_model: null,
+  verifier_model: null,
+  researcher_model: null,
+  planner_model: null,
+  // plain strings with defaults
+  branching_strategy: 'none',
+  target_branch: 'main',
+  remote: 'origin',
+  phase_branch_template: 'phase/{phase}-{slug}',
+  milestone_branch_template: 'milestone/{milestone}-{slug}',
+  // numbers
+  plan_count: 0,
+  incomplete_count: 0,
+  phase_count: 0,
+  completed_phases: 0,
+  archive_count: 0,
+  // file paths
+  state_path: '.planning/STATE.md',
+  roadmap_path: '.planning/ROADMAP.md',
+  config_path: '.planning/config.json',
+  requirements_path: '.planning/REQUIREMENTS.md',
+};
+
+function cmdInitGet(jsonStr, fieldName, raw) {
+  if (!fieldName) {
+    error('Usage: init-get <json> <field> [--raw]');
+  }
+  let parsed = null;
+  if (jsonStr) {
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Malformed JSON — parsed remains null, will exit 1 below
+    }
+  }
+  // Empty string or malformed JSON — surface as failure, do not silently fall to defaults
+  if (parsed === null) {
+    error('init-get: invalid JSON input — $INIT may be empty or init failed');
+  }
+  // If parse succeeded, try to get the value
+  if (parsed !== null) {
+    const value = parsed[fieldName];
+    if (value !== undefined && value !== null) {
+      const rawStr = Array.isArray(value) ? JSON.stringify(value) : String(value);
+      output(value, raw, rawStr);
+      return;
+    }
+  }
+  // Field absent — use registry default (parse succeeded, field just not present)
+  if (Object.prototype.hasOwnProperty.call(INIT_FIELD_DEFAULTS, fieldName)) {
+    const def = INIT_FIELD_DEFAULTS[fieldName];
+    const rawStr = Array.isArray(def) ? JSON.stringify(def) : (def === null ? '' : String(def));
+    output(def, raw, rawStr);
+    return;
+  }
+  // Unknown field — return null (raw: empty string)
+  output(null, raw, '');
+}
+
 module.exports = {
   cmdInitExecutePhase,
   cmdInitPlanPhase,
@@ -944,4 +1115,6 @@ module.exports = {
   cmdInitMilestoneOp,
   cmdInitMapCodebase,
   cmdInitProgress,
+  cmdInitGet,
+  INIT_FIELD_DEFAULTS,
 };

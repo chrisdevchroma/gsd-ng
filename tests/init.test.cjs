@@ -1111,6 +1111,175 @@ describe('init execute-phase submodule fields', () => {
       cleanupDir(workspaceDir);
     }
   });
+
+  test('init execute-phase with per-submodule branching_strategy and ambiguous_paths', () => {
+    const { workspaceDir } = createSubmoduleWorkspace([
+      { name: 'mylib', path: 'mylib', remoteUrl: 'https://github.com/user/mylib.git' },
+    ], { roadmap: true, state: true, phaseDir: '01-test' });
+    try {
+      // Write per-submodule config
+      fs.writeFileSync(
+        path.join(workspaceDir, '.planning', 'config.json'),
+        JSON.stringify({
+          git: {
+            branching_strategy: 'none',
+            target_branch: 'main',
+            submodules: {
+              mylib: {
+                branching_strategy: 'phase',
+                target_branch: 'develop',
+              },
+            },
+          },
+        }, null, 2)
+      );
+      const result = runGsdTools(['init', 'execute-phase', '1'], workspaceDir);
+      assert.ok(result.success, `init should succeed: ${result.error}`);
+      const parsed = JSON.parse(result.output);
+
+      assert.strictEqual(parsed.branching_strategy, 'phase',
+        `per-submodule branching_strategy should be 'phase', got: ${parsed.branching_strategy}`);
+      assert.strictEqual(parsed.target_branch, 'develop',
+        `per-submodule target_branch should be 'develop', got: ${parsed.target_branch}`);
+      assert.ok(Array.isArray(parsed.ambiguous_paths),
+        `ambiguous_paths should be an array, got: ${typeof parsed.ambiguous_paths}`);
+    } finally {
+      cleanupDir(workspaceDir);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// init-get command
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('init-get command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns boolean field as plain string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"submodule_is_active":true}', 'submodule_is_active', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'true');
+  });
+
+  test('returns string field as plain string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"submodule_git_cwd":"/path/to/repo"}', 'submodule_git_cwd', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '/path/to/repo');
+  });
+
+  test('returns empty string for missing field without error exit', () => {
+    const result = runGsdTools(['init-get', '{"foo":"bar"}', 'missing_field', '--raw'], tmpDir);
+    assert.ok(result.success, `Command should not fail for missing field: ${result.error}`);
+    assert.strictEqual(result.output, '');
+  });
+
+  test('coerces number to string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"count":42}', 'count', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '42');
+  });
+
+  test('exits nonzero with usage message when called with no args', () => {
+    const result = runGsdTools(['init-get'], tmpDir);
+    assert.ok(!result.success, 'Command should fail with no args');
+    assert.ok(result.error.includes('Usage') || result.error.includes('usage') || result.error.includes('init-get'), `Expected usage message, got: ${result.error}`);
+  });
+
+  test('exits nonzero for invalid JSON', () => {
+    const result = runGsdTools(['init-get', 'not-json', 'branching_strategy', '--raw'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for invalid JSON');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
+  });
+
+  test('array field returns JSON string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"ambiguous_paths":["a","b"]}', 'ambiguous_paths', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '["a","b"]');
+  });
+
+  test('null field in JSON returns empty string when --raw', () => {
+    const result = runGsdTools(['init-get', '{"platform":null}', 'platform', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '');
+  });
+
+  test('known boolean field missing from JSON returns typed default', () => {
+    const result = runGsdTools(['init-get', '{}', 'submodule_is_active', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'false');
+  });
+
+  test('known array field missing from JSON returns empty JSON array', () => {
+    const result = runGsdTools(['init-get', '{}', 'ambiguous_paths', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, '[]');
+  });
+
+  test('known string field missing from JSON returns non-empty default', () => {
+    const result = runGsdTools(['init-get', '{}', 'branching_strategy', '--raw'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(result.output, 'none');
+  });
+
+  test('exits nonzero for empty string $INIT', () => {
+    const result = runGsdTools(['init-get', '', 'target_branch', '--raw'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for empty string $INIT');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
+  });
+
+  test('exits nonzero for malformed JSON $INIT', () => {
+    const result = runGsdTools(['init-get', 'NOTJSON', 'commit_docs', '--raw'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for malformed JSON $INIT');
+    assert.ok(result.error.includes('init-get') || result.error.includes('invalid JSON'), `Expected error message, got: ${result.error}`);
+  });
+
+  test('unknown field not in registry returns empty string and exits 0', () => {
+    const result = runGsdTools(['init-get', '{}', 'completely_unknown_field', '--raw'], tmpDir);
+    assert.ok(result.success, `Command should succeed for unknown field: ${result.error}`);
+    assert.strictEqual(result.output, '');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// guard init-valid command
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('guard init-valid command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('exits 0 for valid JSON object', () => {
+    const result = runGsdTools(['guard', 'init-valid', '{"phase":"01","plan":"01"}'], tmpDir);
+    assert.ok(result.success, `Command should succeed for valid JSON: ${result.error}`);
+  });
+
+  test('exits nonzero for empty string', () => {
+    const result = runGsdTools(['guard', 'init-valid', ''], tmpDir);
+    assert.ok(!result.success, 'Command should fail for empty string');
+    assert.ok(result.error.includes('guard init-valid') || result.error.includes('empty or malformed'), `Expected guard error, got: ${result.error}`);
+  });
+
+  test('exits nonzero for malformed JSON', () => {
+    const result = runGsdTools(['guard', 'init-valid', 'INVALID{'], tmpDir);
+    assert.ok(!result.success, 'Command should fail for malformed JSON');
+    assert.ok(result.error.includes('guard init-valid') || result.error.includes('empty or malformed'), `Expected guard error, got: ${result.error}`);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

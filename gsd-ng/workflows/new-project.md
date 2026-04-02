@@ -50,6 +50,14 @@ The document should describe what you want to build.
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
+  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
+  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+    echo "Error: init failed twice. Check gsd-tools installation."
+    exit 1
+  fi
+fi
 ```
 
 Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.

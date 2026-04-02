@@ -2,7 +2,7 @@
  * GSD Tools Test Helpers
  */
 
-const { execSync, execFileSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,35 +13,41 @@ const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
  * Run gsd-tools command.
  *
  * @param {string|string[]} args - Command string (shell-interpreted) or array
- *   of arguments (shell-bypassed via execFileSync, safe for JSON and dollar signs).
+ *   of arguments (shell-bypassed via spawnSync, safe for JSON and dollar signs).
  * @param {string} cwd - Working directory.
  * @param {object} envOverrides - Extra env vars merged on top of process.env (default: {}).
  */
 function runGsdTools(args, cwd = process.cwd(), envOverrides = {}) {
-  try {
-    let result;
-    const env = { ...process.env, ...envOverrides };
-    if (Array.isArray(args)) {
-      result = execFileSync(process.execPath, [TOOLS_PATH, ...args], {
-        cwd,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env,
-      });
-    } else {
-      result = execSync(`node "${TOOLS_PATH}" ${args}`, {
-        cwd,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env,
-      });
-    }
-    return { success: true, output: result.trim() };
-  } catch (err) {
+  const env = { ...process.env, ...envOverrides };
+  let result;
+  if (Array.isArray(args)) {
+    result = spawnSync(process.execPath, [TOOLS_PATH, ...args], {
+      cwd,
+      encoding: 'utf-8',
+      env,
+    });
+  } else {
+    // Shell-interpreted: pass through shell so quotes and special chars are handled correctly
+    result = spawnSync(`node "${TOOLS_PATH}" ${args}`, [], {
+      cwd,
+      encoding: 'utf-8',
+      env,
+      shell: true,
+    });
+  }
+  const success = result.status === 0;
+  if (success) {
+    return {
+      success: true,
+      output: (result.stdout || '').trim(),
+      stderr: (result.stderr || '').trim(),
+    };
+  } else {
     return {
       success: false,
-      output: err.stdout?.toString().trim() || '',
-      error: err.stderr?.toString().trim() || err.message,
+      output: (result.stdout || '').trim(),
+      error: (result.stderr || '').trim() || (result.error ? result.error.message : 'Unknown error'),
+      stderr: (result.stderr || '').trim(),
     };
   }
 }

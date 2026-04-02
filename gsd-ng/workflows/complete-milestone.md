@@ -534,18 +534,87 @@ Use `init milestone-op` for context, or load config directly:
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
+  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
+  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+    echo "Error: init failed twice. Check gsd-tools installation."
+    exit 1
+  fi
+fi
 ```
 
 ```bash
-# Load git config for branch handling
-BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.branching_strategy --raw 2>/dev/null || echo "none")
-TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.target_branch --raw 2>/dev/null || echo "main")
-COMMIT_DOCS=$(echo "$INIT" | grep -o '"commit_docs":[^,}]*' | cut -d: -f2 | tr -d ' "')
+# Load git config for branch handling (read from $INIT so per-submodule overrides apply)
+BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy --raw 2>/dev/null)
+TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null)
+COMMIT_DOCS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" commit_docs --raw 2>/dev/null)
 ```
 
 Note: `config-get` with `--raw` returns the value directly (not JSON-wrapped). If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
 
 Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, `target_branch`, and `commit_docs` from init JSON.
+
+**Submodule-aware routing:** Extract submodule context from `$INIT`:
+
+```bash
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
+```
+
+**Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branch routing cannot be determined. Ask the user to select which submodule(s) to branch:
+
+```bash
+if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
+  if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null)
+    AskUserQuestion(
+      question="Multiple submodules have changes. Which submodule(s) should be branched?",
+      options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
+    )
+    # If user selects a specific path or "All of them": loop gitcmd over selected paths to create/checkout branch
+    # If "Skip branching": skip to git_tag
+  else
+    # 3+ ambiguous paths: text list + binary choice
+    echo "Multiple submodules have changes:"
+    echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));a.forEach(p=>console.log('  - '+p));" 2>/dev/null
+    AskUserQuestion(
+      question="Multiple submodules have uncommitted changes. How should branching proceed?",
+      options=["Branch all of them", "Skip branching"]
+    )
+    # If "Branch all of them": loop gitcmd over all paths in AMBIGUOUS_PATHS
+    # If "Skip branching": skip to git_tag
+  fi
+fi
+```
+
+**Routing helper:** Define a shell function to route git commands to the correct repository:
+
+```bash
+# Define git command routing
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
+  gitcmd() { git -C "$SUBMODULE_GIT_CWD" "$@"; }
+else
+  gitcmd() { git "$@"; }
+fi
+```
+
+**Effective target branch:** Use the submodule target branch when in submodule context:
+
+```bash
+# Effective target branch: use submodule target branch when in submodule context
+if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
+  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
+  EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
+else
+  EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
+fi
+```
+
 
 **If "none":** Skip to git_tag.
 
@@ -553,14 +622,14 @@ Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_templat
 
 ```bash
 BRANCH_PREFIX=$(echo "$PHASE_BRANCH_TEMPLATE" | sed 's/{.*//')
-PHASE_BRANCHES=$(git branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ')
+PHASE_BRANCHES=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ')
 ```
 
 **For "milestone" strategy:**
 
 ```bash
 BRANCH_PREFIX=$(echo "$MILESTONE_BRANCH_TEMPLATE" | sed 's/{.*//')
-MILESTONE_BRANCH=$(git branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ' | head -1)
+MILESTONE_BRANCH=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ' | head -1)
 ```
 
 **If no branches found:** Skip to git_tag.
@@ -584,34 +653,36 @@ AskUserQuestion with options: Squash merge (Recommended), Merge with history, De
 **Squash merge:**
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-git checkout "$TARGET_BRANCH"
+CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git merge --squash "$branch"
+    gitcmd merge --squash "$branch"
     # Strip .planning/ from staging if commit_docs is false
-    if [ "$COMMIT_DOCS" = "false" ]; then
+    # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+    if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
       git reset HEAD .planning/ 2>/dev/null || true
     fi
-    git commit -m "feat: $branch for v[X.Y]"
+    gitcmd commit -m "feat: $branch for v[X.Y]"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git merge --squash "$MILESTONE_BRANCH"
+  gitcmd merge --squash "$MILESTONE_BRANCH"
   # Strip .planning/ from staging if commit_docs is false
-  if [ "$COMMIT_DOCS" = "false" ]; then
+  # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+  if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
     git reset HEAD .planning/ 2>/dev/null || true
   fi
-  git commit -m "feat: $MILESTONE_BRANCH for v[X.Y]"
+  gitcmd commit -m "feat: $MILESTONE_BRANCH for v[X.Y]"
 fi
 
 # Archive work branch after merge to stable branch
 STABLE_BRANCHES="main master develop"
 IS_STABLE=false
 for sb in $STABLE_BRANCHES; do
-  if [ "$TARGET_BRANCH" = "$sb" ]; then
+  if [ "$EFFECTIVE_TARGET_BRANCH" = "$sb" ]; then
     IS_STABLE=true
     break
   fi
@@ -621,52 +692,54 @@ if [ "$IS_STABLE" = "true" ]; then
   # Delete work branch — plan-completion tags preserve granular history
   if [ "$BRANCHING_STRATEGY" = "phase" ]; then
     for branch in $PHASE_BRANCHES; do
-      git branch -d "$branch" 2>/dev/null || true
+      gitcmd branch -d "$branch" 2>/dev/null || true
       echo "Archived (deleted) work branch: $branch (tags preserved)"
     done
   fi
   if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
-  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
+  echo "Target branch '$EFFECTIVE_TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
-git checkout "$CURRENT_BRANCH"
+gitcmd checkout "$CURRENT_BRANCH"
 ```
 
 **Merge with history:**
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-git checkout "$TARGET_BRANCH"
+CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git merge --no-ff --no-commit "$branch"
+    gitcmd merge --no-ff --no-commit "$branch"
     # Strip .planning/ from staging if commit_docs is false
-    if [ "$COMMIT_DOCS" = "false" ]; then
+    # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+    if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
       git reset HEAD .planning/ 2>/dev/null || true
     fi
-    git commit -m "Merge branch '$branch' for v[X.Y]"
+    gitcmd commit -m "Merge branch '$branch' for v[X.Y]"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git merge --no-ff --no-commit "$MILESTONE_BRANCH"
+  gitcmd merge --no-ff --no-commit "$MILESTONE_BRANCH"
   # Strip .planning/ from staging if commit_docs is false
-  if [ "$COMMIT_DOCS" = "false" ]; then
+  # Note: .planning/ is in workspace root, not submodule — only run when not in submodule context
+  if [ "$COMMIT_DOCS" = "false" ] && [ "$SUBMODULE_IS_ACTIVE" != "true" ]; then
     git reset HEAD .planning/ 2>/dev/null || true
   fi
-  git commit -m "Merge branch '$MILESTONE_BRANCH' for v[X.Y]"
+  gitcmd commit -m "Merge branch '$MILESTONE_BRANCH' for v[X.Y]"
 fi
 
 # Archive work branch after merge to stable branch
 STABLE_BRANCHES="main master develop"
 IS_STABLE=false
 for sb in $STABLE_BRANCHES; do
-  if [ "$TARGET_BRANCH" = "$sb" ]; then
+  if [ "$EFFECTIVE_TARGET_BRANCH" = "$sb" ]; then
     IS_STABLE=true
     break
   fi
@@ -676,19 +749,19 @@ if [ "$IS_STABLE" = "true" ]; then
   # Delete work branch — plan-completion tags preserve granular history
   if [ "$BRANCHING_STRATEGY" = "phase" ]; then
     for branch in $PHASE_BRANCHES; do
-      git branch -d "$branch" 2>/dev/null || true
+      gitcmd branch -d "$branch" 2>/dev/null || true
       echo "Archived (deleted) work branch: $branch (tags preserved)"
     done
   fi
   if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-    git branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
+    gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || true
     echo "Archived (deleted) work branch: $MILESTONE_BRANCH (tags preserved)"
   fi
 else
-  echo "Target branch '$TARGET_BRANCH' is not a stable branch — work branches kept alive"
+  echo "Target branch '$EFFECTIVE_TARGET_BRANCH' is not a stable branch — work branches kept alive"
 fi
 
-git checkout "$CURRENT_BRANCH"
+gitcmd checkout "$CURRENT_BRANCH"
 ```
 
 **Delete without merging:**
@@ -696,12 +769,12 @@ git checkout "$CURRENT_BRANCH"
 ```bash
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
   for branch in $PHASE_BRANCHES; do
-    git branch -d "$branch" 2>/dev/null || git branch -D "$branch"
+    gitcmd branch -d "$branch" 2>/dev/null || gitcmd branch -D "$branch"
   done
 fi
 
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  git branch -d "$MILESTONE_BRANCH" 2>/dev/null || git branch -D "$MILESTONE_BRANCH"
+  gitcmd branch -d "$MILESTONE_BRANCH" 2>/dev/null || gitcmd branch -D "$MILESTONE_BRANCH"
 fi
 ```
 

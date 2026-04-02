@@ -15,6 +15,14 @@ Retroactive 6-pillar visual audit of implemented frontend code. Standalone comma
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
+  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
+  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+    echo "Error: init failed twice. Check gsd-tools installation."
+    exit 1
+  fi
+fi
 ```
 
 Parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `commit_docs`.
