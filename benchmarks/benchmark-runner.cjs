@@ -162,7 +162,7 @@ function validateTasks(tasks, config) {
  * @returns {string} Path to writable temp dir
  */
 function resolveTmpDir() {
-  const candidates = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp'].filter(Boolean);
+  const candidates = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'].filter(Boolean);
   for (const dir of candidates) {
     try {
       if (fs.existsSync(dir)) return dir;

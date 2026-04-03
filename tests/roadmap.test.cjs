@@ -768,6 +768,116 @@ describe('roadmap update-plan-progress command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// phase add command
+// roadmap analyze --current filtering
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('roadmap analyze --current filtering', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('--current filters to current phase only', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+gsd_state_version: 1.0
+milestone: test
+current_phase: 2
+current_plan: Not started
+status: testing
+---
+
+# Project State
+`
+    );
+
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+## Milestone: test
+
+- [x] **Phase 1: Foundation** (completed)
+- [ ] **Phase 2: Features**
+- [ ] **Phase 3: Polish**
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal**: Set up base
+**Requirements**: NONE
+
+### Phase 2: Features
+**Goal**: Build features
+**Requirements**: NONE
+
+### Phase 3: Polish
+**Goal**: Final polish
+**Requirements**: NONE
+`
+    );
+
+    // Create phase dirs for disk status detection
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const p2 = path.join(tmpDir, '.planning', 'phases', '02-features');
+    fs.mkdirSync(p2, { recursive: true });
+
+    const result = runGsdTools(['roadmap', 'analyze', '--current'], tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    // When filtered by current phase (2), only phase 2 should be in phases array
+    assert.strictEqual(output.phases.length, 1, 'should return only 1 phase (current phase)');
+    assert.ok(
+      output.phases[0].number === '2' || output.phases[0].name === 'Features',
+      `phase should be phase 2 / Features, got: ${JSON.stringify(output.phases[0])}`
+    );
+  });
+
+  test('--current with no current_phase in STATE.md returns full roadmap', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+gsd_state_version: 1.0
+milestone: test
+current_plan: Not started
+status: testing
+---
+
+# Project State
+`
+    );
+
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+### Phase 1: Foundation
+**Goal**: Set up base
+
+### Phase 2: Features
+**Goal**: Build features
+
+### Phase 3: Polish
+**Goal**: Final polish
+`
+    );
+
+    const result = runGsdTools(['roadmap', 'analyze', '--current'], tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_count, 3, 'should return all 3 phases when no current_phase in frontmatter');
+  });
+});
 

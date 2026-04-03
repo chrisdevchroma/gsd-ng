@@ -29,9 +29,9 @@ const {
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function makeTmpDir() {
-  // Try os.tmpdir() first; fall back to /tmp/claude-1000/ if the dir doesn't exist
+  // Try os.tmpdir() first; fall back to /tmp/claude-{uid}/ if the dir doesn't exist
   // (sandbox sets TMPDIR=/tmp/claude which may not be created on disk)
-  const candidates = [os.tmpdir(), '/tmp/claude-1000', '/tmp'];
+  const candidates = [os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'];
   for (const base of candidates) {
     try {
       if (fs.existsSync(base)) {

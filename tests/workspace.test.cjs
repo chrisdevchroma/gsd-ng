@@ -732,7 +732,7 @@ describe('resolveGitContext', () => {
     // resolveGitContext propagates throws (no internal try/catch).
     // The wrapping cmdInitExecutePhase has try/catch that returns defaults.
     // We test this via the CLI: a non-git cwd returns submodule_is_active: false.
-    const nonGitDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-nongit-'));
+    const nonGitDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-nongit-'));
     fs.mkdirSync(path.join(nonGitDir, '.planning', 'phases'), { recursive: true });
     try {
       // For init execute-phase to not immediately error on "phase not found",
@@ -922,5 +922,94 @@ describe('cmdGitContext CLI integration', () => {
     assert.strictEqual(parsed.platform, 'github', 'platform should be github');
     assert.strictEqual(parsed.cli, 'gh', 'cli should be gh');
     assert.ok(typeof parsed.ssh_url === 'boolean', 'ssh_url should be a boolean');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// complete-milestone in submodule workspace
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('complete-milestone in submodule workspace', () => {
+  let workspaceDir;
+
+  afterEach(() => {
+    if (workspaceDir) cleanup(workspaceDir);
+    workspaceDir = null;
+  });
+
+  test('complete-milestone exits 0 in submodule workspace', () => {
+    const { workspaceDir: wsDir } = createSubmoduleWorkspace(
+      [{ name: 'lib', path: 'lib', remoteUrl: 'https://github.com/test/lib.git' }],
+      { roadmap: true, state: true }
+    );
+    workspaceDir = wsDir;
+
+    // Write ROADMAP.md with milestone section
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n## Milestone: v1.0\n\n- [x] **Phase 1: Setup** (completed)\n\n## Phase Details\n\n### Phase 1: Setup\n**Goal**: Base setup\n**Requirements**: NONE\n'
+    );
+
+    // Write STATE.md with frontmatter including milestone
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'STATE.md'),
+      '---\ngsd_state_version: 1.0\nmilestone: v1.0\ncurrent_phase: 1\ncurrent_plan: Not started\nstatus: testing\n---\n\n# Project State\n\n**Current Phase:** 1\n**Status:** testing\n'
+    );
+
+    // Create phase dir with a summary (needed for stats gathering)
+    const phaseDir = path.join(workspaceDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(phaseDir, '01-01-SUMMARY.md'),
+      '---\none-liner: "test setup completed"\n---\n\n# Summary\n'
+    );
+
+    const result = runGsdTools(['milestone', 'complete', 'v1.0'], workspaceDir);
+    assert.ok(result.success, `complete-milestone should exit 0 in submodule workspace: ${result.error}`);
+
+    const archived = path.join(workspaceDir, '.planning', 'milestones', 'v1.0-ROADMAP.md');
+    assert.ok(fs.existsSync(archived), 'ROADMAP.md should be archived at .planning/milestones/v1.0-ROADMAP.md');
+  });
+
+  test('complete-milestone archives ROADMAP.md in submodule workspace without path errors', () => {
+    const { workspaceDir: wsDir } = createSubmoduleWorkspace(
+      [{ name: 'lib', path: 'lib', remoteUrl: 'https://github.com/test/lib.git' }],
+      { roadmap: true, state: true }
+    );
+    workspaceDir = wsDir;
+
+    const roadmapContent = '# Roadmap\n\n## Milestone: v1.0\n\n- [x] **Phase 1: Setup** (completed)\n\n## Phase Details\n\n### Phase 1: Setup\n**Goal**: Base setup\n**Requirements**: NONE\n';
+
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'ROADMAP.md'),
+      roadmapContent
+    );
+
+    fs.writeFileSync(
+      path.join(workspaceDir, '.planning', 'STATE.md'),
+      '---\ngsd_state_version: 1.0\nmilestone: v1.0\ncurrent_phase: 1\ncurrent_plan: Not started\nstatus: testing\n---\n\n# Project State\n\n**Current Phase:** 1\n**Status:** testing\n'
+    );
+
+    const phaseDir = path.join(workspaceDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(phaseDir, '01-01-SUMMARY.md'),
+      '---\none-liner: "test setup completed"\n---\n\n# Summary\n'
+    );
+
+    const result = runGsdTools(['milestone', 'complete', 'v1.0'], workspaceDir);
+    assert.ok(result.success, `complete-milestone should succeed: ${result.error}`);
+
+    // Verify archived content matches original (no path corruption)
+    const archived = path.join(workspaceDir, '.planning', 'milestones', 'v1.0-ROADMAP.md');
+    assert.ok(fs.existsSync(archived), 'archived ROADMAP.md should exist');
+    const archivedContent = fs.readFileSync(archived, 'utf-8');
+    assert.strictEqual(archivedContent, roadmapContent, 'archived content should match original without corruption');
+
+    // MILESTONES.md should exist and contain v1.0
+    const milestonesFile = path.join(workspaceDir, '.planning', 'MILESTONES.md');
+    assert.ok(fs.existsSync(milestonesFile), '.planning/MILESTONES.md should be created');
+    const milestonesContent = fs.readFileSync(milestonesFile, 'utf-8');
+    assert.ok(milestonesContent.includes('v1.0'), 'MILESTONES.md should reference v1.0');
   });
 });

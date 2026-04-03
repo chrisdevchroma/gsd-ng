@@ -57,7 +57,7 @@ process.stdin.on('end', () => {
       }
     }
 
-    const tmpDir = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp']
+    const tmpDir = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp']
       .filter(Boolean)
       .find(d => { try { return fs.existsSync(d); } catch { return false; } })
       || os.tmpdir();
