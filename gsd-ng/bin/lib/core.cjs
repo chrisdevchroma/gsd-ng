@@ -93,7 +93,7 @@ function output(result, raw, rawValue) {
       } catch {
         // os.tmpdir() directory may not be writable (e.g. sandbox sets TMPDIR=/tmp/claude
         // but /tmp is restricted). Fall back to a known-writable sibling directory.
-        const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+        const uid = process.getuid();
         tmpDir = path.join(path.dirname(tmpDir), path.basename(tmpDir) + '-' + uid);
         fs.mkdirSync(tmpDir, { recursive: true });
       }
