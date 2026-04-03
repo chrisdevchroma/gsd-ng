@@ -90,7 +90,7 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
   }
 }
 
-function cmdRoadmapAnalyze(cwd, raw) {
+function cmdRoadmapAnalyze(cwd, raw, phaseFilter) {
   const { roadmap: roadmapPath, phases: phasesDir } = planningPaths(cwd);
 
   if (!fs.existsSync(roadmapPath)) {
@@ -208,10 +208,17 @@ function cmdRoadmapAnalyze(cwd, raw) {
   const detailPhases = new Set(phases.map(p => p.number));
   const missingDetails = [...checklistPhases].filter(p => !detailPhases.has(p));
 
+  let resultPhases = phases;
+  let resultMilestones = milestones;
+  if (phaseFilter) {
+    resultPhases = phases.filter(p => String(p.number) === String(phaseFilter));
+    resultMilestones = undefined;
+  }
+
   const result = {
-    milestones,
-    phases,
-    phase_count: phases.length,
+    ...(resultMilestones !== undefined ? { milestones: resultMilestones } : {}),
+    phases: resultPhases,
+    phase_count: resultPhases.length,
     completed_phases: completedPhases,
     total_plans: totalPlans,
     total_summaries: totalSummaries,

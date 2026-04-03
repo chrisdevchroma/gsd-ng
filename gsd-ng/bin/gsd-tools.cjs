@@ -175,6 +175,7 @@ const init = require('./lib/init.cjs');
 const frontmatter = require('./lib/frontmatter.cjs');
 const workspace = require('./lib/workspace.cjs');
 const guard = require('./lib/guard.cjs');
+const testBaseline = require('./lib/test-baseline.cjs');
 
 // ─── Command Registry (for typo detection) ────────────────────────────────────
 
@@ -190,6 +191,7 @@ const ALL_COMMANDS = [
   'squash', 'version-bump', 'generate-changelog', 'generate-allowlist',
   'resolve-type-alias', 'issue-import', 'issue-sync', 'issue-list-refs',
   'divergence', 'pingpong-check', 'breakout-check', 'cleanup', 'help', 'guard',
+  'test',
 ];
 
 // ─── Subcommand Registry (for fuzzy subcommand matching) ─────────────────────
@@ -208,7 +210,208 @@ const SUBCOMMANDS = {
   todo: ['complete'],
   init: ['execute-phase', 'plan-phase', 'new-project', 'new-milestone', 'quick', 'resume', 'verify-work', 'phase-op', 'todos', 'milestone-op', 'map-codebase', 'progress'],
   guard: ['sync-chain', 'init-valid'],
+  test: ['capture-baseline', 'compare-baseline'],
 };
+
+// ─── Arg Validation Layer ─────────────────────────────────────────────────────
+
+/**
+ * ARG_SCHEMAS[command][subcommand] = { positional: { min, max }, flags: string[] }
+ *
+ * Defines the expected argument shape for every compound command subcommand.
+ * Used by validateSubcommandArgs() to catch creative misuse patterns before
+ * they reach the handler.
+ *
+ * positional.min: minimum positional (non-flag) args required
+ * positional.max: maximum positional args allowed (null = unlimited)
+ * flags: whitelist of known --flags for this subcommand
+ */
+const ARG_SCHEMAS = {
+  state: {
+    'load':             { positional: { min: 0, max: 0 }, flags: [] },
+    'json':             { positional: { min: 0, max: 0 }, flags: [] },
+    'update':           { positional: { min: 2, max: 2 }, flags: [] },
+    'get':              { positional: { min: 0, max: 1 }, flags: [] },
+    // 'patch' omitted: takes dynamic --key value pairs, any flag is valid
+    'advance-plan':     { positional: { min: 0, max: 0 }, flags: [] },
+    'record-metric':    { positional: { min: 0, max: 0 }, flags: ['--phase', '--plan', '--duration', '--tasks', '--files'] },
+    'update-progress':  { positional: { min: 0, max: 0 }, flags: [] },
+    'add-decision':     { positional: { min: 0, max: 0 }, flags: ['--phase', '--summary', '--summary-file', '--rationale', '--rationale-file'] },
+    'add-blocker':      { positional: { min: 0, max: 0 }, flags: ['--text', '--text-file'] },
+    'resolve-blocker':  { positional: { min: 0, max: 0 }, flags: ['--text'] },
+    'record-session':   { positional: { min: 0, max: 0 }, flags: ['--stopped-at', '--resume-file'] },
+    'begin-phase':      { positional: { min: 0, max: 0 }, flags: ['--phase', '--name', '--plans'] },
+    'adjust-quick-table': { positional: { min: 0, max: 0 }, flags: [] },
+  },
+  template: {
+    'select': { positional: { min: 0, max: 1 }, flags: [] },
+    'fill':   { positional: { min: 1, max: 1 }, flags: ['--phase', '--plan', '--name', '--type', '--wave', '--fields'] },
+  },
+  frontmatter: {
+    'get':      { positional: { min: 1, max: 1 }, flags: ['--field', '--format'] },
+    'set':      { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
+    'merge':    { positional: { min: 1, max: 1 }, flags: ['--data'] },
+    'validate': { positional: { min: 1, max: 1 }, flags: ['--schema'] },
+  },
+  verify: {
+    'plan-structure':     { positional: { min: 1, max: 1 }, flags: [] },
+    'phase-completeness': { positional: { min: 0, max: 1 }, flags: [] },
+    'references':         { positional: { min: 0, max: 1 }, flags: [] },
+    'commits':            { positional: { min: 0, max: null }, flags: [] },
+    'artifacts':          { positional: { min: 1, max: 1 }, flags: [] },
+    'key-links':          { positional: { min: 1, max: 1 }, flags: [] },
+  },
+  phases: {
+    'list': { positional: { min: 0, max: 0 }, flags: ['--type', '--phase', '--include-archived'] },
+  },
+  roadmap: {
+    'get-phase':            { positional: { min: 1, max: 1 }, flags: [] },
+    'analyze':              { positional: { min: 0, max: 0 }, flags: ['--current'] },
+    'update-plan-progress': { positional: { min: 1, max: 1 }, flags: [] },
+    'add-phase':            { positional: { min: 0, max: null }, flags: [] },
+  },
+  requirements: {
+    'mark-complete': { positional: { min: 1, max: null }, flags: [] },
+  },
+  phase: {
+    'next-decimal': { positional: { min: 1, max: 1 }, flags: [] },
+    'add':          { positional: { min: 0, max: null }, flags: [] },
+    'insert':       { positional: { min: 1, max: null }, flags: [] },
+    'remove':       { positional: { min: 1, max: 1 }, flags: ['--force'] },
+    'complete':     { positional: { min: 0, max: 1 }, flags: [] },
+  },
+  milestone: {
+    // max: null because --name can be followed by multi-word values (e.g. --name MVP Foundation)
+    'complete': { positional: { min: 0, max: null }, flags: ['--name', '--archive-phases'] },
+  },
+  validate: {
+    'consistency': { positional: { min: 0, max: 0 }, flags: [] },
+    'health':      { positional: { min: 0, max: 0 }, flags: ['--repair'] },
+  },
+  todo: {
+    'complete': { positional: { min: 1, max: 1 }, flags: [] },
+  },
+  init: {
+    'execute-phase': { positional: { min: 1, max: 1 }, flags: [] },
+    'plan-phase':    { positional: { min: 1, max: 1 }, flags: [] },
+    'new-project':   { positional: { min: 0, max: 0 }, flags: [] },
+    'new-milestone': { positional: { min: 0, max: 0 }, flags: [] },
+    'quick':         { positional: { min: 0, max: null }, flags: ['--verify'] },
+    'resume':        { positional: { min: 0, max: 0 }, flags: [] },
+    'verify-work':   { positional: { min: 1, max: 1 }, flags: [] },
+    'phase-op':      { positional: { min: 1, max: 1 }, flags: [] },
+    'todos':         { positional: { min: 0, max: 1 }, flags: [] },
+    'milestone-op':  { positional: { min: 0, max: 0 }, flags: [] },
+    'map-codebase':  { positional: { min: 0, max: 0 }, flags: [] },
+    'progress':      { positional: { min: 0, max: 0 }, flags: [] },
+  },
+  guard: {
+    // sync-chain omitted: takes a raw freeform arguments string, not discrete flags
+    'init-valid':  { positional: { min: 1, max: 1 }, flags: [] },
+  },
+  test: {
+    'capture-baseline': { positional: { min: 2, max: 2 }, flags: [] },
+    'compare-baseline': { positional: { min: 2, max: 2 }, flags: [] },
+  },
+};
+
+/**
+ * Validate subcommand arguments against ARG_SCHEMAS before dispatch.
+ *
+ * Catches: flag in positional slot, =-syntax, too-few/many positionals,
+ * unknown flags. Exits with a helpful error message on any violation.
+ *
+ * @param {string} command - Top-level command name (e.g. 'init')
+ * @param {string} subcommand - Subcommand name (e.g. 'phase-op')
+ * @param {string[]} remainingArgs - args.slice(2) after global flag stripping
+ */
+function validateSubcommandArgs(command, subcommand, remainingArgs) {
+  const schema = ARG_SCHEMAS[command]?.[subcommand];
+  if (!schema) return; // No schema = permissive (safe default for unknown subcommands)
+
+  const usageHint = `Usage: ${command} ${subcommand}${schema.positional.min > 0 ? ' <arg>' + (schema.positional.max === null || schema.positional.max > 1 ? ' ...' : '') : ''}`;
+
+  // 1. Equals syntax detection (e.g. phase=40 instead of 40)
+  for (const arg of remainingArgs) {
+    if (arg && !arg.startsWith('--') && /^[a-zA-Z][\w-]*=/.test(arg)) {
+      error(
+        `'${arg}' looks like a key=value assignment — positional args don't use '=' syntax.\n` +
+        `${usageHint}`
+      );
+    }
+  }
+
+  // 2. Count positional args, accounting for flag-value pairs.
+  //    Any --flag followed by a non-flag value is treated as a flag-value pair;
+  //    the value is consumed by the flag and NOT counted as a positional.
+  //    This applies to both known flags (--field value) and unknown flags (--phase 40).
+  const flagValueConsumed = new Set();
+  for (let i = 0; i < remainingArgs.length; i++) {
+    const arg = remainingArgs[i];
+    if (arg && arg.startsWith('--')) {
+      const next = remainingArgs[i + 1];
+      if (next && !next.startsWith('--')) {
+        flagValueConsumed.add(i + 1); // The next arg is consumed as this flag's value
+        i++; // Skip the value on the next iteration
+      }
+    }
+  }
+  const actualPositionals = remainingArgs.filter((a, i) => a && !a.startsWith('--') && !flagValueConsumed.has(i));
+
+  // 3. Flag handling: distinguish "flag where positional expected" vs "unknown flag"
+  //    - If positional requirements are NOT met and schema accepts no flags:
+  //      a --flag in place of a positional gets "Positional argument expected"
+  //    - Otherwise (positionals are satisfied, or schema has known flags):
+  //      an unrecognized --flag gets "Unknown flag"
+  for (const arg of remainingArgs) {
+    if (arg && arg.startsWith('--') && !schema.flags.includes(arg)) {
+      const positionalsSatisfied = actualPositionals.length >= schema.positional.min;
+      if (!positionalsSatisfied && schema.flags.length === 0) {
+        // User passed a flag where a positional was required and no flags are valid
+        error(
+          `Positional argument expected, got '${arg}'.\n` +
+          `${usageHint}\n` +
+          `Example: ${command} ${subcommand}${schema.positional.min > 0 ? ' 40' : ''}`
+        );
+      } else {
+        // Unknown flag (positionals satisfied, or schema has some known flags)
+        const suggestion = schema.flags.length > 0
+          ? (() => {
+              // Simple closest-match by character overlap (good enough for small flag sets)
+              let best = null;
+              let bestScore = -1;
+              for (const f of schema.flags) {
+                const shorter = arg.length < f.length ? arg : f;
+                const longer = arg.length >= f.length ? arg : f;
+                let score = 0;
+                for (let i = 0; i < shorter.length; i++) {
+                  if (longer.includes(shorter[i])) score++;
+                }
+                if (score > bestScore) { bestScore = score; best = f; }
+              }
+              return bestScore > 2 ? ` Did you mean '${best}'?` : '';
+            })()
+          : '';
+        const knownList = schema.flags.length > 0 ? schema.flags.join(', ') : 'none';
+        error(`Unknown flag '${arg}' for '${command} ${subcommand}'.${suggestion} Known flags: ${knownList}`);
+      }
+    }
+  }
+
+  // 4. Count validation — positionals already computed above
+  if (actualPositionals.length < schema.positional.min) {
+    error(
+      `Too few arguments for '${command} ${subcommand}': expected at least ${schema.positional.min}, got ${actualPositionals.length}.\n` +
+      `${usageHint}`
+    );
+  }
+  if (schema.positional.max !== null && actualPositionals.length > schema.positional.max) {
+    error(
+      `Too many arguments for '${command} ${subcommand}': expected at most ${schema.positional.max}, got ${actualPositionals.length}.\n` +
+      `${usageHint}`
+    );
+  }
+}
 
 // ─── Levenshtein Distance (for typo detection) ────────────────────────────────
 
@@ -469,6 +672,7 @@ async function main() {
   switch (command) {
     case 'state': {
       const subcommand = args[1];
+      validateSubcommandArgs('state', subcommand, args.slice(2));
       if (subcommand === 'json') {
         state.cmdStateJson(cwd, raw);
       } else if (subcommand === 'update') {
@@ -595,6 +799,7 @@ async function main() {
 
     case 'template': {
       const subcommand = args[1];
+      validateSubcommandArgs('template', subcommand, args.slice(2));
       if (subcommand === 'select') {
         template.cmdTemplateSelect(cwd, args[2], raw);
       } else if (subcommand === 'fill') {
@@ -629,6 +834,7 @@ async function main() {
 
     case 'frontmatter': {
       const subcommand = args[1];
+      validateSubcommandArgs('frontmatter', subcommand, args.slice(2));
       const file = args[2];
       if (subcommand === 'get') {
         const fieldIdx = args.indexOf('--field');
@@ -660,6 +866,7 @@ async function main() {
 
     case 'verify': {
       const subcommand = args[1];
+      validateSubcommandArgs('verify', subcommand, args.slice(2));
       if (subcommand === 'plan-structure') {
         verify.cmdVerifyPlanStructure(cwd, args[2], raw);
       } else if (subcommand === 'phase-completeness') {
@@ -748,6 +955,7 @@ async function main() {
 
     case 'phases': {
       const subcommand = args[1];
+      validateSubcommandArgs('phases', subcommand, args.slice(2));
       if (subcommand === 'list') {
         const typeIndex = args.indexOf('--type');
         const phaseIndex = args.indexOf('--phase');
@@ -773,10 +981,24 @@ async function main() {
 
     case 'roadmap': {
       const subcommand = args[1];
+      validateSubcommandArgs('roadmap', subcommand, args.slice(2));
       if (subcommand === 'get-phase') {
         roadmap.cmdRoadmapGetPhase(cwd, args[2], raw);
       } else if (subcommand === 'analyze') {
-        roadmap.cmdRoadmapAnalyze(cwd, raw);
+        const analyzeCurrentFilter = args.slice(2).includes('--current');
+        let analyzePhaseFilter = null;
+        if (analyzeCurrentFilter) {
+          const statePath = path.join(cwd, '.planning', 'STATE.md');
+          try {
+            const stateContent = fs.readFileSync(statePath, 'utf-8');
+            const fmMatch = stateContent.match(/^---\n([\s\S]*?)\n---/);
+            if (fmMatch) {
+              const cpMatch = fmMatch[1].match(/^current_phase:\s*(.+)$/m);
+              if (cpMatch) analyzePhaseFilter = cpMatch[1].trim().replace(/['"]/g, '');
+            }
+          } catch {}
+        }
+        roadmap.cmdRoadmapAnalyze(cwd, raw, analyzePhaseFilter);
       } else if (subcommand === 'update-plan-progress') {
         roadmap.cmdRoadmapUpdatePlanProgress(cwd, args[2], raw);
       } else if (subcommand === 'add-phase') {
@@ -798,6 +1020,7 @@ async function main() {
 
     case 'requirements': {
       const subcommand = args[1];
+      validateSubcommandArgs('requirements', subcommand, args.slice(2));
       if (subcommand === 'mark-complete') {
         milestone.cmdRequirementsMarkComplete(cwd, args.slice(2), raw);
       } else {
@@ -814,8 +1037,30 @@ async function main() {
       break;
     }
 
+    case 'test': {
+      const subcommand = args[1];
+      validateSubcommandArgs('test', subcommand, args.slice(2));
+      if (subcommand === 'capture-baseline') {
+        testBaseline.captureBaseline(args[2], args[3]);
+      } else if (subcommand === 'compare-baseline') {
+        testBaseline.compareBaseline(args[2], args[3]);
+      } else {
+        const suggestions = suggestSubcommand(subcommand, 'test');
+        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+          const parts = [];
+          if (suggestions.sameNamespace.length > 0) parts.push(`test ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(`Unknown test subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.test.join(', ')}`);
+        } else {
+          error(`Unknown test subcommand '${subcommand}'. Available: ${SUBCOMMANDS.test.join(', ')}`);
+        }
+      }
+      break;
+    }
+
     case 'phase': {
       const subcommand = args[1];
+      validateSubcommandArgs('phase', subcommand, args.slice(2));
       if (subcommand === 'next-decimal') {
         phase.cmdPhaseNextDecimal(cwd, args[2], raw);
       } else if (subcommand === 'add') {
@@ -843,6 +1088,7 @@ async function main() {
 
     case 'milestone': {
       const subcommand = args[1];
+      validateSubcommandArgs('milestone', subcommand, args.slice(2));
       if (subcommand === 'complete') {
         const nameIndex = args.indexOf('--name');
         const archivePhases = args.includes('--archive-phases');
@@ -873,6 +1119,7 @@ async function main() {
 
     case 'validate': {
       const subcommand = args[1];
+      validateSubcommandArgs('validate', subcommand, args.slice(2));
       if (subcommand === 'consistency') {
         verify.cmdValidateConsistency(cwd, raw);
       } else if (subcommand === 'health') {
@@ -906,6 +1153,7 @@ async function main() {
 
     case 'todo': {
       const subcommand = args[1];
+      validateSubcommandArgs('todo', subcommand, args.slice(2));
       if (subcommand === 'complete') {
         commands.cmdTodoComplete(cwd, args[2], raw);
       } else {
@@ -944,6 +1192,7 @@ async function main() {
 
     case 'init': {
       const workflow = args[1];
+      validateSubcommandArgs('init', workflow, args.slice(2));
       switch (workflow) {
         case 'execute-phase':
           init.cmdInitExecutePhase(cwd, args[2], raw);
@@ -1008,7 +1257,20 @@ async function main() {
     }
 
     case 'state-snapshot': {
-      state.cmdStateSnapshot(cwd, raw);
+      const currentFilter = args.includes('--current');
+      let phaseForFilter = null;
+      if (currentFilter) {
+        const statePath = path.join(cwd, '.planning', 'STATE.md');
+        try {
+          const stateContent = fs.readFileSync(statePath, 'utf-8');
+          const fmMatch = stateContent.match(/^---\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const cpMatch = fmMatch[1].match(/^current_phase:\s*(.+)$/m);
+            if (cpMatch) phaseForFilter = cpMatch[1].trim().replace(/['"]/g, '');
+          }
+        } catch {}
+      }
+      state.cmdStateSnapshot(cwd, raw, phaseForFilter);
       break;
     }
 
@@ -1259,6 +1521,7 @@ async function main() {
 
     case 'guard': {
       const subcommand = args[1];
+      validateSubcommandArgs('guard', subcommand, args.slice(2));
       if (subcommand === 'sync-chain') {
         guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '), raw);
       } else if (subcommand === 'init-valid') {

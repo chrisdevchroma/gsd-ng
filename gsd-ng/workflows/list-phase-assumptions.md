@@ -24,10 +24,12 @@ Exit workflow.
 Validate phase exists in roadmap:
 
 ```bash
-cat .planning/ROADMAP.md | grep -i "Phase ${PHASE}"
+PHASE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
 ```
 
-**If phase not found:**
+Parse JSON for: `found`, `phase_number`, `phase_name`, `goal`, `success_criteria`, `section`.
+
+**If `found` is false:**
 
 ```
 Error: Phase ${PHASE} not found in roadmap.
@@ -38,13 +40,13 @@ Available phases:
 
 Exit workflow.
 
-**If phase found:**
-Parse phase details from roadmap:
+**If `found` is true:**
+Extract phase details from JSON:
 
-- Phase number
-- Phase name
-- Phase description/goal
-- Any scope details mentioned
+- `phase_number` — Phase number
+- `phase_name` — Phase name
+- `goal` — Phase goal/description
+- `section` — Full raw markdown section (scope details, success criteria, etc.)
 
 Continue to analyze_phase.
 </step>
