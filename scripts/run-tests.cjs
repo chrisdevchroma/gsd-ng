@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Cross-platform test runner — resolves test file globs via Node
-// instead of relying on shell expansion (which fails on Windows PowerShell/cmd).
+// Test runner — resolves test file globs via Node instead of shell expansion.
 // Propagates NODE_V8_COVERAGE so c8 collects coverage from the child process.
 'use strict';
 

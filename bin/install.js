@@ -181,8 +181,7 @@ function expandTilde(filePath) {
 }
 
 /**
- * Build a hook command path using forward slashes for cross-platform compatibility.
- * On Windows, $HOME is not expanded by cmd.exe/PowerShell, so we use the actual path.
+ * Build a hook command path using forward slashes.
  */
 function buildHookCommand(configDir, hookName) {
   // Use forward slashes for Node.js compatibility on all platforms

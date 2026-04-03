@@ -83,7 +83,7 @@ if (!process.env.GSD_SIMULATE_SANDBOX) {
   }
 }
 
-// Run check in background (spawn background process, windowsHide prevents console flash)
+// Run check in background (spawn detached process)
 const child = spawn(process.execPath, ['-e', `
   const fs = require('fs');
   const { execSync } = require('child_process');
@@ -125,7 +125,7 @@ const child = spawn(process.execPath, ['-e', `
 
   let latest = null;
   try {
-    latest = execSync('npm view gsd-ng version', { encoding: 'utf8', timeout: 10000, windowsHide: true }).trim();
+    latest = execSync('npm view gsd-ng version', { encoding: 'utf8', timeout: 10000 }).trim();
   } catch (e) {}
 
   let source = latest ? 'npm' : 'unknown';
@@ -229,8 +229,7 @@ const child = spawn(process.execPath, ['-e', `
   fs.writeFileSync(cacheFile, JSON.stringify(result));
 `], {
   stdio: 'ignore',
-  windowsHide: true,
-  detached: true  // Required on Windows for proper process detachment
+  detached: true
 });
 
 child.unref();
