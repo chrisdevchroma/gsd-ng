@@ -1726,3 +1726,125 @@ describe('state adjust-quick-table command', () => {
     assert.ok(updatedContent.includes('Status'), 'Status column should be in updated content');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// state-snapshot --current filtering
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('state-snapshot --current filtering', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('--current filters decisions to current phase only', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+gsd_state_version: 1.0
+milestone: test
+current_phase: 2
+current_plan: Not started
+status: testing
+---
+
+# Project State
+
+**Current Phase:** 2
+**Status:** testing
+
+## Decisions Made
+
+| Phase | Decision | Rationale |
+|-------|----------|-----------|
+| 1 | Use library X | Performance |
+| 2 | Use card layout | User preference |
+| 2 | No animations | Accessibility |
+`
+    );
+
+    const result = runGsdTools(['state-snapshot', '--current'], tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.decisions.length, 2, 'should have 2 decisions (only phase 2)');
+    assert.ok(
+      output.decisions.every(d => d.phase === '2'),
+      'all returned decisions should be phase 2'
+    );
+    assert.ok(
+      !output.decisions.some(d => d.phase === '1'),
+      'phase 1 decisions should be filtered out'
+    );
+  });
+
+  test('--current with no current_phase in STATE.md returns all decisions', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+gsd_state_version: 1.0
+milestone: test
+current_plan: Not started
+status: testing
+---
+
+# Project State
+
+**Current Phase:** 1
+**Status:** testing
+
+## Decisions Made
+
+| Phase | Decision | Rationale |
+|-------|----------|-----------|
+| 1 | Use library X | Performance |
+| 2 | Use card layout | User preference |
+| 2 | No animations | Accessibility |
+`
+    );
+
+    const result = runGsdTools(['state-snapshot', '--current'], tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.decisions.length, 3, 'should return all 3 decisions when no current_phase in frontmatter');
+  });
+
+  test('state-snapshot without --current flag returns all decisions even with current_phase set', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `---
+gsd_state_version: 1.0
+milestone: test
+current_phase: 2
+current_plan: Not started
+status: testing
+---
+
+# Project State
+
+**Current Phase:** 2
+**Status:** testing
+
+## Decisions Made
+
+| Phase | Decision | Rationale |
+|-------|----------|-----------|
+| 1 | Use library X | Performance |
+| 2 | Use card layout | User preference |
+| 2 | No animations | Accessibility |
+`
+    );
+
+    const result = runGsdTools(['state-snapshot'], tmpDir);
+    assert.ok(result.success, `Command should succeed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.decisions.length, 3, 'should return all 3 decisions when --current flag not used');
+  });
+});
