@@ -55,7 +55,7 @@ function runGsdTools(args, cwd = process.cwd(), envOverrides = {}) {
 // Resolve a writable temp base dir — os.tmpdir() may point to /tmp/claude which doesn't
 // exist in the Claude Code sandbox. Fall back through known-writable candidates.
 function resolveTmpDir() {
-  const candidates = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp'].filter(Boolean);
+  const candidates = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'].filter(Boolean);
   for (const dir of candidates) {
     try { if (fs.existsSync(dir)) return dir; } catch {}
   }

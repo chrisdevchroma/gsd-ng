@@ -38,7 +38,7 @@ const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
 
 // Resolve writable temp dir (sandbox-safe, same pattern as helpers.cjs)
 function resolveTmpDir() {
-  const candidates = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp'].filter(Boolean);
+  const candidates = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'].filter(Boolean);
   for (const dir of candidates) {
     try { if (fs.existsSync(dir)) return dir; } catch {}
   }

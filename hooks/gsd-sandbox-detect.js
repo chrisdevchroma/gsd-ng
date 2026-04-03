@@ -29,7 +29,7 @@ process.stdin.on('end', () => {
     const sessionId = data.session_id || 'unknown';
 
     // ── Once-per-session gate ─────────────────────────────────────────────
-    const sandboxTmpDir = [process.env.TMPDIR, os.tmpdir(), '/tmp/claude-1000', '/tmp']
+    const sandboxTmpDir = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp']
       .filter(Boolean)
       .find(d => { try { return fs.existsSync(d); } catch { return false; } })
       || os.tmpdir();

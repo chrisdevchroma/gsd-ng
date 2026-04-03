@@ -732,7 +732,7 @@ describe('resolveGitContext', () => {
     // resolveGitContext propagates throws (no internal try/catch).
     // The wrapping cmdInitExecutePhase has try/catch that returns defaults.
     // We test this via the CLI: a non-git cwd returns submodule_is_active: false.
-    const nonGitDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gsd-nongit-'));
+    const nonGitDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-nongit-'));
     fs.mkdirSync(path.join(nonGitDir, '.planning', 'phases'), { recursive: true });
     try {
       // For init execute-phase to not immediately error on "phase not found",
