@@ -20,7 +20,7 @@ function stateExtractField(content, fieldName) {
   return plainMatch ? plainMatch[1].trim() : null;
 }
 
-function cmdStateLoad(cwd, raw) {
+function cmdStateLoad(cwd) {
   const config = loadConfig(cwd);
   const { state: stateMdPath, config: configPath, roadmap: roadmapPath } = planningPaths(cwd);
 
@@ -42,28 +42,6 @@ function cmdStateLoad(cwd, raw) {
     roadmap_exists: roadmapExists,
     config_exists: configExists,
   };
-
-  // For --raw, output a condensed key=value format
-  if (raw) {
-    const c = config;
-    const lines = [
-      `model_profile=${c.model_profile}`,
-      `commit_docs=${c.commit_docs}`,
-      `branching_strategy=${c.branching_strategy}`,
-      `phase_branch_template=${c.phase_branch_template}`,
-      `milestone_branch_template=${c.milestone_branch_template}`,
-      `target_branch=${c.target_branch || 'main'}`,
-      `parallelization=${c.parallelization}`,
-      `research=${c.research}`,
-      `plan_checker=${c.plan_checker}`,
-      `verifier=${c.verifier}`,
-      `config_exists=${configExists}`,
-      `roadmap_exists=${roadmapExists}`,
-      `state_exists=${stateExists}`,
-    ];
-    process.stdout.write(lines.join('\n'));
-    process.exit(0);
-  }
 
   output(result);
 }
@@ -120,12 +98,12 @@ function parseSectionContent(content) {
   return Object.keys(result).length > 0 ? result : content;  // Fallback to raw string if nothing parsed
 }
 
-function cmdStateGet(cwd, section, raw) {
+function cmdStateGet(cwd, section) {
   const { state: statePath } = planningPaths(cwd);
 
   if (!section) {
     // No section arg: delegate to cmdStateSnapshot (already returns structured JSON)
-    return cmdStateSnapshot(cwd, raw);
+    return cmdStateSnapshot(cwd);
   }
 
   try {
@@ -137,7 +115,7 @@ function cmdStateGet(cwd, section, raw) {
     const boldMatch = content.match(boldPattern);
     if (boldMatch) {
       const value = sanitizeForPrompt(boldMatch[1].trim());
-      output({ [section]: value }, raw, value);
+      output({ [section]: value }, value);
       return;
     }
 
@@ -146,7 +124,7 @@ function cmdStateGet(cwd, section, raw) {
     const plainMatch = content.match(plainPattern);
     if (plainMatch) {
       const value = sanitizeForPrompt(plainMatch[1].trim());
-      output({ [section]: value }, raw, value);
+      output({ [section]: value }, value);
       return;
     }
 
@@ -156,11 +134,11 @@ function cmdStateGet(cwd, section, raw) {
     if (sectionMatch) {
       const sectionContent = sanitizeForPrompt(sectionMatch[1].trim());
       const structured = parseSectionContent(sectionContent);
-      output({ [section]: structured }, raw, JSON.stringify(structured));
+      output({ [section]: structured }, JSON.stringify(structured));
       return;
     }
 
-    output({ error: `Section or field "${section}" not found` }, raw, '');
+    output({ error: `Section or field "${section}" not found` }, '');
   } catch {
     error('STATE.md not found');
   }
@@ -177,7 +155,7 @@ function readTextArgOrFile(cwd, value, filePath, label) {
   }
 }
 
-function cmdStatePatch(cwd, patches, raw) {
+function cmdStatePatch(cwd, patches) {
   const { state: statePath } = planningPaths(cwd);
   try {
     let content = fs.readFileSync(statePath, 'utf-8');
@@ -204,7 +182,7 @@ function cmdStatePatch(cwd, patches, raw) {
       writeStateMd(statePath, content, cwd);
     }
 
-    output(results, raw, results.updated.length > 0 ? 'true' : 'false');
+    output(results, results.updated.length > 0 ? 'true' : 'false');
   } catch {
     error('STATE.md not found');
   }
@@ -277,9 +255,9 @@ function stateReplaceFieldWithFallback(content, fieldName, newValue) {
   return content.trimEnd() + '\n**' + fieldName + ':** ' + newValue + '\n';
 }
 
-function cmdStateAdvancePlan(cwd, raw) {
+function cmdStateAdvancePlan(cwd) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
   const today = new Date().toISOString().split('T')[0];
@@ -304,7 +282,7 @@ function cmdStateAdvancePlan(cwd, raw) {
   }
 
   if (isNaN(currentPlan) || isNaN(totalPlans)) {
-    output({ error: 'Cannot parse Current Plan or Total Plans in Phase from STATE.md' }, raw);
+    output({ error: 'Cannot parse Current Plan or Total Plans in Phase from STATE.md' });
     return;
   }
 
@@ -319,7 +297,7 @@ function cmdStateAdvancePlan(cwd, raw) {
     content = replaceField(content, 'Status', null, 'Phase complete — ready for verification');
     content = replaceField(content, 'Last Activity', 'Last activity', today);
     writeStateMd(statePath, content, cwd);
-    output({ advanced: false, reason: 'last_plan', current_plan: currentPlan, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
+    output({ advanced: false, reason: 'last_plan', current_plan: currentPlan, total_plans: totalPlans, status: 'ready_for_verification' }, 'false');
   } else {
     const newPlan = currentPlan + 1;
     if (useCompoundFormat) {
@@ -332,19 +310,19 @@ function cmdStateAdvancePlan(cwd, raw) {
     content = replaceField(content, 'Status', null, 'Ready to execute');
     content = replaceField(content, 'Last Activity', 'Last activity', today);
     writeStateMd(statePath, content, cwd);
-    output({ advanced: true, previous_plan: currentPlan, current_plan: newPlan, total_plans: totalPlans }, raw, 'true');
+    output({ advanced: true, previous_plan: currentPlan, current_plan: newPlan, total_plans: totalPlans }, 'true');
   }
 }
 
-function cmdStateRecordMetric(cwd, options, raw) {
+function cmdStateRecordMetric(cwd, options) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
   const { phase, plan, duration, tasks, files } = options;
 
   if (!phase || !plan || !duration) {
-    output({ error: 'phase, plan, and duration required' }, raw);
+    output({ error: 'phase, plan, and duration required' });
     return;
   }
 
@@ -364,15 +342,15 @@ function cmdStateRecordMetric(cwd, options, raw) {
 
     content = content.replace(metricsPattern, (_match, header) => `${header}${tableBody}\n`);
     writeStateMd(statePath, content, cwd);
-    output({ recorded: true, phase, plan, duration }, raw, 'true');
+    output({ recorded: true, phase, plan, duration }, 'true');
   } else {
-    output({ recorded: false, reason: 'Performance Metrics section not found in STATE.md' }, raw, 'false');
+    output({ recorded: false, reason: 'Performance Metrics section not found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateUpdateProgress(cwd, raw) {
+function cmdStateUpdateProgress(cwd) {
   const { state: statePath, phases: phasesDir } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
 
@@ -404,19 +382,19 @@ function cmdStateUpdateProgress(cwd, raw) {
   if (boldProgressPattern.test(content)) {
     content = content.replace(boldProgressPattern, (_match, prefix) => `${prefix}${progressStr}`);
     writeStateMd(statePath, content, cwd);
-    output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
+    output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, progressStr);
   } else if (plainProgressPattern.test(content)) {
     content = content.replace(plainProgressPattern, (_match, prefix) => `${prefix}${progressStr}`);
     writeStateMd(statePath, content, cwd);
-    output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
+    output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, progressStr);
   } else {
-    output({ updated: false, reason: 'Progress field not found in STATE.md' }, raw, 'false');
+    output({ updated: false, reason: 'Progress field not found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateAddDecision(cwd, options, raw) {
+function cmdStateAddDecision(cwd, options) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
 
   const { phase, summary, summary_file, rationale, rationale_file } = options;
   let summaryText = null;
@@ -426,11 +404,11 @@ function cmdStateAddDecision(cwd, options, raw) {
     summaryText = readTextArgOrFile(cwd, summary, summary_file, 'summary');
     rationaleText = readTextArgOrFile(cwd, rationale || '', rationale_file, 'rationale');
   } catch (err) {
-    output({ added: false, reason: err.message }, raw, 'false');
+    output({ added: false, reason: err.message }, 'false');
     return;
   }
 
-  if (!summaryText) { output({ error: 'summary required' }, raw); return; }
+  if (!summaryText) { output({ error: 'summary required' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
   const entry = `- [Phase ${phase || '?'}]: ${summaryText}${rationaleText ? ` — ${rationaleText}` : ''}`;
@@ -446,26 +424,26 @@ function cmdStateAddDecision(cwd, options, raw) {
     sectionBody = sectionBody.trimEnd() + '\n' + entry + '\n';
     content = content.replace(sectionPattern, (_match, header) => `${header}${sectionBody}`);
     writeStateMd(statePath, content, cwd);
-    output({ added: true, decision: entry }, raw, 'true');
+    output({ added: true, decision: entry }, 'true');
   } else {
-    output({ added: false, reason: 'Decisions section not found in STATE.md' }, raw, 'false');
+    output({ added: false, reason: 'Decisions section not found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateAddBlocker(cwd, text, raw) {
+function cmdStateAddBlocker(cwd, text) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
   const blockerOptions = typeof text === 'object' && text !== null ? text : { text };
   let blockerText = null;
 
   try {
     blockerText = readTextArgOrFile(cwd, blockerOptions.text, blockerOptions.text_file, 'blocker');
   } catch (err) {
-    output({ added: false, reason: err.message }, raw, 'false');
+    output({ added: false, reason: err.message }, 'false');
     return;
   }
 
-  if (!blockerText) { output({ error: 'text required' }, raw); return; }
+  if (!blockerText) { output({ error: 'text required' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
   const entry = `- ${blockerText}`;
@@ -479,16 +457,16 @@ function cmdStateAddBlocker(cwd, text, raw) {
     sectionBody = sectionBody.trimEnd() + '\n' + entry + '\n';
     content = content.replace(sectionPattern, (_match, header) => `${header}${sectionBody}`);
     writeStateMd(statePath, content, cwd);
-    output({ added: true, blocker: blockerText }, raw, 'true');
+    output({ added: true, blocker: blockerText }, 'true');
   } else {
-    output({ added: false, reason: 'Blockers section not found in STATE.md' }, raw, 'false');
+    output({ added: false, reason: 'Blockers section not found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateResolveBlocker(cwd, text, raw) {
+function cmdStateResolveBlocker(cwd, text) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
-  if (!text) { output({ error: 'text required' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
+  if (!text) { output({ error: 'text required' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
 
@@ -511,15 +489,15 @@ function cmdStateResolveBlocker(cwd, text, raw) {
 
     content = content.replace(sectionPattern, (_match, header) => `${header}${newBody}`);
     writeStateMd(statePath, content, cwd);
-    output({ resolved: true, blocker: text }, raw, 'true');
+    output({ resolved: true, blocker: text }, 'true');
   } else {
-    output({ resolved: false, reason: 'Blockers section not found in STATE.md' }, raw, 'false');
+    output({ resolved: false, reason: 'Blockers section not found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateRecordSession(cwd, options, raw) {
+function cmdStateRecordSession(cwd, options) {
   const { state: statePath } = planningPaths(cwd);
-  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
+  if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
   const now = new Date().toISOString();
@@ -546,17 +524,17 @@ function cmdStateRecordSession(cwd, options, raw) {
 
   if (updated.length > 0) {
     writeStateMd(statePath, content, cwd);
-    output({ recorded: true, updated }, raw, 'true');
+    output({ recorded: true, updated }, 'true');
   } else {
-    output({ recorded: false, reason: 'No session fields found in STATE.md' }, raw, 'false');
+    output({ recorded: false, reason: 'No session fields found in STATE.md' }, 'false');
   }
 }
 
-function cmdStateSnapshot(cwd, raw, phaseFilter) {
+function cmdStateSnapshot(cwd, phaseFilter) {
   const { state: statePath } = planningPaths(cwd);
 
   if (!fs.existsSync(statePath)) {
-    output({ error: 'STATE.md not found' }, raw);
+    output({ error: 'STATE.md not found' });
     return;
   }
 
@@ -655,7 +633,7 @@ function cmdStateSnapshot(cwd, raw, phaseFilter) {
     session,
   };
 
-  output(result, raw);
+  output(result);
 }
 
 // ─── State Frontmatter Sync ──────────────────────────────────────────────────
@@ -810,10 +788,10 @@ function writeStateMd(statePath, content, cwd) {
   fs.writeFileSync(statePath, synced, 'utf-8');
 }
 
-function cmdStateJson(cwd, raw) {
+function cmdStateJson(cwd) {
   const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) {
-    output({ error: 'STATE.md not found' }, raw, 'STATE.md not found');
+    output({ error: 'STATE.md not found' }, 'STATE.md not found');
     return;
   }
 
@@ -823,11 +801,11 @@ function cmdStateJson(cwd, raw) {
   if (!fm || Object.keys(fm).length === 0) {
     const body = stripFrontmatter(content);
     const built = buildStateFrontmatter(body, cwd);
-    output(built, raw, JSON.stringify(built, null, 2));
+    output(built, JSON.stringify(built, null, 2));
     return;
   }
 
-  output(fm, raw, JSON.stringify(fm, null, 2));
+  output(fm, JSON.stringify(fm, null, 2));
 }
 
 /**
@@ -837,15 +815,15 @@ function cmdStateJson(cwd, raw) {
  * Current Phase Name, Current Plan, Total Plans in Phase, Current focus body,
  * and Current Position section.
  */
-function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
+function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount) {
   const { state: statePath } = planningPaths(cwd);
   if (!fs.existsSync(statePath)) {
-    output({ updated: false, error: 'STATE.md not found' }, raw);
+    output({ updated: false, error: 'STATE.md not found' });
     return;
   }
 
   if (!phaseNumber || !phaseName || !planCount) {
-    output({ updated: false, error: '--phase, --name, and --plans are required' }, raw);
+    output({ updated: false, error: '--phase, --name, and --plans are required' });
     return;
   }
 
@@ -889,7 +867,7 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
   }
 
   writeStateMd(statePath, content, cwd);
-  output({ updated: true, phase: phaseNum, name: phaseName, plans: planCount, failed }, raw, 'true');
+  output({ updated: true, phase: phaseNum, name: phaseName, plans: planCount, failed }, 'true');
 }
 
 /**
@@ -984,9 +962,9 @@ function adjustQuickTable(cwd) {
   return { adjusted: true, table_has_status: true };
 }
 
-function cmdStateAdjustQuickTable(cwd, raw) {
+function cmdStateAdjustQuickTable(cwd) {
   const result = adjustQuickTable(cwd);
-  output(result, raw);
+  output(result);
 }
 
 module.exports = {

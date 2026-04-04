@@ -16,9 +16,8 @@ Gather todo data from CLI:
 ```bash
 AREA_FILTER=""
 if [[ -n "$ARGUMENTS" ]]; then AREA_FILTER="$ARGUMENTS"; fi
-TODOS_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" list-todos $AREA_FILTER --raw)
-if [[ "$TODOS_JSON" == @file:* ]]; then TODOS_JSON=$(cat "${TODOS_JSON#@file:}"); fi
-RECURRING_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" recurring-due --raw 2>/dev/null || echo '{"count":0,"todos":[]}')
+TODOS_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" list-todos $AREA_FILTER)
+RECURRING_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" recurring-due)
 PENDING_DIR=".planning/todos/pending"
 ```
 

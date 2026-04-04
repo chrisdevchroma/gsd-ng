@@ -416,7 +416,7 @@ describe('end-to-end pipeline', () => {
     const origOutput = require('../gsd-ng/bin/lib/core.cjs').output;
 
     // Use runGsdTools CLI (gsd-tools validate health) to avoid process.exit(0) side effects
-    const result = runGsdTools(['validate', 'health', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['validate', 'health', '--cwd', tmpDir, '--json'], tmpDir);
 
     assert.ok(result.output, 'health check should produce output');
     let parsed;
@@ -446,7 +446,7 @@ describe('cmdDetectWorkspace via gsd-tools', () => {
   });
 
   test('outputs valid JSON with type and signal fields', () => {
-    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir, '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     let parsed;
@@ -461,7 +461,7 @@ describe('cmdDetectWorkspace via gsd-tools', () => {
   test('reports submodule type for project with .gitmodules', () => {
     fs.writeFileSync(path.join(tmpDir, '.gitmodules'), '[submodule "foo"]\n  path = foo\n  url = https://example.com\n');
 
-    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir, '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const parsed = JSON.parse(result.output);
@@ -470,7 +470,7 @@ describe('cmdDetectWorkspace via gsd-tools', () => {
   });
 
   test('reports standalone for project without workspace signals', () => {
-    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir, '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const parsed = JSON.parse(result.output);
@@ -481,7 +481,7 @@ describe('cmdDetectWorkspace via gsd-tools', () => {
   test('includes submodule_paths field for submodule workspace', () => {
     fs.writeFileSync(path.join(tmpDir, '.gitmodules'),
       '[submodule "mylib"]\n\tpath = mylib\n\turl = https://example.com\n');
-    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['detect-workspace', '--cwd', tmpDir, '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.type, 'submodule');
@@ -747,7 +747,7 @@ describe('resolveGitContext', () => {
         path.join(nonGitDir, '.planning', 'STATE.md'),
         '---\ngsd_state_version: 1.0\nmilestone: test\ncurrent_phase: 1\ncurrent_plan: Not started\nstatus: testing\n---\n\n# Project State\n'
       );
-      const result = runGsdTools(['init', 'execute-phase', '1'], nonGitDir);
+      const result = runGsdTools(['init', 'execute-phase', '1', '--json'], nonGitDir);
       // The command should succeed (error caught internally)
       assert.ok(result.success, `init should succeed even for non-git dir: ${result.error}`);
       const parsed = JSON.parse(result.output);
@@ -834,21 +834,21 @@ describe('resolveGitContext', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('--field extraction on git-context and detect-workspace', () => {
-  test('git-context --field is_submodule --raw returns scalar string', () => {
-    const result = runGsdTools(['git-context', '--field', 'is_submodule', '--raw']);
+  test('git-context --field is_submodule returns scalar string', () => {
+    const result = runGsdTools(['git-context', '--field', 'is_submodule']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     // Output should be "true" or "false", not JSON
     assert.ok(['true', 'false'].includes(result.output.trim()), `expected boolean string, got: ${result.output}`);
   });
 
-  test('detect-workspace --field type --raw returns workspace type string', () => {
-    const result = runGsdTools(['detect-workspace', '--field', 'type', '--raw']);
+  test('detect-workspace --field type returns workspace type string', () => {
+    const result = runGsdTools(['detect-workspace', '--field', 'type']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     assert.ok(['standalone', 'submodule'].includes(result.output.trim()), `expected type string, got: ${result.output}`);
   });
 
-  test('detect-workspace --field type --raw returns no JSON braces', () => {
-    const result = runGsdTools(['detect-workspace', '--field', 'type', '--raw']);
+  test('detect-workspace --field type returns no JSON braces', () => {
+    const result = runGsdTools(['detect-workspace', '--field', 'type']);
     assert.ok(result.success);
     assert.ok(!result.output.includes('{'), 'output should not contain JSON braces');
   });
@@ -860,7 +860,7 @@ describe('--field extraction on git-context and detect-workspace', () => {
 
 describe('ssh-check command', () => {
   test('ssh-check with HTTPS URL returns not_required', () => {
-    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git']);
+    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git', '--json']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.ssh_required, false);
@@ -868,21 +868,21 @@ describe('ssh-check command', () => {
   });
 
   test('ssh-check with SSH URL returns ssh_required=true', () => {
-    const result = runGsdTools(['ssh-check', 'git@github.com:user/repo.git']);
+    const result = runGsdTools(['ssh-check', 'git@github.com:user/repo.git', '--json']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.ssh_required, true);
     assert.ok(['ok', 'no_identities', 'agent_not_running'].includes(parsed.status), `unexpected status: ${parsed.status}`);
   });
 
-  test('ssh-check with --field status --raw returns scalar', () => {
-    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git', '--field', 'status', '--raw']);
+  test('ssh-check with --field status returns scalar', () => {
+    const result = runGsdTools(['ssh-check', 'https://github.com/user/repo.git', '--field', 'status']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     assert.strictEqual(result.output.trim(), 'not_required');
   });
 
   test('ssh-check with no URL returns not_required', () => {
-    const result = runGsdTools(['ssh-check']);
+    const result = runGsdTools(['ssh-check', '--json']);
     assert.ok(result.success, `should succeed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'not_required');
@@ -900,7 +900,7 @@ describe('cmdGitContext CLI integration', () => {
   test('Test 9: CLI git-context outputs valid JSON with expected top-level keys including platform, cli, ssh_url', () => {
     tmpDir = createTempGitRepo('https://github.com/user/myrepo.git');
 
-    const result = runGsdTools(['git-context', '--cwd', tmpDir], tmpDir);
+    const result = runGsdTools(['git-context', '--cwd', tmpDir, '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     let parsed;

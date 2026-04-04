@@ -174,7 +174,7 @@ describe('cmdPingpongCheck integration', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'feature.js'), 'v2');
     execSync('git add -A && git commit -m "feat: update feature"', { cwd: tmpDir, stdio: 'pipe' });
 
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'ok');
@@ -192,7 +192,7 @@ describe('cmdPingpongCheck integration', () => {
       { cwd: tmpDir, stdio: 'pipe' }
     );
 
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'warning', `Expected warning, got: ${JSON.stringify(parsed)}`);
@@ -216,7 +216,7 @@ describe('cmdPingpongCheck integration', () => {
       { cwd: tmpDir, stdio: 'pipe' }
     );
 
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'halt', `Expected halt, got: ${JSON.stringify(parsed)}`);
@@ -231,7 +231,7 @@ describe('cmdPingpongCheck integration', () => {
       );
     }
 
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'ok', 'Single-author iteration should not trigger warning');
@@ -239,14 +239,14 @@ describe('cmdPingpongCheck integration', () => {
 
   test('Test 5: returns ok when no additional git history (fresh repo with initial commit only)', () => {
     // createTempGitProject already made initial commit, but no multi-author oscillation
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.status, 'ok');
   });
 
   test('CLI integration: gsd-tools pingpong-check runs and returns valid JSON', () => {
-    const result = runGsdTools(['pingpong-check'], tmpDir);
+    const result = runGsdTools(['pingpong-check', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
     // Must be valid JSON
     let parsed;

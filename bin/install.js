@@ -820,6 +820,17 @@ const GSD_COPILOT_INSTRUCTIONS_MARKER = '<!-- GSD Configuration — managed by g
 const GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER = '<!-- /GSD Configuration -->';
 
 /**
+ * HTML comment markers wrapping the GSD AST safety block in CLAUDE.md.
+ * Idempotent: install checks for START marker before appending.
+ *
+ * AST safety: Claude Code's tree-sitter-bash heuristics cannot be suppressed
+ * via config (Issue #30435). This block documents forbidden constructs for the
+ * orchestrator session. See: https://github.com/anthropics/claude-code/issues/30435
+ */
+const GSD_AST_SAFETY_MARKER = '<!-- GSD — AST Safety Rules (managed by get-shit-done installer) -->';
+const GSD_AST_SAFETY_CLOSE_MARKER = '<!-- /GSD — AST Safety Rules -->';
+
+/**
  * Path and reference conversion applied to ALL Copilot content.
  * Converts Claude-specific paths, directory names, and command prefixes to Copilot equivalents.
  * @param {string} content - File content to convert
@@ -957,6 +968,38 @@ function mergeCopilotInstructions(instructionsPath, templateContent) {
     // Append GSD block at end
     const separator = existing.endsWith('\n') ? '\n' : '\n\n';
     fs.writeFileSync(instructionsPath, existing + separator + gsdBlock + '\n');
+  }
+}
+
+/**
+ * Append the GSD AST safety ruleset block to CLAUDE.md in cwd.
+ * Idempotent: skips if the START marker is already present.
+ * Only called for Claude Code runtime installs — Copilot CLI has no equivalent
+ * AST safety layer and must never receive this injection.
+ *
+ * AST safety: <<< here-strings, brace expansion, process substitution,
+ * and ANSI-C quoting all trigger Claude Code's tree-sitter-bash heuristics even when
+ * the command is allowlisted. See: https://github.com/anthropics/claude-code/issues/30435
+ *
+ * @param {string} claudeMdPath - Absolute path to CLAUDE.md (in project cwd)
+ */
+function injectAstSafetyBlock(claudeMdPath) {
+  // Check for existing marker (idempotency)
+  if (fs.existsSync(claudeMdPath)) {
+    const existing = fs.readFileSync(claudeMdPath, 'utf8');
+    if (existing.includes(GSD_AST_SAFETY_MARKER)) {
+      return; // Already injected — skip
+    }
+  }
+
+  const templatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
+  const blockContent = fs.readFileSync(templatePath, 'utf8').trim();
+  const block = '\n' + blockContent + '\n';
+
+  if (fs.existsSync(claudeMdPath)) {
+    fs.appendFileSync(claudeMdPath, block, 'utf8');
+  } else {
+    fs.writeFileSync(claudeMdPath, block.trimStart(), 'utf8');
   }
 }
 
@@ -1249,6 +1292,20 @@ function install(isGlobal) {
   // Write file manifest for future modification detection
   writeManifest(targetDir);
   console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
+
+  // Inject AST safety rules into CLAUDE.md (Claude Code only).
+  // Copilot CLI has no equivalent AST safety layer — skip entirely.
+  //
+  // AST safety: Claude Code's tree-sitter-bash heuristics fire independently of
+  // the sandbox/allowlist layer. No config option suppresses them (Issue #30435).
+  // We inject documentation for the orchestrator session here, and the same rules
+  // appear in agent-shared-context.md for subagents.
+  // See: https://github.com/anthropics/claude-code/issues/30435
+  if (!isCopilot) {
+    const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
+    injectAstSafetyBlock(claudeMdPath);
+    console.log(`  ${green}✓${reset} Injected AST safety rules into CLAUDE.md`);
+  }
 
   // Report any backed-up local patches
   reportLocalPatches(targetDir);

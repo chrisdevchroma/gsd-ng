@@ -14,6 +14,12 @@ const os = require('os');
 const { resolveTmpDir } = require('./helpers.cjs');
 
 const { parseDuration, isRecurringDue, cmdTodoComplete, cmdRecurringDue, syncSingleRef } = require('../gsd-ng/bin/lib/commands.cjs');
+const { setJsonMode } = require('../gsd-ng/bin/lib/core.cjs');
+
+function withJsonMode(fn) {
+  setJsonMode(true);
+  try { return fn(); } finally { setJsonMode(false); }
+}
 
 /**
  * Capture stdout output from a function that uses fs.writeSync(1, ...) or process.stdout.write.
@@ -158,7 +164,7 @@ describe('cmdTodoComplete - recurring', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-    cmdTodoComplete(tmpDir, filename, true);
+    cmdTodoComplete(tmpDir, filename);
 
     // File should still be in pending/
     assert.ok(
@@ -192,7 +198,7 @@ describe('cmdTodoComplete - recurring', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
     const beforeComplete = Date.now();
-    cmdTodoComplete(tmpDir, filename, true);
+    cmdTodoComplete(tmpDir, filename);
 
     const updatedContent = fs.readFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), 'utf-8');
     assert.ok(updatedContent.includes('last_completed:'), 'last_completed should be added to frontmatter');
@@ -220,7 +226,7 @@ describe('cmdTodoComplete - recurring', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-    cmdTodoComplete(tmpDir, filename, true);
+    cmdTodoComplete(tmpDir, filename);
 
     // File should be in done/ (original behavior uses 'completed' dir actually... let's check)
     // The existing code uses 'completed' dir name, not 'done'
@@ -259,7 +265,7 @@ describe('cmdRecurringDue', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', 'normal.md'), todoContent, 'utf-8');
 
-    const result = JSON.parse(captureOutput(() => cmdRecurringDue(tmpDir, false)));
+    const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdRecurringDue(tmpDir))));
     assert.strictEqual(result.count, 0);
     assert.deepStrictEqual(result.todos, []);
   });
@@ -284,7 +290,7 @@ describe('cmdRecurringDue', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', 'monthly-sync.md'), todoContent, 'utf-8');
 
-    const result = JSON.parse(captureOutput(() => cmdRecurringDue(tmpDir, false)));
+    const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdRecurringDue(tmpDir))));
     assert.strictEqual(result.count, 1);
     assert.strictEqual(result.todos[0].file, 'monthly-sync.md');
     assert.strictEqual(result.todos[0].title, 'Monthly sync check');
@@ -311,7 +317,7 @@ describe('cmdRecurringDue', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', 'recent.md'), todoContent, 'utf-8');
 
-    const result = JSON.parse(captureOutput(() => cmdRecurringDue(tmpDir, false)));
+    const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdRecurringDue(tmpDir))));
     assert.strictEqual(result.count, 0);
   });
 
@@ -332,7 +338,7 @@ describe('cmdRecurringDue', () => {
 
     fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', 'new-recurring.md'), todoContent, 'utf-8');
 
-    const result = JSON.parse(captureOutput(() => cmdRecurringDue(tmpDir, false)));
+    const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdRecurringDue(tmpDir))));
     assert.strictEqual(result.count, 1);
     assert.strictEqual(result.todos[0].last_completed, 'never');
   });
@@ -392,7 +398,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-      const result = JSON.parse(captureOutput(() => cmdTodoComplete(tmpDir, filename, false)));
+      const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdTodoComplete(tmpDir, filename))));
       assert.strictEqual(result.completed, true, 'completion should succeed');
       assert.ok(result.synced !== undefined, 'result should include synced field when external_ref present');
       assert.ok(Array.isArray(result.synced), 'synced should be an array');
@@ -421,7 +427,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-      const result = JSON.parse(captureOutput(() => cmdTodoComplete(tmpDir, filename, false)));
+      const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdTodoComplete(tmpDir, filename))));
       assert.strictEqual(result.recurring, true, 'should be marked as recurring');
       assert.strictEqual(result.synced, undefined, 'recurring completion should NOT include synced field');
     } finally {
@@ -446,7 +452,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-      const result = JSON.parse(captureOutput(() => cmdTodoComplete(tmpDir, filename, false)));
+      const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdTodoComplete(tmpDir, filename))));
       assert.strictEqual(result.completed, true, 'completion should succeed');
       assert.strictEqual(result.synced, undefined, 'no external_ref means no sync field');
     } finally {
@@ -479,7 +485,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.planning', 'todos', 'pending', filename), todoContent, 'utf-8');
 
-      const result = JSON.parse(captureOutput(() => cmdTodoComplete(tmpDir, filename, false)));
+      const result = JSON.parse(captureOutput(() => withJsonMode(() => cmdTodoComplete(tmpDir, filename))));
       assert.strictEqual(result.completed, true, 'completion should succeed');
       assert.strictEqual(result.synced, undefined, 'auto_sync=false means no sync');
     } finally {

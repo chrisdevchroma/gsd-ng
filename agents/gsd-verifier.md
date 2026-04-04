@@ -121,7 +121,7 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json)
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -348,7 +348,7 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 Check if this phase has a source todo linked via ROADMAP.md:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw 2>/dev/null || echo "{}")
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json --default "{}")
 SOURCE_TODO=$(echo "$PHASE_DATA" | node -e "
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
     try { const r=JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
@@ -364,7 +364,7 @@ RELATED_RAW=""
 for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
   if [[ -f "$DIR/$SOURCE_TODO" ]]; then
     RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-      "$DIR/$SOURCE_TODO" --field related --format newline --raw 2>/dev/null || echo "")
+      "$DIR/$SOURCE_TODO" --field related --format newline --default "")
     break
   fi
 done
@@ -375,15 +375,14 @@ Check each related todo:
 
 ```bash
 # For each related filename, check if it exists in pending/ (still open work)
-UNADDRESSED_TODOS=""
-while IFS= read -r related_file; do
+UNADDRESSED_TODOS=$(printf '%s\n' "$RELATED_LIST" | while IFS= read -r related_file; do
   [[ -z "$related_file" ]] && continue
   if [[ -f ".planning/todos/pending/$related_file" ]]; then
     TITLE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-      ".planning/todos/pending/$related_file" --field title --raw 2>/dev/null || echo "(no title)")
-    UNADDRESSED_TODOS="${UNADDRESSED_TODOS}| $related_file | $TITLE | pending |\n"
+      ".planning/todos/pending/$related_file" --field title --default "(no title)")
+    printf '| %s | %s | pending |\n' "$related_file" "$TITLE"
   fi
-done <<< "$RELATED_LIST"
+done)
 ```
 
 If `$UNADDRESSED_TODOS` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.

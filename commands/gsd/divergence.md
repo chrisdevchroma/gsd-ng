@@ -19,7 +19,6 @@ Run the divergence command:
 ```bash
 GSD_TOOLS="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs"
 RESULT=$(node "$GSD_TOOLS" divergence)
-if [[ "$RESULT" == @file:* ]]; then RESULT=$(cat "${RESULT#@file:}"); fi
 ```
 
 Parse JSON output. If `status` is `no_upstream`, inform user they need to add an upstream remote:

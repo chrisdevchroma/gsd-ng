@@ -8,16 +8,16 @@ const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, get
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 
-function cmdPhasesList(cwd, options, raw) {
+function cmdPhasesList(cwd, options) {
   const { phases: phasesDir } = planningPaths(cwd);
   const { type, phase, includeArchived } = options;
 
   // If no phases directory, return empty
   if (!fs.existsSync(phasesDir)) {
     if (type) {
-      output({ files: [], count: 0 }, raw, '');
+      output({ files: [], count: 0 }, '');
     } else {
-      output({ directories: [], count: 0 }, raw, '');
+      output({ directories: [], count: 0 }, '');
     }
     return;
   }
@@ -43,7 +43,7 @@ function cmdPhasesList(cwd, options, raw) {
       const normalized = normalizePhaseName(phase);
       const match = dirs.find(d => d.startsWith(normalized));
       if (!match) {
-        output({ files: [], count: 0, phase_dir: null, error: 'Phase not found' }, raw, '');
+        output({ files: [], count: 0, phase_dir: null, error: 'Phase not found' }, '');
         return;
       }
       dirs = [match];
@@ -73,18 +73,18 @@ function cmdPhasesList(cwd, options, raw) {
         count: files.length,
         phase_dir: phase ? dirs[0].replace(/^\d+(?:\.\d+)*-?/, '') : null,
       };
-      output(result, raw, files.join('\n'));
+      output(result, files.join('\n'));
       return;
     }
 
     // Default: list directories
-    output({ directories: dirs, count: dirs.length }, raw, dirs.join('\n'));
+    output({ directories: dirs, count: dirs.length }, dirs.join('\n'));
   } catch (e) {
     error('Failed to list phases: ' + e.message);
   }
 }
 
-function cmdPhaseNextDecimal(cwd, basePhase, raw) {
+function cmdPhaseNextDecimal(cwd, basePhase) {
   const { phases: phasesDir } = planningPaths(cwd);
   const normalized = normalizePhaseName(basePhase);
 
@@ -97,7 +97,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
         next: `${normalized}.1`,
         existing: [],
       },
-      raw,
+
       `${normalized}.1`
     );
     return;
@@ -141,7 +141,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
         next: nextDecimal,
         existing: existingDecimals,
       },
-      raw,
+
       nextDecimal
     );
   } catch (e) {
@@ -149,7 +149,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
   }
 }
 
-function cmdFindPhase(cwd, phase, raw) {
+function cmdFindPhase(cwd, phase) {
   if (!phase) {
     error('phase identifier required');
   }
@@ -165,7 +165,7 @@ function cmdFindPhase(cwd, phase, raw) {
 
     const match = dirs.find(d => d.startsWith(normalized));
     if (!match) {
-      output(notFound, raw, '');
+      output(notFound, '');
       return;
     }
 
@@ -187,9 +187,9 @@ function cmdFindPhase(cwd, phase, raw) {
       summaries,
     };
 
-    output(result, raw, result.directory);
+    output(result, result.directory);
   } catch {
-    output(notFound, raw, '');
+    output(notFound, '');
   }
 }
 
@@ -198,7 +198,7 @@ function extractObjective(content) {
   return m ? m[1].trim() : null;
 }
 
-function cmdPhasePlanIndex(cwd, phase, raw) {
+function cmdPhasePlanIndex(cwd, phase) {
   if (!phase) {
     error('phase required for phase-plan-index');
   }
@@ -222,7 +222,7 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
   }
 
   if (!phaseDir) {
-    output({ phase: normalized, error: 'Phase not found', plans: [], waves: {}, incomplete: [], has_checkpoints: false }, raw);
+    output({ phase: normalized, error: 'Phase not found', plans: [], waves: {}, incomplete: [], has_checkpoints: false });
     return;
   }
 
@@ -306,7 +306,7 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     overlaps: detectFileOverlaps(plans),
   };
 
-  output(result, raw);
+  output(result);
 }
 
 /**
@@ -401,7 +401,7 @@ function insertCheckboxLine(rawContent, phaseNum, description, afterPhase) {
   return lines.join('\n');
 }
 
-function cmdPhaseAdd(cwd, description, raw) {
+function cmdPhaseAdd(cwd, description) {
   if (!description) {
     error('description required for phase add');
   }
@@ -458,10 +458,10 @@ function cmdPhaseAdd(cwd, description, raw) {
     directory: `.planning/phases/${dirName}`,
   };
 
-  output(result, raw, paddedNum);
+  output(result, paddedNum);
 }
 
-function cmdPhaseInsert(cwd, afterPhase, description, raw) {
+function cmdPhaseInsert(cwd, afterPhase, description) {
   if (!afterPhase || !description) {
     error('after-phase and description required for phase insert');
   }
@@ -543,10 +543,10 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
     directory: `.planning/phases/${dirName}`,
   };
 
-  output(result, raw, decimalPhase);
+  output(result, decimalPhase);
 }
 
-function cmdPhaseRemove(cwd, targetPhase, options, raw) {
+function cmdPhaseRemove(cwd, targetPhase, options) {
   if (!targetPhase) {
     error('phase number required for phase remove');
   }
@@ -795,10 +795,10 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     state_updated: fs.existsSync(statePath),
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdPhaseComplete(cwd, phaseNum, raw) {
+function cmdPhaseComplete(cwd, phaseNum) {
   if (!phaseNum) {
     error('phase number required for phase complete');
   }
@@ -1001,7 +1001,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
     requirements_updated: requirementsUpdated,
   };
 
-  output(result, raw);
+  output(result);
 }
 
 module.exports = {

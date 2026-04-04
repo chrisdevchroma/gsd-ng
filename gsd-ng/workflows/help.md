@@ -12,8 +12,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 Retrieve the command list:
 
 ```bash
-HELP_OUTPUT=$(node "$GSD_TOOLS" help)
-if [[ "$HELP_OUTPUT" == @file:* ]]; then HELP_OUTPUT=$(cat "${HELP_OUTPUT#@file:}"); fi
+HELP_OUTPUT=$(node "$GSD_TOOLS" help --json)
 ```
 
 Parse the JSON output. The `commands` array contains objects with `name`, `description`, and `argument_hint` fields.

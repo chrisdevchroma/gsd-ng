@@ -991,3 +991,67 @@ describe('output EPIPE handling', () => {
     );
   });
 });
+
+// ─── output() inline default and --file flag ─────────────────────────────────
+
+describe('output() inline default and --file flag', () => {
+  const { setFileOutput, output } = require('../gsd-ng/bin/lib/core.cjs');
+
+  // Intercept fs.writeSync to capture what output() writes to stdout (fd 1).
+  let capturedOutput;
+  let origWriteSync;
+
+  beforeEach(() => {
+    capturedOutput = '';
+    origWriteSync = fs.writeSync;
+    fs.writeSync = (fd, data) => {
+      if (fd === 1) { capturedOutput += data; return data.length; }
+      return origWriteSync(fd, data);
+    };
+    // Ensure file output flag is off before each test
+    setFileOutput(false);
+  });
+
+  afterEach(() => {
+    fs.writeSync = origWriteSync;
+    setFileOutput(false);
+  });
+
+  test('small payload writes inline JSON to stdout', () => {
+    output({ hello: 'world' });
+    assert.ok(!capturedOutput.startsWith('@file:'), `Expected inline JSON, got: ${capturedOutput.slice(0, 50)}`);
+    const parsed = JSON.parse(capturedOutput);
+    assert.strictEqual(parsed.hello, 'world');
+  });
+
+  test('large payload (>50KB) writes inline JSON by default', () => {
+    const bigObj = { data: 'x'.repeat(51000) };
+    output(bigObj);
+    assert.ok(!capturedOutput.startsWith('@file:'), `Expected inline JSON, got @file: path`);
+    const parsed = JSON.parse(capturedOutput);
+    assert.ok(parsed.data.length === 51000, 'Large payload data should be preserved');
+  });
+
+  test('--file flag triggers @file: temp file output', () => {
+    setFileOutput(true);
+    output({ test: true });
+    assert.ok(capturedOutput.startsWith('@file:'), `Expected @file: prefix, got: ${capturedOutput.slice(0, 50)}`);
+    const tmpPath = capturedOutput.slice(6);
+    const contents = fs.readFileSync(tmpPath, 'utf-8');
+    const parsed = JSON.parse(contents);
+    assert.strictEqual(parsed.test, true);
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch {}
+  });
+
+  test('displayValue mode writes string directly', () => {
+    output(null, 'display-string');
+    assert.strictEqual(capturedOutput, 'display-string');
+  });
+
+  test('setFileOutput exists and is exported (setResolveOutput does NOT exist)', () => {
+    const coreExports = require('../gsd-ng/bin/lib/core.cjs');
+    assert.strictEqual(typeof coreExports.setFileOutput, 'function', 'setFileOutput should be exported');
+    assert.strictEqual(typeof coreExports.setResolveOutput, 'undefined', 'setResolveOutput should NOT be exported');
+  });
+});

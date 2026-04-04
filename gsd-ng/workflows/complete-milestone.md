@@ -533,10 +533,8 @@ Use `init milestone-op` for context, or load config directly:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -546,28 +544,28 @@ fi
 
 ```bash
 # Load git config for branch handling (read from $INIT so per-submodule overrides apply)
-BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy --raw 2>/dev/null)
-TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null)
-COMMIT_DOCS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" commit_docs --raw 2>/dev/null)
+BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy 2>/dev/null)
+TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch 2>/dev/null)
+COMMIT_DOCS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" commit_docs 2>/dev/null)
 ```
 
-Note: `config-get` with `--raw` returns the value directly (not JSON-wrapped). If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
+Note: `config-get` returns the value directly as a scalar string by default. If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
 
 Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, `target_branch`, and `commit_docs` from init JSON.
 
 **Submodule-aware routing:** Extract submodule context from `$INIT`:
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous 2>/dev/null)
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branch routing cannot be determined. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths 2>/dev/null)
   AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
     PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
@@ -608,7 +606,7 @@ fi
 ```bash
 # Effective target branch: use submodule target branch when in submodule context
 if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
-  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
+  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch 2>/dev/null)
   EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
   EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
@@ -789,14 +787,13 @@ fi
 **Read versioning scheme from config:**
 
 ```bash
-VERSIONING_SCHEME=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.versioning_scheme --raw 2>/dev/null || echo "semver")
+VERSIONING_SCHEME=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.versioning_scheme --default "semver")
 ```
 
 **Auto-derive bump level from milestone commit types, then confirm with user:**
 
 ```bash
 BUMP_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --scheme "$VERSIONING_SCHEME")
-if [[ "$BUMP_RESULT" == @file:* ]]; then BUMP_RESULT=$(cat "${BUMP_RESULT#@file:}"); fi
 ```
 
 Parse `version`, `previous`, `level`, `scheme` from result JSON.
@@ -813,16 +810,14 @@ If user provides override level:
 
 ```bash
 BUMP_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --level {override} --scheme "$VERSIONING_SCHEME")
-if [[ "$BUMP_RESULT" == @file:* ]]; then BUMP_RESULT=$(cat "${BUMP_RESULT#@file:}"); fi
 ```
 
 **Generate CHANGELOG.md entries from all SUMMARY.md files:**
 
 ```bash
-NEW_VERSION=$(echo "$BUMP_RESULT" | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).version)}catch{}})")
+NEW_VERSION="$BUMP_RESULT"
 TODAY=$(date +%Y-%m-%d)
 CHANGELOG_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-changelog "$NEW_VERSION" --date "$TODAY")
-if [[ "$CHANGELOG_RESULT" == @file:* ]]; then CHANGELOG_RESULT=$(cat "${CHANGELOG_RESULT#@file:}"); fi
 ```
 
 Present changelog preview:

@@ -6,11 +6,12 @@ const fs = require('fs');
 const path = require('path');
 const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, extractCurrentMilestone, replaceInCurrentMilestone, planningPaths } = require('./core.cjs');
 
-function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
+function cmdRoadmapGetPhase(cwd, phaseNum, defaultValue) {
   const { roadmap: roadmapPath } = planningPaths(cwd);
 
   if (!fs.existsSync(roadmapPath)) {
-    output({ found: false, error: 'ROADMAP.md not found' }, raw, '');
+    if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+    output({ found: false, error: 'ROADMAP.md not found' }, '');
     return;
   }
 
@@ -37,17 +38,19 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
 
       if (checklistMatch) {
         // Phase exists in summary but missing detail section - malformed ROADMAP
+        if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
         output({
           found: false,
           phase_number: phaseNum,
           phase_name: checklistMatch[1].trim(),
           error: 'malformed_roadmap',
           message: `Phase ${phaseNum} exists in summary list but missing "### Phase ${phaseNum}:" detail section. ROADMAP.md needs both formats.`
-        }, raw, '');
+        }, '');
         return;
       }
 
-      output({ found: false, phase_number: phaseNum }, raw, '');
+      if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+      output({ found: false, phase_number: phaseNum }, '');
       return;
     }
 
@@ -92,7 +95,7 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
         source_todos,
         section,
       },
-      raw,
+
       section
     );
   } catch (e) {
@@ -100,11 +103,11 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
   }
 }
 
-function cmdRoadmapAnalyze(cwd, raw, phaseFilter) {
+function cmdRoadmapAnalyze(cwd, phaseFilter) {
   const { roadmap: roadmapPath, phases: phasesDir } = planningPaths(cwd);
 
   if (!fs.existsSync(roadmapPath)) {
-    output({ error: 'ROADMAP.md not found', milestones: [], phases: [], current_phase: null }, raw);
+    output({ error: 'ROADMAP.md not found', milestones: [], phases: [], current_phase: null });
     return;
   }
 
@@ -242,10 +245,10 @@ function cmdRoadmapAnalyze(cwd, raw, phaseFilter) {
     missing_phase_details: missingDetails.length > 0 ? missingDetails : null,
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
+function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
   if (!phaseNum) {
     error('phase number required for roadmap update-plan-progress');
   }
@@ -261,7 +264,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   const summaryCount = phaseInfo.summaries.length;
 
   if (planCount === 0) {
-    output({ updated: false, reason: 'No plans found', plan_count: 0, summary_count: 0 }, raw, 'no plans');
+    output({ updated: false, reason: 'No plans found', plan_count: 0, summary_count: 0 }, 'no plans');
     return;
   }
 
@@ -270,7 +273,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   const today = new Date().toISOString().split('T')[0];
 
   if (!fs.existsSync(roadmapPath)) {
-    output({ updated: false, reason: 'ROADMAP.md not found', plan_count: planCount, summary_count: summaryCount }, raw, 'no roadmap');
+    output({ updated: false, reason: 'ROADMAP.md not found', plan_count: planCount, summary_count: summaryCount }, 'no roadmap');
     return;
   }
 
@@ -339,7 +342,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     summary_count: summaryCount,
     status,
     complete: isComplete,
-  }, raw, `${summaryCount}/${planCount} ${status}`);
+  }, `${summaryCount}/${planCount} ${status}`);
 }
 
 module.exports = {

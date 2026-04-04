@@ -29,10 +29,8 @@ Load codebase mapping context:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -51,14 +49,12 @@ Parse `$ARGUMENTS` for `--incremental` or `incremental` keyword.
 If `--incremental` flag is present:
 
 ```bash
-STALE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check 2>/dev/null || echo '{"stale":[]}')
-if [[ "$STALE_JSON" == @file:* ]]; then STALE_JSON=$(cat "${STALE_JSON#@file:}"); fi
-STALE_COUNT=$(node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stale.length)}catch{console.log(0)}})" <<< "$STALE_JSON")
+STALE_COUNT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count)
 ```
 
 If STALE_COUNT is 0: output "All codebase docs are up-to-date. Nothing to update." and exit workflow.
 
-If STALE_COUNT > 0: output "{STALE_COUNT} codebase doc(s) need updating." and spawn one `gsd-incremental-mapper` agent per stale doc (use same pattern as execute-phase `incremental_remap` step). Wait for all agents to complete, then skip to `commit_codebase_map` step.
+If STALE_COUNT > 0: output "{STALE_COUNT} codebase doc(s) need updating." — fetch the full stale list with `staleness-check` (no `--count`) and spawn one `gsd-incremental-mapper` agent per stale doc (use same pattern as execute-phase `incremental_remap` step). Wait for all agents to complete, then skip to `commit_codebase_map` step.
 
 If NO `--incremental` flag (default behavior): continue to `check_existing` for full re-map.
 </step>

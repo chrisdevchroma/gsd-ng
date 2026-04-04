@@ -1034,7 +1034,6 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 # commit_docs is in the JSON output
 ```
 
@@ -1096,7 +1095,7 @@ Perform lightweight verification: does the Resolution section's root_cause and f
 **In auto mode** (goal: find_and_fix with auto-close):
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
 ```
 
 If `$AUTO_CFG` is `"true"` AND lightweight verification passes:
@@ -1139,7 +1138,7 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --raw 2>/dev/null || echo "")
+  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
   if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
@@ -1153,7 +1152,7 @@ if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED
     [[ -f "$TODO_FILE" ]] || continue
     TODO_BASENAME=$(basename "$TODO_FILE")
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
-    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --raw 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
+    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --default "" 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
       RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
     fi
   done
@@ -1181,13 +1180,13 @@ If `$RELATED_ALL` is non-empty:
 **Auto mode:**
 ```bash
 if [[ "$AUTO_CFG" == "true" ]]; then
-  while IFS= read -r REL_TODO; do
+  printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
     REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after debug resolution" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"
-  done <<< "$RELATED_ALL"
+  done
 fi
 ```
 

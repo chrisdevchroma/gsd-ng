@@ -35,10 +35,8 @@ Load phase context:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -71,7 +69,6 @@ Always show dry run first:
 
 ```bash
 PREVIEW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} --dry-run)
-if [[ "$PREVIEW" == @file:* ]]; then PREVIEW=$(cat "${PREVIEW#@file:}"); fi
 ```
 
 Display the preview showing which commits will be grouped and what messages will be used.
@@ -93,7 +90,6 @@ Execute the squash:
 
 ```bash
 RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} ${ALLOW_STABLE_FLAG})
-if [[ "$RESULT" == @file:* ]]; then RESULT=$(cat "${RESULT#@file:}"); fi
 ```
 
 Display the result including backup tag name.
@@ -109,8 +105,8 @@ Push squashed branch with --force-with-lease?
 
 If yes:
 ```bash
-GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field git_cwd --raw 2>/dev/null || echo ".")
-PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field remote --raw 2>/dev/null || echo "origin")
+GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field git_cwd)
+PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field remote)
 BRANCH=$(git -C "$GIT_CWD" branch --show-current)
 git -C "$GIT_CWD" push --force-with-lease "$PUSH_REMOTE" "$BRANCH"
 ```

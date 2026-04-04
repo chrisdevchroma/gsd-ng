@@ -13,7 +13,6 @@ Gather project statistics:
 
 ```bash
 STATS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" stats json)
-if [[ "$STATS" == @file:* ]]; then STATS=$(cat "${STATS#@file:}"); fi
 ```
 
 Extract fields from JSON: `milestone_version`, `milestone_name`, `phases`, `phases_completed`, `phases_total`, `total_plans`, `total_summaries`, `percent`, `plan_percent`, `requirements_total`, `requirements_complete`, `git_commits`, `git_first_commit_date`, `last_activity`.

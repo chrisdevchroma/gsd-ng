@@ -10,7 +10,7 @@ const { extractFrontmatter, spliceFrontmatter, parseMustHavesBlock } = require('
 const { writeStateMd } = require('./state.cjs');
 const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
 
-function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
+function cmdVerifySummary(cwd, summaryPath, checkFileCount) {
   if (!summaryPath) {
     error('summary-path required');
   }
@@ -30,7 +30,7 @@ function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
       },
       errors: ['SUMMARY.md not found'],
     };
-    output(result, raw, 'failed');
+    output(result, 'failed');
     return;
   }
 
@@ -103,14 +103,14 @@ function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
 
   const passed = missing.length === 0 && selfCheck !== 'failed';
   const result = { passed, checks, errors };
-  output(result, raw, passed ? 'passed' : 'failed');
+  output(result, passed ? 'passed' : 'failed');
 }
 
-function cmdVerifyPlanStructure(cwd, filePath, raw) {
+function cmdVerifyPlanStructure(cwd, filePath) {
   if (!filePath) { error('file path required'); }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!content) { output({ error: 'File not found', path: filePath }); return; }
 
   const fm = extractFrontmatter(content);
   const errors = [];
@@ -164,14 +164,14 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
     task_count: tasks.length,
     tasks,
     frontmatter_fields: Object.keys(fm),
-  }, raw, errors.length === 0 ? 'valid' : 'invalid');
+  }, errors.length === 0 ? 'valid' : 'invalid');
 }
 
-function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
+function cmdVerifyPhaseCompleteness(cwd, phase) {
   if (!phase) { error('phase required'); }
   const phaseInfo = findPhaseInternal(cwd, phase);
   if (!phaseInfo || !phaseInfo.found) {
-    output({ error: 'Phase not found', phase }, raw);
+    output({ error: 'Phase not found', phase });
     return;
   }
 
@@ -181,7 +181,7 @@ function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
 
   // List plans and summaries
   let files;
-  try { files = fs.readdirSync(phaseDir); } catch { output({ error: 'Cannot read phase directory' }, raw); return; }
+  try { files = fs.readdirSync(phaseDir); } catch { output({ error: 'Cannot read phase directory' }); return; }
 
   const plans = files.filter(f => f.match(/-PLAN\.md$/i));
   const summaries = files.filter(f => f.match(/-SUMMARY\.md$/i));
@@ -211,14 +211,14 @@ function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
     orphan_summaries: orphanSummaries,
     errors,
     warnings,
-  }, raw, errors.length === 0 ? 'complete' : 'incomplete');
+  }, errors.length === 0 ? 'complete' : 'incomplete');
 }
 
-function cmdVerifyReferences(cwd, filePath, raw) {
+function cmdVerifyReferences(cwd, filePath) {
   if (!filePath) { error('file path required'); }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!content) { output({ error: 'File not found', path: filePath }); return; }
 
   const found = [];
   const missing = [];
@@ -256,10 +256,10 @@ function cmdVerifyReferences(cwd, filePath, raw) {
     found: found.length,
     missing,
     total: found.length + missing.length,
-  }, raw, missing.length === 0 ? 'valid' : 'invalid');
+  }, missing.length === 0 ? 'valid' : 'invalid');
 }
 
-function cmdVerifyCommits(cwd, hashes, raw) {
+function cmdVerifyCommits(cwd, hashes) {
   if (!hashes || hashes.length === 0) { error('At least one commit hash required'); }
 
   const valid = [];
@@ -278,18 +278,18 @@ function cmdVerifyCommits(cwd, hashes, raw) {
     valid,
     invalid,
     total: hashes.length,
-  }, raw, invalid.length === 0 ? 'valid' : 'invalid');
+  }, invalid.length === 0 ? 'valid' : 'invalid');
 }
 
-function cmdVerifyArtifacts(cwd, planFilePath, raw) {
+function cmdVerifyArtifacts(cwd, planFilePath) {
   if (!planFilePath) { error('plan file path required'); }
   const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
+  if (!content) { output({ error: 'File not found', path: planFilePath }); return; }
 
   const artifacts = parseMustHavesBlock(content, 'artifacts');
   if (artifacts.length === 0) {
-    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw);
+    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath });
     return;
   }
 
@@ -333,18 +333,18 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
     passed,
     total: results.length,
     artifacts: results,
-  }, raw, passed === results.length ? 'valid' : 'invalid');
+  }, passed === results.length ? 'valid' : 'invalid');
 }
 
-function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
+function cmdVerifyKeyLinks(cwd, planFilePath) {
   if (!planFilePath) { error('plan file path required'); }
   const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
+  if (!content) { output({ error: 'File not found', path: planFilePath }); return; }
 
   const keyLinks = parseMustHavesBlock(content, 'key_links');
   if (keyLinks.length === 0) {
-    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw);
+    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath });
     return;
   }
 
@@ -393,10 +393,10 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
     verified,
     total: results.length,
     links: results,
-  }, raw, verified === results.length ? 'valid' : 'invalid');
+  }, verified === results.length ? 'valid' : 'invalid');
 }
 
-function cmdValidateConsistency(cwd, raw) {
+function cmdValidateConsistency(cwd) {
   const { roadmap: roadmapPath, phases: phasesDir } = planningPaths(cwd);
   const errors = [];
   const warnings = [];
@@ -404,7 +404,7 @@ function cmdValidateConsistency(cwd, raw) {
   // Check for ROADMAP
   if (!fs.existsSync(roadmapPath)) {
     errors.push('ROADMAP.md not found');
-    output({ passed: false, errors, warnings }, raw, 'failed');
+    output({ passed: false, errors, warnings }, 'failed');
     return;
   }
 
@@ -513,10 +513,10 @@ function cmdValidateConsistency(cwd, raw) {
   } catch {}
 
   const passed = errors.length === 0;
-  output({ passed, errors, warnings, warning_count: warnings.length }, raw, passed ? 'passed' : 'failed');
+  output({ passed, errors, warnings, warning_count: warnings.length }, passed ? 'passed' : 'failed');
 }
 
-function cmdValidateHealth(cwd, options, raw) {
+function cmdValidateHealth(cwd, options) {
   // Guard: detect if CWD is the home directory (likely accidental)
   const resolved = path.resolve(cwd);
   if (resolved === os.homedir()) {
@@ -526,7 +526,7 @@ function cmdValidateHealth(cwd, options, raw) {
       warnings: [],
       info: [{ code: 'I010', message: `Resolved CWD: ${resolved}` }],
       repairable_count: 0,
-    }, raw);
+    });
     return;
   }
 
@@ -554,7 +554,7 @@ function cmdValidateHealth(cwd, options, raw) {
       warnings,
       info,
       repairable_count: 0,
-    }, raw);
+    });
     return;
   }
 
@@ -1193,7 +1193,7 @@ function cmdValidateHealth(cwd, options, raw) {
     info,
     repairable_count: repairableCount,
     repairs_performed: repairActions.length > 0 ? repairActions : undefined,
-  }, raw);
+  });
 }
 
 module.exports = {

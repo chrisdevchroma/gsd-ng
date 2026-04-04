@@ -15,9 +15,8 @@ const { setConfigValue } = require('./config.cjs');
  *
  * @param {string} cwd - Working directory
  * @param {string} argumentsStr - Raw $ARGUMENTS string from workflow
- * @param {boolean} raw - Raw output flag
  */
-function cmdGuardSyncChain(cwd, argumentsStr, raw) {
+function cmdGuardSyncChain(cwd, argumentsStr) {
   // Check for --auto as a standalone token (not substring like --auto-advance)
   const tokens = (argumentsStr || '').split(/\s+/);
   const hasAuto = tokens.includes('--auto');
@@ -27,7 +26,7 @@ function cmdGuardSyncChain(cwd, argumentsStr, raw) {
     setConfigValue(cwd, 'workflow._auto_chain_active', false);
   }
 
-  output({ synced: true, had_auto: hasAuto }, raw);
+  output({ synced: true, had_auto: hasAuto });
 }
 
 /**
@@ -38,9 +37,8 @@ function cmdGuardSyncChain(cwd, argumentsStr, raw) {
  * or fails JSON.parse — indicating that the preceding init command failed.
  *
  * @param {string} jsonStr - The $INIT string to validate
- * @param {boolean} raw - Raw output flag
  */
-function cmdGuardInitValid(jsonStr, raw) {
+function cmdGuardInitValid(jsonStr) {
   if (!jsonStr || !jsonStr.trim()) {
     error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
   }
@@ -49,7 +47,7 @@ function cmdGuardInitValid(jsonStr, raw) {
   } catch {
     error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
   }
-  output({ valid: true }, raw);
+  output({ valid: true });
 }
 
 module.exports = { cmdGuardSyncChain, cmdGuardInitValid };

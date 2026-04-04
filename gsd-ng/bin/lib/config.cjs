@@ -131,12 +131,12 @@ function ensureConfigFile(cwd) {
  * Note that this exits the process (via `output()`) even in the happy path; use
  * `ensureConfigFile()` directly if you need to avoid this.
  */
-function cmdConfigEnsureSection(cwd, raw) {
+function cmdConfigEnsureSection(cwd) {
   const ensureConfigFileResult = ensureConfigFile(cwd);
   if (ensureConfigFileResult.created) {
-    output(ensureConfigFileResult, raw, 'created');
+    output(ensureConfigFileResult, 'created');
   } else {
-    output(ensureConfigFileResult, raw, 'exists');
+    output(ensureConfigFileResult, 'exists');
   }
 }
 
@@ -189,7 +189,7 @@ function setConfigValue(cwd, keyPath, parsedValue) {
  * Note that this exits the process (via `output()`) even in the happy path; use `setConfigValue()`
  * directly if you need to avoid this.
  */
-function cmdConfigSet(cwd, keyPath, value, raw) {
+function cmdConfigSet(cwd, keyPath, value) {
   if (!keyPath) {
     error('Usage: config-set <key.path> <value>');
   }
@@ -211,10 +211,10 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
   else if (!isNaN(value) && value !== '') parsedValue = Number(value);
 
   const setConfigValueResult = setConfigValue(cwd, keyPath, parsedValue);
-  output(setConfigValueResult, raw, `${keyPath}=${parsedValue}`);
+  output(setConfigValueResult, `${keyPath}=${parsedValue}`);
 }
 
-function cmdConfigGet(cwd, keyPath, raw) {
+function cmdConfigGet(cwd, keyPath, defaultValue) {
   const { config: configPath } = planningPaths(cwd);
 
   if (!keyPath) {
@@ -230,6 +230,10 @@ function cmdConfigGet(cwd, keyPath, raw) {
     if (fs.existsSync(configPath)) {
       config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     } else {
+      if (defaultValue !== undefined) {
+        output(defaultValue, String(defaultValue));
+        return;
+      }
       error('No config.json found at ' + configPath);
     }
   } catch (err) {
@@ -242,16 +246,24 @@ function cmdConfigGet(cwd, keyPath, raw) {
   let current = config;
   for (const key of keys) {
     if (current === undefined || current === null || typeof current !== 'object') {
+      if (defaultValue !== undefined) {
+        output(defaultValue, String(defaultValue));
+        return;
+      }
       error(`Key not found: ${keyPath}`);
     }
     current = current[key];
   }
 
   if (current === undefined) {
+    if (defaultValue !== undefined) {
+      output(defaultValue, String(defaultValue));
+      return;
+    }
     error(`Key not found: ${keyPath}`);
   }
 
-  output(current, raw, String(current));
+  output(current, String(current));
 }
 
 /**
@@ -259,7 +271,7 @@ function cmdConfigGet(cwd, keyPath, raw) {
  *
  * Note that this exits the process (via `output()`) even in the happy path.
  */
-function cmdConfigSetModelProfile(cwd, profile, raw) {
+function cmdConfigSetModelProfile(cwd, profile) {
   if (!profile) {
     error(`Usage: config-set-model-profile <${VALID_PROFILES.join('|')}>`);
   }
@@ -273,7 +285,7 @@ function cmdConfigSetModelProfile(cwd, profile, raw) {
   ensureConfigFile(cwd);
 
   // Set the model profile in the config
-  const { previousValue } = setConfigValue(cwd, 'model_profile', normalizedProfile, raw);
+  const { previousValue } = setConfigValue(cwd, 'model_profile', normalizedProfile);
   const previousProfile = previousValue || 'balanced';
 
   // Build result value / message and return
@@ -289,7 +301,7 @@ function cmdConfigSetModelProfile(cwd, profile, raw) {
     previousProfile,
     agentToModelMap
   );
-  output(result, raw, rawValue);
+  output(result, rawValue);
 }
 
 /**

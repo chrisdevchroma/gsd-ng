@@ -243,7 +243,7 @@ describe('cmdBreakoutCheck integration', () => {
     execSync('git add -A && git commit -m "feat(18-01): implement feature"', { cwd: tmpDir, stdio: 'pipe' });
 
     const result = runGsdTools(
-      ['breakout-check', '--plan', '18-01', '--declared-files', 'src/a.js,src/b.js'],
+      ['breakout-check', '--plan', '18-01', '--declared-files', 'src/a.js,src/b.js', '--json'],
       tmpDir
     );
 

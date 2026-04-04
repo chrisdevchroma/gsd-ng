@@ -16,10 +16,8 @@ Ensure config exists and load current state:
 ```bash
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-ensure-section
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -264,7 +262,7 @@ AskUserQuestion([
 
 If user selected "Auto-detect (Recommended)", run platform detection:
 ```bash
-PLATFORM_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --raw 2>/dev/null)
+PLATFORM_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --json 2>/dev/null)
 ```
 Extract the `platform` field from the JSON result. Store it for display in the confirmation table as `"Auto-detect ({detected_platform})"` or `"Auto-detect (not detected)"` if null. Config stores `platform: null` (auto-detect uses runtime detection, config only stores manual overrides).
 

@@ -1,7 +1,7 @@
 /**
  * GSD Tools Tests - Arg Validation
  *
- * Tests for ARG_SCHEMAS registry and validateSubcommandArgs() pre-dispatch validation.
+ * Tests for ARG_SCHEMAS registry and validateArgs() pre-dispatch validation.
  * Covers: flag in positional slot, equals syntax, count validation, unknown flags,
  * no-regression tests for valid commands, and schema coverage for all 14 namespaces.
  *
@@ -125,6 +125,15 @@ describe('arg validation - unknown flag', () => {
       `Expected "Unknown flag" in stderr, got: ${result.error}`
     );
   });
+
+  test('detect-workspace --bogus rejects with unknown flag error (top-level _self schema)', () => {
+    const result = runGsdTools('detect-workspace --bogus', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    assert.ok(
+      result.error.includes('Unknown flag'),
+      `Expected "Unknown flag" in stderr, got: ${result.error}`
+    );
+  });
 });
 
 // ─── No Regression ───────────────────────────────────────────────────────────
@@ -153,6 +162,12 @@ describe('arg validation - no regression', () => {
     );
     const result = runGsdTools('state load', tmpDir);
     assert.strictEqual(result.success, true, `Should succeed with state load, got error: ${result.error}`);
+  });
+
+  test('detect-workspace --field still succeeds (top-level with known flag)', () => {
+    const result = runGsdTools('detect-workspace --field type', tmpDir);
+    // detect-workspace should succeed (it detects current workspace)
+    assert.strictEqual(result.success, true, `Should succeed with valid flag, got error: ${result.error}`);
   });
 
   test('roadmap get-phase 44 still succeeds (one positional command)', () => {
@@ -187,11 +202,11 @@ describe('ARG_SCHEMAS coverage', () => {
       'todo', 'init', 'guard', 'test',
     ];
     // Check that each namespace appears in the ARG_SCHEMAS block
-    // (between 'const ARG_SCHEMAS' and 'function validateSubcommandArgs')
+    // (between 'const ARG_SCHEMAS' and 'function validateArgs')
     const schemasStart = source.indexOf('const ARG_SCHEMAS');
-    const schemasEnd = source.indexOf('function validateSubcommandArgs');
+    const schemasEnd = source.indexOf('function validateArgs');
     assert.ok(schemasStart !== -1, 'ARG_SCHEMAS should be defined');
-    assert.ok(schemasEnd !== -1, 'validateSubcommandArgs should be defined');
+    assert.ok(schemasEnd !== -1, 'validateArgs should be defined');
     const schemasBlock = source.slice(schemasStart, schemasEnd);
     for (const ns of expectedNamespaces) {
       assert.ok(
@@ -201,21 +216,46 @@ describe('ARG_SCHEMAS coverage', () => {
     }
   });
 
-  test('validateSubcommandArgs function exists in gsd-tools.cjs source', () => {
+  test('ARG_SCHEMAS contains _self entries for top-level commands', () => {
     const source = fs.readFileSync(TOOLS_PATH, 'utf-8');
+    const schemasStart = source.indexOf('const ARG_SCHEMAS');
+    const schemasEnd = source.indexOf('function validateArgs');
+    assert.ok(schemasStart !== -1 && schemasEnd !== -1, 'ARG_SCHEMAS and validateArgs should exist');
+    const schemasBlock = source.slice(schemasStart, schemasEnd);
+    // Verify _self entries exist for key top-level commands
+    const topLevelCommands = [
+      'commit', 'detect-workspace', 'git-context', 'squash',
+      'version-bump', 'divergence', 'cleanup', 'update',
+    ];
+    for (const cmd of topLevelCommands) {
+      assert.ok(
+        schemasBlock.includes(`'${cmd}'`),
+        `ARG_SCHEMAS should contain top-level command '${cmd}' with _self schema`
+      );
+    }
+    // Verify _self keys exist
+    const selfCount = (schemasBlock.match(/_self:/g) || []).length;
     assert.ok(
-      source.includes('function validateSubcommandArgs'),
-      'gsd-tools.cjs should define function validateSubcommandArgs'
+      selfCount >= 22,
+      `Expected at least 22 _self entries in ARG_SCHEMAS, got ${selfCount}`
     );
   });
 
-  test('validateSubcommandArgs called in all 14 compound command case blocks', () => {
+  test('validateArgs function exists in gsd-tools.cjs source', () => {
     const source = fs.readFileSync(TOOLS_PATH, 'utf-8');
-    // Count call sites: pattern is validateSubcommandArgs('commandname'
-    const callMatches = (source.match(/validateSubcommandArgs\('[a-z]/g) || []).length;
     assert.ok(
-      callMatches >= 14,
-      `Expected at least 14 validateSubcommandArgs call sites, got ${callMatches}`
+      source.includes('function validateArgs'),
+      'gsd-tools.cjs should define function validateArgs'
+    );
+  });
+
+  test('validateArgs called in all compound + top-level command case blocks', () => {
+    const source = fs.readFileSync(TOOLS_PATH, 'utf-8');
+    // Count call sites: pattern is validateArgs('commandname'
+    const callMatches = (source.match(/validateArgs\('[a-z]/g) || []).length;
+    assert.ok(
+      callMatches >= 36,
+      `Expected at least 36 validateArgs call sites (14 compound + 22 top-level), got ${callMatches}`
     );
   });
 });

@@ -172,7 +172,7 @@ describe('quick task: research file in task directory', () => {
   });
 
   test('init quick returns valid task_dir for research file placement', () => {
-    const result = runGsdTools('init quick "Add caching layer"', tmpDir);
+    const result = runGsdTools('init quick "Add caching layer" --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -201,7 +201,7 @@ describe('quick task: research file in task directory', () => {
     );
 
     const result = runGsdTools(
-      'verify-path-exists .planning/quick/1-test-task/1-RESEARCH.md',
+      'verify-path-exists .planning/quick/1-test-task/1-RESEARCH.md --json',
       tmpDir
     );
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -216,7 +216,7 @@ describe('quick task: research file in task directory', () => {
     fs.mkdirSync(quickTaskDir, { recursive: true });
 
     const result = runGsdTools(
-      'verify-path-exists .planning/quick/1-test-task/1-RESEARCH.md',
+      'verify-path-exists .planning/quick/1-test-task/1-RESEARCH.md --json',
       tmpDir
     );
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -243,7 +243,7 @@ describe('quick task: research file in task directory', () => {
 
     for (const artifact of artifacts) {
       const result = runGsdTools(
-        `verify-path-exists .planning/quick/1-add-caching/${artifact}`,
+        `verify-path-exists .planning/quick/1-add-caching/${artifact} --json`,
         tmpDir
       );
       assert.ok(result.success, `Command failed for ${artifact}: ${result.error}`);

@@ -898,6 +898,103 @@ test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with ses
   }
 });
 
+// ── AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety block ──
+
+test('AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety block', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-01-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(result.status, 0,
+      'install.js --runtime claude --local must exit 0 (AST-SAFETY-01)\nstderr: ' + (result.stderr || ''));
+    const claudeMdPath = path.join(tmpDir, 'CLAUDE.md');
+    assert.ok(fs.existsSync(claudeMdPath),
+      'CLAUDE.md must exist after claude local install (AST-SAFETY-01)');
+    const content = fs.readFileSync(claudeMdPath, 'utf8');
+    assert.ok(content.includes('GSD — AST Safety Rules'),
+      'CLAUDE.md must contain AST safety block heading (AST-SAFETY-01).\nActual content: ' + content.slice(0, 500));
+    assert.ok(content.includes('30435'),
+      'CLAUDE.md must reference issue #30435 (AST-SAFETY-01)');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── AST-SAFETY-02: claude local install appends to existing CLAUDE.md ──────────
+
+test('AST-SAFETY-02: claude local install appends AST safety block to existing CLAUDE.md', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-02-'));
+  try {
+    const existingContent = '# My Project\n\nExisting project instructions.\n';
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), existingContent);
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(result.status, 0,
+      'install.js --runtime claude --local must exit 0 (AST-SAFETY-02)\nstderr: ' + (result.stderr || ''));
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    assert.ok(content.includes('Existing project instructions.'),
+      'Existing CLAUDE.md content must be preserved (AST-SAFETY-02)');
+    assert.ok(content.includes('GSD — AST Safety Rules'),
+      'AST safety block must be appended (AST-SAFETY-02)');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── AST-SAFETY-03: idempotent — re-running does not duplicate block ───────────
+
+test('AST-SAFETY-03: claude local install is idempotent — re-running does not duplicate AST block', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-03-'));
+  try {
+    const runInstall = () => spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    const r1 = runInstall();
+    assert.strictEqual(r1.status, 0, 'First install must exit 0 (AST-SAFETY-03)');
+    const r2 = runInstall();
+    assert.strictEqual(r2.status, 0, 'Second install must exit 0 (AST-SAFETY-03)');
+    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    const occurrences = (content.match(/^## GSD — AST Safety Rules$/gm) || []).length;
+    assert.strictEqual(occurrences, 1,
+      'AST safety block heading (## GSD — AST Safety Rules) must appear exactly once after two installs (AST-SAFETY-03).\n' +
+      'Found: ' + occurrences + ' occurrences');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── AST-SAFETY-04: copilot install does NOT touch CLAUDE.md ──────────────────
+
+test('AST-SAFETY-04: copilot local install does not create or modify CLAUDE.md', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-04-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(result.status, 0,
+      'install.js --runtime copilot --local must exit 0 (AST-SAFETY-04)\nstderr: ' + (result.stderr || ''));
+    const claudeMdPath = path.join(tmpDir, 'CLAUDE.md');
+    assert.ok(!fs.existsSync(claudeMdPath),
+      'CLAUDE.md must NOT be created by copilot install (AST-SAFETY-04)');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 // ── COPILOT-10: SKILL.md name: fields must not contain colon character ────────
 
 test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no colons)', () => {
