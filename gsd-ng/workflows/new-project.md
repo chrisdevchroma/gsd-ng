@@ -49,10 +49,8 @@ The document should describe what you want to build.
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -1030,7 +1028,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: create roadmap ([N] 
 **Detect workspace topology:**
 
 ```bash
-WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --raw)
+WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
 ```
 
 Parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).

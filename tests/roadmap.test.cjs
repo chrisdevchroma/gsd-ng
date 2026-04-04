@@ -38,7 +38,7 @@ Some description here.
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -58,7 +58,7 @@ Some description here.
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 5', tmpDir);
+    const result = runGsdTools('roadmap get-phase 5 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -78,7 +78,7 @@ Some description here.
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 2.1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 2.1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -105,7 +105,7 @@ This phase covers:
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -115,7 +115,7 @@ This phase covers:
   });
 
   test('handles missing ROADMAP.md gracefully', () => {
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -137,7 +137,7 @@ This phase covers:
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -158,7 +158,7 @@ This phase covers:
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -197,7 +197,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -218,7 +218,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -240,7 +240,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -265,7 +265,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -291,7 +291,7 @@ describe('roadmap analyze command', () => {
   });
 
   test('missing ROADMAP.md returns error', () => {
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -324,7 +324,7 @@ describe('roadmap analyze command', () => {
     fs.mkdirSync(p2, { recursive: true });
     fs.writeFileSync(path.join(p2, '02-01-PLAN.md'), '# Plan');
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -354,7 +354,7 @@ describe('roadmap analyze command', () => {
 `
     );
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -387,7 +387,7 @@ describe('roadmap analyze command', () => {
     fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan 1');
     fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary 1');
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -427,7 +427,7 @@ describe('roadmap analyze disk status variants', () => {
     fs.mkdirSync(p1, { recursive: true });
     fs.writeFileSync(path.join(p1, '01-RESEARCH.md'), '# Research notes');
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -449,7 +449,7 @@ describe('roadmap analyze disk status variants', () => {
     fs.mkdirSync(p1, { recursive: true });
     fs.writeFileSync(path.join(p1, '01-CONTEXT.md'), '# Context notes');
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -470,7 +470,7 @@ describe('roadmap analyze disk status variants', () => {
     const p1 = path.join(tmpDir, '.planning', 'phases', '01-empty');
     fs.mkdirSync(p1, { recursive: true });
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -510,7 +510,7 @@ describe('roadmap analyze milestone extraction', () => {
 `
     );
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -551,7 +551,7 @@ describe('roadmap analyze missing phase details', () => {
 `
     );
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -576,7 +576,7 @@ describe('roadmap analyze missing phase details', () => {
 `
     );
 
-    const result = runGsdTools('roadmap analyze', tmpDir);
+    const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -616,7 +616,7 @@ describe('roadmap get-phase success criteria', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -638,7 +638,7 @@ describe('roadmap get-phase success criteria', () => {
 `
     );
 
-    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -701,7 +701,7 @@ describe('roadmap update-plan-progress command', () => {
     fs.mkdirSync(p1, { recursive: true });
     fs.writeFileSync(path.join(p1, '01-CONTEXT.md'), '# Context');
 
-    const result = runGsdTools('roadmap update-plan-progress 1', tmpDir);
+    const result = runGsdTools('roadmap update-plan-progress 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -734,7 +734,7 @@ describe('roadmap update-plan-progress command', () => {
     fs.writeFileSync(path.join(p1, '01-02-PLAN.md'), '# Plan 2');
     fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary 1');
 
-    const result = runGsdTools('roadmap update-plan-progress 1', tmpDir);
+    const result = runGsdTools('roadmap update-plan-progress 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -774,7 +774,7 @@ describe('roadmap update-plan-progress command', () => {
     fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan 1');
     fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary 1');
 
-    const result = runGsdTools('roadmap update-plan-progress 1', tmpDir);
+    const result = runGsdTools('roadmap update-plan-progress 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -796,7 +796,7 @@ describe('roadmap update-plan-progress command', () => {
     fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan 1');
     fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary 1');
 
-    const result = runGsdTools('roadmap update-plan-progress 1', tmpDir);
+    const result = runGsdTools('roadmap update-plan-progress 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -938,7 +938,7 @@ status: testing
     const p2 = path.join(tmpDir, '.planning', 'phases', '02-features');
     fs.mkdirSync(p2, { recursive: true });
 
-    const result = runGsdTools(['roadmap', 'analyze', '--current'], tmpDir);
+    const result = runGsdTools(['roadmap', 'analyze', '--current', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -979,7 +979,7 @@ status: testing
 `
     );
 
-    const result = runGsdTools(['roadmap', 'analyze', '--current'], tmpDir);
+    const result = runGsdTools(['roadmap', 'analyze', '--current', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1086,6 +1086,58 @@ describe('format contract tests — lineage and D10/D11 chain', () => {
     } finally {
       cleanup(tmpDir);
     }
+  });
+});
+
+// ─── roadmap get-phase --default flag ───────────────────────────────────────
+
+describe('roadmap get-phase --default flag', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns default value when ROADMAP.md not found', () => {
+    const result = runGsdTools(['roadmap', 'get-phase', '1', '--default', '{}'], tmpDir);
+    assert.ok(result.success, `Command should exit 0 with --default, got: ${result.error}`);
+    assert.strictEqual(result.output, '{}', `Expected "{}", got: ${result.output}`);
+  });
+
+  test('returns default value when phase not found', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`
+    );
+    const result = runGsdTools(['roadmap', 'get-phase', '99', '--default', '{}'], tmpDir);
+    assert.ok(result.success, `Command should exit 0 with --default`);
+    assert.strictEqual(result.output, '{}', `Expected "{}", got: ${result.output}`);
+  });
+
+  test('returns actual phase data when phase found (default unused)', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n### Phase 1: Auth\n**Goal:** Build auth\n`
+    );
+    const result = runGsdTools(['roadmap', 'get-phase', '1', '--default', '{}', '--json'], tmpDir);
+    assert.ok(result.success, 'Command should succeed');
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.found, true, 'Should find phase 1');
+  });
+
+  test('preserves found:false when no --default and phase not found', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`
+    );
+    const result = runGsdTools(['roadmap', 'get-phase', '99', '--json'], tmpDir);
+    assert.ok(result.success, 'Command should exit 0');
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.found, false, 'Should return found:false without --default');
   });
 });
 

@@ -145,10 +145,8 @@ If `$VERIFY_MODE` only:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION")
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION")
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -547,8 +545,8 @@ Offer: 1) Force proceed, 2) Abort
 Spawn gsd-executor with plan reference:
 
 ```bash
-WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type --raw 2>/dev/null || echo "standalone")
-WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type)
+WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
 SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
 PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 ```
@@ -781,7 +779,7 @@ Read the SUMMARY.md one-liner and the todo title. If they share keywords or the 
 **In auto mode** (check `AUTO_CFG`):
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
 ```
 
 If `$AUTO_CFG` is `"true"`:
@@ -832,7 +830,7 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --raw 2>/dev/null || echo "")
+  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
   if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
@@ -846,7 +844,7 @@ if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED
     [[ -f "$TODO_FILE" ]] || continue
     TODO_BASENAME=$(basename "$TODO_FILE")
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
-    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --raw 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
+    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
       RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
     fi
   done
@@ -874,13 +872,13 @@ If `$RELATED_ALL` is non-empty:
 **Auto mode:**
 ```bash
 if [[ "$AUTO_CFG" == "true" ]]; then
-  while IFS= read -r REL_TODO; do
+  printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
     REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after quick task" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"
-  done <<< "$RELATED_ALL"
+  done
 fi
 ```
 

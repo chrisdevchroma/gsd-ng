@@ -17,10 +17,8 @@ Load all context in one call:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -52,17 +50,17 @@ Check `branching_strategy` from init:
 **Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active --raw 2>/dev/null)
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd --raw 2>/dev/null)
-SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch --raw 2>/dev/null)
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous --raw 2>/dev/null)
+SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active 2>/dev/null)
+SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd 2>/dev/null)
+SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch 2>/dev/null)
+SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous 2>/dev/null)
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths --raw 2>/dev/null)
+  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths 2>/dev/null)
   AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
     PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
@@ -139,11 +137,7 @@ Discover test commands via CLI and capture per-directory baselines. Supports sta
 
 ```bash
 # Discover test commands (config override or workspace-aware auto-detect)
-DISCOVERED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" discover-test-command 2>/dev/null || echo "[]")
-# Resolve @file: pattern if present
-if [[ "$DISCOVERED" == @file:* ]]; then
-  DISCOVERED=$(cat "${DISCOVERED#@file:}")
-fi
+DISCOVERED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" discover-test-command)
 
 ENTRY_COUNT=$(node -e "console.log(JSON.parse(process.argv[1]).length)" "$DISCOVERED")
 if [[ "$ENTRY_COUNT" -eq 0 ]]; then
@@ -223,8 +217,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    Resolve workspace topology for agent context injection:
    ```bash
-   WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type --raw 2>/dev/null || echo "standalone")
-   WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace 2>/dev/null || echo '{"type":"standalone","signal":null,"submodule_paths":[]}')
+   WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type)
+   WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
    SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
    PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
    ```
@@ -287,10 +281,10 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    - **Breakout check** — compare committed files against plan's `files_modified`:
      ```bash
      PLAN_FILE="{phase_dir}/{plan_file}"
-     FILES_MODIFIED=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_FILE" --field files_modified --raw 2>/dev/null)
+     FILES_MODIFIED=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_FILE" --field files_modified 2>/dev/null)
 
      if [[ -n "$FILES_MODIFIED" ]]; then
-       BREAKOUT_RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" breakout-check --plan "{phase}-{plan}" --declared-files "$FILES_MODIFIED" --raw 2>/dev/null)
+       BREAKOUT_RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" breakout-check --plan "{phase}-{plan}" --declared-files "$FILES_MODIFIED" 2>/dev/null)
      fi
      ```
      - If `BREAKOUT_RESULT` is `warning`: log in wave completion output — "Note: executor modified files outside declared scope: {list}". Continue execution.
@@ -335,8 +329,8 @@ Plans with `autonomous: false` require user interaction.
 
 Read auto-advance config (chain flag + user preference):
 ```bash
-AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
 ```
 
 When executor returns a checkpoint AND (`AUTO_CHAIN` is `"true"` OR `AUTO_CFG` is `"true"`):
@@ -406,11 +400,11 @@ if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BR
   # Route push to correct repository
   if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
     GIT_CWD="${SUBMODULE_GIT_CWD}"
-    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote --raw 2>/dev/null)
-    SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url --raw 2>/dev/null)
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote 2>/dev/null)
+    SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url 2>/dev/null)
   else
     GIT_CWD="."
-    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
+    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote 2>/dev/null)
     SUBMODULE_REMOTE_URL=""
   fi
   AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
@@ -421,11 +415,11 @@ if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BR
 **SSH pre-push check:**
 
 ```bash
-  SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --raw 2>/dev/null || echo "true")
+  SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --default true)
   if [ "$SSH_CHECK" = "true" ] && [ -n "$SUBMODULE_REMOTE_URL" ]; then
-    SSH_STATUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status --raw)
+    SSH_STATUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status)
     if [ "$SSH_STATUS" != "ok" ] && [ "$SSH_STATUS" != "not_required" ]; then
-      SSH_MSG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message --raw)
+      SSH_MSG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message)
       echo "WARNING: SSH check failed — $SSH_MSG"
       # Also check for SSH signing
       GPG_FORMAT=$(git -C "$GIT_CWD" config gpg.format 2>/dev/null || echo "")
@@ -468,7 +462,7 @@ fi
 
 **2. Find parent UAT file:**
 ```bash
-PARENT_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PARENT_PHASE}" --raw)
+PARENT_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PARENT_PHASE}")
 # Extract directory from PARENT_INFO JSON, then find UAT file in that directory
 ```
 
@@ -628,13 +622,13 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(phase-{X}): complete 
 After phase completion is committed, check for external issue auto-sync:
 
 ```bash
-AUTO_SYNC=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --raw 2>/dev/null || echo "true")
+AUTO_SYNC=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --default true)
 ```
 
 If `AUTO_SYNC` is `"true"` (string comparison — config-get returns raw string):
 
 ```bash
-SYNC_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" issue-sync "${PHASE_NUMBER}" --auto --raw 2>/dev/null)
+SYNC_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" issue-sync "${PHASE_NUMBER}" --auto 2>/dev/null)
 ```
 
 Parse SYNC_RESULT JSON. If `synced` array has entries, display:
@@ -657,9 +651,7 @@ If `AUTO_SYNC` is `"false"`: skip entirely, no output.
 After phase completion is committed, trigger incremental codebase re-mapping if codebase docs exist:
 
 ```bash
-STALE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check 2>/dev/null || echo '{"stale":[]}')
-if [[ "$STALE_JSON" == @file:* ]]; then STALE_JSON=$(cat "${STALE_JSON#@file:}"); fi
-STALE_COUNT=$(node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stale.length)}catch{console.log(0)}})" <<< "$STALE_JSON")
+STALE_COUNT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count)
 ```
 
 If STALE_COUNT is 0: skip silently (no stale docs, nothing to update).
@@ -668,6 +660,11 @@ If STALE_COUNT > 0:
 
 ```
 {STALE_COUNT} codebase doc(s) have changes since last mapping. Running incremental update...
+```
+
+Fetch the full stale doc list:
+```bash
+STALE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check)
 ```
 
 For each stale doc in the `stale` array from STALE_JSON, spawn a `gsd-incremental-mapper` agent:
@@ -743,8 +740,8 @@ If `branching_strategy` is not `"none"` AND push succeeded (or `auto_push` is en
 1. Parse `--auto` flag from $ARGUMENTS
 2. Read both the chain flag and user preference (chain flag already synced in init step):
    ```bash
-   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
-   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
    ```
 
 **If `--auto` flag present OR `AUTO_CHAIN` is true OR `AUTO_CFG` is true (AND verification passed with no gaps):**
@@ -814,7 +811,7 @@ If `$VERIFY_STATUS` is `passed` AND `$ORIGIN_TODO_FILE` is set:
 
 **Auto mode:**
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false)
 ```
 
 If auto: close todo, log `[auto] Closed todo: $ORIGIN_TODO_TITLE`.
@@ -853,7 +850,7 @@ if [[ "$VERIFY_STATUS" == "passed" ]]; then
   if [[ -d "$PENDING_DIR" ]]; then
     for TODO_FILE in "$PENDING_DIR"/*.md; do
       [[ -f "$TODO_FILE" ]] || continue
-      TODO_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field phase --raw 2>/dev/null || echo "")
+      TODO_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field phase --default "")
       if [[ "$(echo "$TODO_PHASE" | tr -d '[:space:]')" == "${PHASE_NUMBER}" ]]; then
         TODO_BASENAME=$(basename "$TODO_FILE")
         TODO_TITLE=$(grep '^title:' "$TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
@@ -868,7 +865,7 @@ If `$PHASE_LINKED` is non-empty (at least one phase-linked todo found):
 
 **Auto mode:**
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --raw 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false)
 ```
 
 If auto: for each phase-linked todo, close it and commit:
@@ -914,7 +911,7 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS" == "passed" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/completed/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --raw 2>/dev/null || echo "")
+  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
   if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
@@ -929,7 +926,7 @@ if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS
     TODO_BASENAME=$(basename "$TODO_FILE")
     # Skip the origin todo itself
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
-    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --raw 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
+    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
       RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
     fi
   done
@@ -958,13 +955,13 @@ If `$RELATED_ALL` is non-empty:
 **Auto mode:**
 ```bash
 if [[ "$AUTO_CFG" == "true" ]]; then
-  while IFS= read -r REL_TODO; do
+  printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
     REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after phase completion" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"
-  done <<< "$RELATED_ALL"
+  done
 fi
 ```
 

@@ -15,7 +15,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 Detect configured platform:
 
 ```bash
-PLATFORM=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --raw)
+PLATFORM=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform)
 ```
 
 Parse JSON. If platform unavailable or CLI not installed, display warning and exit (same as sync-issues):
@@ -46,7 +46,7 @@ Ask for issue number:
 - "Enter the issue number to import (e.g., 42):"
 
 ```bash
-RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number} --raw)
+RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number})
 IMPORT_EXIT=$?
 ```
 
@@ -113,7 +113,7 @@ Display matching issues as a numbered list. Use AskUserQuestion to confirm:
 
 For each selected issue, call:
 ```bash
-node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number} --raw
+node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number}
 ```
 
 If any import fails with `[SECURITY]`, pause bulk import and present the `security_gate` step for that issue. User may choose "Review and override" (re-run with `--force-unsafe`) or "Cancel import" to skip that issue and continue with the rest.

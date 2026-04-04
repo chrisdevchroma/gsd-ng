@@ -37,9 +37,9 @@ DECIMAL_PHASE=$(printf '%s\n' "$DECIMAL_INFO" | jq -r '.next')
 BASE_PHASE=$(printf '%s\n' "$DECIMAL_INFO" | jq -r '.base_phase')
 ```
 
-Or with --raw flag:
+Or with flag:
 ```bash
-DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal "${AFTER_PHASE}" --raw)
+DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal "${AFTER_PHASE}")
 # Returns just: 06.1
 ```
 
@@ -57,7 +57,7 @@ DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal
 Decimal phase directories use the full decimal number:
 
 ```bash
-SLUG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-slug "$DESCRIPTION" --raw)
+SLUG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-slug "$DESCRIPTION")
 PHASE_DIR=".planning/phases/${DECIMAL_PHASE}-${SLUG}"
 mkdir -p "$PHASE_DIR"
 ```

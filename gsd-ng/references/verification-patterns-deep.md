@@ -164,7 +164,7 @@ npx prisma migrate status 2>/dev/null | grep -v "pending"
 ```
 ```bash
 # Can query the table (automated)
-npx prisma db execute --stdin <<< "SELECT COUNT(*) FROM $table_name"
+echo "SELECT COUNT(*) FROM $table_name" | npx prisma db execute --stdin
 ```
 ```bash
 # File exists and exports function

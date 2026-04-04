@@ -6,7 +6,7 @@
  * Replaces repetitive inline bash patterns across ~50 GSD command/workflow/agent files.
  * Centralizes: config parsing, model resolution, phase lookup, git commits, summary verification.
  *
- * Usage: node gsd-tools.cjs <command> [args] [--raw]
+ * Usage: node gsd-tools.cjs <command> [args] [--json]
  *
  * Atomic Commands:
  *   state load                         Load project config + state
@@ -162,7 +162,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { error, output: coreOutput } = require('./lib/core.cjs');
+const { error, output: coreOutput, setFileOutput, setJsonMode } = require('./lib/core.cjs');
 const state = require('./lib/state.cjs');
 const phase = require('./lib/phase.cjs');
 const roadmap = require('./lib/roadmap.cjs');
@@ -207,7 +207,7 @@ const SUBCOMMANDS = {
   phase: ['next-decimal', 'add', 'insert', 'remove', 'complete'],
   milestone: ['complete'],
   validate: ['consistency', 'health'],
-  todo: ['complete'],
+  todo: ['complete', 'list-by-phase', 'scan-phase-linked'],
   init: ['execute-phase', 'plan-phase', 'new-project', 'new-milestone', 'quick', 'resume', 'verify-work', 'phase-op', 'todos', 'milestone-op', 'map-codebase', 'progress'],
   guard: ['sync-chain', 'init-valid'],
   test: ['capture-baseline', 'compare-baseline'],
@@ -219,7 +219,7 @@ const SUBCOMMANDS = {
  * ARG_SCHEMAS[command][subcommand] = { positional: { min, max }, flags: string[] }
  *
  * Defines the expected argument shape for every compound command subcommand.
- * Used by validateSubcommandArgs() to catch creative misuse patterns before
+ * Used by validateArgs() to catch creative misuse patterns before
  * they reach the handler.
  *
  * positional.min: minimum positional (non-flag) args required
@@ -248,7 +248,7 @@ const ARG_SCHEMAS = {
     'fill':   { positional: { min: 1, max: 1 }, flags: ['--phase', '--plan', '--name', '--type', '--wave', '--fields'] },
   },
   frontmatter: {
-    'get':      { positional: { min: 1, max: 1 }, flags: ['--field', '--format'] },
+    'get':      { positional: { min: 1, max: 1 }, flags: ['--field', '--format', '--default'] },
     'set':      { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
     'merge':    { positional: { min: 1, max: 1 }, flags: ['--data'] },
     'validate': { positional: { min: 1, max: 1 }, flags: ['--schema'] },
@@ -265,7 +265,7 @@ const ARG_SCHEMAS = {
     'list': { positional: { min: 0, max: 0 }, flags: ['--type', '--phase', '--include-archived'] },
   },
   roadmap: {
-    'get-phase':            { positional: { min: 1, max: 1 }, flags: [] },
+    'get-phase':            { positional: { min: 1, max: 1 }, flags: ['--default'] },
     'analyze':              { positional: { min: 0, max: 0 }, flags: ['--current'] },
     'update-plan-progress': { positional: { min: 1, max: 1 }, flags: [] },
     'add-phase':            { positional: { min: 0, max: null }, flags: [] },
@@ -289,7 +289,9 @@ const ARG_SCHEMAS = {
     'health':      { positional: { min: 0, max: 0 }, flags: ['--repair'] },
   },
   todo: {
-    'complete': { positional: { min: 1, max: 1 }, flags: [] },
+    'complete':          { positional: { min: 1, max: 1 }, flags: [] },
+    'list-by-phase':     { positional: { min: 1, max: 1 }, flags: [] },
+    'scan-phase-linked': { positional: { min: 1, max: 1 }, flags: [] },
   },
   init: {
     'execute-phase': { positional: { min: 1, max: 1 }, flags: [] },
@@ -313,23 +315,50 @@ const ARG_SCHEMAS = {
     'capture-baseline': { positional: { min: 2, max: 2 }, flags: [] },
     'compare-baseline': { positional: { min: 2, max: 2 }, flags: [] },
   },
+  // ─── Top-level commands with flags (_self schema convention) ─────────────
+  // Only command-specific flags; global flags (--json, --file, --pick, --cwd)
+  // are already stripped before dispatch.
+  'commit':             { _self: { positional: { min: 0, max: null }, flags: ['--amend', '--files'] } },
+  'verify-summary':     { _self: { positional: { min: 1, max: 1 }, flags: ['--check-count'] } },
+  'staleness-check':    { _self: { positional: { min: 0, max: 0 }, flags: ['--count'] } },
+  'config-get':         { _self: { positional: { min: 1, max: 1 }, flags: ['--default'] } },
+  'update':             { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run', '--local', '--global'] } },
+  'scaffold':           { _self: { positional: { min: 1, max: null }, flags: ['--phase', '--name'] } },
+  'state-snapshot':     { _self: { positional: { min: 0, max: 0 }, flags: ['--current'] } },
+  'summary-extract':    { _self: { positional: { min: 1, max: 1 }, flags: ['--fields', '--default'] } },
+  'detect-platform':    { _self: { positional: { min: 0, max: 1 }, flags: ['--field'] } },
+  'detect-workspace':   { _self: { positional: { min: 0, max: 0 }, flags: ['--field'] } },
+  'git-context':        { _self: { positional: { min: 0, max: 0 }, flags: ['--field'] } },
+  'ssh-check':          { _self: { positional: { min: 0, max: 1 }, flags: ['--field'] } },
+  'websearch':          { _self: { positional: { min: 1, max: null }, flags: ['--limit', '--freshness'] } },
+  'squash':             { _self: { positional: { min: 0, max: 1 }, flags: ['--list-backup-tags', '--dry-run', '--allow-stable', '--strategy'] } },
+  'version-bump':       { _self: { positional: { min: 0, max: 0 }, flags: ['--level', '--scheme', '--snapshot', '--field'] } },
+  'generate-changelog': { _self: { positional: { min: 1, max: 1 }, flags: ['--date'] } },
+  'issue-import':       { _self: { positional: { min: 2, max: 2 }, flags: ['--repo'] } },
+  'issue-sync':         { _self: { positional: { min: 0, max: 1 }, flags: ['--auto'] } },
+  'divergence':         { _self: { positional: { min: 0, max: 0 }, flags: ['--refresh', '--init', '--triage', '--status', '--reason', '--branch', '--base', '--remote', '--remote-branch'] } },
+  'pingpong-check':     { _self: { positional: { min: 0, max: 0 }, flags: ['--window'] } },
+  'breakout-check':     { _self: { positional: { min: 0, max: 0 }, flags: ['--plan', '--declared-files'] } },
+  'cleanup':            { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run'] } },
 };
 
 /**
- * Validate subcommand arguments against ARG_SCHEMAS before dispatch.
+ * Validate command arguments against ARG_SCHEMAS before dispatch.
  *
  * Catches: flag in positional slot, =-syntax, too-few/many positionals,
  * unknown flags. Exits with a helpful error message on any violation.
  *
  * @param {string} command - Top-level command name (e.g. 'init')
- * @param {string} subcommand - Subcommand name (e.g. 'phase-op')
- * @param {string[]} remainingArgs - args.slice(2) after global flag stripping
+ * @param {string|null} subcommand - Subcommand name (e.g. 'phase-op'), or null for top-level commands
+ * @param {string[]} remainingArgs - args after command/subcommand, after global flag stripping
  */
-function validateSubcommandArgs(command, subcommand, remainingArgs) {
-  const schema = ARG_SCHEMAS[command]?.[subcommand];
+function validateArgs(command, subcommand, remainingArgs) {
+  const lookupKey = subcommand || '_self';
+  const schema = ARG_SCHEMAS[command]?.[lookupKey];
   if (!schema) return; // No schema = permissive (safe default for unknown subcommands)
 
-  const usageHint = `Usage: ${command} ${subcommand}${schema.positional.min > 0 ? ' <arg>' + (schema.positional.max === null || schema.positional.max > 1 ? ' ...' : '') : ''}`;
+  const cmdLabel = subcommand ? `${command} ${subcommand}` : command;
+  const usageHint = `Usage: ${cmdLabel}${schema.positional.min > 0 ? ' <arg>' + (schema.positional.max === null || schema.positional.max > 1 ? ' ...' : '') : ''}`;
 
   // 1. Equals syntax detection (e.g. phase=40 instead of 40)
   for (const arg of remainingArgs) {
@@ -371,7 +400,7 @@ function validateSubcommandArgs(command, subcommand, remainingArgs) {
         error(
           `Positional argument expected, got '${arg}'.\n` +
           `${usageHint}\n` +
-          `Example: ${command} ${subcommand}${schema.positional.min > 0 ? ' 40' : ''}`
+          `Example: ${cmdLabel}${schema.positional.min > 0 ? ' 40' : ''}`
         );
       } else {
         // Unknown flag (positionals satisfied, or schema has some known flags)
@@ -393,7 +422,7 @@ function validateSubcommandArgs(command, subcommand, remainingArgs) {
             })()
           : '';
         const knownList = schema.flags.length > 0 ? schema.flags.join(', ') : 'none';
-        error(`Unknown flag '${arg}' for '${command} ${subcommand}'.${suggestion} Known flags: ${knownList}`);
+        error(`Unknown flag '${arg}' for '${cmdLabel}'.${suggestion} Known flags: ${knownList}`);
       }
     }
   }
@@ -401,13 +430,13 @@ function validateSubcommandArgs(command, subcommand, remainingArgs) {
   // 4. Count validation — positionals already computed above
   if (actualPositionals.length < schema.positional.min) {
     error(
-      `Too few arguments for '${command} ${subcommand}': expected at least ${schema.positional.min}, got ${actualPositionals.length}.\n` +
+      `Too few arguments for '${cmdLabel}': expected at least ${schema.positional.min}, got ${actualPositionals.length}.\n` +
       `${usageHint}`
     );
   }
   if (schema.positional.max !== null && actualPositionals.length > schema.positional.max) {
     error(
-      `Too many arguments for '${command} ${subcommand}': expected at most ${schema.positional.max}, got ${actualPositionals.length}.\n` +
+      `Too many arguments for '${cmdLabel}': expected at most ${schema.positional.max}, got ${actualPositionals.length}.\n` +
       `${usageHint}`
     );
   }
@@ -592,9 +621,19 @@ async function main() {
     error(`Invalid --cwd: ${cwd}`);
   }
 
-  const rawIndex = args.indexOf('--raw');
-  const raw = rawIndex !== -1;
-  if (rawIndex !== -1) args.splice(rawIndex, 1);
+  const jsonIndex = args.indexOf('--json');
+  if (jsonIndex !== -1) {
+    setJsonMode(true);
+    args.splice(jsonIndex, 1);
+  }
+
+  // --file: when present, output() writes JSON to a temp file prefixed with @file:
+  // instead of inline to stdout. Opt-in for the rare case where file output is needed.
+  const fileIndex = args.indexOf('--file');
+  if (fileIndex !== -1) {
+    setFileOutput(true);
+    args.splice(fileIndex, 1);
+  }
 
   // --pick <name>: extract a single field from JSON output (replaces jq dependency).
   // Supports dot-notation (e.g., --pick workflow.research) and bracket notation
@@ -618,6 +657,7 @@ async function main() {
   // so we intercept at the fs layer; also intercept process.stdout.write for any
   // non-output() paths (printHelp, etc.).
   if (pickField) {
+    setJsonMode(true);  // --pick needs JSON to extract fields
     _origFsWriteSync = fs.writeSync.bind(fs);
     _origStdoutWrite = process.stdout.write.bind(process.stdout);
 
@@ -672,13 +712,13 @@ async function main() {
   switch (command) {
     case 'state': {
       const subcommand = args[1];
-      validateSubcommandArgs('state', subcommand, args.slice(2));
+      validateArgs('state', subcommand, args.slice(2));
       if (subcommand === 'json') {
-        state.cmdStateJson(cwd, raw);
+        state.cmdStateJson(cwd);
       } else if (subcommand === 'update') {
         state.cmdStateUpdate(cwd, args[2], args[3]);
       } else if (subcommand === 'get') {
-        state.cmdStateGet(cwd, args[2], raw);
+        state.cmdStateGet(cwd, args[2]);
       } else if (subcommand === 'patch') {
         const patches = {};
         for (let i = 2; i < args.length; i += 2) {
@@ -688,9 +728,9 @@ async function main() {
             patches[key] = value;
           }
         }
-        state.cmdStatePatch(cwd, patches, raw);
+        state.cmdStatePatch(cwd, patches);
       } else if (subcommand === 'advance-plan') {
-        state.cmdStateAdvancePlan(cwd, raw);
+        state.cmdStateAdvancePlan(cwd);
       } else if (subcommand === 'record-metric') {
         const phaseIdx = args.indexOf('--phase');
         const planIdx = args.indexOf('--plan');
@@ -703,9 +743,9 @@ async function main() {
           duration: durationIdx !== -1 ? args[durationIdx + 1] : null,
           tasks: tasksIdx !== -1 ? args[tasksIdx + 1] : null,
           files: filesIdx !== -1 ? args[filesIdx + 1] : null,
-        }, raw);
+        });
       } else if (subcommand === 'update-progress') {
-        state.cmdStateUpdateProgress(cwd, raw);
+        state.cmdStateUpdateProgress(cwd);
       } else if (subcommand === 'add-decision') {
         const phaseIdx = args.indexOf('--phase');
         const summaryIdx = args.indexOf('--summary');
@@ -718,24 +758,24 @@ async function main() {
           summary_file: summaryFileIdx !== -1 ? args[summaryFileIdx + 1] : null,
           rationale: rationaleIdx !== -1 ? args[rationaleIdx + 1] : '',
           rationale_file: rationaleFileIdx !== -1 ? args[rationaleFileIdx + 1] : null,
-        }, raw);
+        });
       } else if (subcommand === 'add-blocker') {
         const textIdx = args.indexOf('--text');
         const textFileIdx = args.indexOf('--text-file');
         state.cmdStateAddBlocker(cwd, {
           text: textIdx !== -1 ? args[textIdx + 1] : null,
           text_file: textFileIdx !== -1 ? args[textFileIdx + 1] : null,
-        }, raw);
+        });
       } else if (subcommand === 'resolve-blocker') {
         const textIdx = args.indexOf('--text');
-        state.cmdStateResolveBlocker(cwd, textIdx !== -1 ? args[textIdx + 1] : null, raw);
+        state.cmdStateResolveBlocker(cwd, textIdx !== -1 ? args[textIdx + 1] : null);
       } else if (subcommand === 'record-session') {
         const stoppedIdx = args.indexOf('--stopped-at');
         const resumeIdx = args.indexOf('--resume-file');
         state.cmdStateRecordSession(cwd, {
           stopped_at: stoppedIdx !== -1 ? args[stoppedIdx + 1] : null,
           resume_file: resumeIdx !== -1 ? args[resumeIdx + 1] : 'None',
-        }, raw);
+        });
       } else if (subcommand === 'begin-phase') {
         const phaseIdx = args.indexOf('--phase');
         const nameIdx = args.indexOf('--name');
@@ -744,13 +784,12 @@ async function main() {
           cwd,
           phaseIdx !== -1 ? args[phaseIdx + 1] : null,
           nameIdx !== -1 ? args[nameIdx + 1] : null,
-          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null,
-          raw
+          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null
         );
       } else if (subcommand === 'adjust-quick-table') {
-        state.cmdStateAdjustQuickTable(cwd, raw);
+        state.cmdStateAdjustQuickTable(cwd);
       } else if (subcommand === 'load' || !subcommand) {
-        state.cmdStateLoad(cwd, raw);
+        state.cmdStateLoad(cwd);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'state');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -766,16 +805,17 @@ async function main() {
     }
 
     case 'resolve-model': {
-      commands.cmdResolveModel(cwd, args[1], raw);
+      commands.cmdResolveModel(cwd, args[1]);
       break;
     }
 
     case 'find-phase': {
-      phase.cmdFindPhase(cwd, args[1], raw);
+      phase.cmdFindPhase(cwd, args[1]);
       break;
     }
 
     case 'commit': {
+      validateArgs('commit', null, args.slice(1));
       const amend = args.includes('--amend');
       const filesIndex = args.indexOf('--files');
       // Collect all positional args between command name and first flag,
@@ -785,23 +825,24 @@ async function main() {
       const messageArgs = args.slice(1, endIndex).filter(a => !a.startsWith('--'));
       const message = messageArgs.join(' ') || undefined;
       const files = filesIndex !== -1 ? args.slice(filesIndex + 1).filter(a => !a.startsWith('--')) : [];
-      commands.cmdCommit(cwd, message, files, raw, amend);
+      commands.cmdCommit(cwd, message, files, amend);
       break;
     }
 
     case 'verify-summary': {
+      validateArgs('verify-summary', null, args.slice(1));
       const summaryPath = args[1];
       const countIndex = args.indexOf('--check-count');
       const checkCount = countIndex !== -1 ? parseInt(args[countIndex + 1], 10) : 2;
-      verify.cmdVerifySummary(cwd, summaryPath, checkCount, raw);
+      verify.cmdVerifySummary(cwd, summaryPath, checkCount);
       break;
     }
 
     case 'template': {
       const subcommand = args[1];
-      validateSubcommandArgs('template', subcommand, args.slice(2));
+      validateArgs('template', subcommand, args.slice(2));
       if (subcommand === 'select') {
-        template.cmdTemplateSelect(cwd, args[2], raw);
+        template.cmdTemplateSelect(cwd, args[2]);
       } else if (subcommand === 'fill') {
         const templateType = args[2];
         const phaseIdx = args.indexOf('--phase');
@@ -817,7 +858,7 @@ async function main() {
           type: typeIdx !== -1 ? args[typeIdx + 1] : 'execute',
           wave: waveIdx !== -1 ? args[waveIdx + 1] : '1',
           fields: fieldsIdx !== -1 ? JSON.parse(args[fieldsIdx + 1]) : {},
-        }, raw);
+        });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'template');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -834,22 +875,24 @@ async function main() {
 
     case 'frontmatter': {
       const subcommand = args[1];
-      validateSubcommandArgs('frontmatter', subcommand, args.slice(2));
+      validateArgs('frontmatter', subcommand, args.slice(2));
       const file = args[2];
       if (subcommand === 'get') {
         const fieldIdx = args.indexOf('--field');
         const formatIdx = args.indexOf('--format');
-        frontmatter.cmdFrontmatterGet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, raw, formatIdx !== -1 ? args[formatIdx + 1] : null);
+        const defaultIdx = args.indexOf('--default');
+        const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+        frontmatter.cmdFrontmatterGet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, formatIdx !== -1 ? args[formatIdx + 1] : null, defaultValue);
       } else if (subcommand === 'set') {
         const fieldIdx = args.indexOf('--field');
         const valueIdx = args.indexOf('--value');
-        frontmatter.cmdFrontmatterSet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, valueIdx !== -1 ? args[valueIdx + 1] : undefined, raw);
+        frontmatter.cmdFrontmatterSet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, valueIdx !== -1 ? args[valueIdx + 1] : undefined);
       } else if (subcommand === 'merge') {
         const dataIdx = args.indexOf('--data');
-        frontmatter.cmdFrontmatterMerge(cwd, file, dataIdx !== -1 ? args[dataIdx + 1] : null, raw);
+        frontmatter.cmdFrontmatterMerge(cwd, file, dataIdx !== -1 ? args[dataIdx + 1] : null);
       } else if (subcommand === 'validate') {
         const schemaIdx = args.indexOf('--schema');
-        frontmatter.cmdFrontmatterValidate(cwd, file, schemaIdx !== -1 ? args[schemaIdx + 1] : null, raw);
+        frontmatter.cmdFrontmatterValidate(cwd, file, schemaIdx !== -1 ? args[schemaIdx + 1] : null);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'frontmatter');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -866,19 +909,19 @@ async function main() {
 
     case 'verify': {
       const subcommand = args[1];
-      validateSubcommandArgs('verify', subcommand, args.slice(2));
+      validateArgs('verify', subcommand, args.slice(2));
       if (subcommand === 'plan-structure') {
-        verify.cmdVerifyPlanStructure(cwd, args[2], raw);
+        verify.cmdVerifyPlanStructure(cwd, args[2]);
       } else if (subcommand === 'phase-completeness') {
-        verify.cmdVerifyPhaseCompleteness(cwd, args[2], raw);
+        verify.cmdVerifyPhaseCompleteness(cwd, args[2]);
       } else if (subcommand === 'references') {
-        verify.cmdVerifyReferences(cwd, args[2], raw);
+        verify.cmdVerifyReferences(cwd, args[2]);
       } else if (subcommand === 'commits') {
-        verify.cmdVerifyCommits(cwd, args.slice(2), raw);
+        verify.cmdVerifyCommits(cwd, args.slice(2));
       } else if (subcommand === 'artifacts') {
-        verify.cmdVerifyArtifacts(cwd, args[2], raw);
+        verify.cmdVerifyArtifacts(cwd, args[2]);
       } else if (subcommand === 'key-links') {
-        verify.cmdVerifyKeyLinks(cwd, args[2], raw);
+        verify.cmdVerifyKeyLinks(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'verify');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -894,68 +937,74 @@ async function main() {
     }
 
     case 'generate-slug': {
-      commands.cmdGenerateSlug(args[1], raw);
+      commands.cmdGenerateSlug(args[1]);
       break;
     }
 
     case 'current-timestamp': {
-      commands.cmdCurrentTimestamp(args[1] || 'full', raw);
+      commands.cmdCurrentTimestamp(args[1] || 'full');
       break;
     }
 
     case 'list-todos': {
-      commands.cmdListTodos(cwd, args[1], raw);
+      commands.cmdListTodos(cwd, args[1]);
       break;
     }
 
     case 'recurring-due': {
-      commands.cmdRecurringDue(cwd, raw);
+      // --default accepted for consistency but recurring-due always returns valid output
+      commands.cmdRecurringDue(cwd);
       break;
     }
 
     case 'staleness-check': {
-      commands.cmdStalenessCheck(cwd, raw);
+      validateArgs('staleness-check', null, args.slice(1));
+      const countFlag = args.includes('--count');
+      commands.cmdStalenessCheck(cwd, countFlag);
       break;
     }
 
     case 'verify-path-exists': {
-      commands.cmdVerifyPathExists(cwd, args[1], raw);
+      commands.cmdVerifyPathExists(cwd, args[1]);
       break;
     }
 
     case 'config-ensure-section': {
-      config.cmdConfigEnsureSection(cwd, raw);
+      config.cmdConfigEnsureSection(cwd);
       break;
     }
 
     case 'config-set': {
-      config.cmdConfigSet(cwd, args[1], args[2], raw);
+      config.cmdConfigSet(cwd, args[1], args[2]);
       break;
     }
 
     case "config-set-model-profile": {
-      config.cmdConfigSetModelProfile(cwd, args[1], raw);
+      config.cmdConfigSetModelProfile(cwd, args[1]);
       break;
     }
 
     case 'config-get': {
-      config.cmdConfigGet(cwd, args[1], raw);
+      validateArgs('config-get', null, args.slice(1));
+      const defaultIdx = args.indexOf('--default');
+      const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+      config.cmdConfigGet(cwd, args[1], defaultValue);
       break;
     }
 
     case 'init-get': {
-      init.cmdInitGet(args[1], args[2], raw);
+      init.cmdInitGet(args[1], args[2]);
       break;
     }
 
     case 'history-digest': {
-      commands.cmdHistoryDigest(cwd, raw);
+      commands.cmdHistoryDigest(cwd);
       break;
     }
 
     case 'phases': {
       const subcommand = args[1];
-      validateSubcommandArgs('phases', subcommand, args.slice(2));
+      validateArgs('phases', subcommand, args.slice(2));
       if (subcommand === 'list') {
         const typeIndex = args.indexOf('--type');
         const phaseIndex = args.indexOf('--phase');
@@ -964,7 +1013,7 @@ async function main() {
           phase: phaseIndex !== -1 ? args[phaseIndex + 1] : null,
           includeArchived: args.includes('--include-archived'),
         };
-        phase.cmdPhasesList(cwd, options, raw);
+        phase.cmdPhasesList(cwd, options);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'phases');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -981,9 +1030,11 @@ async function main() {
 
     case 'roadmap': {
       const subcommand = args[1];
-      validateSubcommandArgs('roadmap', subcommand, args.slice(2));
+      validateArgs('roadmap', subcommand, args.slice(2));
       if (subcommand === 'get-phase') {
-        roadmap.cmdRoadmapGetPhase(cwd, args[2], raw);
+        const defaultIdx = args.indexOf('--default');
+        const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+        roadmap.cmdRoadmapGetPhase(cwd, args[2], defaultValue);
       } else if (subcommand === 'analyze') {
         const analyzeCurrentFilter = args.slice(2).includes('--current');
         let analyzePhaseFilter = null;
@@ -998,12 +1049,12 @@ async function main() {
             }
           } catch {}
         }
-        roadmap.cmdRoadmapAnalyze(cwd, raw, analyzePhaseFilter);
+        roadmap.cmdRoadmapAnalyze(cwd, analyzePhaseFilter);
       } else if (subcommand === 'update-plan-progress') {
-        roadmap.cmdRoadmapUpdatePlanProgress(cwd, args[2], raw);
+        roadmap.cmdRoadmapUpdatePlanProgress(cwd, args[2]);
       } else if (subcommand === 'add-phase') {
         // Alias: redirect to phase add
-        phase.cmdPhaseAdd(cwd, args.slice(2).join(' '), raw);
+        phase.cmdPhaseAdd(cwd, args.slice(2).join(' '));
       } else {
         const suggestions = suggestSubcommand(subcommand, 'roadmap');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1020,9 +1071,9 @@ async function main() {
 
     case 'requirements': {
       const subcommand = args[1];
-      validateSubcommandArgs('requirements', subcommand, args.slice(2));
+      validateArgs('requirements', subcommand, args.slice(2));
       if (subcommand === 'mark-complete') {
-        milestone.cmdRequirementsMarkComplete(cwd, args.slice(2), raw);
+        milestone.cmdRequirementsMarkComplete(cwd, args.slice(2));
       } else {
         const suggestions = suggestSubcommand(subcommand, 'requirements');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1039,7 +1090,7 @@ async function main() {
 
     case 'test': {
       const subcommand = args[1];
-      validateSubcommandArgs('test', subcommand, args.slice(2));
+      validateArgs('test', subcommand, args.slice(2));
       if (subcommand === 'capture-baseline') {
         testBaseline.captureBaseline(args[2], args[3]);
       } else if (subcommand === 'compare-baseline') {
@@ -1060,18 +1111,18 @@ async function main() {
 
     case 'phase': {
       const subcommand = args[1];
-      validateSubcommandArgs('phase', subcommand, args.slice(2));
+      validateArgs('phase', subcommand, args.slice(2));
       if (subcommand === 'next-decimal') {
-        phase.cmdPhaseNextDecimal(cwd, args[2], raw);
+        phase.cmdPhaseNextDecimal(cwd, args[2]);
       } else if (subcommand === 'add') {
-        phase.cmdPhaseAdd(cwd, args.slice(2).join(' '), raw);
+        phase.cmdPhaseAdd(cwd, args.slice(2).join(' '));
       } else if (subcommand === 'insert') {
-        phase.cmdPhaseInsert(cwd, args[2], args.slice(3).join(' '), raw);
+        phase.cmdPhaseInsert(cwd, args[2], args.slice(3).join(' '));
       } else if (subcommand === 'remove') {
         const forceFlag = args.includes('--force');
-        phase.cmdPhaseRemove(cwd, args[2], { force: forceFlag }, raw);
+        phase.cmdPhaseRemove(cwd, args[2], { force: forceFlag });
       } else if (subcommand === 'complete') {
-        phase.cmdPhaseComplete(cwd, args[2], raw);
+        phase.cmdPhaseComplete(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'phase');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1088,7 +1139,7 @@ async function main() {
 
     case 'milestone': {
       const subcommand = args[1];
-      validateSubcommandArgs('milestone', subcommand, args.slice(2));
+      validateArgs('milestone', subcommand, args.slice(2));
       if (subcommand === 'complete') {
         const nameIndex = args.indexOf('--name');
         const archivePhases = args.includes('--archive-phases');
@@ -1102,7 +1153,7 @@ async function main() {
           }
           milestoneName = nameArgs.join(' ') || null;
         }
-        milestone.cmdMilestoneComplete(cwd, args[2], { name: milestoneName, archivePhases }, raw);
+        milestone.cmdMilestoneComplete(cwd, args[2], { name: milestoneName, archivePhases });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'milestone');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1119,12 +1170,12 @@ async function main() {
 
     case 'validate': {
       const subcommand = args[1];
-      validateSubcommandArgs('validate', subcommand, args.slice(2));
+      validateArgs('validate', subcommand, args.slice(2));
       if (subcommand === 'consistency') {
-        verify.cmdValidateConsistency(cwd, raw);
+        verify.cmdValidateConsistency(cwd);
       } else if (subcommand === 'health') {
         const repairFlag = args.includes('--repair');
-        verify.cmdValidateHealth(cwd, { repair: repairFlag }, raw);
+        verify.cmdValidateHealth(cwd, { repair: repairFlag });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'validate');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1141,21 +1192,25 @@ async function main() {
 
     case 'progress': {
       const subcommand = args[1] || 'json';
-      commands.cmdProgressRender(cwd, subcommand, raw);
+      commands.cmdProgressRender(cwd, subcommand);
       break;
     }
 
     case 'stats': {
       const subcommand = args[1] || 'json';
-      commands.cmdStats(cwd, subcommand, raw);
+      commands.cmdStats(cwd, subcommand);
       break;
     }
 
     case 'todo': {
       const subcommand = args[1];
-      validateSubcommandArgs('todo', subcommand, args.slice(2));
+      validateArgs('todo', subcommand, args.slice(2));
       if (subcommand === 'complete') {
-        commands.cmdTodoComplete(cwd, args[2], raw);
+        commands.cmdTodoComplete(cwd, args[2]);
+      } else if (subcommand === 'list-by-phase') {
+        commands.cmdTodoListByPhase(cwd, args[2]);
+      } else if (subcommand === 'scan-phase-linked') {
+        commands.cmdTodoScanPhaseLinked(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'todo');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
@@ -1171,14 +1226,16 @@ async function main() {
     }
 
     case 'update': {
+      validateArgs('update', null, args.slice(1));
       const dryRun = args.includes('--dry-run');
       const localInstall = args.includes('--local');
       const globalInstall = args.includes('--global');
-      commands.cmdUpdate(cwd, { dryRun, local: localInstall, global: globalInstall }, raw);
+      commands.cmdUpdate(cwd, { dryRun, local: localInstall, global: globalInstall });
       break;
     }
 
     case 'scaffold': {
+      validateArgs('scaffold', null, args.slice(1));
       const scaffoldType = args[1];
       const phaseIndex = args.indexOf('--phase');
       const nameIndex = args.indexOf('--name');
@@ -1186,54 +1243,54 @@ async function main() {
         phase: phaseIndex !== -1 ? args[phaseIndex + 1] : null,
         name: nameIndex !== -1 ? args.slice(nameIndex + 1).join(' ') : null,
       };
-      commands.cmdScaffold(cwd, scaffoldType, scaffoldOptions, raw);
+      commands.cmdScaffold(cwd, scaffoldType, scaffoldOptions);
       break;
     }
 
     case 'init': {
       const workflow = args[1];
-      validateSubcommandArgs('init', workflow, args.slice(2));
+      validateArgs('init', workflow, args.slice(2));
       switch (workflow) {
         case 'execute-phase':
-          init.cmdInitExecutePhase(cwd, args[2], raw);
+          init.cmdInitExecutePhase(cwd, args[2]);
           break;
         case 'plan-phase':
-          init.cmdInitPlanPhase(cwd, args[2], raw);
+          init.cmdInitPlanPhase(cwd, args[2]);
           break;
         case 'new-project':
-          init.cmdInitNewProject(cwd, raw);
+          init.cmdInitNewProject(cwd);
           break;
         case 'new-milestone':
-          init.cmdInitNewMilestone(cwd, raw);
+          init.cmdInitNewMilestone(cwd);
           break;
         case 'quick': {
           const verifyFlagIdx = args.indexOf('--verify');
           const verifyMode = verifyFlagIdx !== -1;
           // Remove --verify from args before joining as description
           const descArgs = args.slice(2).filter((_, i) => i + 2 !== verifyFlagIdx);
-          init.cmdInitQuick(cwd, descArgs.join(' '), verifyMode, raw);
+          init.cmdInitQuick(cwd, descArgs.join(' '), verifyMode);
           break;
         }
         case 'resume':
-          init.cmdInitResume(cwd, raw);
+          init.cmdInitResume(cwd);
           break;
         case 'verify-work':
-          init.cmdInitVerifyWork(cwd, args[2], raw);
+          init.cmdInitVerifyWork(cwd, args[2]);
           break;
         case 'phase-op':
-          init.cmdInitPhaseOp(cwd, args[2], raw);
+          init.cmdInitPhaseOp(cwd, args[2]);
           break;
         case 'todos':
-          init.cmdInitTodos(cwd, args[2], raw);
+          init.cmdInitTodos(cwd, args[2]);
           break;
         case 'milestone-op':
-          init.cmdInitMilestoneOp(cwd, raw);
+          init.cmdInitMilestoneOp(cwd);
           break;
         case 'map-codebase':
-          init.cmdInitMapCodebase(cwd, raw);
+          init.cmdInitMapCodebase(cwd);
           break;
         case 'progress':
-          init.cmdInitProgress(cwd, raw);
+          init.cmdInitProgress(cwd);
           break;
         default:
           {
@@ -1252,11 +1309,12 @@ async function main() {
     }
 
     case 'phase-plan-index': {
-      phase.cmdPhasePlanIndex(cwd, args[1], raw);
+      phase.cmdPhasePlanIndex(cwd, args[1]);
       break;
     }
 
     case 'state-snapshot': {
+      validateArgs('state-snapshot', null, args.slice(1));
       const currentFilter = args.includes('--current');
       let phaseForFilter = null;
       if (currentFilter) {
@@ -1270,100 +1328,109 @@ async function main() {
           }
         } catch {}
       }
-      state.cmdStateSnapshot(cwd, raw, phaseForFilter);
+      state.cmdStateSnapshot(cwd, phaseForFilter);
       break;
     }
 
     case 'summary-extract': {
+      validateArgs('summary-extract', null, args.slice(1));
       const summaryPath = args[1];
       const fieldsIndex = args.indexOf('--fields');
       const fields = fieldsIndex !== -1 ? args[fieldsIndex + 1].split(',') : null;
-      commands.cmdSummaryExtract(cwd, summaryPath, fields, raw);
+      const seDefaultIdx = args.indexOf('--default');
+      const seDefaultValue = seDefaultIdx !== -1 ? args[seDefaultIdx + 1] : undefined;
+      commands.cmdSummaryExtract(cwd, summaryPath, fields, seDefaultValue);
       break;
     }
 
     case 'detect-platform': {
-      // Support --field <name> --raw for scalar extraction (e.g. detect-platform --field platform --raw)
+      validateArgs('detect-platform', null, args.slice(1));
+      // Support --field <name> for scalar extraction (e.g. detect-platform --field platform)
       const dpFieldIdx = args.indexOf('--field');
       const dpField = dpFieldIdx !== -1 ? args[dpFieldIdx + 1] : null;
       // Use the first non-flag positional argument as the remote name
       const dpRemoteArg = args[1] && !args[1].startsWith('--') ? args[1] : null;
-      if (dpField && raw) {
+      if (dpField) {
         // silent=true: returns result without calling output()/process.exit()
-        const dpResult = commands.cmdDetectPlatform(cwd, dpRemoteArg, false, true);
+        const dpResult = commands.cmdDetectPlatform(cwd, dpRemoteArg, true);
         if (dpResult && dpResult[dpField] !== undefined) {
-          process.stdout.write(String(dpResult[dpField]));
+          coreOutput(dpResult[dpField]);
         }
         process.exit(0);
       }
-      commands.cmdDetectPlatform(cwd, dpRemoteArg, raw);
+      commands.cmdDetectPlatform(cwd, dpRemoteArg);
       break;
     }
 
     case 'detect-workspace': {
-      // Support --field <name> --raw for scalar extraction
+      validateArgs('detect-workspace', null, args.slice(1));
+      // Support --field <name> for scalar extraction
       const dwFieldIdx = args.indexOf('--field');
       const dwField = dwFieldIdx !== -1 ? args[dwFieldIdx + 1] : null;
-      if (dwField && raw) {
-        const dwResult = workspace.cmdDetectWorkspace(cwd, false, true);
+      if (dwField) {
+        const dwResult = workspace.cmdDetectWorkspace(cwd, true);
         if (dwResult && dwResult[dwField] !== undefined) {
-          process.stdout.write(String(dwResult[dwField]));
+          coreOutput(dwResult[dwField]);
         }
         process.exit(0);
       }
-      workspace.cmdDetectWorkspace(cwd, raw);
+      workspace.cmdDetectWorkspace(cwd);
       break;
     }
 
     case 'git-context': {
-      // Support --field <name> --raw for scalar extraction
+      validateArgs('git-context', null, args.slice(1));
+      // Support --field <name> for scalar extraction
       const gcFieldIdx = args.indexOf('--field');
       const gcField = gcFieldIdx !== -1 ? args[gcFieldIdx + 1] : null;
-      if (gcField && raw) {
-        const gcResult = workspace.cmdGitContext(cwd, false, true);
+      if (gcField) {
+        const gcResult = workspace.cmdGitContext(cwd, true);
         if (gcResult && gcResult[gcField] !== undefined) {
-          process.stdout.write(String(gcResult[gcField]));
+          coreOutput(gcResult[gcField]);
         }
         process.exit(0);
       }
-      workspace.cmdGitContext(cwd, raw);
+      workspace.cmdGitContext(cwd);
       break;
     }
 
     case 'ssh-check': {
+      validateArgs('ssh-check', null, args.slice(1));
       const sshUrl = args[1] && !args[1].startsWith('--') ? args[1] : '';
-      // Support --field <name> --raw for scalar extraction
+      // Support --field <name> for scalar extraction
       const scFieldIdx = args.indexOf('--field');
       const scField = scFieldIdx !== -1 ? args[scFieldIdx + 1] : null;
-      if (scField && raw) {
-        const scResult = workspace.cmdSshCheck(sshUrl, false, true);
+      if (scField) {
+        const scResult = workspace.cmdSshCheck(sshUrl, true);
         if (scResult && scResult[scField] !== undefined) {
-          process.stdout.write(String(scResult[scField]));
+          coreOutput(scResult[scField]);
         }
         process.exit(0);
       }
-      workspace.cmdSshCheck(sshUrl, raw);
+      workspace.cmdSshCheck(sshUrl);
       break;
     }
 
     case 'discover-test-command': {
       const result = commands.discoverTestCommand(cwd);
-      coreOutput(result, raw);
+      coreOutput(result);
       break;
     }
 
     case 'websearch': {
+      validateArgs('websearch', null, args.slice(1));
       const query = args[1];
       const limitIdx = args.indexOf('--limit');
       const freshnessIdx = args.indexOf('--freshness');
       await commands.cmdWebsearch(query, {
         limit: limitIdx !== -1 ? parseInt(args[limitIdx + 1], 10) : 10,
         freshness: freshnessIdx !== -1 ? args[freshnessIdx + 1] : null,
-      }, raw);
+      });
       break;
     }
 
     case 'squash': {
+      validateArgs('squash', null, args.slice(1));
       const listBackupTags = args.includes('--list-backup-tags');
       const phase = listBackupTags ? null : args[1];
       const dryRun = args.includes('--dry-run');
@@ -1375,25 +1442,26 @@ async function main() {
         dryRun,
         allowStable,
         listBackupTags,
-      }, raw);
+      });
       break;
     }
 
     case 'version-bump': {
+      validateArgs('version-bump', null, args.slice(1));
       const levelIdx = args.indexOf('--level');
       const schemeIdx = args.indexOf('--scheme');
       const snapshot = args.includes('--snapshot');
       const vbFieldIdx = args.indexOf('--field');
       const vbField = vbFieldIdx !== -1 ? args[vbFieldIdx + 1] : null;
-      if (vbField && raw) {
+      if (vbField) {
         // silent=true: returns result without calling output()/process.exit()
         const vbResult = commands.cmdVersionBump(cwd, {
           level: levelIdx >= 0 ? args[levelIdx + 1] : null,
           scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
           snapshot,
-        }, false, true);
+        }, true);
         if (vbResult && vbResult[vbField] !== undefined) {
-          process.stdout.write(String(vbResult[vbField]));
+          coreOutput(vbResult[vbField]);
         }
         process.exit(0);
       }
@@ -1401,69 +1469,69 @@ async function main() {
         level: levelIdx >= 0 ? args[levelIdx + 1] : null,
         scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
         snapshot,
-      }, raw);
+      });
       break;
     }
 
     case 'generate-changelog': {
+      validateArgs('generate-changelog', null, args.slice(1));
       const version = args[1];
       const dateIdx = args.indexOf('--date');
       commands.cmdGenerateChangelog(cwd, version, {
         date: dateIdx >= 0 ? args[dateIdx + 1] : null,
-      }, raw);
+      });
       break;
     }
 
     case 'generate-allowlist': {
-      commands.cmdGenerateAllowlist(cwd, raw);
+      commands.cmdGenerateAllowlist(cwd);
       break;
     }
 
     case 'resolve-type-alias': {
       // Resolve a short commit type to its branch prefix alias using git.type_aliases config.
-      // Usage: gsd-tools resolve-type-alias feat --raw
+      // Usage: gsd-tools resolve-type-alias feat
       const typeArg = args[1] || 'feat';
       // git.type_aliases is nested in config.json under the git section.
       // loadConfig() returns a flat object so we read the raw config file directly.
       const rtaConfigPath = path.join(cwd, '.planning', 'config.json');
       let rtaAliases = { feat: 'feature', fix: 'bugfix', chore: 'chore', refactor: 'refactor' };
       try {
-        const rawCfg = JSON.parse(fs.readFileSync(rtaConfigPath, 'utf-8'));
-        if (rawCfg.git && rawCfg.git.type_aliases) {
-          rtaAliases = rawCfg.git.type_aliases;
+        const rtaCfg = JSON.parse(fs.readFileSync(rtaConfigPath, 'utf-8'));
+        if (rtaCfg.git && rtaCfg.git.type_aliases) {
+          rtaAliases = rtaCfg.git.type_aliases;
         }
       } catch {}
       const resolvedAlias = rtaAliases[typeArg] !== undefined ? rtaAliases[typeArg] : typeArg;
-      if (raw) {
-        process.stdout.write(resolvedAlias);
-        process.exit(0);
-      }
-      coreOutput({ type: typeArg, alias: resolvedAlias }, false, resolvedAlias);
+      coreOutput({ type: typeArg, alias: resolvedAlias }, resolvedAlias);
       break;
     }
 
     case 'issue-import': {
+      validateArgs('issue-import', null, args.slice(1));
       const platform = args[1];
       const number = args[2];
       const repoIdx = args.indexOf('--repo');
       const repo = repoIdx >= 0 ? args[repoIdx + 1] : null;
-      commands.cmdIssueImport(cwd, platform, number, repo, raw);
+      commands.cmdIssueImport(cwd, platform, number, repo);
       break;
     }
 
     case 'issue-sync': {
+      validateArgs('issue-sync', null, args.slice(1));
       const phase = args[1] || null;
       const auto = args.includes('--auto');
-      commands.cmdIssueSync(cwd, phase, { auto }, raw);
+      commands.cmdIssueSync(cwd, phase, { auto });
       break;
     }
 
     case 'issue-list-refs': {
-      commands.cmdIssueListRefs(cwd, raw);
+      commands.cmdIssueListRefs(cwd);
       break;
     }
 
     case 'divergence': {
+      validateArgs('divergence', null, args.slice(1));
       const refreshFlag = args.includes('--refresh');
       const initFlag = args.includes('--init');
       const triageIdx = args.indexOf('--triage');
@@ -1484,34 +1552,37 @@ async function main() {
         remote: remoteIdx !== -1 ? args[remoteIdx + 1] : null,
         remoteBranch: remoteBranchIdx !== -1 ? args[remoteBranchIdx + 1] : null,
       };
-      commands.cmdDivergence(cwd, opts, raw);
+      commands.cmdDivergence(cwd, opts);
       break;
     }
 
     case 'pingpong-check': {
+      validateArgs('pingpong-check', null, args.slice(1));
       const windowIdx = args.indexOf('--window');
-      commands.cmdPingpongCheck(cwd, windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : [], raw);
+      commands.cmdPingpongCheck(cwd, windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : []);
       break;
     }
 
     case 'breakout-check': {
+      validateArgs('breakout-check', null, args.slice(1));
       const planIdx = args.indexOf('--plan');
       const filesIdx = args.indexOf('--declared-files');
       const checkArgs = [];
       if (planIdx !== -1) { checkArgs.push('--plan', args[planIdx + 1]); }
       if (filesIdx !== -1) { checkArgs.push('--declared-files', args[filesIdx + 1]); }
-      commands.cmdBreakoutCheck(cwd, checkArgs, raw);
+      commands.cmdBreakoutCheck(cwd, checkArgs);
       break;
     }
 
     case 'cleanup': {
+      validateArgs('cleanup', null, args.slice(1));
       const dryRun = args.includes('--dry-run');
-      commands.cmdCleanup(cwd, { dryRun }, raw);
+      commands.cmdCleanup(cwd, { dryRun });
       break;
     }
 
     case 'help':
-      commands.cmdHelp(cwd, args.slice(1), raw);
+      commands.cmdHelp(cwd, args.slice(1));
       break;
 
     case '--help':
@@ -1521,11 +1592,11 @@ async function main() {
 
     case 'guard': {
       const subcommand = args[1];
-      validateSubcommandArgs('guard', subcommand, args.slice(2));
+      validateArgs('guard', subcommand, args.slice(2));
       if (subcommand === 'sync-chain') {
-        guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '), raw);
+        guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '));
       } else if (subcommand === 'init-valid') {
-        guard.cmdGuardInitValid(args[2], raw);
+        guard.cmdGuardInitValid(args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'guard');
         if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {

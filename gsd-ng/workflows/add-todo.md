@@ -15,10 +15,8 @@ Load todo context:
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init todos)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init todos)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -109,7 +107,7 @@ Use values from init context: `timestamp` and `date` are already available.
 
 Generate slug for the title:
 ```bash
-slug=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-slug "$title" --raw)
+slug=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-slug "$title")
 ```
 
 Write to `.planning/todos/pending/${date}-${slug}.md`:
@@ -161,7 +159,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
 
 # Append to related: on the existing todo (may already have related: entries)
 EXISTING_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --raw 2>/dev/null || echo "")
+  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --default "")
 UPDATED_RELATED=$(echo "$EXISTING_RELATED" | node -e "
   const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{

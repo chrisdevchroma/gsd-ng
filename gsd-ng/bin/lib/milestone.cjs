@@ -8,7 +8,7 @@ const { escapeRegex, getMilestonePhaseFilter, extractOneLinerFromBody, output, e
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 
-function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
+function cmdRequirementsMarkComplete(cwd, reqIdsRaw) {
   if (!reqIdsRaw || reqIdsRaw.length === 0) {
     error('requirement IDs required. Usage: requirements mark-complete REQ-01,REQ-02 or REQ-01 REQ-02');
   }
@@ -27,7 +27,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
 
   const { requirements: reqPath } = planningPaths(cwd);
   if (!fs.existsSync(reqPath)) {
-    output({ updated: false, reason: 'REQUIREMENTS.md not found', ids: reqIds }, raw, 'no requirements file');
+    output({ updated: false, reason: 'REQUIREMENTS.md not found', ids: reqIds }, 'no requirements file');
     return;
   }
 
@@ -82,10 +82,10 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
     already_complete: alreadyComplete,
     not_found: notFound,
     total: reqIds.length,
-  }, raw, `${updated.length}/${reqIds.length} requirements marked complete`);
+  }, `${updated.length}/${reqIds.length} requirements marked complete`);
 }
 
-function cmdMilestoneComplete(cwd, version, options, raw) {
+function cmdMilestoneComplete(cwd, version, options) {
   if (!version) {
     error('version required for milestone complete (e.g., v1.0)');
   }
@@ -244,7 +244,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     state_updated: fs.existsSync(statePath),
   };
 
-  output(result, raw);
+  output(result);
 }
 
 module.exports = {

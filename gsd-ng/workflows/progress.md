@@ -12,11 +12,9 @@ Read all files referenced by the invoking prompt's execution_context before star
 Gather all data from CLI in minimal calls:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress --raw)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress)
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress --raw)
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress)
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -30,11 +28,9 @@ If `project_exists` is false: "No planning structure found. Run /gsd:new-project
 If ROADMAP.md missing but PROJECT.md exists: Go to **Route F** (between milestones).
 
 ```bash
-ROADMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze --raw)
-if [[ "$ROADMAP" == @file:* ]]; then ROADMAP=$(cat "${ROADMAP#@file:}"); fi
+ROADMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze)
 
-STATE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --raw)
-if [[ "$STATE" == @file:* ]]; then STATE=$(cat "${STATE#@file:}"); fi
+STATE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot)
 ```
 
 All structured data is now in INIT, ROADMAP, and STATE JSON variables. No manual file reading or parsing needed.
@@ -49,7 +45,7 @@ RECENT_SUMMARIES=$(ls -t .planning/phases/*/*-SUMMARY.md 2>/dev/null | head -3)
 
 For each summary file, extract the one-liner:
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner --raw
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner
 ```
 </step>
 
@@ -67,7 +63,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields on
 
 ```bash
 # Get formatted progress bar
-PROGRESS_BAR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" progress bar --raw)
+PROGRESS_BAR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" progress bar)
 ```
 
 Present:

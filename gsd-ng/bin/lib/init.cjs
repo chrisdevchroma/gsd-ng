@@ -10,7 +10,7 @@ const { validatePhaseNumber } = require('./security.cjs');
 const { adjustQuickTable } = require('./state.cjs');
 const { resolveGitContext } = require('./workspace.cjs');
 
-function cmdInitExecutePhase(cwd, phase, raw) {
+function cmdInitExecutePhase(cwd, phase) {
   if (!phase) {
     error('phase required for init execute-phase');
   }
@@ -162,10 +162,10 @@ function cmdInitExecutePhase(cwd, phase, raw) {
         : null;
   }
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitPlanPhase(cwd, phase, raw) {
+function cmdInitPlanPhase(cwd, phase) {
   if (!phase) {
     error('phase required for init plan-phase');
   }
@@ -284,10 +284,10 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     result.has_gap_research = false;
   }
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitNewProject(cwd, raw) {
+function cmdInitNewProject(cwd) {
   const config = loadConfig(cwd);
 
   // Detect existing code
@@ -335,10 +335,10 @@ function cmdInitNewProject(cwd, raw) {
     project_path: '.planning/PROJECT.md',
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitNewMilestone(cwd, raw) {
+function cmdInitNewMilestone(cwd) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
 
@@ -367,10 +367,10 @@ function cmdInitNewMilestone(cwd, raw) {
     state_path: '.planning/STATE.md',
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitQuick(cwd, description, verifyMode, raw) {
+function cmdInitQuick(cwd, description, verifyMode) {
   const config = loadConfig(cwd);
   const now = new Date();
   const slug = description ? generateSlugInternal(description)?.substring(0, 40) : null;
@@ -445,10 +445,10 @@ function cmdInitQuick(cwd, description, verifyMode, raw) {
     table_has_status,
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitResume(cwd, raw) {
+function cmdInitResume(cwd) {
   const config = loadConfig(cwd);
 
   // Check for interrupted agent
@@ -477,10 +477,10 @@ function cmdInitResume(cwd, raw) {
     commit_docs: config.commit_docs,
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitVerifyWork(cwd, phase, raw) {
+function cmdInitVerifyWork(cwd, phase) {
   if (!phase) {
     error('phase required for init verify-work');
   }
@@ -532,10 +532,10 @@ function cmdInitVerifyWork(cwd, phase, raw) {
     has_verification: phaseInfo?.has_verification || false,
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitPhaseOp(cwd, phase, raw) {
+function cmdInitPhaseOp(cwd, phase) {
   if (phase) {
     const phaseCheck = validatePhaseNumber(String(phase));
     if (!phaseCheck.valid) {
@@ -654,10 +654,10 @@ function cmdInitPhaseOp(cwd, phase, raw) {
     } catch {}
   }
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitTodos(cwd, area, raw) {
+function cmdInitTodos(cwd, area) {
   const config = loadConfig(cwd);
   const now = new Date();
 
@@ -713,10 +713,10 @@ function cmdInitTodos(cwd, area, raw) {
     pending_dir_exists: pathExistsInternal(cwd, '.planning/todos/pending'),
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitMilestoneOp(cwd, raw) {
+function cmdInitMilestoneOp(cwd) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
 
@@ -819,10 +819,10 @@ function cmdInitMilestoneOp(cwd, raw) {
     result.type_aliases = gitCtx.type_aliases;
   }
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitMapCodebase(cwd, raw) {
+function cmdInitMapCodebase(cwd) {
   const config = loadConfig(cwd);
 
   // Check for existing codebase maps
@@ -853,10 +853,10 @@ function cmdInitMapCodebase(cwd, raw) {
     codebase_dir_exists: pathExistsInternal(cwd, '.planning/codebase'),
   };
 
-  output(result, raw);
+  output(result);
 }
 
-function cmdInitProgress(cwd, raw) {
+function cmdInitProgress(cwd) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
 
@@ -1002,7 +1002,7 @@ function cmdInitProgress(cwd, raw) {
     config_path: '.planning/config.json',
   };
 
-  output(result, raw);
+  output(result);
 }
 
 const INIT_FIELD_DEFAULTS = {
@@ -1066,9 +1066,9 @@ const INIT_FIELD_DEFAULTS = {
   requirements_path: '.planning/REQUIREMENTS.md',
 };
 
-function cmdInitGet(jsonStr, fieldName, raw) {
+function cmdInitGet(jsonStr, fieldName) {
   if (!fieldName) {
-    error('Usage: init-get <json> <field> [--raw]');
+    error('Usage: init-get <json> <field>');
   }
   let parsed = null;
   if (jsonStr) {
@@ -1087,7 +1087,7 @@ function cmdInitGet(jsonStr, fieldName, raw) {
     const value = parsed[fieldName];
     if (value !== undefined && value !== null) {
       const rawStr = Array.isArray(value) ? JSON.stringify(value) : String(value);
-      output(value, raw, rawStr);
+      output(value, rawStr);
       return;
     }
   }
@@ -1095,11 +1095,11 @@ function cmdInitGet(jsonStr, fieldName, raw) {
   if (Object.prototype.hasOwnProperty.call(INIT_FIELD_DEFAULTS, fieldName)) {
     const def = INIT_FIELD_DEFAULTS[fieldName];
     const rawStr = Array.isArray(def) ? JSON.stringify(def) : (def === null ? '' : String(def));
-    output(def, raw, rawStr);
+    output(def, rawStr);
     return;
   }
   // Unknown field — return null (raw: empty string)
-  output(null, raw, '');
+  output(null, '');
 }
 
 module.exports = {

@@ -26,10 +26,8 @@ if [ -z "$PHASE_ARG" ]; then
 fi
 
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -47,25 +45,25 @@ Extract from init JSON:
 - `PHASE_SLUG` ← `phase_slug`
 - `PHASE_DIR_NAME` ← basename of `phase_dir`
 
-Resolve submodule-aware git routing from $INIT (already loaded with @file: handling above):
+Resolve submodule-aware git routing from $INIT:
 
 ```bash
-# Read submodule fields from $INIT (already loaded with @file: handling above)
+# Read submodule fields from $INIT
 IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
 GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote --raw 2>/dev/null)
-PUSH_TARGET=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch --raw 2>/dev/null); if [ -z "$PUSH_TARGET" ]; then PUSH_TARGET="main"; fi
+PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote 2>/dev/null)
+PUSH_TARGET=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch 2>/dev/null); if [ -z "$PUSH_TARGET" ]; then PUSH_TARGET="main"; fi
 AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
 SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
 
 # Platform: read from $INIT (per-submodule override applies), fall back to detect-platform
-PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" platform --raw 2>/dev/null)
+PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" platform 2>/dev/null)
 if [ -z "$PLATFORM" ]; then
-  PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform --raw)
+  PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform)
 fi
-CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli --raw)
-CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed --raw)
-CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url --raw)
+CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli)
+CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed)
+CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url)
 ```
 
 Use `$PUSH_REMOTE`, `$PUSH_TARGET`, and `$GIT_CWD` for all git and platform operations below instead of `$REMOTE` and `$TARGET_BRANCH`.
@@ -80,7 +78,7 @@ Parse flags:
 
 ```bash
 # Flag parsing
-PR_DRAFT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_draft --raw 2>/dev/null)
+PR_DRAFT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_draft 2>/dev/null)
 
 if [[ "$ARGUMENTS" == *"--draft"* ]] && [[ "$ARGUMENTS" != *"--no-draft"* ]]; then
   PR_DRAFT="true"
@@ -169,7 +167,7 @@ Load type aliases from config:
 ```bash
 # Map the short type to its branch prefix alias using resolve-type-alias
 # e.g., TYPE=feat -> TYPE_ALIAS=feature
-TYPE_ALIAS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "${TYPE:-feat}" --raw 2>/dev/null || echo "${TYPE:-feature}")
+TYPE_ALIAS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "${TYPE:-feat}")
 ```
 
 Map the type to its alias for the branch name.
@@ -211,7 +209,7 @@ git -C "$GIT_CWD" merge --squash "$CURRENT_BRANCH" 2>&1
 # Build squash commit message from plan summaries
 SQUASH_MSG=""
 for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-  ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --raw 2>/dev/null || echo "")
+  ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "")
   if [ -n "$ONE_LINER" ]; then
     PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
     SQUASH_MSG="${SQUASH_MSG}- ${PLAN_ID}: ${ONE_LINER}\n"
@@ -275,7 +273,7 @@ Build PR description following template precedence: user config > repo template 
 PR_BODY_FILE=$(mktemp)
 
 # 1. Check user config template
-PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template --raw 2>/dev/null)
+PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template 2>/dev/null)
 
 if [ -n "$PR_TEMPLATE_PATH" ] && [ -f "$PR_TEMPLATE_PATH" ]; then
   # User config template — copy and apply variable substitution below
@@ -296,13 +294,13 @@ elif [ -d ".gitlab/merge_request_templates" ]; then
 
 else
   # GSD default professional template
-  # Extract phase goal using --pick (handles @file: dereferencing internally)
-  PHASE_OBJECTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE_NUMBER}" --pick goal --raw 2>/dev/null || echo "")
+  # Extract phase goal using --pick
+  PHASE_OBJECTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE_NUMBER}" --pick goal --default "")
 
   # Extract plan summaries
   PLAN_SUMMARIES=""
   for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-    ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --raw 2>/dev/null || echo "")
+    ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "")
     if [ -n "$ONE_LINER" ]; then
       PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
       PLAN_SUMMARIES="${PLAN_SUMMARIES}\n- **${PLAN_ID}**: ${ONE_LINER}"

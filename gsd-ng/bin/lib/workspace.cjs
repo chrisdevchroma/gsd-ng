@@ -256,7 +256,7 @@ function resolveGitContext(cwd) {
 
     const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
 
-    const platformInfo = cmdDetectPlatform(cwd, remote, null, true) || {};
+    const platformInfo = cmdDetectPlatform(cwd, remote, true) || {};
 
     return {
       is_submodule: false,
@@ -372,7 +372,7 @@ function resolveGitContext(cwd) {
 
   const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
 
-  const platformInfo = cmdDetectPlatform(subCwd, remote, null, true) || {};
+  const platformInfo = cmdDetectPlatform(subCwd, remote, true) || {};
 
   return {
     is_submodule: true,
@@ -406,26 +406,24 @@ function resolveGitContext(cwd) {
  * CLI wrapper for detectWorkspaceType. Outputs JSON via output().
  *
  * @param {string} cwd - Working directory
- * @param {boolean} raw - Whether to output raw value
  * @param {boolean} silent - If true, return result without calling output()
  */
-function cmdDetectWorkspace(cwd, raw, silent) {
+function cmdDetectWorkspace(cwd, silent) {
   const result = detectWorkspaceType(cwd);
   if (silent) return result;
-  output(result, raw);
+  output(result);
 }
 
 /**
  * CLI wrapper for resolveGitContext. Outputs JSON via output().
  *
  * @param {string} cwd - Working directory
- * @param {boolean} raw - Whether to output raw value
  * @param {boolean} silent - If true, return result without calling output()
  */
-function cmdGitContext(cwd, raw, silent) {
+function cmdGitContext(cwd, silent) {
   const result = resolveGitContext(cwd);
   if (silent) return result;
-  output(result, raw);
+  output(result);
 }
 
 /**
@@ -433,16 +431,15 @@ function cmdGitContext(cwd, raw, silent) {
  * Returns structured JSON with ssh_required, agent_running, status, message.
  *
  * @param {string} remoteUrl - The git remote URL to check
- * @param {boolean} raw - Whether to output raw JSON
  * @param {boolean} silent - If true, return result without output()/process.exit()
  */
-function cmdSshCheck(remoteUrl, raw, silent) {
+function cmdSshCheck(remoteUrl, silent) {
   const sshRequired = !!(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
 
   if (!sshRequired) {
     const result = { ssh_required: false, agent_running: false, status: 'not_required', message: 'Remote does not use SSH' };
     if (silent) return result;
-    output(result, raw);
+    output(result);
     return;
   }
 
@@ -478,7 +475,7 @@ function cmdSshCheck(remoteUrl, raw, silent) {
 
   const result = { ssh_required: true, agent_running: agentRunning, status, message };
   if (silent) return result;
-  output(result, raw);
+  output(result);
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────

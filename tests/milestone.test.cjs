@@ -40,7 +40,7 @@ describe('milestone complete command', () => {
       `---\none-liner: Set up project infrastructure\n---\n# Summary\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name MVP Foundation', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name MVP Foundation --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -152,7 +152,7 @@ describe('milestone complete command', () => {
       `---\none-liner: Set up project infrastructure\n---\n# Summary\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name MVP --archive-phases', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name MVP --archive-phases --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -209,7 +209,7 @@ describe('milestone complete command', () => {
       `# State\n\n**Status:** In progress\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name Test', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name Test --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -230,7 +230,7 @@ describe('milestone complete command', () => {
       `# State\n\n**Status:** In progress\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name NoRoadmap', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name NoRoadmap --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -276,7 +276,7 @@ describe('milestone complete command', () => {
     fs.writeFileSync(path.join(p4, '04-02-PLAN.md'), '# Plan 2\n');
     fs.writeFileSync(path.join(p4, '04-01-SUMMARY.md'), '---\none-liner: Polished UI\n---\n# Summary\n');
 
-    const result = runGsdTools('milestone complete v1.1 --name "Second Release"', tmpDir);
+    const result = runGsdTools('milestone complete v1.1 --name "Second Release" --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -351,7 +351,7 @@ describe('milestone complete command', () => {
       '---\none-liner: Scaling work\n---\n'
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name MVP', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name MVP --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -386,7 +386,7 @@ describe('milestone complete command', () => {
     fs.mkdirSync(misc, { recursive: true });
     fs.writeFileSync(path.join(misc, 'PLAN.md'), '# Not a phase\n');
 
-    const result = runGsdTools('milestone complete v1.0 --name Test', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name Test --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -417,7 +417,7 @@ describe('milestone complete command', () => {
     fs.mkdirSync(p45, { recursive: true });
     fs.writeFileSync(path.join(p45, 'PLAN.md'), '# Plan\n');
 
-    const result = runGsdTools('milestone complete v1.49 --name DACP', tmpDir);
+    const result = runGsdTools('milestone complete v1.49 --name DACP --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -441,7 +441,7 @@ describe('milestone complete command', () => {
       `---\none-liner: Built the foundation\n---\n\n# Phase 1: Foundation Summary\n\n**Built the foundation**\n\n## Performance\n\n- **Duration:** 28 min\n- **Tasks:** 7\n- **Files modified:** 12\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name MVP', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name MVP --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -466,7 +466,7 @@ describe('milestone complete command', () => {
       `---\nphase: "01"\n---\n\n# Phase 1: Foundation Summary\n\n**JWT auth with refresh rotation using jose library**\n\n## Performance\n`
     );
 
-    const result = runGsdTools('milestone complete v1.0 --name MVP', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name MVP --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -487,7 +487,7 @@ describe('milestone complete command', () => {
     );
     // phases directory exists but is empty (from createTempProject)
 
-    const result = runGsdTools('milestone complete v1.0 --name EmptyPhases', tmpDir);
+    const result = runGsdTools('milestone complete v1.0 --name EmptyPhases --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -551,7 +551,7 @@ describe('requirements mark-complete command', () => {
   test('marks single requirement complete (checkbox + table)', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    const result = runGsdTools('requirements mark-complete TEST-01', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -568,7 +568,7 @@ describe('requirements mark-complete command', () => {
   test('handles mixed prefixes in single call (TEST-XX, REG-XX, INFRA-XX)', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    const result = runGsdTools('requirements mark-complete TEST-01,REG-01,INFRA-01', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01,REG-01,INFRA-01 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -589,7 +589,7 @@ describe('requirements mark-complete command', () => {
   test('accepts space-separated IDs', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    const result = runGsdTools('requirements mark-complete TEST-01 TEST-02', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01 TEST-02 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -603,7 +603,7 @@ describe('requirements mark-complete command', () => {
   test('accepts bracket-wrapped IDs [REQ-01, REQ-02]', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    const result = runGsdTools('requirements mark-complete [TEST-01,TEST-02]', tmpDir);
+    const result = runGsdTools('requirements mark-complete [TEST-01,TEST-02] --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -617,7 +617,7 @@ describe('requirements mark-complete command', () => {
   test('returns not_found for invalid IDs while updating valid ones', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    const result = runGsdTools('requirements mark-complete TEST-01,FAKE-99', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01,FAKE-99 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -631,7 +631,7 @@ describe('requirements mark-complete command', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
     // TEST-03 already has [x] and Complete in the fixture
-    const result = runGsdTools('requirements mark-complete TEST-03', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-03 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -649,7 +649,7 @@ describe('requirements mark-complete command', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
     // TEST-03 already has [x] and Complete in the fixture
-    const result = runGsdTools('requirements mark-complete TEST-03', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-03 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -661,7 +661,7 @@ describe('requirements mark-complete command', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
     // TEST-01: pending (will be marked), TEST-03: already complete, FAKE-99: not found
-    const result = runGsdTools('requirements mark-complete TEST-01,TEST-03,FAKE-99', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01,TEST-03,FAKE-99 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -673,7 +673,7 @@ describe('requirements mark-complete command', () => {
   test('missing REQUIREMENTS.md returns expected error structure', () => {
     // createTempProject does not create REQUIREMENTS.md — so it's already missing
 
-    const result = runGsdTools('requirements mark-complete TEST-01', tmpDir);
+    const result = runGsdTools('requirements mark-complete TEST-01 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);

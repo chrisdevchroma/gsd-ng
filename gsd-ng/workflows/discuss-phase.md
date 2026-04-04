@@ -123,10 +123,8 @@ Phase number from argument (required).
 
 ```bash
 INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
   INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
-  if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
   if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
@@ -203,11 +201,7 @@ If "Cancel": Exit workflow.
 
 Read the phase goal from ROADMAP.md for this phase:
 ```bash
-PHASE_GOAL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
-  process.stdin.on('data', d => {
-    try { const r = JSON.parse(d); console.log(r.goal || r.name || ''); } catch { console.log(''); }
-  });
-")
+PHASE_GOAL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick goal --default "" 2>/dev/null)
 ```
 
 If `$PHASE_GOAL` is empty, skip silently and continue to load_prior_context.
@@ -268,17 +262,13 @@ In **interactive mode**:
 
 1. Find the source todo for this phase by checking ROADMAP.md:
 ```bash
-SOURCE_TODO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --raw 2>/dev/null | node -e "
-  process.stdin.on('data', d => {
-    try { const r = JSON.parse(d); console.log(r.source_todos || ''); } catch { console.log(''); }
-  });
-")
+SOURCE_TODO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick source_todos --default "" 2>/dev/null)
 ```
 
 2. If `$SOURCE_TODO` is non-empty, read its existing `related:` field:
 ```bash
 EXISTING_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+  ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
 ```
 
 3. From the phase: linking candidates above (1-3 todos that were evaluated), filter for any that:
@@ -303,7 +293,7 @@ AskUserQuestion(
 ```bash
 # Append selected todo filename to source todo's related: field
 SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --raw 2>/dev/null || echo "")
+  ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
 UPDATED_SOURCE=$(echo "$SOURCE_RELATED_RAW" | node -e "
   const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
@@ -320,7 +310,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
 
 # Append source todo filename to selected todo's related: field (backlink)
 SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SELECTED_FILE" --field related --raw 2>/dev/null || echo "")
+  ".planning/todos/pending/$SELECTED_FILE" --field related --default "")
 UPDATED_SELECTED=$(echo "$SELECTED_RELATED_RAW" | node -e "
   const newFile = process.argv[1];
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
@@ -458,7 +448,8 @@ Analyze the phase to identify gray areas worth discussing. **Use both `prior_dec
 Extract the `Requirements:` field from the phase's ROADMAP.md section (available in the `section` field from `roadmap get-phase`):
 
 ```bash
-# Extract Requirements field from the section text already loaded
+# Fetch phase data once for requirements and lineage analysis
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --json 2>/dev/null)
 REQUIREMENTS=$(echo "$PHASE_DATA" | node -e "
   let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
     try {
@@ -481,11 +472,7 @@ This is NOT a hard block — the workflow continues to lineage analysis and gray
 
 ```bash
 # Get depends_on from current phase (requires Plan 01's roadmap.cjs changes)
-DEPENDS_ON=$(echo "$PHASE_DATA" | node -e "
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try { const r=JSON.parse(d); console.log(r.depends_on||''); } catch { console.log(''); }
-  });
-")
+DEPENDS_ON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick depends_on --default "" 2>/dev/null)
 
 # If empty: skip silently (no message, no note in CONTEXT.md)
 if [ -n "$DEPENDS_ON" ]; then
@@ -499,12 +486,7 @@ if [ -n "$DEPENDS_ON" ]; then
 
   # For each parent: fetch goal + success_criteria
   for PARENT_PHASE in $PARENT_PHASES; do
-    PARENT_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PARENT_PHASE" 2>/dev/null)
-    PARENT_FOUND=$(echo "$PARENT_DATA" | node -e "
-      let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-        try { console.log(JSON.parse(d).found ? 'true' : 'false'); } catch { console.log('false'); }
-      });
-    ")
+    PARENT_FOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PARENT_PHASE" --pick found --default "false" 2>/dev/null)
     # Skip silently if parent not found (common for prior milestones)
     if [ "$PARENT_FOUND" = "true" ]; then
       # Extract parent goal and success_criteria
@@ -931,8 +913,8 @@ Check for auto-advance trigger:
    ```
 3. Read both the chain flag and user preference:
    ```bash
-   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active 2>/dev/null || echo "false")
-   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
    ```
 
 **If `--auto` flag present AND `AUTO_CHAIN` is not true:** Persist chain flag to config (handles direct `--auto` usage without new-project):

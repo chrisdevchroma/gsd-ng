@@ -77,32 +77,54 @@ function reapStaleTempFiles(prefix = 'gsd-', { maxAgeMs = 5 * 60 * 1000, dirsOnl
   }
 }
 
-function output(result, raw, rawValue) {
+// Module-level file output flag: when true, output() writes large payloads to
+// a temp file prefixed with @file:. Off by default -- inline is the standard path.
+// Activated via --file global flag in gsd-tools.cjs.
+let _fileOutput = false;
+function setFileOutput(val) { _fileOutput = val; }
+
+// Module-level JSON mode flag: when true, output() always emits JSON regardless
+// of displayValue. Activated via --json global flag or --pick in gsd-tools.cjs.
+let _jsonMode = false;
+function setJsonMode(val) { _jsonMode = val; }
+
+/**
+ * Write JSON to a temp file and return the @file: prefixed path.
+ * Factored out to avoid duplication between _jsonMode and auto-JSON paths.
+ */
+function writeToTempFile(json) {
+  reapStaleTempFiles();
+  let tmpDir = require('os').tmpdir();
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  } catch {
+    // os.tmpdir() directory may not be writable (e.g. sandbox sets TMPDIR=/tmp/claude
+    // but /tmp is restricted). Fall back to a known-writable sibling directory.
+    const uid = process.getuid();
+    tmpDir = path.join(path.dirname(tmpDir), path.basename(tmpDir) + '-' + uid);
+    fs.mkdirSync(tmpDir, { recursive: true });
+  }
+  const tmpPath = path.join(tmpDir, `gsd-${Date.now()}.json`);
+  fs.writeFileSync(tmpPath, json, 'utf-8');
+  return '@file:' + tmpPath;
+}
+
+function output(result, displayValue) {
   let data;
-  if (raw && rawValue !== undefined) {
-    data = String(rawValue);
-  } else {
+  if (_jsonMode) {
+    // --json flag: always JSON, ignore displayValue
     const json = JSON.stringify(result, null, 2);
-    // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
-    // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
-    if (json.length > 50000) {
-      reapStaleTempFiles();
-      let tmpDir = require('os').tmpdir();
-      try {
-        fs.mkdirSync(tmpDir, { recursive: true });
-      } catch {
-        // os.tmpdir() directory may not be writable (e.g. sandbox sets TMPDIR=/tmp/claude
-        // but /tmp is restricted). Fall back to a known-writable sibling directory.
-        const uid = process.getuid();
-        tmpDir = path.join(path.dirname(tmpDir), path.basename(tmpDir) + '-' + uid);
-        fs.mkdirSync(tmpDir, { recursive: true });
-      }
-      const tmpPath = path.join(tmpDir, `gsd-${Date.now()}.json`);
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-      data = '@file:' + tmpPath;
-    } else {
-      data = json;
-    }
+    data = _fileOutput ? writeToTempFile(json) : json;
+  } else if (displayValue !== undefined) {
+    // displayValue provided: emit as string (NO _fileOutput for scalar output)
+    data = String(displayValue);
+  } else if (result !== null && typeof result === 'object') {
+    // Object/array with no displayValue: auto-JSON
+    const json = JSON.stringify(result, null, 2);
+    data = _fileOutput ? writeToTempFile(json) : json;
+  } else {
+    // Scalar with no displayValue: stringify
+    data = String(result);
   }
   // process.stdout.write() is async when stdout is a pipe — process.exit()
   // can tear down the process before the reader consumes the buffer.
@@ -602,6 +624,8 @@ function extractOneLinerFromBody(content) {
 
 module.exports = {
   output,
+  setFileOutput,
+  setJsonMode,
   error,
   reapStaleTempFiles,
   safeReadFile,

@@ -40,7 +40,7 @@ describe('config-ensure-section command', () => {
   });
 
   test('creates config.json with expected structure and types', () => {
-    const result = runGsdTools('config-ensure-section', tmpDir);
+    const result = runGsdTools('config-ensure-section --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -63,12 +63,12 @@ describe('config-ensure-section command', () => {
   });
 
   test('is idempotent — returns already_exists on second call', () => {
-    const first = runGsdTools('config-ensure-section', tmpDir);
+    const first = runGsdTools('config-ensure-section --json', tmpDir);
     assert.ok(first.success, `First call failed: ${first.error}`);
     const firstOutput = JSON.parse(first.output);
     assert.strictEqual(firstOutput.created, true);
 
-    const second = runGsdTools('config-ensure-section', tmpDir);
+    const second = runGsdTools('config-ensure-section --json', tmpDir);
     assert.ok(second.success, `Second call failed: ${second.error}`);
     const secondOutput = JSON.parse(second.output);
     assert.strictEqual(secondOutput.created, false);
@@ -135,7 +135,7 @@ describe('config-set command', () => {
   });
 
   test('sets a top-level string value', () => {
-    const result = runGsdTools('config-set model_profile quality', tmpDir);
+    const result = runGsdTools('config-set model_profile quality --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -315,7 +315,7 @@ describe('Phase 13 git config keys (GIT-01)', () => {
       'utf-8'
     );
 
-    const result = runGsdTools('init execute-phase 13', tmpDir);
+    const result = runGsdTools('init execute-phase 13 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -341,7 +341,7 @@ describe('Phase 13 git config keys (GIT-01)', () => {
       'utf-8'
     );
 
-    const result = runGsdTools('init execute-phase 13', tmpDir);
+    const result = runGsdTools('init execute-phase 13 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -362,7 +362,7 @@ describe('Phase 13 git config keys (GIT-01)', () => {
       'utf-8'
     );
 
-    const result = runGsdTools('init execute-phase 13', tmpDir);
+    const result = runGsdTools('init execute-phase 13 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -388,7 +388,7 @@ describe('Phase 13 git config keys (GIT-01)', () => {
     assert.ok(setResult.success, `config-set failed: ${setResult.error}`);
 
     // Then verify init execute-phase returns the updated value
-    const initResult = runGsdTools('init execute-phase 13', tmpDir);
+    const initResult = runGsdTools('init execute-phase 13 --json', tmpDir);
     assert.ok(initResult.success, `init failed: ${initResult.error}`);
 
     const output = JSON.parse(initResult.output);
@@ -412,7 +412,7 @@ describe('config-get command', () => {
   });
 
   test('gets a top-level value', () => {
-    const result = runGsdTools('config-get model_profile', tmpDir);
+    const result = runGsdTools('config-get model_profile --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -420,7 +420,7 @@ describe('config-get command', () => {
   });
 
   test('gets a nested value via dot-notation', () => {
-    const result = runGsdTools('config-get workflow.research', tmpDir);
+    const result = runGsdTools('config-get workflow.research --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -502,7 +502,7 @@ describe('git commit and versioning config keys', () => {
 
   test('config-get git.commit_format returns set value', () => {
     writeConfig(tmpDir, { git: { commit_format: 'issue-first' } });
-    const result = runGsdTools('config-get git.commit_format', tmpDir);
+    const result = runGsdTools('config-get git.commit_format --json', tmpDir);
     assert.ok(result.success, `Failed: ${result.error}`);
     assert.strictEqual(JSON.parse(result.output), 'issue-first');
   });
@@ -576,7 +576,7 @@ describe('Per-submodule config keys (SUBMOD-01)', () => {
     existing.git.submodule = { workspace_branch: 'develop' };
     fs.writeFileSync(configPath, JSON.stringify(existing, null, 2));
 
-    const result = runGsdTools('config-get git.submodule.workspace_branch --raw', tmpDir);
+    const result = runGsdTools('config-get git.submodule.workspace_branch', tmpDir);
     // Should succeed (returns value for migration) but stderr has warning
     assert.match(result.stderr || result.output || result.error || '', /deprecated/i);
   });

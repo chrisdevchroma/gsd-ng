@@ -10,7 +10,7 @@ const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES } = require('./model-profiles.cjs');
 const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
 
-function cmdGenerateSlug(text, raw) {
+function cmdGenerateSlug(text) {
   if (!text) {
     error('text required for slug generation');
   }
@@ -21,10 +21,10 @@ function cmdGenerateSlug(text, raw) {
     .replace(/^-+|-+$/g, '');
 
   const result = { slug };
-  output(result, raw, slug);
+  output(result, slug);
 }
 
-function cmdCurrentTimestamp(format, raw) {
+function cmdCurrentTimestamp(format) {
   const now = new Date();
   let result;
 
@@ -41,10 +41,10 @@ function cmdCurrentTimestamp(format, raw) {
       break;
   }
 
-  output({ timestamp: result }, raw, result);
+  output({ timestamp: result }, result);
 }
 
-function cmdListTodos(cwd, area, raw) {
+function cmdListTodos(cwd, area) {
   const { todosPending: pendingDir } = planningPaths(cwd);
 
   let count = 0;
@@ -78,10 +78,10 @@ function cmdListTodos(cwd, area, raw) {
   } catch {}
 
   const result = { count, todos };
-  output(result, raw, count.toString());
+  output(result, count.toString());
 }
 
-function cmdVerifyPathExists(cwd, targetPath, raw) {
+function cmdVerifyPathExists(cwd, targetPath) {
   if (!targetPath) {
     error('path required for verification');
   }
@@ -90,7 +90,7 @@ function cmdVerifyPathExists(cwd, targetPath, raw) {
   if (!path.isAbsolute(targetPath)) {
     const pathCheck = validatePath(targetPath, cwd);
     if (!pathCheck.safe) {
-      output({ exists: false, type: null, error: pathCheck.error }, raw, 'false');
+      output({ exists: false, type: null, error: pathCheck.error }, 'false');
       return;
     }
   }
@@ -101,14 +101,14 @@ function cmdVerifyPathExists(cwd, targetPath, raw) {
     const stats = fs.statSync(fullPath);
     const type = stats.isDirectory() ? 'directory' : stats.isFile() ? 'file' : 'other';
     const result = { exists: true, type };
-    output(result, raw, 'true');
+    output(result, 'true');
   } catch {
     const result = { exists: false, type: null };
-    output(result, raw, 'false');
+    output(result, 'false');
   }
 }
 
-function cmdHistoryDigest(cwd, raw) {
+function cmdHistoryDigest(cwd) {
   const { phases: phasesDir } = planningPaths(cwd);
   const digest = { phases: {}, decisions: [], tech_stack: new Set() };
 
@@ -136,7 +136,7 @@ function cmdHistoryDigest(cwd, raw) {
 
   if (allPhaseDirs.length === 0) {
     digest.tech_stack = [];
-    output(digest, raw);
+    output(digest);
     return;
   }
 
@@ -203,13 +203,13 @@ function cmdHistoryDigest(cwd, raw) {
     });
     digest.tech_stack = [...digest.tech_stack];
 
-    output(digest, raw);
+    output(digest);
   } catch (e) {
     error('Failed to generate history digest: ' + e.message);
   }
 }
 
-function cmdResolveModel(cwd, agentType, raw) {
+function cmdResolveModel(cwd, agentType) {
   if (!agentType) {
     error('agent-type required');
   }
@@ -222,7 +222,7 @@ function cmdResolveModel(cwd, agentType, raw) {
   const result = agentModels
     ? { model, profile }
     : { model, profile, unknown_agent: true };
-  output(result, raw, model);
+  output(result, model);
 }
 
 function applyCommitFormat(message, config, context) {
@@ -259,7 +259,7 @@ function appendIssueTrailers(message, trailers) {
   return message + '\n\n' + lines.join('\n');
 }
 
-function cmdCommit(cwd, message, files, raw, amend) {
+function cmdCommit(cwd, message, files, amend) {
   if (!message && !amend) {
     error('commit message required');
   }
@@ -269,14 +269,14 @@ function cmdCommit(cwd, message, files, raw, amend) {
   // Check commit_docs config
   if (!config.commit_docs) {
     const result = { committed: false, hash: null, reason: 'skipped_commit_docs_false' };
-    output(result, raw, 'skipped');
+    output(result, 'skipped');
     return;
   }
 
   // Check if .planning is gitignored
   if (isGitIgnored(cwd, '.planning')) {
     const result = { committed: false, hash: null, reason: 'skipped_gitignored' };
-    output(result, raw, 'skipped');
+    output(result, 'skipped');
     return;
   }
 
@@ -297,11 +297,11 @@ function cmdCommit(cwd, message, files, raw, amend) {
   if (commitResult.exitCode !== 0) {
     if (commitResult.stdout.includes('nothing to commit') || commitResult.stderr.includes('nothing to commit')) {
       const result = { committed: false, hash: null, reason: 'nothing_to_commit' };
-      output(result, raw, 'nothing');
+      output(result, 'nothing');
       return;
     }
     const result = { committed: false, hash: null, reason: 'nothing_to_commit', error: commitResult.stderr };
-    output(result, raw, 'nothing');
+    output(result, 'nothing');
     return;
   }
 
@@ -309,10 +309,10 @@ function cmdCommit(cwd, message, files, raw, amend) {
   const hashResult = execGit(cwd, ['rev-parse', '--short', 'HEAD']);
   const hash = hashResult.exitCode === 0 ? hashResult.stdout : null;
   const result = { committed: true, hash, reason: 'committed' };
-  output(result, raw, hash || 'committed');
+  output(result, hash || 'committed');
 }
 
-function cmdSummaryExtract(cwd, summaryPath, fields, raw) {
+function cmdSummaryExtract(cwd, summaryPath, fields, defaultValue) {
   if (!summaryPath) {
     error('summary-path required for summary-extract');
   }
@@ -320,7 +320,8 @@ function cmdSummaryExtract(cwd, summaryPath, fields, raw) {
   const fullPath = path.join(cwd, summaryPath);
 
   if (!fs.existsSync(fullPath)) {
-    output({ error: 'File not found', path: summaryPath }, raw);
+    if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+    output({ error: 'File not found', path: summaryPath });
     return;
   }
 
@@ -371,24 +372,24 @@ function cmdSummaryExtract(cwd, summaryPath, fields, raw) {
         filtered[field] = fullResult[field];
       }
     }
-    output(filtered, raw);
+    output(filtered);
     return;
   }
 
-  output(fullResult, raw);
+  output(fullResult);
 }
 
-async function cmdWebsearch(query, options, raw) {
+async function cmdWebsearch(query, options) {
   const apiKey = process.env.BRAVE_API_KEY;
 
   if (!apiKey) {
     // No key = silent skip, agent falls back to built-in WebSearch
-    output({ available: false, reason: 'BRAVE_API_KEY not set' }, raw, '');
+    output({ available: false, reason: 'BRAVE_API_KEY not set' }, '');
     return;
   }
 
   if (!query) {
-    output({ available: false, error: 'Query required' }, raw, '');
+    output({ available: false, error: 'Query required' }, '');
     return;
   }
 
@@ -416,7 +417,7 @@ async function cmdWebsearch(query, options, raw) {
     );
 
     if (!response.ok) {
-      output({ available: false, error: `API error: ${response.status}` }, raw, '');
+      output({ available: false, error: `API error: ${response.status}` }, '');
       return;
     }
 
@@ -434,13 +435,13 @@ async function cmdWebsearch(query, options, raw) {
       query,
       count: results.length,
       results
-    }, raw, results.map(r => `${r.title}\n${r.url}\n${r.description}`).join('\n\n'));
+    }, results.map(r => `${r.title}\n${r.url}\n${r.description}`).join('\n\n'));
   } catch (err) {
-    output({ available: false, error: err.message }, raw, '');
+    output({ available: false, error: err.message }, '');
   }
 }
 
-function cmdProgressRender(cwd, format, raw) {
+function cmdProgressRender(cwd, format) {
   const { phases: phasesDir, roadmap: roadmapPath } = planningPaths(cwd);
   const milestone = getMilestoneInfo(cwd);
 
@@ -487,13 +488,13 @@ function cmdProgressRender(cwd, format, raw) {
     for (const p of phases) {
       out += `| ${p.number} | ${p.name} | ${p.summaries}/${p.plans} | ${p.status} |\n`;
     }
-    output({ rendered: out }, raw, out);
+    output({ rendered: out }, out);
   } else if (format === 'bar') {
     const barWidth = 20;
     const filled = Math.round((percent / 100) * barWidth);
     const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barWidth - filled);
     const text = `[${bar}] ${totalSummaries}/${totalPlans} plans (${percent}%)`;
-    output({ bar: text, percent, completed: totalSummaries, total: totalPlans }, raw, text);
+    output({ bar: text, percent, completed: totalSummaries, total: totalPlans }, text);
   } else {
     // JSON format
     output({
@@ -503,7 +504,7 @@ function cmdProgressRender(cwd, format, raw) {
       total_plans: totalPlans,
       total_summaries: totalSummaries,
       percent,
-    }, raw);
+    });
   }
 }
 
@@ -538,7 +539,7 @@ function isRecurringDue(todoData) {
   return (Date.now() - lastCompleted) >= intervalMs;
 }
 
-function cmdTodoComplete(cwd, filename, raw) {
+function cmdTodoComplete(cwd, filename) {
   if (!filename) {
     error('filename required for todo complete');
   }
@@ -575,7 +576,6 @@ function cmdTodoComplete(cwd, filename, raw) {
     fs.writeFileSync(sourcePath, updatedContent, 'utf-8');
     output(
       { completed: true, recurring: true, file: filename, date: todayDate, next_due: fm.interval || 'unknown' },
-      raw,
       `recurring-reset: ${filename}`
     );
     return;
@@ -604,7 +604,7 @@ function cmdTodoComplete(cwd, filename, raw) {
       try {
         const commitHash = getLatestCommitHash(cwd);
         const syncResults = syncSingleRef(fm.external_ref, { commitHash }, itConfig);
-        output({ completed: true, file: filename, date: today, synced: syncResults }, raw, 'completed');
+        output({ completed: true, file: filename, date: today, synced: syncResults }, 'completed');
         return;
       } catch (_e) {
         // Sync failure is non-fatal — fall through to normal completion output
@@ -612,16 +612,103 @@ function cmdTodoComplete(cwd, filename, raw) {
     }
   }
 
-  output({ completed: true, file: filename, date: today }, raw, 'completed');
+  output({ completed: true, file: filename, date: today }, 'completed');
+}
+
+/**
+ * List pending todo filenames whose frontmatter phase field matches the given phase number.
+ *
+ * @param {string} cwd
+ * @param {string|number} phase - Phase number to match
+ */
+function cmdTodoListByPhase(cwd, phase) {
+  if (!phase) error('phase required for todo list-by-phase');
+  const { todosPending } = planningPaths(cwd);
+  let files = [];
+  try {
+    files = fs.readdirSync(todosPending).filter(f => f.endsWith('.md'));
+  } catch (_e) {
+    // Directory doesn't exist — return empty
+    output([]);
+    return;
+  }
+  const matches = [];
+  for (const file of files) {
+    try {
+      const content = fs.readFileSync(path.join(todosPending, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (String(fm.phase) === String(phase)) matches.push(file);
+    } catch (_e) {
+      // Skip unreadable files
+    }
+  }
+  output(matches);
+}
+
+/**
+ * List pending todo filenames that are referenced in ROADMAP.md Source Todos for the given phase.
+ * Only returns todos that actually exist in the pending directory.
+ *
+ * @param {string} cwd
+ * @param {string|number} phase - Phase number to look up in ROADMAP
+ */
+function cmdTodoScanPhaseLinked(cwd, phase) {
+  if (!phase) error('phase required for todo scan-phase-linked');
+  const { todosPending, roadmap: roadmapPath } = planningPaths(cwd);
+
+  // Read ROADMAP and parse source_todos for the given phase
+  let sourceTodosStr = null;
+  try {
+    if (!fs.existsSync(roadmapPath)) {
+      output([]);
+      return;
+    }
+    const content = fs.readFileSync(roadmapPath, 'utf-8');
+    const escapedPhase = String(phase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*[^\\n]+`, 'i');
+    const headerMatch = content.match(phasePattern);
+    if (!headerMatch) {
+      output([]);
+      return;
+    }
+    const sectionStart = headerMatch.index;
+    const restOfContent = content.slice(sectionStart);
+    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i);
+    const sectionEnd = nextHeaderMatch ? sectionStart + nextHeaderMatch.index : content.length;
+    const section = content.slice(sectionStart, sectionEnd);
+    const sourceTodosMatch = section.match(/\*\*Source Todos\*\*:\s*([^\n]+)/i);
+    if (sourceTodosMatch) sourceTodosStr = sourceTodosMatch[1].trim();
+  } catch (_e) {
+    output([]);
+    return;
+  }
+
+  if (!sourceTodosStr) {
+    output([]);
+    return;
+  }
+
+  // Parse source_todos string: backtick-wrapped, comma-separated
+  const todoFiles = sourceTodosStr
+    .replace(/`/g, '').split(',').map(s => s.trim()).filter(Boolean);
+
+  // Return only files that exist in pending dir
+  const existing = todoFiles.filter(f => {
+    try {
+      return fs.existsSync(path.join(todosPending, f));
+    } catch (_e) {
+      return false;
+    }
+  });
+  output(existing);
 }
 
 /**
  * List recurring todos that are past their interval (due for attention).
  *
  * @param {string} cwd
- * @param {boolean} raw
  */
-function cmdRecurringDue(cwd, raw) {
+function cmdRecurringDue(cwd) {
   const { todosPending: pendingDir } = planningPaths(cwd);
   const due = [];
 
@@ -652,12 +739,11 @@ function cmdRecurringDue(cwd, raw) {
 
   output(
     { count: due.length, todos: due },
-    raw,
     due.length > 0 ? due.map(d => d.file).join(', ') : 'none due'
   );
 }
 
-function cmdScaffold(cwd, type, options, raw) {
+function cmdScaffold(cwd, type, options) {
   const { phase, name } = options;
   const padded = phase ? normalizePhaseName(phase) : '00';
   const today = new Date().toISOString().split('T')[0];
@@ -698,7 +784,7 @@ function cmdScaffold(cwd, type, options, raw) {
       fs.mkdirSync(phasesParent, { recursive: true });
       const dirPath = path.join(phasesParent, dirName);
       fs.mkdirSync(dirPath, { recursive: true });
-      output({ created: true, directory: `.planning/phases/${dirName}`, path: dirPath }, raw, dirPath);
+      output({ created: true, directory: `.planning/phases/${dirName}`, path: dirPath }, dirPath);
       return;
     }
     default:
@@ -706,16 +792,16 @@ function cmdScaffold(cwd, type, options, raw) {
   }
 
   if (fs.existsSync(filePath)) {
-    output({ created: false, reason: 'already_exists', path: filePath }, raw, 'exists');
+    output({ created: false, reason: 'already_exists', path: filePath }, 'exists');
     return;
   }
 
   fs.writeFileSync(filePath, content, 'utf-8');
   const relPath = toPosixPath(path.relative(cwd, filePath));
-  output({ created: true, path: relPath }, raw, relPath);
+  output({ created: true, path: relPath }, relPath);
 }
 
-function cmdStats(cwd, format, raw) {
+function cmdStats(cwd, format) {
   const { phases: phasesDir, roadmap: roadmapPath, requirements: reqPath, state: statePath } = planningPaths(cwd);
   const milestone = getMilestoneInfo(cwd);
   const isDirInMilestone = getMilestonePhaseFilter(cwd);
@@ -865,9 +951,9 @@ function cmdStats(cwd, format, raw) {
       out += '\n';
     }
     if (lastActivity) out += `**Last activity:** ${lastActivity}\n`;
-    output({ rendered: out }, raw, out);
+    output({ rendered: out }, out);
   } else {
-    output(result, raw);
+    output(result);
   }
 }
 
@@ -1159,7 +1245,7 @@ function buildImportComment(style, context) {
   return 'Tracked for resolution.';
 }
 
-function cmdDetectPlatform(cwd, remote, raw, silent) {
+function cmdDetectPlatform(cwd, remote, silent) {
   const { spawnSync } = require('child_process');
 
   // 1. Check config override
@@ -1224,11 +1310,11 @@ function cmdDetectPlatform(cwd, remote, raw, silent) {
 
   // When called in silent mode (field extraction path), skip output/exit and return the result.
   if (silent) return result;
-  output(result, raw, platform || 'unknown');
+  output(result, platform || 'unknown');
   return result; // unreachable (output calls process.exit), retained for clarity
 }
 
-function cmdSquash(cwd, phase, options, raw) {
+function cmdSquash(cwd, phase, options) {
   const { strategy, dryRun, allowStable, listBackupTags: listTags } = options;
 
   // Handle --list-backup-tags subcommand
@@ -1237,7 +1323,7 @@ function cmdSquash(cwd, phase, options, raw) {
     const tags = tagResult.exitCode === 0 && tagResult.stdout
       ? tagResult.stdout.split('\n').filter(Boolean)
       : [];
-    output({ tags }, raw, tags.join('\n'));
+    output({ tags }, tags.join('\n'));
     return;
   }
 
@@ -1305,7 +1391,7 @@ function cmdSquash(cwd, phase, options, raw) {
 
   // Dry run: return plan without executing (safe even on stable branches)
   if (dryRun) {
-    output({ dry_run: true, strategy, phase, groups, executed: false }, raw,
+    output({ dry_run: true, strategy, phase, groups, executed: false },
       `DRY RUN (${strategy}):\n` + groups.map(g => `  ${g.name}: ${g.message.split('\n')[0]}`).join('\n'));
     return;
   }
@@ -1369,7 +1455,7 @@ function cmdSquash(cwd, phase, options, raw) {
     groups: groups.length,
     backup_tag: backupTags[backupTags.length - 1] || backupTag,
     executed: true,
-  }, raw, `Squashed (${strategy}): ${groups.length} group(s), backup: ${backupTag}`);
+  }, `Squashed (${strategy}): ${groups.length} group(s), backup: ${backupTag}`);
 }
 
 /**
@@ -1496,7 +1582,7 @@ function generateChangelog(version, date, summaries) {
  * Bump version in package.json and write VERSION file.
  * Reads bump level from commit type analysis if not explicitly provided.
  */
-function cmdVersionBump(cwd, options, raw, silent) {
+function cmdVersionBump(cwd, options, silent) {
   const { level: explicitLevel, scheme: explicitScheme, snapshot } = options;
   const config = loadConfig(cwd);
   const scheme = explicitScheme || config.versioning_scheme || 'semver';
@@ -1560,7 +1646,7 @@ function cmdVersionBump(cwd, options, raw, silent) {
   };
   // When called in silent mode (field extraction path), skip output/exit and return the result.
   if (silent) return versionResult;
-  output(versionResult, raw, newVersion);
+  output(versionResult, newVersion);
   return versionResult; // unreachable (output calls process.exit), retained for clarity
 }
 
@@ -1568,7 +1654,7 @@ function cmdVersionBump(cwd, options, raw, silent) {
  * Generate CHANGELOG.md entries from SUMMARY.md files across all phases.
  * Inserts the new version block after the [Unreleased] section.
  */
-function cmdGenerateChangelog(cwd, version, options, raw) {
+function cmdGenerateChangelog(cwd, version, options) {
   const { date: dateOverride } = options;
   const date = dateOverride || new Date().toISOString().split('T')[0];
 
@@ -1648,7 +1734,7 @@ function cmdGenerateChangelog(cwd, version, options, raw) {
     date,
     entries: summaries.length,
     path: 'CHANGELOG.md',
-  }, raw, `CHANGELOG.md updated with ${summaries.length} entries for v${version}`);
+  }, `CHANGELOG.md updated with ${summaries.length} entries for v${version}`);
 }
 
 /**
@@ -1677,10 +1763,9 @@ const LABEL_AREA_MAP = {
  * @param {string} platform - github|gitlab|forgejo|gitea
  * @param {number|string} number - Issue number
  * @param {string|null} repo - Optional repo override
- * @param {boolean} raw - Raw JSON output
  * @returns {{ imported, todo_file, title, external_ref, commented }}
  */
-function cmdIssueImport(cwd, platform, number, repo, raw) {
+function cmdIssueImport(cwd, platform, number, repo) {
   loadConfig(cwd); // Ensure config is loaded (side-effects: migration)
   // Read issue_tracker config directly from config.json since loadConfig
   // returns a flat structured object and does not expose the raw issue_tracker section.
@@ -1829,7 +1914,7 @@ function cmdIssueImport(cwd, platform, number, repo, raw) {
     commented,
   };
 
-  output(result, raw, `Imported ${externalRef} -> ${filename}`);
+  output(result, `Imported ${externalRef} -> ${filename}`);
   return result;
 }
 
@@ -1938,7 +2023,6 @@ function applyVerifyLabel(platform, number, repo, verifyLabel) {
  * @param {string} cwd
  * @param {string|null} phase - Filter to specific phase (not used in current minimal impl)
  * @param {{ auto: boolean }} options - auto=true means outbound-only
- * @param {boolean} raw - Raw JSON output
  * @returns {{ synced, conflicts, skipped }}
  */
 /**
@@ -2004,7 +2088,7 @@ function syncSingleRef(refStr, commentContext, itConfig) {
   return results;
 }
 
-function cmdIssueSync(cwd, phase, options, raw) {
+function cmdIssueSync(cwd, phase, options) {
   const opts = options || {};
   loadConfig(cwd); // Ensure config is loaded (side-effects: migration)
   // Read issue_tracker config directly from config.json since loadConfig
@@ -2081,7 +2165,7 @@ function cmdIssueSync(cwd, phase, options, raw) {
   }
 
   const result = { synced, conflicts, skipped };
-  output(result, raw,
+  output(result, 
     `Synced ${synced.length} ref(s), ${conflicts.length} conflict(s), ${skipped} skipped`
   );
   return result;
@@ -2092,10 +2176,9 @@ function cmdIssueSync(cwd, phase, options, raw) {
  * Deduplicates by ref_string.
  *
  * @param {string} cwd
- * @param {boolean} raw - Raw JSON output
  * @returns {{ refs: Array<{source, ref_string, parsed}>, count }}
  */
-function cmdIssueListRefs(cwd, raw) {
+function cmdIssueListRefs(cwd) {
   const refs = [];
   const seen = new Set();
 
@@ -2147,14 +2230,18 @@ function cmdIssueListRefs(cwd, raw) {
   }
 
   const result = { refs, count: refs.length };
-  output(result, raw, `Found ${refs.length} external ref(s)`);
+  output(result, `Found ${refs.length} external ref(s)`);
   return result;
 }
 
-function cmdStalenessCheck(cwd, raw) {
+function cmdStalenessCheck(cwd, countOnly = false) {
   const { codebase: codebaseDir } = planningPaths(cwd);
   if (!fs.existsSync(codebaseDir)) {
-    output({ stale: [], all_stale: false }, raw, 'no codebase directory');
+    if (countOnly) {
+      output(0, '0');
+    } else {
+      output({ stale: [], all_stale: false }, 'no codebase directory');
+    }
     return;
   }
 
@@ -2195,15 +2282,19 @@ function cmdStalenessCheck(cwd, raw) {
     } catch {}
   }
 
+  if (countOnly) {
+    output(stale.length, String(stale.length));
+    return;
+  }
+
   const allStale = stale.length === docs.length;
   output(
     { stale, all_stale: allStale, total_docs: docs.length },
-    raw,
     stale.length > 0 ? stale.map(s => s.doc).join(', ') : 'none'
   );
 }
 
-function cmdHelp(cwd, args, raw) {
+function cmdHelp(cwd, args) {
   const commandsDir = path.join(__dirname, '..', '..', '..', 'commands', 'gsd');
   let commands = [];
 
@@ -2225,7 +2316,7 @@ function cmdHelp(cwd, args, raw) {
     commands.sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
     const result = { commands: [], error: 'Commands directory not found' };
-    output(result, raw, 'Commands directory not found');
+    output(result, 'Commands directory not found');
     return;
   }
 
@@ -2241,7 +2332,7 @@ function cmdHelp(cwd, args, raw) {
   }
 
   const result = { commands };
-  output(result, raw, formatHelpText(commands));
+  output(result, formatHelpText(commands));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2587,9 +2678,8 @@ function rewriteDivergenceTable(filePath, triageState) {
  *
  * @param {string} cwd
  * @param {{ refresh?: boolean, init?: boolean, triage?: string, status?: string, reason?: string, branch?: string, base?: string, remote?: string, remoteBranch?: string }} opts
- * @param {boolean} raw
  */
-function cmdDivergence(cwd, opts, raw) {
+function cmdDivergence(cwd, opts) {
   const { divergence: divergencePath } = planningPaths(cwd);
 
   // ── Branch mode: track drift between base and branch ──────────────────────
@@ -2663,7 +2753,7 @@ function cmdDivergence(cwd, opts, raw) {
       } catch {}
 
       writeDivergenceBranchSection(divergencePath, sectionKey, allCommits);
-      output({ status: 'initialized', section: sectionKey, commits: allCommits.length }, raw,
+      output({ status: 'initialized', section: sectionKey, commits: allCommits.length },
         `Initialized branch section '${sectionKey}' with ${allCommits.length} commits`);
       return;
     }
@@ -2703,7 +2793,7 @@ function cmdDivergence(cwd, opts, raw) {
         status: e.status || 'pending', reason: e.reason || '',
       }));
       writeDivergenceBranchSection(divergencePath, sectionKey, commits);
-      output({ status: 'updated', hash, new_status: status, section: sectionKey }, raw,
+      output({ status: 'updated', hash, new_status: status, section: sectionKey },
         `Updated ${hash} in ${sectionKey}: ${status}${reason ? ' — ' + reason : ''}`);
       return;
     }
@@ -2753,7 +2843,7 @@ function cmdDivergence(cwd, opts, raw) {
           unknown: commits.filter(c => c.classification === 'unknown').length,
         },
       },
-    }, raw, summaryText);
+    }, summaryText);
     return;
   }
 
@@ -2766,7 +2856,7 @@ function cmdDivergence(cwd, opts, raw) {
   } catch {}
 
   if (!upstreamUrl) {
-    output({ status: 'no_upstream', commits: [] }, raw, `No '${remoteName}' remote found. Add one with: git remote add ${remoteName} <url>`);
+    output({ status: 'no_upstream', commits: [] }, `No '${remoteName}' remote found. Add one with: git remote add ${remoteName} <url>`);
     return;
   }
 
@@ -2808,7 +2898,7 @@ function cmdDivergence(cwd, opts, raw) {
     } catch {}
 
     writeDivergenceFile(divergencePath, upstreamUrl, allCommits, remoteName);
-    output({ status: 'initialized', commits: allCommits.length }, raw, `Initialized DIVERGENCE.md with ${allCommits.length} upstream commits`);
+    output({ status: 'initialized', commits: allCommits.length }, `Initialized DIVERGENCE.md with ${allCommits.length} upstream commits`);
     return;
   }
 
@@ -2843,7 +2933,7 @@ function cmdDivergence(cwd, opts, raw) {
 
     triageState.set(hash, { ...entry, status, reason });
     rewriteDivergenceTable(divergencePath, triageState);
-    output({ status: 'updated', hash, new_status: status }, raw, `Updated ${hash}: ${status}${reason ? ' — ' + reason : ''}`);
+    output({ status: 'updated', hash, new_status: status }, `Updated ${hash}: ${status}${reason ? ' — ' + reason : ''}`);
     return;
   }
 
@@ -2900,7 +2990,7 @@ function cmdDivergence(cwd, opts, raw) {
     upstream: upstreamUrl,
     commits,
     summary: { pending, picked, skipped, deferred, total: commits.length },
-  }, raw, summaryText);
+  }, summaryText);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3066,9 +3156,8 @@ function detectOscillation(commits) {
  *
  * @param {string} cwd - Working directory
  * @param {string[]} args - CLI args (supports --window N)
- * @param {boolean} raw - Raw output mode
  */
-function cmdPingpongCheck(cwd, args, raw) {
+function cmdPingpongCheck(cwd, args) {
   const windowIdx = args.indexOf('--window');
   const window = windowIdx !== -1 ? parseInt(args[windowIdx + 1], 10) || 20 : 20;
 
@@ -3076,14 +3165,14 @@ function cmdPingpongCheck(cwd, args, raw) {
 
   if (result.exitCode !== 0 || !result.stdout || !result.stdout.trim()) {
     const response = { status: 'ok', reason: 'no git history', details: { oscillating_files: [], agent_sequence: [] } };
-    output(response, raw, 'ok');
+    output(response, 'ok');
     return;
   }
 
   const commits = parseCommitLog(result.stdout);
   const detection = detectOscillation(commits);
 
-  output(detection, raw, detection.status);
+  output(detection, detection.status);
 }
 
 /**
@@ -3212,9 +3301,8 @@ function detectBreakout(commits, declaredFiles) {
  *
  * @param {string} cwd - Working directory
  * @param {string[]} args - CLI args: --plan {id} --declared-files f1,f2,f3
- * @param {boolean} raw - Raw output mode
  */
-function cmdBreakoutCheck(cwd, args, raw) {
+function cmdBreakoutCheck(cwd, args) {
   const planIdx = args.indexOf('--plan');
   const planId = planIdx !== -1 ? args[planIdx + 1] : null;
   const filesIdx = args.indexOf('--declared-files');
@@ -3222,7 +3310,7 @@ function cmdBreakoutCheck(cwd, args, raw) {
 
   if (!planId) {
     const response = { status: 'ok', reason: 'No --plan specified', details: { unexpected_files: [] } };
-    output(response, raw, 'ok');
+    output(response, 'ok');
     return;
   }
 
@@ -3233,17 +3321,17 @@ function cmdBreakoutCheck(cwd, args, raw) {
 
   if (result.exitCode !== 0 || !result.stdout || !result.stdout.trim()) {
     const response = { status: 'ok', reason: 'No matching commits found', details: { unexpected_files: [] } };
-    output(response, raw, 'ok');
+    output(response, 'ok');
     return;
   }
 
   const commits = parseCommitLog(result.stdout);
   const detection = detectBreakout(commits, declaredFiles);
 
-  output(detection, raw, detection.status);
+  output(detection, detection.status);
 }
 
-function cmdGenerateAllowlist(cwd, raw) {
+function cmdGenerateAllowlist(cwd) {
   // 1. Load static template as baseline
   const templatePath = path.join(__dirname, '..', '..', 'templates', 'settings-sandbox.json');
   let template;
@@ -3302,11 +3390,7 @@ function cmdGenerateAllowlist(cwd, raw) {
   };
 
   // 5. Output
-  if (raw) {
-    output(result, true, JSON.stringify(result, null, 2));
-  } else {
-    output(result, false, `Generated allowlist with ${allEntries.length} entries (${staticEntries.size} static + ${dynamicEntries.size} dynamic)`);
-  }
+  output(result);
 }
 
 /**
@@ -3469,7 +3553,7 @@ function discoverTestCommand(cwd) {
  * 4. Cross-reference against .planning/phases/ directories that still exist
  * 5. dryRun: return preview; otherwise: mkdir + renameSync each phase dir
  */
-function cmdCleanup(cwd, options, raw) {
+function cmdCleanup(cwd, options) {
   const { dryRun } = options || {};
   const { milestonesFile: milestonesFilePath, milestones: milestonesDir, phases: phasesDir } = planningPaths(cwd);
 
@@ -3479,7 +3563,7 @@ function cmdCleanup(cwd, options, raw) {
     milestonesContent = fs.readFileSync(milestonesFilePath, 'utf-8');
   } catch {
     const result = { milestones: [], nothing_to_do: true, error: 'MILESTONES.md not found' };
-    output(result, raw, 'MILESTONES.md not found. Nothing to clean up.');
+    output(result, 'MILESTONES.md not found. Nothing to clean up.');
     return;
   }
 
@@ -3498,7 +3582,7 @@ function cmdCleanup(cwd, options, raw) {
 
   if (completedVersions.length === 0) {
     const result = { milestones: [], nothing_to_do: true };
-    output(result, raw, 'No completed milestones found. Nothing to clean up.');
+    output(result, 'No completed milestones found. Nothing to clean up.');
     return;
   }
 
@@ -3605,11 +3689,11 @@ function cmdCleanup(cwd, options, raw) {
         }
       }
     }
-    output(result, raw, text);
+    output(result, text);
   } else {
     const total = milestoneResults.filter(m => !m.skipped).reduce((sum, m) => sum + (m.phases_to_archive ? m.phases_to_archive.length : 0), 0);
     const mCount = milestoneResults.filter(m => !m.skipped && m.phases_to_archive && m.phases_to_archive.length > 0).length;
-    output(result, raw, `Archived ${total} phase directories from ${mCount} milestones.`);
+    output(result, `Archived ${total} phase directories from ${mCount} milestones.`);
   }
 }
 
@@ -3676,10 +3760,9 @@ function detectInstallLocation(cwd) {
  *
  * @param {string} cwd - Working directory
  * @param {{ dryRun: boolean, local: boolean, global: boolean }} options
- * @param {boolean} raw - Raw output flag
  * @param {{ latestVersion: string|null, updateSource: string|null } | null} _testOverrides - Test injection
  */
-function cmdUpdate(cwd, options, raw, _testOverrides) {
+function cmdUpdate(cwd, options, _testOverrides) {
   const { dryRun = false } = options || {};
   const homeDir = process.env.GSD_TEST_HOME || os.homedir();
 
@@ -3696,7 +3779,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
     return output({
       status: 'unknown_version',
       message: 'No VERSION file found. Run npx gsd-ng@latest to install.',
-    }, raw);
+    });
   }
 
   const { isLocal, installedVersion } = installInfo;
@@ -3771,7 +3854,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
     return output({
       status: 'both_unavailable',
       message: 'Could not check for updates (npm and GitHub both unavailable).',
-    }, raw);
+    });
   }
 
   // 3. Compare versions
@@ -3781,14 +3864,14 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
       status: 'already_current',
       installed,
       latest: latestVersion,
-    }, raw);
+    });
   }
   if (cmp > 0) {
     return output({
       status: 'ahead',
       installed,
       latest: latestVersion,
-    }, raw);
+    });
   }
 
   // 4. Dry-run: return info without executing
@@ -3800,7 +3883,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
       update_source: updateSource,
       install_type: isLocal ? 'local' : 'global',
       update_available: true,
-    }, raw);
+    });
   }
 
   // 5. Execute update
@@ -3820,7 +3903,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
       to: latestVersion,
       source: updateSource,
       install_command: installCommand,
-    }, raw);
+    });
   }
 
   if (updateSource === 'npm') {
@@ -3833,7 +3916,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
       return output({
         status: 'error',
         message: 'Update failed: ' + (e.message || 'unknown error'),
-      }, raw);
+      });
     }
   } else {
     // GitHub path: download tarball, extract, run install.js
@@ -3891,7 +3974,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
       return output({
         status: 'error',
         message: 'Update failed: ' + (e.message || 'unknown error'),
-      }, raw);
+      });
     }
     try { fs.rmSync(tmpExtractDir, { recursive: true, force: true }); } catch {}
   }
@@ -3908,7 +3991,7 @@ function cmdUpdate(cwd, options, raw, _testOverrides) {
     from: installed,
     to: latestVersion,
     source: updateSource,
-  }, raw);
+  });
 }
 
 module.exports = {
@@ -3927,6 +4010,8 @@ module.exports = {
   parseDuration,
   isRecurringDue,
   cmdTodoComplete,
+  cmdTodoListByPhase,
+  cmdTodoScanPhaseLinked,
   cmdRecurringDue,
   cmdScaffold,
   cmdStats,

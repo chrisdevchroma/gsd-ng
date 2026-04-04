@@ -38,7 +38,7 @@ describe('state-snapshot command', () => {
   });
 
   test('missing STATE.md returns error', () => {
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -62,7 +62,7 @@ describe('state-snapshot command', () => {
 `
     );
 
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -92,7 +92,7 @@ describe('state-snapshot command', () => {
 `
     );
 
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -116,7 +116,7 @@ describe('state-snapshot command', () => {
 `
     );
 
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -141,7 +141,7 @@ describe('state-snapshot command', () => {
 `
     );
 
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -160,7 +160,7 @@ describe('state-snapshot command', () => {
 `
     );
 
-    const result = runGsdTools('state-snapshot', tmpDir);
+    const result = runGsdTools('state-snapshot --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -179,7 +179,7 @@ describe('state-snapshot command', () => {
     const outsideDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-outside-'));
 
     try {
-      const result = runGsdTools(`state-snapshot --cwd "${tmpDir}"`, outsideDir);
+      const result = runGsdTools(`state-snapshot --cwd "${tmpDir}"` + ` --json`, outsideDir);
       assert.ok(result.success, `Command failed: ${result.error}`);
 
       const output = JSON.parse(result.output);
@@ -331,7 +331,7 @@ describe('state json command', () => {
   });
 
   test('missing STATE.md returns error', () => {
-    const result = runGsdTools('state json', tmpDir);
+    const result = runGsdTools('state json --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -354,7 +354,7 @@ describe('state json command', () => {
 `
     );
 
-    const result = runGsdTools('state json', tmpDir);
+    const result = runGsdTools('state json --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -386,7 +386,7 @@ stopped_at: Plan 2 of Phase 3
 `
     );
 
-    const result = runGsdTools('state json', tmpDir);
+    const result = runGsdTools('state json --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -412,7 +412,7 @@ stopped_at: Plan 2 of Phase 3
         `# State\n\n**Current Phase:** 01\n**Status:** ${input}\n`
       );
 
-      const result = runGsdTools('state json', tmpDir);
+      const result = runGsdTools('state json --json', tmpDir);
       assert.ok(result.success, `Command failed for status "${input}": ${result.error}`);
       const output = JSON.parse(result.output);
       assert.strictEqual(output.status, expected, `"${input}" should normalize to "${expected}"`);
@@ -531,9 +531,9 @@ milestone: v1.0
 `
     );
 
-    runGsdTools('state update Status "Executing Plan 5"', tmpDir);
+    runGsdTools('state update Status "Executing Plan 5" --json', tmpDir);
 
-    const result = runGsdTools('state json', tmpDir);
+    const result = runGsdTools('state json --json', tmpDir);
     assert.ok(result.success, `state json failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -656,7 +656,7 @@ describe('cmdStateLoad (state load)', () => {
       '# Roadmap\n'
     );
 
-    const result = runGsdTools('state load', tmpDir);
+    const result = runGsdTools('state load --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -667,7 +667,7 @@ describe('cmdStateLoad (state load)', () => {
   });
 
   test('returns state_exists false when STATE.md missing', () => {
-    const result = runGsdTools('state load', tmpDir);
+    const result = runGsdTools('state load --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -675,7 +675,7 @@ describe('cmdStateLoad (state load)', () => {
     assert.strictEqual(output.state_raw, '', 'state_raw should be empty string');
   });
 
-  test('returns raw key=value format with --raw flag', () => {
+  test('returns JSON with state_exists and config_exists fields', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       '# Project State\n\n**Status:** Active\n'
@@ -685,11 +685,12 @@ describe('cmdStateLoad (state load)', () => {
       JSON.stringify({ mode: 'yolo' })
     );
 
-    const result = runGsdTools('state load --raw', tmpDir);
+    const result = runGsdTools('state load --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    assert.ok(result.output.includes('state_exists=true'), 'raw output should include state_exists=true');
-    assert.ok(result.output.includes('config_exists=true'), 'raw output should include config_exists=true');
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.state_exists, true, 'state_exists should be true');
+    assert.strictEqual(output.config_exists, true, 'config_exists should be true');
   });
 });
 
@@ -708,7 +709,7 @@ describe('cmdStateGet (state get)', () => {
     const stateContent = '---\nstatus: completed\n---\n# Project State\n\n**Status:** Active\n**Current Phase:** 03\n';
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateContent);
 
-    const result = runGsdTools('state get', tmpDir);
+    const result = runGsdTools('state get --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -724,7 +725,7 @@ describe('cmdStateGet (state get)', () => {
       '# Project State\n\n**Status:** Active\n'
     );
 
-    const result = runGsdTools('state get Status', tmpDir);
+    const result = runGsdTools('state get Status --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -737,7 +738,7 @@ describe('cmdStateGet (state get)', () => {
       '# Project State\n\n**Status:** Active\n\n## Blockers\n\n- item1\n- item2\n'
     );
 
-    const result = runGsdTools('state get Blockers', tmpDir);
+    const result = runGsdTools('state get Blockers --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -754,7 +755,7 @@ describe('cmdStateGet (state get)', () => {
       '# Project State\n\n**Status:** Active\n'
     );
 
-    const result = runGsdTools('state get Missing', tmpDir);
+    const result = runGsdTools('state get Missing --json', tmpDir);
     assert.ok(result.success, `Command should exit 0 even for missing field: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -858,7 +859,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
   test('state patch reports failed fields that do not exist', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
-    const result = runGsdTools('state patch --Status Done --Missing value', tmpDir);
+    const result = runGsdTools('state patch --Status Done --Missing value --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -871,7 +872,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
   test('state update changes a single field', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
-    const result = runGsdTools('state update Status "Phase complete"', tmpDir);
+    const result = runGsdTools('state update Status "Phase complete" --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -886,7 +887,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
   test('state update reports field not found', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
-    const result = runGsdTools('state update Missing value', tmpDir);
+    const result = runGsdTools('state update Missing value --json', tmpDir);
     assert.ok(result.success, `Command should exit 0 for not-found field: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -895,7 +896,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
   });
 
   test('state update returns error when STATE.md missing', () => {
-    const result = runGsdTools('state update Status value', tmpDir);
+    const result = runGsdTools('state update Status value --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -935,7 +936,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), advanceFixture);
 
     const before = new Date().toISOString().split('T')[0];
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -958,7 +959,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
     const lastPlanFixture = advanceFixture.replace('**Current Plan:** 1', '**Current Plan:** 3');
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), lastPlanFixture);
 
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -971,7 +972,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
   });
 
   test('returns error when STATE.md missing', () => {
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -985,7 +986,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
       '# Project State\n\n**Status:** Active\n'
     );
 
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -999,7 +1000,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
       `# Project State\n\nPlan: 2 of 5 in current phase\nStatus: In progress\nLast activity: 2025-01-01\n`
     );
 
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1021,7 +1022,7 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
       `# Project State\n\nPlan: 3 of 3 in current phase\nStatus: In progress\nLast activity: 2025-01-01\n`
     );
 
-    const result = runGsdTools('state advance-plan', tmpDir);
+    const result = runGsdTools('state advance-plan --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1059,7 +1060,7 @@ describe('cmdStateRecordMetric (state record-metric)', () => {
   test('appends metric row to existing table', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), metricsFixture);
 
-    const result = runGsdTools('state record-metric --phase 2 --plan 1 --duration 5min --tasks 3 --files 4', tmpDir);
+    const result = runGsdTools('state record-metric --phase 2 --plan 1 --duration 5min --tasks 3 --files 4 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1095,7 +1096,7 @@ describe('cmdStateRecordMetric (state record-metric)', () => {
   test('returns error when required fields missing', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), metricsFixture);
 
-    const result = runGsdTools('state record-metric --phase 1', tmpDir);
+    const result = runGsdTools('state record-metric --phase 1 --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1107,7 +1108,7 @@ describe('cmdStateRecordMetric (state record-metric)', () => {
   });
 
   test('returns error when STATE.md missing', () => {
-    const result = runGsdTools('state record-metric --phase 1 --plan 1 --duration 2min', tmpDir);
+    const result = runGsdTools('state record-metric --phase 1 --plan 1 --duration 2min --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1144,7 +1145,7 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
     fs.mkdirSync(phase02Dir, { recursive: true });
     fs.writeFileSync(path.join(phase02Dir, '02-01-PLAN.md'), '# Plan\n');
 
-    const result = runGsdTools('state update-progress', tmpDir);
+    const result = runGsdTools('state update-progress --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1163,7 +1164,7 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
       '# Project State\n\n**Progress:** [░░░░░░░░░░] 0%\n'
     );
 
-    const result = runGsdTools('state update-progress', tmpDir);
+    const result = runGsdTools('state update-progress --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1176,7 +1177,7 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
       '# Project State\n\n**Status:** Active\n'
     );
 
-    const result = runGsdTools('state update-progress', tmpDir);
+    const result = runGsdTools('state update-progress --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1185,7 +1186,7 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
   });
 
   test('returns error when STATE.md missing', () => {
-    const result = runGsdTools('state update-progress', tmpDir);
+    const result = runGsdTools('state update-progress --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1224,7 +1225,7 @@ describe('cmdStateResolveBlocker (state resolve-blocker)', () => {
   test('removes matching blocker line (case-insensitive substring match)', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), blockerFixture);
 
-    const result = runGsdTools('state resolve-blocker --text "api credentials"', tmpDir);
+    const result = runGsdTools('state resolve-blocker --text "api credentials" --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1263,7 +1264,7 @@ describe('cmdStateResolveBlocker (state resolve-blocker)', () => {
   test('returns error when text not provided', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), blockerFixture);
 
-    const result = runGsdTools('state resolve-blocker', tmpDir);
+    const result = runGsdTools('state resolve-blocker --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1275,7 +1276,7 @@ describe('cmdStateResolveBlocker (state resolve-blocker)', () => {
   });
 
   test('returns error when STATE.md missing', () => {
-    const result = runGsdTools('state resolve-blocker --text "anything"', tmpDir);
+    const result = runGsdTools('state resolve-blocker --text "anything" --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1286,7 +1287,7 @@ describe('cmdStateResolveBlocker (state resolve-blocker)', () => {
   test('returns resolved true even if no line matches', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), blockerFixture);
 
-    const result = runGsdTools('state resolve-blocker --text "nonexistent blocker text"', tmpDir);
+    const result = runGsdTools('state resolve-blocker --text "nonexistent blocker text" --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1319,7 +1320,7 @@ describe('cmdStateRecordSession (state record-session)', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), sessionFixture);
 
     const result = runGsdTools(
-      'state record-session --stopped-at "Phase 3, Plan 2" --resume-file ".planning/phases/03/03-02-PLAN.md"',
+      'state record-session --stopped-at "Phase 3, Plan 2" --resume-file ".planning/phases/03/03-02-PLAN.md" --json',
       tmpDir
     );
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -1339,7 +1340,7 @@ describe('cmdStateRecordSession (state record-session)', () => {
   test('updates Last session timestamp even with no other options', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), sessionFixture);
 
-    const result = runGsdTools('state record-session', tmpDir);
+    const result = runGsdTools('state record-session --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1365,7 +1366,7 @@ describe('cmdStateRecordSession (state record-session)', () => {
   });
 
   test('returns error when STATE.md missing', () => {
-    const result = runGsdTools('state record-session', tmpDir);
+    const result = runGsdTools('state record-session --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1379,7 +1380,7 @@ describe('cmdStateRecordSession (state record-session)', () => {
       '# Project State\n\n**Status:** Active\n**Phase:** 03\n'
     );
 
-    const result = runGsdTools('state record-session', tmpDir);
+    const result = runGsdTools('state record-session --json', tmpDir);
     assert.ok(result.success, `Command should exit 0: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1438,7 +1439,7 @@ describe('milestone-scoped phase counting in frontmatter', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     // Read the state json to check frontmatter
-    const jsonResult = runGsdTools('state json', tmpDir);
+    const jsonResult = runGsdTools('state json --json', tmpDir);
     assert.ok(jsonResult.success, `state json failed: ${jsonResult.error}`);
 
     const output = JSON.parse(jsonResult.output);
@@ -1479,7 +1480,7 @@ describe('milestone-scoped phase counting in frontmatter', () => {
     const result = runGsdTools('state update Status "Executing"', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    const jsonResult = runGsdTools('state json', tmpDir);
+    const jsonResult = runGsdTools('state json --json', tmpDir);
     assert.ok(jsonResult.success, `state json failed: ${jsonResult.error}`);
 
     const output = JSON.parse(jsonResult.output);
@@ -1504,7 +1505,7 @@ describe('milestone-scoped phase counting in frontmatter', () => {
     const result = runGsdTools('state update Status "In progress"', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    const jsonResult = runGsdTools('state json', tmpDir);
+    const jsonResult = runGsdTools('state json --json', tmpDir);
     assert.ok(jsonResult.success, `state json failed: ${jsonResult.error}`);
 
     const output = JSON.parse(jsonResult.output);
@@ -1557,7 +1558,7 @@ describe('cmdStateBeginPhase (state begin-phase)', () => {
   test('updates STATE.md fields for new phase start', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), beginPhaseFixture);
 
-    const result = runGsdTools(['state', 'begin-phase', '--phase', '03', '--name', 'API Layer', '--plans', '4'], tmpDir);
+    const result = runGsdTools(['state', 'begin-phase', '--phase', '03', '--name', 'API Layer', '--plans', '4', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const out = JSON.parse(result.output);
@@ -1638,7 +1639,7 @@ describe('state adjust-quick-table command', () => {
       `# Project State\n\n**Current Phase:** 01\n`
     );
 
-    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    const result = runGsdTools('state adjust-quick-table --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1653,7 +1654,7 @@ describe('state adjust-quick-table command', () => {
       `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Status | Directory |\n|---|-------------|------|--------|--------|-----------|`
     );
 
-    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    const result = runGsdTools('state adjust-quick-table --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1668,7 +1669,7 @@ describe('state adjust-quick-table command', () => {
       `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|-------------|------|--------|-----------|`
     );
 
-    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    const result = runGsdTools('state adjust-quick-table --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1684,7 +1685,7 @@ describe('state adjust-quick-table command', () => {
 | 260101-a1b | Fix typo | 2026-01-01 | abc1234 | [260101-a1b-fix-typo](./quick/260101-a1b-fix-typo/) |`
     );
 
-    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    const result = runGsdTools('state adjust-quick-table --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1715,7 +1716,7 @@ describe('state adjust-quick-table command', () => {
       `# Project State\n\n### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|-------------|------|--------|-----------|`
     );
 
-    const result = runGsdTools('state adjust-quick-table', tmpDir);
+    const result = runGsdTools('state adjust-quick-table --json', tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1768,7 +1769,7 @@ status: testing
 `
     );
 
-    const result = runGsdTools(['state-snapshot', '--current'], tmpDir);
+    const result = runGsdTools(['state-snapshot', '--current', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1808,7 +1809,7 @@ status: testing
 `
     );
 
-    const result = runGsdTools(['state-snapshot', '--current'], tmpDir);
+    const result = runGsdTools(['state-snapshot', '--current', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1841,7 +1842,7 @@ status: testing
 `
     );
 
-    const result = runGsdTools(['state-snapshot'], tmpDir);
+    const result = runGsdTools(['state-snapshot', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);

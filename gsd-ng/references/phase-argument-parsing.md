@@ -57,5 +57,5 @@ fi
 Use `find-phase` for directory lookup:
 
 ```bash
-PHASE_DIR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PHASE}" --raw)
+PHASE_DIR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PHASE}")
 ```

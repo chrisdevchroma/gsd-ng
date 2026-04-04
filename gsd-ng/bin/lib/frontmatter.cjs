@@ -231,25 +231,31 @@ const FRONTMATTER_SCHEMAS = {
   verification: { required: ['phase', 'verified', 'status', 'score'] },
 };
 
-function cmdFrontmatterGet(cwd, filePath, field, raw, format) {
+function cmdFrontmatterGet(cwd, filePath, field, format, defaultValue) {
   if (!filePath) { error('file path required'); }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!content) {
+    if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+    output({ error: 'File not found', path: filePath }); return;
+  }
   const fm = extractFrontmatter(content);
   if (field) {
     const value = fm[field];
-    if (value === undefined) { output({ error: 'Field not found', field }, raw); return; }
+    if (value === undefined) {
+      if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+      output({ error: 'Field not found', field }); return;
+    }
     const rawString = (format === 'newline' && Array.isArray(value))
       ? value.join('\n')
       : (Array.isArray(value) ? value.join(', ') : String(value));
-    output({ [field]: value }, raw, rawString);
+    output({ [field]: value }, rawString);
   } else {
-    output(fm, raw);
+    output(fm);
   }
 }
 
-function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
+function cmdFrontmatterSet(cwd, filePath, field, value) {
   if (!filePath || !field || value === undefined) { error('file, field, and value required'); }
   const fieldCheck = validateFieldName(field);
   if (!fieldCheck.valid) {
@@ -262,7 +268,7 @@ function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
     }
   }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }); return; }
   const content = fs.readFileSync(fullPath, 'utf-8');
   const fm = extractFrontmatter(content);
   let parsedValue;
@@ -270,10 +276,10 @@ function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
   fm[field] = parsedValue;
   const newContent = spliceFrontmatter(content, fm);
   fs.writeFileSync(fullPath, newContent, 'utf-8');
-  output({ updated: true, field, value: parsedValue }, raw, 'true');
+  output({ updated: true, field, value: parsedValue }, 'true');
 }
 
-function cmdFrontmatterMerge(cwd, filePath, data, raw) {
+function cmdFrontmatterMerge(cwd, filePath, data) {
   if (!filePath || !data) { error('file and data required'); }
   if (!path.isAbsolute(filePath)) {
     const pathCheck = validatePath(filePath, cwd);
@@ -282,7 +288,7 @@ function cmdFrontmatterMerge(cwd, filePath, data, raw) {
     }
   }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }); return; }
   const content = fs.readFileSync(fullPath, 'utf-8');
   const fm = extractFrontmatter(content);
   let mergeData;
@@ -290,20 +296,20 @@ function cmdFrontmatterMerge(cwd, filePath, data, raw) {
   Object.assign(fm, mergeData);
   const newContent = spliceFrontmatter(content, fm);
   fs.writeFileSync(fullPath, newContent, 'utf-8');
-  output({ merged: true, fields: Object.keys(mergeData) }, raw, 'true');
+  output({ merged: true, fields: Object.keys(mergeData) }, 'true');
 }
 
-function cmdFrontmatterValidate(cwd, filePath, schemaName, raw) {
+function cmdFrontmatterValidate(cwd, filePath, schemaName) {
   if (!filePath || !schemaName) { error('file and schema required'); }
   const schema = FRONTMATTER_SCHEMAS[schemaName];
   if (!schema) { error(`Unknown schema: ${schemaName}. Available: ${Object.keys(FRONTMATTER_SCHEMAS).join(', ')}`); }
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
+  if (!content) { output({ error: 'File not found', path: filePath }); return; }
   const fm = extractFrontmatter(content);
   const missing = schema.required.filter(f => fm[f] === undefined);
   const present = schema.required.filter(f => fm[f] !== undefined);
-  output({ valid: missing.length === 0, missing, present, schema: schemaName }, raw, missing.length === 0 ? 'valid' : 'invalid');
+  output({ valid: missing.length === 0, missing, present, schema: schemaName }, missing.length === 0 ? 'valid' : 'invalid');
 }
 
 module.exports = {
