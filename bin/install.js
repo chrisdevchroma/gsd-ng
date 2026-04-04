@@ -816,18 +816,28 @@ const claudeToCopilotTools = {
 };
 
 /** HTML comment markers wrapping the GSD-managed block in copilot-instructions.md */
-const GSD_COPILOT_INSTRUCTIONS_MARKER = '<!-- GSD Configuration — managed by get-shit-done installer -->';
+const GSD_COPILOT_INSTRUCTIONS_MARKER = '<!-- GSD Configuration -->';
 const GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER = '<!-- /GSD Configuration -->';
 
 /**
  * HTML comment markers wrapping the GSD AST safety block in CLAUDE.md.
  * Idempotent: install checks for START marker before appending.
  *
- * AST safety: Claude Code's tree-sitter-bash heuristics cannot be suppressed
- * via config (Issue #30435). This block documents forbidden constructs for the
- * orchestrator session. See: https://github.com/anthropics/claude-code/issues/30435
+ * AST safety reference — issue tracker links for maintainers:
+ *  - #30435 https://github.com/anthropics/claude-code/issues/30435
+ *    Core AST safety layer (here-strings, process sub, ANSI-C, heredoc) — by design
+ *  - #42400 https://github.com/anthropics/claude-code/issues/42400
+ *    Brace expansion regression in v2.1.90
+ *  - #31373 https://github.com/anthropics/claude-code/issues/31373
+ *    $() nested context prompts — by design
+ *  - #28183 https://github.com/anthropics/claude-code/issues/28183
+ *    && compound chain re-prompts
+ *  - #22502 https://github.com/anthropics/claude-code/issues/22502
+ *    for loop spurious directory prompts
+ *  - #39875 https://github.com/anthropics/claude-code/issues/39875
+ *    bypassPermissions does NOT suppress AST heuristics
  */
-const GSD_AST_SAFETY_MARKER = '<!-- GSD — AST Safety Rules (managed by get-shit-done installer) -->';
+const GSD_AST_SAFETY_MARKER = '<!-- GSD — AST Safety Rules -->';
 const GSD_AST_SAFETY_CLOSE_MARKER = '<!-- /GSD — AST Safety Rules -->';
 
 /**
@@ -977,9 +987,9 @@ function mergeCopilotInstructions(instructionsPath, templateContent) {
  * Only called for Claude Code runtime installs — Copilot CLI has no equivalent
  * AST safety layer and must never receive this injection.
  *
- * AST safety: <<< here-strings, brace expansion, process substitution,
- * and ANSI-C quoting all trigger Claude Code's tree-sitter-bash heuristics even when
- * the command is allowlisted. See: https://github.com/anthropics/claude-code/issues/30435
+ * The template (gsd-ng/templates/ast-safety-rules.md) is the single source of
+ * truth for AST safety rules. Issue links are preserved in the JSDoc above the
+ * marker constants (search: GSD_AST_SAFETY_MARKER).
  *
  * @param {string} claudeMdPath - Absolute path to CLAUDE.md (in project cwd)
  */
