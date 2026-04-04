@@ -917,8 +917,8 @@ test('AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety bloc
     const content = fs.readFileSync(claudeMdPath, 'utf8');
     assert.ok(content.includes('GSD — AST Safety Rules'),
       'CLAUDE.md must contain AST safety block heading (AST-SAFETY-01).\nActual content: ' + content.slice(0, 500));
-    assert.ok(content.includes('30435'),
-      'CLAUDE.md must reference issue #30435 (AST-SAFETY-01)');
+    assert.ok(content.includes('brace expansion'),
+      'CLAUDE.md must include brace expansion entry from AST safety template (AST-SAFETY-01)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
