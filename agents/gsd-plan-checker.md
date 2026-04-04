@@ -73,7 +73,7 @@ Same methodology (goal-backward), different timing, different subject matter.
 
 **Process:**
 1. Extract phase goal from ROADMAP.md
-2. Extract requirement IDs from ROADMAP.md `**Requirements:**` line for this phase (strip brackets if present)
+2. Extract requirement IDs from ROADMAP.md `**Requirements**:` line for this phase (strip brackets if present)
 3. Verify each requirement ID appears in at least one plan's `requirements` frontmatter field
 4. For each requirement, find covering task(s) in the plan that claims it
 5. Flag requirements with no coverage or missing from all plans' `requirements` fields
@@ -357,21 +357,21 @@ Overall: ✅ PASS / ❌ FAIL
 
 If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
 
-## Dimension 9: CLAUDE.md Compliance
+## Dimension 9: {{PROJECT_RULES_FILE}} Compliance
 
-**Question:** Do plans respect project-specific conventions, constraints, and requirements from CLAUDE.md?
+**Question:** Do plans respect project-specific conventions, constraints, and requirements from {{PROJECT_RULES_FILE}}?
 
 **Process:**
-1. Read `./CLAUDE.md` in the working directory (already loaded via shared project context reference)
+1. Read `./{{PROJECT_RULES_FILE}}` in the working directory (already loaded via shared project context reference)
 2. Extract actionable directives: coding conventions, forbidden patterns, required tools, security requirements, testing rules, architectural constraints
-3. For each directive, check if any plan task contradicts or ignores it
-4. Flag plans that introduce patterns CLAUDE.md explicitly forbids
-5. Flag plans that skip steps CLAUDE.md explicitly requires (e.g., required linting, specific test frameworks, commit conventions)
+3. If no {{PROJECT_RULES_FILE}} exists -> **PASS** (no project rules to violate)
+4. For each directive, check if any plan task contradicts or ignores it
+5. Flag plans that introduce patterns or skip steps {{PROJECT_RULES_FILE}} explicitly forbids or requires (e.g., required linting, specific test frameworks, commit conventions)
 
 **Pass criteria:**
-- No plan task introduces a pattern CLAUDE.md explicitly forbids
-- Required steps from CLAUDE.md are present in relevant tasks
-- If no CLAUDE.md exists → **PASS** (no constraints to violate)
+- No plan task introduces a pattern {{PROJECT_RULES_FILE}} explicitly forbids
+- Required steps from {{PROJECT_RULES_FILE}} are present in relevant tasks
+- If no {{PROJECT_RULES_FILE}} exists -> **PASS** (no constraints to violate)
 
 **Fail criteria:**
 - Plan introduces a forbidden pattern (e.g., uses a banned library, wrong commit format)
@@ -380,21 +380,168 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 ### Dimension 9 Output
 
 ```
-## Dimension 9: CLAUDE.md Compliance
+## Dimension 9: {{PROJECT_RULES_FILE}} Compliance
 
-CLAUDE.md directives extracted: {N}
+{{PROJECT_RULES_FILE}} directives extracted: {N}
 - {directive 1}
 - {directive 2}
 
 Plan compliance:
 | Plan | Directive | Status | Notes |
 |------|-----------|--------|-------|
-| {plan} | {directive} | ✅ / ❌ | {details} |
+| {plan} | {directive} | PASS / FAIL | {details} |
 
-Overall: ✅ PASS / ❌ FAIL
+Overall: PASS / FAIL
 ```
 
-If no CLAUDE.md exists: `## Dimension 9: CLAUDE.md Compliance — ✅ PASS (no CLAUDE.md)`
+If no {{PROJECT_RULES_FILE}} exists: `## Dimension 9: {{PROJECT_RULES_FILE}} Compliance -- PASS (no {{PROJECT_RULES_FILE}})`
+
+If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
+
+## Dimension 10: Decision Coverage (if CONTEXT.md exists)
+
+**Question:** Does every locked CONTEXT.md decision have a plan that addresses the files it references?
+
+**Only check if CONTEXT.md was provided in the verification context.**
+
+**Process:**
+1. Parse the `<decisions>` section of CONTEXT.md. Stop reading at `### Claude's Discretion` — do NOT check items in that subsection.
+2. For each decision bullet in locked decisions:
+   a. Extract file path tokens: tokens that look like file paths (contain `/` or `./`, or end with a recognizable source/config extension like `.js`, `.ts`, `.md`, `.json`, `.yaml`, `.cjs`). Exclude abbreviations like `e.g.`, `i.e.`, and version strings like `v1.0`.
+   b. If no file path tokens found: skip this decision in D10 (handled by D11)
+   c. When matching extracted tokens against `files_modified`: try exact path match first, then basename equality (e.g., `install.js` matches `bin/install.js`). Do not use arbitrary substring matching.
+3. For each extracted file path: check if it appears in ANY plan's `files_modified` YAML array
+4. Also check: for every file in CONTEXT.md `<canonical_refs>`, verify it appears in at least one plan's `read_first` field
+5. File found in no plan's files_modified → CRITICAL
+
+**Severity: CRITICAL (blocker)** — file path from locked decision missing from all plans' files_modified
+
+**Canonical example (Phase 44):**
+- Decision: "Update installer: install.js must stop copying standalone baseline files."
+- Extracted path: `install.js`
+- Checked all plans' files_modified → `install.js` absent from all plans
+- Result: CRITICAL — planner created tasks to delete files and add replacement lib but forgot the installer itself
+
+**Red flags:**
+- File path token from locked decision absent from all plans' files_modified
+- Canonical ref file absent from all plans' read_first fields
+
+**Example issue (CRITICAL):**
+```yaml
+issue:
+  plan: null
+  dimension: "decision_coverage"
+  severity: "blocker"
+  description: "Decision references install.js but no plan includes it in files_modified"
+  decision: "Update installer: install.js must stop copying standalone baseline files"
+  missing_file: "bin/install.js"
+  fix_hint: "Add bin/install.js to files_modified in the plan that handles installer changes"
+```
+
+**Example issue (canonical ref):**
+```yaml
+issue:
+  plan: null
+  dimension: "decision_coverage"
+  severity: "blocker"
+  description: "Canonical ref 'docs/adr-007.md' not in any plan's read_first"
+  canonical_ref: "docs/adr-007.md"
+  fix_hint: "Add docs/adr-007.md to read_first in the plan that implements the related feature"
+```
+
+### Dimension 10 Output
+
+```
+## Dimension 10: Decision Coverage
+
+Decisions scanned: {N} (stopped at Claude's Discretion)
+File paths extracted: {M}
+Canonical refs checked: {K}
+
+| Decision (excerpt) | File Path | In files_modified? | Plan |
+|--------------------|-----------|-------------------|------|
+| {decision text} | {path} | YES / NO | {plan or "NONE"} |
+
+Canonical refs:
+| Ref Path | In read_first? | Plan |
+|----------|---------------|------|
+| {path} | YES / NO | {plan or "NONE"} |
+
+Overall: PASS / FAIL
+```
+
+If no CONTEXT.md: `## Dimension 10: Decision Coverage -- SKIPPED (no CONTEXT.md)`
+
+If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
+
+## Dimension 11: NL Coverage Check (if CONTEXT.md exists)
+
+**Question:** Does every locked decision and requirement have a covering plan?
+
+**Only check if CONTEXT.md was provided in the verification context.**
+
+**Positioned last** — runs after all programmatic checks pass.
+
+**Process:**
+1. Enumerate every locked decision from CONTEXT.md `<decisions>` (stop before `### Claude's Discretion`)
+2. Enumerate every requirement ID from CONTEXT.md (from `<decisions>` or from ROADMAP.md `**Requirements**:` field)
+3. For each item: state which plan covers it and how. Format:
+   - COVERED: "Plan 01 Task 2 — adds depends_on extraction to cmdRoadmapGetPhase"
+   - NOT COVERED: "No plan addresses this decision"
+4. For NOT COVERED items: quote the exact decision text (not an item number)
+5. For warning severity: plan action uses "audit/review" language where CONTEXT.md decision says "implement/create"
+
+**Severity:**
+- CRITICAL (blocker): Locked decision or requirement has no covering plan
+- warning (warning): Plan action is "audit/review" where CONTEXT.md says "implement/create"
+
+Both CRITICAL and warning findings block verification and feed the planner revision loop.
+
+**Red flags:**
+- Locked decision with no covering plan task
+- Requirement ID with no covering plan
+- Plan task action says "audit" or "review" where decision says "implement" or "create" or "add"
+- Gap report uses item numbers instead of quoting exact decision text
+
+**Example issue (CRITICAL — not covered):**
+```yaml
+issue:
+  plan: null
+  dimension: "nl_coverage"
+  severity: "blocker"
+  description: "Decision 'install.js must stop copying baseline files' has no coverage in any plan"
+  decision: "Update installer: install.js must stop copying standalone baseline files"
+  fix_hint: "Add a task to address the installer change, or add install.js to files_modified of the relevant plan"
+```
+
+**Example issue (warning — underscoped):**
+```yaml
+issue:
+  plan: "03"
+  dimension: "nl_coverage"
+  severity: "warning"
+  description: "CONTEXT.md says 'implement lineage analysis' but plan 03 action only mentions auditing discuss-phase.md"
+  decision: "Discuss-phase lineage analysis: adds to analyze_phase step..."
+  fix_hint: "Update task action in plan 03 to describe concrete implementation steps"
+```
+
+### Dimension 11 Output
+
+```
+## Dimension 11: NL Coverage Check
+
+Items enumerated: {N} decisions + {M} requirement IDs
+
+| # | Item (exact text) | Verdict | Covering Plan | Notes |
+|---|-------------------|---------|---------------|-------|
+| 1 | "{exact decision text}" | COVERED | Plan 01 Task 1 | {how} |
+| 2 | "{exact decision text}" | NOT COVERED | -- | {gap description} |
+| 3 | Req ID: {REQ-01} | COVERED | Plan 02 Task 2 | {how} |
+
+Overall: PASS / FAIL ({X} gaps found)
+```
+
+If no CONTEXT.md: `## Dimension 11: NL Coverage Check -- SKIPPED (no CONTEXT.md)`
 
 If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
 
@@ -547,7 +694,15 @@ Thresholds: 2-3 tasks/plan good, 4 warning, 5+ blocker (split required).
 
 **Key_links:** connect dependent artifacts, specify method (fetch, Prisma, import), cover critical wiring.
 
-## Step 10: Determine Overall Status
+## Step 10: Decision Coverage (if CONTEXT.md provided)
+
+Run Dimension 10 check: parse `<decisions>` section (stop at `### Claude's Discretion`), extract file path tokens from each locked decision, verify each path appears in at least one plan's `files_modified`. Also verify each `<canonical_refs>` file appears in at least one plan's `read_first`.
+
+## Step 11: NL Coverage Check (if CONTEXT.md provided)
+
+Run Dimension 11 check: enumerate every locked decision and requirement ID, state COVERED/NOT COVERED for each with exact decision text quoted. Flag warning for audit/review language where decision says implement/create.
+
+## Step 12: Determine Overall Status
 
 **passed:** All requirements covered, all tasks complete, dependency graph valid, key links planned, scope within budget, must_haves properly derived.
 
@@ -727,6 +882,8 @@ Plan verification complete when:
   - [ ] Locked decisions have implementing tasks
   - [ ] No tasks contradict locked decisions
   - [ ] Deferred ideas not included in plans
+- [ ] Dimension 10: Decision Coverage -- PASS or SKIPPED
+- [ ] Dimension 11: NL Coverage Check -- PASS or SKIPPED
 - [ ] Overall status determined (passed | issues_found)
 - [ ] Structured issues returned (if any found)
 - [ ] Result returned to orchestrator

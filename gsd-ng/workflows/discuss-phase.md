@@ -444,7 +444,7 @@ Analyze the phase to identify gray areas worth discussing. **Use both `prior_dec
 
 1. **Domain boundary** — What capability is this phase delivering? State it clearly.
 
-1b. **Initialize canonical refs accumulator** — Start building the `<canonical_refs>` list for CONTEXT.md. This accumulates throughout the entire discussion, not just this step.
+2. **Initialize canonical refs accumulator** — Start building the `<canonical_refs>` list for CONTEXT.md. This accumulates throughout the entire discussion, not just this step.
 
    **Source 1 (now):** Copy `Canonical refs:` from ROADMAP.md for this phase. Expand each to a full relative path.
    **Source 2 (now):** Check REQUIREMENTS.md and PROJECT.md for any specs/ADRs referenced for this phase.
@@ -453,14 +453,89 @@ Analyze the phase to identify gray areas worth discussing. **Use both `prior_dec
 
    This list is MANDATORY in CONTEXT.md. Every ref must have a full relative path so downstream agents can read it directly. If no external docs exist, note that explicitly.
 
-2. **Check prior decisions** — Before generating gray areas, check if any were already decided:
+3. **Requirements traceability check** — Before generating gray areas, check if this phase has requirement IDs mapped.
+
+Extract the `Requirements:` field from the phase's ROADMAP.md section (available in the `section` field from `roadmap get-phase`):
+
+```bash
+# Extract Requirements field from the section text already loaded
+REQUIREMENTS=$(echo "$PHASE_DATA" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try {
+      const r=JSON.parse(d);
+      const m=(r.section||'').match(/\*\*Requirements\*\*:\s*([^\n]+)/i);
+      const requirements = m ? m[1].trim().replace(/^\[(.*)\]$/, '\$1').trim() : '';
+      console.log(requirements);
+    } catch { console.log(''); }
+  });
+")
+
+if [ -z "$REQUIREMENTS" ] || [ "$REQUIREMENTS" = "TBD" ]; then
+  echo "Advisory: No requirement IDs mapped for Phase ${PHASE}. Consider adding them to REQUIREMENTS.md and referencing in the ROADMAP.md Requirements field. Example: add FEAT-${PHASE}-01 to REQUIREMENTS.md and set **Requirements**: FEAT-${PHASE}-01 in the ROADMAP.md phase entry."
+fi
+```
+
+This is NOT a hard block — the workflow continues to lineage analysis and gray areas regardless of the warning. The user can dismiss it.
+
+4. **Lineage resolution** — Trace the `Depends on:` chain (depth 1 only) to surface parent phase constraints as pre-answered items.
+
+```bash
+# Get depends_on from current phase (requires Plan 01's roadmap.cjs changes)
+DEPENDS_ON=$(echo "$PHASE_DATA" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+    try { const r=JSON.parse(d); console.log(r.depends_on||''); } catch { console.log(''); }
+  });
+")
+
+# If empty: skip silently (no message, no note in CONTEXT.md)
+if [ -n "$DEPENDS_ON" ]; then
+  # Extract parent phase numbers (depth 1 only — direct parents)
+  PARENT_PHASES=$(echo "$DEPENDS_ON" | node -e "
+    let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+      const matches=[...d.matchAll(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)];
+      console.log(matches.map(m=>m[1]).join('\n'));
+    });
+  ")
+
+  # For each parent: fetch goal + success_criteria
+  for PARENT_PHASE in $PARENT_PHASES; do
+    PARENT_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PARENT_PHASE" 2>/dev/null)
+    PARENT_FOUND=$(echo "$PARENT_DATA" | node -e "
+      let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+        try { console.log(JSON.parse(d).found ? 'true' : 'false'); } catch { console.log('false'); }
+      });
+    ")
+    # Skip silently if parent not found (common for prior milestones)
+    if [ "$PARENT_FOUND" = "true" ]; then
+      # Extract parent goal and success_criteria
+      # Summarize to 2-3 bullets most relevant to current phase domain
+      # Surface as pre-answered constraints (skip gray area discussion)
+      # Add parent's CONTEXT.md to canonical_refs accumulator
+    fi
+  done
+fi
+```
+
+Surface parent constraints as **pre-answered items** in the same pool as prior CONTEXT.md decisions. They skip gray area discussion entirely — they are inherited constraints, not open questions.
+
+For each found parent phase:
+- Read its goal and success_criteria from `roadmap get-phase` output
+- Summarize to 2-3 no-regression constraint bullets most relevant to current phase's domain
+- Add parent phase's CONTEXT.md path to the canonical_refs accumulator (e.g., `.planning/phases/XX-name/XX-CONTEXT.md`)
+- Store internally for `<lineage>` block output in write_context
+
+**Silent skip:** When `DEPENDS_ON` is empty or null, skip entirely — no note in CONTEXT.md, no message to user.
+
+**Depth 1 only:** Do NOT recursively traverse the parent's Depends on chain. Only fetch direct parents listed in the current phase's `Depends on:` field.
+
+5. **Check prior decisions** — Before generating gray areas, check if any were already decided:
    - Scan `<prior_decisions>` for relevant choices (e.g., "Ctrl+C only, no single-key shortcuts")
    - These are **pre-answered** — don't re-ask unless this phase has conflicting needs
    - Note applicable prior decisions for use in presentation
 
-3. **Gray areas by category** — For each relevant category (UI, UX, Behavior, Empty States, Content), identify 1-2 specific ambiguities that would change implementation. **Annotate with code context where relevant** (e.g., "You already have a Card component" or "No existing pattern for this").
+6. **Gray areas by category** — For each relevant category (UI, UX, Behavior, Empty States, Content), identify 1-2 specific ambiguities that would change implementation. **Annotate with code context where relevant** (e.g., "You already have a Card component" or "No existing pattern for this").
 
-4. **Skip assessment** — If no meaningful gray areas exist (pure infrastructure, clear-cut implementation, or all already decided in prior phases), the phase may not need discussion.
+7. **Skip assessment** — If no meaningful gray areas exist (pure infrastructure, clear-cut implementation, or all already decided in prior phases), the phase may not need discussion.
 
 **Output your analysis internally, then present to user.**
 
@@ -686,6 +761,20 @@ mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
 
 </domain>
 
+<!-- Only include <lineage> block if parent phases were found during lineage resolution (step 4) -->
+<!-- If no parent phases: omit the entire <lineage> block (not an empty block, fully absent) -->
+
+<lineage>
+## Parent Phase Constraints
+
+### Phase N: [Parent Phase Name]
+**Goal:** [parent goal]
+**No-regression constraints:**
+- [summarized criterion from success_criteria relevant to current phase]
+- [summarized criterion from success_criteria relevant to current phase]
+
+</lineage>
+
 <decisions>
 ## Implementation Decisions
 
@@ -717,6 +806,10 @@ Every entry needs a full relative path — not just a name.]
 
 ### [Topic area 2]
 - `path/to/feature-doc.md` — [What this doc defines]
+
+<!-- If parent phases were found, add their CONTEXT.md files here: -->
+### Parent phase context
+- `.planning/phases/XX-name/XX-CONTEXT.md` -- [Parent phase] decisions and constraints
 
 [If no external specs: "No external specs — requirements fully captured in decisions above"]
 

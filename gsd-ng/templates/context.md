@@ -27,6 +27,17 @@ Template for `.planning/phases/XX-name/{phase_num}-CONTEXT.md` - captures implem
 
 </domain>
 
+<!-- Only include <lineage> if parent phases exist (from Depends on: in ROADMAP.md). Omit entirely when no parent. -->
+<lineage>
+## Parent Phase Constraints
+
+### Phase [N]: [Parent Phase Name]
+**Goal:** [parent goal from ROADMAP.md]
+**No-regression constraints:**
+- [2-3 summarized criteria from parent's success_criteria, relevant to current phase domain]
+
+</lineage>
+
 <decisions>
 ## Implementation Decisions
 
@@ -190,6 +201,17 @@ Display posts from followed users in a scrollable feed. Users can view posts and
 CLI command to backup database to local file or S3. Supports full and incremental backups. Restore command is a separate phase.
 
 </domain>
+
+<lineage>
+## Parent Phase Constraints
+
+### Phase 1: Database Setup
+**Goal:** Set up database connections and schema management
+**No-regression constraints:**
+- Database connection pooling must remain functional (backup reads use the same pool)
+- Schema migration tooling must not be disrupted by backup file format changes
+
+</lineage>
 
 <decisions>
 ## Implementation Decisions
