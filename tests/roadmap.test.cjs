@@ -6,7 +6,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup } = require('./helpers.cjs');
 
 describe('roadmap get-phase command', () => {
   let tmpDir;
@@ -165,6 +165,112 @@ This phase covers:
     assert.strictEqual(output.found, false, 'phase should not be found');
     assert.strictEqual(output.error, 'malformed_roadmap', 'should identify malformed roadmap');
     assert.ok(output.message.includes('missing'), 'should explain the issue');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// roadmap get-phase depends_on and source_todos fields
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('roadmap get-phase depends_on and source_todos', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns depends_on when Depends on line is present', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+### Phase 1: Foundation
+**Goal:** Set up project infrastructure
+**Depends on:** Phase 44
+
+### Phase 2: Build
+**Goal:** Build features
+`
+    );
+
+    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.found, true, 'phase should be found');
+    assert.strictEqual(output.depends_on, 'Phase 44', 'depends_on should be extracted');
+  });
+
+  test('returns depends_on as null when no Depends on line is present', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+### Phase 1: Foundation
+**Goal:** Set up project infrastructure
+
+### Phase 2: Build
+**Goal:** Build features
+`
+    );
+
+    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.found, true, 'phase should be found');
+    assert.strictEqual(output.depends_on, null, 'depends_on should be null when absent');
+  });
+
+  test('returns source_todos when Source Todos line is present', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+### Phase 1: Foundation
+**Goal:** Set up project infrastructure
+**Source Todos**: \`2026-03-29-discuss-phase-parent-phase-gap-detection.md\`
+
+### Phase 2: Build
+**Goal:** Build features
+`
+    );
+
+    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.found, true, 'phase should be found');
+    assert.ok(output.source_todos !== null && output.source_todos !== undefined, 'source_todos should not be null');
+    assert.ok(
+      output.source_todos.includes('2026-03-29-discuss-phase-parent-phase-gap-detection.md'),
+      `source_todos should contain the filename, got: ${output.source_todos}`
+    );
+  });
+
+  test('returns source_todos as null when no Source Todos line is present', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+### Phase 1: Foundation
+**Goal:** Set up project infrastructure
+
+### Phase 2: Build
+**Goal:** Build features
+`
+    );
+
+    const result = runGsdTools('roadmap get-phase 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.found, true, 'phase should be found');
+    assert.strictEqual(output.source_todos, null, 'source_todos should be null when absent');
   });
 });
 
@@ -878,6 +984,108 @@ status: testing
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.phase_count, 3, 'should return all 3 phases when no current_phase in frontmatter');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Format contract tests — lineage and D10/D11 chain
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('format contract tests — lineage and D10/D11 chain', () => {
+  // Helper: count balanced tags
+  function tagsBalanced(content, tagName) {
+    const openCount = (content.match(new RegExp(`<${tagName}>`, 'g')) || []).length;
+    const closeCount = (content.match(new RegExp(`</${tagName}>`, 'g')) || []).length;
+    return openCount === closeCount && openCount > 0;
+  }
+
+  // D10 file path regex from CONTEXT.md locked decision
+  const D10_REGEX = /[\w./\-]+\.\w{1,5}/g;
+
+  test('detects balanced <lineage> tags', () => {
+    const content = '<lineage>\n## Parent Phase\n</lineage>';
+    assert.strictEqual(tagsBalanced(content, 'lineage'), true);
+  });
+
+  test('detects unbalanced <lineage> tags (missing close tag)', () => {
+    const content = '<lineage>\n## Parent Phase\n'; // missing </lineage>
+    assert.strictEqual(tagsBalanced(content, 'lineage'), false);
+  });
+
+  test('D10 regex extracts install.js from decision text', () => {
+    const text = 'Update installer: install.js must stop copying standalone baseline files';
+    const matches = text.match(D10_REGEX);
+    assert.ok(matches, 'should find matches');
+    assert.ok(matches.includes('install.js'), `should contain install.js, got: ${JSON.stringify(matches)}`);
+  });
+
+  test('D10 regex extracts paths with directories from decision text', () => {
+    const text = 'Modify gsd-ng/bin/lib/roadmap.cjs to add depends_on field';
+    const matches = text.match(D10_REGEX);
+    assert.ok(matches, 'should find matches');
+    assert.ok(
+      matches.some(m => m.includes('roadmap.cjs')),
+      `should contain roadmap.cjs, got: ${JSON.stringify(matches)}`
+    );
+  });
+
+  test('D10 regex returns no matches for decision without file paths', () => {
+    const text = 'Use depth 1 only for lineage traversal';
+    const matches = text.match(D10_REGEX);
+    // "1" has no extension, "depth" no extension — no file path matches expected
+    assert.strictEqual(matches, null, `should return null, got: ${JSON.stringify(matches)}`);
+  });
+
+  test('canonical ref paths are valid relative paths (no absolute, no URLs)', () => {
+    const refs = [
+      'gsd-ng/agents/gsd-plan-checker.md',
+      '.planning/phases/44-cli/44-CONTEXT.md',
+      'gsd-ng/workflows/discuss-phase.md'
+    ];
+    for (const ref of refs) {
+      assert.ok(!path.isAbsolute(ref), `${ref} should be relative`);
+      assert.ok(!ref.startsWith('http'), `${ref} should not be a URL`);
+      assert.ok(ref.includes('.'), `${ref} should have a file extension`);
+    }
+  });
+
+  test('Requirements regex matches **Requirements**: format (colon outside bold)', () => {
+    const regex = /\*\*Requirements\*\*:\s*([^\n]+)/i;
+    const section = '**Requirements**: HOOK-01, HOOK-02, HOOK-03';
+    const m = section.match(regex);
+    assert.ok(m, 'should match **Requirements**: format');
+    assert.strictEqual(m[1].trim(), 'HOOK-01, HOOK-02, HOOK-03');
+  });
+
+  test('Requirements regex does NOT match **Requirements:** format (colon inside bold)', () => {
+    const regex = /\*\*Requirements\*\*:\s*([^\n]+)/i;
+    const section = '**Requirements:** HOOK-01, HOOK-02';
+    const m = section.match(regex);
+    assert.strictEqual(m, null, 'should NOT match **Requirements:** (colon inside bold)');
+  });
+
+  test('Requirements bracket stripping removes outer brackets', () => {
+    const raw = '[REQ-01, REQ-02, REQ-03]';
+    const stripped = raw.trim().replace(/^\[(.*)\]$/, '$1').trim();
+    assert.strictEqual(stripped, 'REQ-01, REQ-02, REQ-03');
+  });
+
+  test('Requirements without brackets passes through unchanged', () => {
+    const raw = 'HOOK-01, HOOK-02';
+    const stripped = raw.trim().replace(/^\[(.*)\]$/, '$1').trim();
+    assert.strictEqual(stripped, 'HOOK-01, HOOK-02');
+  });
+
+  test('createTempGitProject scaffolds CONTEXT.md when contextContent provided', () => {
+    const content = '<lineage>\n## Parent\n</lineage>\n<decisions>\n- Use install.js\n</decisions>';
+    const tmpDir = createTempGitProject({ contextContent: content });
+    try {
+      const ctxPath = path.join(tmpDir, '.planning', 'phases', 'test-phase', 'test-CONTEXT.md');
+      assert.ok(fs.existsSync(ctxPath), 'test-CONTEXT.md should exist');
+      assert.strictEqual(fs.readFileSync(ctxPath, 'utf8'), content, 'content should match');
+    } finally {
+      cleanup(tmpDir);
+    }
   });
 });
 

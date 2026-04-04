@@ -70,7 +70,11 @@ function createTempProject() {
 }
 
 // Create temp directory with initialized git repo and at least one commit
-function createTempGitProject() {
+//
+// @param {object} [opts={}] - Optional scaffolding options
+// @param {string} [opts.contextContent] - If provided, writes this content to
+//   .planning/phases/test-phase/test-CONTEXT.md before the initial commit.
+function createTempGitProject(opts = {}) {
   const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-'));
   fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
 
@@ -83,6 +87,12 @@ function createTempGitProject() {
     path.join(tmpDir, '.planning', 'PROJECT.md'),
     '# Project\n\nTest project.\n'
   );
+
+  if (opts.contextContent) {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', 'test-phase');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, 'test-CONTEXT.md'), opts.contextContent);
+  }
 
   execSync('git add -A', { cwd: tmpDir, stdio: 'pipe' });
   execSync('git commit -m "initial commit"', { cwd: tmpDir, stdio: 'pipe' });

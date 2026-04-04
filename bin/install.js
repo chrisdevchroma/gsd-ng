@@ -294,6 +294,8 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(globalClaudeRegex, toHomePrefix(pathPrefix));
       content = content.replace(globalClaudeHomeRegex, toHomePrefix(pathPrefix));
       content = content.replace(localClaudeRegex, `./${dirName}/`);
+      // Template variable: project rules file path (Claude Code uses CLAUDE.md)
+      content = content.replace(/\{\{PROJECT_RULES_FILE\}\}/g, 'CLAUDE.md');
       content = processAttribution(content, getCommitAttribution());
       fs.writeFileSync(destPath, content);
     } else {
@@ -840,6 +842,9 @@ function convertClaudeToCopilotContent(content, isGlobal = false) {
 
   // Slash command prefix: gsd: → gsd- (applies to all Markdown content)
   out = out.replace(/gsd:/g, 'gsd-');
+
+  // Template variable: project rules file path
+  out = out.replace(/\{\{PROJECT_RULES_FILE\}\}/g, '.github/copilot-instructions.md');
 
   // Standalone CLAUDE.md references → copilot-instructions.md
   out = out.replace(/\bCLAUDE\.md\b/g, 'copilot-instructions.md');
