@@ -9,6 +9,8 @@ allowed-tools:
   - Grep
   - AskUserQuestion
 ---
+
+
 <objective>
 Create a pull/merge request from the current branch with auto-generated description from phase context.
 </objective>

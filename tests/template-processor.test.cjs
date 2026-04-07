@@ -2,7 +2,12 @@
 
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { processTemplate, validateMarkers, buildContext, RUNTIMES } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const fs = require('fs');
+const path = require('path');
+const { processTemplate, validateMarkers, buildContext, RUNTIMES, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const { resolveTmpDir } = require('./helpers.cjs');
+
+const BASE_TMPDIR = resolveTmpDir();
 
 // --- Variable substitution ---
 
@@ -181,6 +186,86 @@ describe('RUNTIMES', () => {
 
   test('copilot PROJECT_RULES_FILE is .github/copilot-instructions.md', () => {
     assert.equal(RUNTIMES.copilot.PROJECT_RULES_FILE, '.github/copilot-instructions.md');
+  });
+});
+
+// --- fillBetweenMarkers ---
+
+describe('fillBetweenMarkers', () => {
+  test('fills content between markers from template inner content', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-fill-'));
+    try {
+      const targetPath = path.join(tmpDir, 'target.md');
+      const templatePath = path.join(tmpDir, 'template.md');
+      fs.writeFileSync(targetPath, 'before\n<!-- START -->\n<!-- /START -->\nafter\n');
+      fs.writeFileSync(templatePath, '<!-- START -->\ninner content\n<!-- /START -->\n');
+      fillBetweenMarkers(targetPath, templatePath, '<!-- START -->', '<!-- /START -->');
+      const result = fs.readFileSync(targetPath, 'utf8');
+      assert.ok(result.includes('inner content'), 'filled content must appear between markers');
+      assert.ok(result.includes('before'), 'content before markers must be preserved');
+      assert.ok(result.includes('after'), 'content after markers must be preserved');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('overwrites existing content between markers (always in sync with template)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-fill-'));
+    try {
+      const targetPath = path.join(tmpDir, 'target.md');
+      const templatePath = path.join(tmpDir, 'template.md');
+      fs.writeFileSync(targetPath, '<!-- START -->\nstale content\n<!-- /START -->\n');
+      fs.writeFileSync(templatePath, '<!-- START -->\nfresh content\n<!-- /START -->\n');
+      fillBetweenMarkers(targetPath, templatePath, '<!-- START -->', '<!-- /START -->');
+      const result = fs.readFileSync(targetPath, 'utf8');
+      assert.ok(result.includes('fresh content'), 'stale content must be replaced with template content');
+      assert.ok(!result.includes('stale content'), 'stale content must not remain');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('no-op if target file does not exist', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-fill-'));
+    try {
+      const templatePath = path.join(tmpDir, 'template.md');
+      fs.writeFileSync(templatePath, '<!-- S -->\ncontent\n<!-- /S -->\n');
+      assert.doesNotThrow(() => {
+        fillBetweenMarkers(path.join(tmpDir, 'missing.md'), templatePath, '<!-- S -->', '<!-- /S -->');
+      });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('no-op if markers are absent from target file', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-fill-'));
+    try {
+      const targetPath = path.join(tmpDir, 'target.md');
+      const templatePath = path.join(tmpDir, 'template.md');
+      const original = 'no markers here\n';
+      fs.writeFileSync(targetPath, original);
+      fs.writeFileSync(templatePath, '<!-- S -->\ncontent\n<!-- /S -->\n');
+      fillBetweenMarkers(targetPath, templatePath, '<!-- S -->', '<!-- /S -->');
+      assert.equal(fs.readFileSync(targetPath, 'utf8'), original, 'file must be unchanged when markers absent');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('falls back to full template when template has no markers', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-fill-'));
+    try {
+      const targetPath = path.join(tmpDir, 'target.md');
+      const templatePath = path.join(tmpDir, 'template.md');
+      fs.writeFileSync(targetPath, '<!-- S -->\n<!-- /S -->\n');
+      fs.writeFileSync(templatePath, 'bare template content\n');
+      fillBetweenMarkers(targetPath, templatePath, '<!-- S -->', '<!-- /S -->');
+      const result = fs.readFileSync(targetPath, 'utf8');
+      assert.ok(result.includes('bare template content'), 'bare template content must be injected as fallback');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -11,6 +11,7 @@ allowed-tools:
 argument-hint: "[--force]"
 ---
 
+
 Detect workspace topology (submodule, monorepo, standalone) and seed appropriate structure-hazard memories into `.claude/memory/`. Updates both CLAUDE.md Memories section and `.claude/memory/MEMORY.md`.
 
 **Steps:**
@@ -31,6 +32,6 @@ Detect workspace topology (submodule, monorepo, standalone) and seed appropriate
 7. Commit changes
 
 **If `--force` flag:** Skip confirmation, bypass skip detection, and overwrite existing memory files even if existing memories already cover the concept.
-**Otherwise:** Show what would be seeded and ask user to confirm via AskUserQuestion before writing.
+**Otherwise:** Show what would be seeded and ask user to confirm via {{USER_QUESTION_TOOL}} before writing.
 
 Run from: `/gsd:seed-memories`

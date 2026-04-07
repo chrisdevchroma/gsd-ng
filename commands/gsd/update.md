@@ -6,6 +6,7 @@ allowed-tools:
   - AskUserQuestion
 ---
 
+
 Run the update command in dry-run mode first, then ask for confirmation before executing:
 
 1. Check for updates:
@@ -19,7 +20,7 @@ Run the update command in dry-run mode first, then ask for confirmation before e
 
 3. If update_available: show the user "Update available: {installed} -> {latest} (via {update_source})" and warn about clean install (commands/gsd/ and gsd-ng/ will be wiped and replaced; custom files preserved).
 
-4. Use AskUserQuestion to ask "Proceed with update?" with options "Yes, update now" and "Cancel".
+4. Use {{USER_QUESTION_TOOL}} to ask "Proceed with update?" with options "Yes, update now" and "Cancel".
 
 5. If confirmed, execute with the install_type from dry-run result:
 !`node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" update --{install_type}`

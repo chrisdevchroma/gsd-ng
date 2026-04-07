@@ -16,6 +16,7 @@ const reset = '\x1b[0m';
 
 // Get version from package.json
 const pkg = require('../package.json');
+const { processTemplate, buildContext, injectAfterFrontmatter, injectAppendToFile, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
 
 // Parse args
 const args = process.argv.slice(2);
@@ -296,6 +297,11 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(localClaudeRegex, `./${dirName}/`);
       // Template variable: project rules file path (Claude Code uses CLAUDE.md)
       content = content.replace(/\{\{PROJECT_RULES_FILE\}\}/g, 'CLAUDE.md');
+      // Inject first-turn rule into Claude command files that use AskUserQuestion
+      if (isCommand && runtime === 'claude' && content.includes('AskUserQuestion')) {
+        const ftrTemplate = path.join(__dirname, '..', 'gsd-ng', 'templates', 'first-turn-rule.md');
+        content = injectAfterFrontmatter(content, ftrTemplate, 'first_turn_rule');
+      }
       content = processAttribution(content, getCommitAttribution());
       fs.writeFileSync(destPath, content);
     } else {
@@ -864,8 +870,10 @@ function convertClaudeToCopilotContent(content, isGlobal = false) {
   // Slash command prefix: gsd: → gsd- (applies to all Markdown content)
   out = out.replace(/gsd:/g, 'gsd-');
 
-  // Template variable: project rules file path
-  out = out.replace(/\{\{PROJECT_RULES_FILE\}\}/g, '.github/copilot-instructions.md');
+  // Resolve {{variables}} and <!-- ONLY:x --> conditional blocks via template-processor.
+  // Path rewriting stays above (separate per design — CONTEXT.md Decision #7).
+  const ctx = buildContext('copilot');
+  out = processTemplate(out, ctx);
 
   // Standalone CLAUDE.md references → copilot-instructions.md
   out = out.replace(/\bCLAUDE\.md\b/g, 'copilot-instructions.md');
@@ -981,67 +989,9 @@ function mergeCopilotInstructions(instructionsPath, templateContent) {
   }
 }
 
-/**
- * Append the GSD AST safety ruleset block to CLAUDE.md in cwd.
- * Idempotent: skips if the START marker is already present.
- * Only called for Claude Code runtime installs — Copilot CLI has no equivalent
- * AST safety layer and must never receive this injection.
- *
- * The template (gsd-ng/templates/ast-safety-rules.md) is the single source of
- * truth for AST safety rules. Issue links are preserved in the JSDoc above the
- * marker constants (search: GSD_AST_SAFETY_MARKER).
- *
- * @param {string} claudeMdPath - Absolute path to CLAUDE.md (in project cwd)
- */
-function injectAstSafetyBlock(claudeMdPath) {
-  // Check for existing marker (idempotency)
-  if (fs.existsSync(claudeMdPath)) {
-    const existing = fs.readFileSync(claudeMdPath, 'utf8');
-    if (existing.includes(GSD_AST_SAFETY_MARKER)) {
-      return; // Already injected — skip
-    }
-  }
-
-  const templatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
-  const blockContent = fs.readFileSync(templatePath, 'utf8').trim();
-  const block = '\n' + blockContent + '\n';
-
-  if (fs.existsSync(claudeMdPath)) {
-    fs.appendFileSync(claudeMdPath, block, 'utf8');
-  } else {
-    fs.writeFileSync(claudeMdPath, block.trimStart(), 'utf8');
-  }
-}
-
-/**
- * Fill the GSD AST safety block in an installed file that has marker placeholders.
- * Unlike injectAstSafetyBlock (which appends to CLAUDE.md), this replaces content
- * between existing markers — keeping the file in sync with the template on every install.
- * Only called for Claude Code runtime installs.
- *
- * @param {string} filePath - Absolute path to the installed file containing AST safety markers
- */
-function fillAstSafetyBlock(filePath) {
-  if (!fs.existsSync(filePath)) return;
-  const existing = fs.readFileSync(filePath, 'utf8');
-  const startIdx = existing.indexOf(GSD_AST_SAFETY_MARKER);
-  const endIdx = existing.indexOf(GSD_AST_SAFETY_CLOSE_MARKER);
-  if (startIdx === -1 || endIdx === -1) return;
-
-  const templatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
-  const template = fs.readFileSync(templatePath, 'utf8');
-
-  // Extract inner content between the template's own markers
-  const tStart = template.indexOf(GSD_AST_SAFETY_MARKER);
-  const tEnd = template.indexOf(GSD_AST_SAFETY_CLOSE_MARKER);
-  const innerContent = (tStart !== -1 && tEnd !== -1)
-    ? template.slice(tStart + GSD_AST_SAFETY_MARKER.length, tEnd)
-    : '\n' + template.trim() + '\n';
-
-  const before = existing.slice(0, startIdx + GSD_AST_SAFETY_MARKER.length);
-  const after = existing.slice(endIdx);
-  fs.writeFileSync(filePath, before + innerContent + after, 'utf8');
-}
+// injectFirstTurnRule, injectAstSafetyBlock, and fillAstSafetyBlock moved to
+// template-processor.cjs as injectAfterFrontmatter, injectAppendToFile, and
+// fillBetweenMarkers respectively.
 
 /**
  * Remove the GSD block from copilot-instructions.md content.
@@ -1341,14 +1291,44 @@ function install(isGlobal) {
   // agent-shared-context.md (marker placeholders) so subagents see them too.
   // Single source of truth: gsd-ng/templates/ast-safety-rules.md
   // See: https://github.com/anthropics/claude-code/issues/30435
-  if (!isCopilot) {
+  if (runtime === 'claude') {
     const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
-    injectAstSafetyBlock(claudeMdPath);
+    const astTemplatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
+    injectAppendToFile(claudeMdPath, astTemplatePath, GSD_AST_SAFETY_MARKER);
     console.log(`  ${green}✓${reset} Injected AST safety rules into CLAUDE.md`);
 
     const agentSharedContextPath = path.join(targetDir, 'gsd-ng', 'references', 'agent-shared-context.md');
-    fillAstSafetyBlock(agentSharedContextPath);
+    fillBetweenMarkers(agentSharedContextPath, astTemplatePath, GSD_AST_SAFETY_MARKER, GSD_AST_SAFETY_CLOSE_MARKER);
     console.log(`  ${green}✓${reset} Filled AST safety rules in agent-shared-context.md`);
+  }
+
+  // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib files.
+  // Uses template-processor.cjs (centralized template engine).
+  // Copilot path handles this separately in convertClaudeToCopilotContent().
+  // Path rewriting (e.g., ~/.claude/ -> ~/.copilot/) stays separate per design.
+  if (runtime === 'claude') {
+    const ctx = buildContext('claude');
+    const claudeTemplateDirs = [
+      path.join(targetDir, 'gsd-ng', 'workflows'),
+      path.join(targetDir, 'gsd-ng', 'references'),
+      path.join(targetDir, 'gsd-ng', 'bin', 'lib'),
+    ];
+    for (const dir of claudeTemplateDirs) {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') || f.endsWith('.cjs'));
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        let content = fs.readFileSync(filePath, 'utf-8');
+        if (content.includes('{{') || content.includes('<!-- ONLY:')) {
+          try {
+            content = processTemplate(content, ctx);
+            fs.writeFileSync(filePath, content, 'utf-8');
+          } catch {
+            // Skip files with unbalanced markers (e.g., documentation containing example syntax)
+          }
+        }
+      }
+    }
   }
 
   // Report any backed-up local patches
@@ -1477,7 +1457,7 @@ function install(isGlobal) {
   }
 
   // Seed permissions.allow from settings-sandbox.json template
-  if (!noSeedPermissionsConfig && !isCopilot) {
+  if (!noSeedPermissionsConfig && runtime === 'claude') {
     const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
     try {
       const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
@@ -1530,7 +1510,7 @@ function install(isGlobal) {
   }
 
   // Seed sandbox settings by default (opt-out via --no-seed-sandbox-config)
-  if (!noSeedSandboxConfig && !isCopilot) {
+  if (!noSeedSandboxConfig && runtime === 'claude') {
     const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
     try {
       const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));

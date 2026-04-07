@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 const RUNTIMES = {
   claude: {
     PROJECT_RULES_FILE: 'CLAUDE.md',
@@ -86,4 +89,86 @@ function buildContext(runtime, options) {
   return { runtime, ...(options || {}) };
 }
 
-module.exports = { processTemplate, validateMarkers, buildContext, RUNTIMES };
+/**
+ * Inject a template block after YAML frontmatter in a command file.
+ * Idempotent: skips if the marker tag is already present.
+ *
+ * @param {string} content - File content with YAML frontmatter
+ * @param {string} templatePath - Absolute path to template file
+ * @param {string} marker - Tag name to check for idempotency (e.g. 'first_turn_rule')
+ * @returns {string} Content with template injected, or unchanged if already present
+ */
+function injectAfterFrontmatter(content, templatePath, marker) {
+  if (content.includes('<' + marker + '>')) {
+    return content; // Already injected
+  }
+  if (!fs.existsSync(templatePath)) {
+    return content; // Template missing — skip silently
+  }
+  const block = fs.readFileSync(templatePath, 'utf8').trim();
+  const frontmatterEnd = content.indexOf('\n---\n');
+  if (frontmatterEnd === -1) {
+    return content; // No frontmatter — skip
+  }
+  const insertPos = frontmatterEnd + 5;
+  return content.slice(0, insertPos) + '\n' + block + '\n' + content.slice(insertPos);
+}
+
+/**
+ * Append a template block to a file. Creates the file if it doesn't exist.
+ * Idempotent: skips if the marker string is already present in the file.
+ *
+ * @param {string} filePath - Absolute path to target file
+ * @param {string} templatePath - Absolute path to template file
+ * @param {string} marker - String to check for idempotency
+ */
+function injectAppendToFile(filePath, templatePath, marker) {
+  if (fs.existsSync(filePath)) {
+    const existing = fs.readFileSync(filePath, 'utf8');
+    if (existing.includes(marker)) {
+      return; // Already injected
+    }
+  }
+  if (!fs.existsSync(templatePath)) {
+    return; // Template missing — skip silently
+  }
+  const blockContent = fs.readFileSync(templatePath, 'utf8').trim();
+  const block = '\n' + blockContent + '\n';
+  if (fs.existsSync(filePath)) {
+    fs.appendFileSync(filePath, block, 'utf8');
+  } else {
+    fs.writeFileSync(filePath, block.trimStart(), 'utf8');
+  }
+}
+
+/**
+ * Fill content between a pair of markers in a file, using the inner content
+ * extracted from between the same markers in a template file.
+ * Idempotent: always overwrites to stay in sync with the template.
+ * No-op if the file does not exist or either marker is missing.
+ *
+ * @param {string} filePath - Absolute path to the target file containing the markers
+ * @param {string} templatePath - Absolute path to the template file
+ * @param {string} startMarker - Opening marker string
+ * @param {string} endMarker - Closing marker string
+ */
+function fillBetweenMarkers(filePath, templatePath, startMarker, endMarker) {
+  if (!fs.existsSync(filePath)) return;
+  const existing = fs.readFileSync(filePath, 'utf8');
+  const startIdx = existing.indexOf(startMarker);
+  const endIdx = existing.indexOf(endMarker);
+  if (startIdx === -1 || endIdx === -1) return;
+
+  const template = fs.readFileSync(templatePath, 'utf8');
+  const tStart = template.indexOf(startMarker);
+  const tEnd = template.indexOf(endMarker);
+  const innerContent = (tStart !== -1 && tEnd !== -1)
+    ? template.slice(tStart + startMarker.length, tEnd)
+    : '\n' + template.trim() + '\n';
+
+  const before = existing.slice(0, startIdx + startMarker.length);
+  const after = existing.slice(endIdx);
+  fs.writeFileSync(filePath, before + innerContent + after, 'utf8');
+}
+
+module.exports = { processTemplate, validateMarkers, buildContext, RUNTIMES, injectAfterFrontmatter, injectAppendToFile, fillBetweenMarkers };
