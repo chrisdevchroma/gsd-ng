@@ -669,7 +669,7 @@ The knowledge base is a persistent, append-only record of resolved debug session
 ## File Location
 
 ```
-.planning/debug/knowledge-base.md
+.planning/debug/resolved/knowledge-base.md
 ```
 
 ## Entry Format
@@ -872,7 +872,7 @@ Gather symptoms through questioning. Update file after EACH answer.
 **Autonomous investigation. Update file continuously.**
 
 **Phase 0: Check knowledge base**
-- If `.planning/debug/knowledge-base.md` exists, read it
+- If `.planning/debug/resolved/knowledge-base.md` exists, read it. If not found, check `.planning/debug/knowledge-base.md` (legacy location).
 - Extract keywords from `Symptoms.errors` and `Symptoms.actual` (nouns, error substrings, identifiers)
 - Scan knowledge base entries for 2+ keyword overlap (case-insensitive)
 - If match found:
@@ -1055,7 +1055,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: resolve debug {slug}
 
 **Append to knowledge base:**
 
-Read `.planning/debug/resolved/{slug}.md` to extract final `Resolution` values. Then append to `.planning/debug/knowledge-base.md` (create file with header if it doesn't exist):
+Read `.planning/debug/resolved/{slug}.md` to extract final `Resolution` values. Then append to `.planning/debug/resolved/knowledge-base.md` (create `.planning/debug/resolved/` directory and file with header if they don't exist):
 
 If creating for the first time, write this header first:
 ```markdown
@@ -1081,7 +1081,7 @@ Then append the entry:
 
 Commit the knowledge base update alongside the resolved session:
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update debug knowledge base with {slug}" --files .planning/debug/knowledge-base.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update debug knowledge base with {slug}" --files .planning/debug/resolved/knowledge-base.md
 ```
 
 Report completion and offer next steps.
