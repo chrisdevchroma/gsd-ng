@@ -9,6 +9,8 @@ allowed-tools:
   - Agent
   - AskUserQuestion
 ---
+
+
 <objective>
 Start a new milestone: questioning → research (optional) → requirements → roadmap.
 
@@ -39,9 +41,9 @@ Project and milestone context files are resolved inside the workflow (`init new-
 </context>
 
 <tool_usage>
-CRITICAL: You MUST use the AskUserQuestion tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real AskUserQuestion tool call with the questions parameter.
+CRITICAL: You MUST use the {{USER_QUESTION_TOOL}} tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real {{USER_QUESTION_TOOL}} tool call with the questions parameter.
 
-The AskUserQuestion tool schema:
+The {{USER_QUESTION_TOOL}} tool schema:
 ```json
 {
   "questions": [
@@ -61,7 +63,7 @@ Key constraints:
 - header: max 12 characters (abbreviate if needed)
 - options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
 - multiSelect: true for "select all that apply", false for "pick one"
-- If user picks "Other" (free text): follow up as plain text, not another AskUserQuestion
+- If user picks "Other" (free text): follow up as plain text, not another {{USER_QUESTION_TOOL}}
 </tool_usage>
 
 <process>

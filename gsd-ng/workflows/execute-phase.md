@@ -255,7 +255,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        - {phase_dir}/{plan_file} (Plan)
        - .planning/STATE.md (State)
        - .planning/config.json (Config, if exists)
-       - ./CLAUDE.md (Project instructions, if exists — follow project-specific guidelines and coding conventions)
+       - ./{{PROJECT_RULES_FILE}} (Project instructions, if exists — follow project-specific guidelines and coding conventions)
        - .claude/skills/ or .agents/skills/ (Project skills, if either exists — list skills, read SKILL.md for each, follow relevant rules during implementation)
        </files_to_read>
 
