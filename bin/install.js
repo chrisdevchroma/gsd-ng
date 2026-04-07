@@ -1014,6 +1014,36 @@ function injectAstSafetyBlock(claudeMdPath) {
 }
 
 /**
+ * Fill the GSD AST safety block in an installed file that has marker placeholders.
+ * Unlike injectAstSafetyBlock (which appends to CLAUDE.md), this replaces content
+ * between existing markers — keeping the file in sync with the template on every install.
+ * Only called for Claude Code runtime installs.
+ *
+ * @param {string} filePath - Absolute path to the installed file containing AST safety markers
+ */
+function fillAstSafetyBlock(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const existing = fs.readFileSync(filePath, 'utf8');
+  const startIdx = existing.indexOf(GSD_AST_SAFETY_MARKER);
+  const endIdx = existing.indexOf(GSD_AST_SAFETY_CLOSE_MARKER);
+  if (startIdx === -1 || endIdx === -1) return;
+
+  const templatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
+  const template = fs.readFileSync(templatePath, 'utf8');
+
+  // Extract inner content between the template's own markers
+  const tStart = template.indexOf(GSD_AST_SAFETY_MARKER);
+  const tEnd = template.indexOf(GSD_AST_SAFETY_CLOSE_MARKER);
+  const innerContent = (tStart !== -1 && tEnd !== -1)
+    ? template.slice(tStart + GSD_AST_SAFETY_MARKER.length, tEnd)
+    : '\n' + template.trim() + '\n';
+
+  const before = existing.slice(0, startIdx + GSD_AST_SAFETY_MARKER.length);
+  const after = existing.slice(endIdx);
+  fs.writeFileSync(filePath, before + innerContent + after, 'utf8');
+}
+
+/**
  * Remove the GSD block from copilot-instructions.md content.
  * @param {string} content - File content containing possible GSD markers
  * @returns {string|null} Cleaned content, or null if file should be deleted (was GSD-only)
@@ -1303,18 +1333,22 @@ function install(isGlobal) {
   writeManifest(targetDir);
   console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
-  // Inject AST safety rules into CLAUDE.md (Claude Code only).
-  // Copilot CLI has no equivalent AST safety layer — skip entirely.
+  // Inject AST safety rules (Claude Code only — Copilot has no equivalent AST layer).
   //
   // AST safety: Claude Code's tree-sitter-bash heuristics fire independently of
   // the sandbox/allowlist layer. No config option suppresses them (Issue #30435).
-  // We inject documentation for the orchestrator session here, and the same rules
-  // appear in agent-shared-context.md for subagents.
+  // Rules go into CLAUDE.md for the orchestrator session and are filled into
+  // agent-shared-context.md (marker placeholders) so subagents see them too.
+  // Single source of truth: gsd-ng/templates/ast-safety-rules.md
   // See: https://github.com/anthropics/claude-code/issues/30435
   if (!isCopilot) {
     const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
     injectAstSafetyBlock(claudeMdPath);
     console.log(`  ${green}✓${reset} Injected AST safety rules into CLAUDE.md`);
+
+    const agentSharedContextPath = path.join(targetDir, 'gsd-ng', 'references', 'agent-shared-context.md');
+    fillAstSafetyBlock(agentSharedContextPath);
+    console.log(`  ${green}✓${reset} Filled AST safety rules in agent-shared-context.md`);
   }
 
   // Report any backed-up local patches
