@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
 const { MODEL_PROFILES } = require('./model-profiles.cjs');
+const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
 
@@ -156,26 +157,11 @@ function safeReadFile(filePath) {
 function loadConfig(cwd) {
   const { config: configPath } = planningPaths(cwd);
   const defaults = {
-    model_profile: 'balanced',
-    commit_docs: true,
-    search_gitignored: false,
-    branching_strategy: 'none',
-    phase_branch_template: 'gsd/phase-{phase}-{slug}',
-    milestone_branch_template: 'gsd/{milestone}-{slug}',
-    target_branch: 'main',
-    auto_push: false,
-    remote: 'origin',
-    review_branch_template: '{type}/{phase}-{slug}',
-    pr_draft: true,
-    platform: null,
-    commit_format: 'gsd',
-    commit_template: null,
-    versioning_scheme: 'semver',
-    research: true,
-    plan_checker: true,
-    verifier: true,
-    nyquist_validation: true,
-    parallelization: true,
+    ...DEFAULTS,
+    research: WORKFLOW_DEFAULTS.research,
+    plan_checker: WORKFLOW_DEFAULTS.plan_check,
+    verifier: WORKFLOW_DEFAULTS.verifier,
+    nyquist_validation: WORKFLOW_DEFAULTS.nyquist_validation,
   };
 
   try {

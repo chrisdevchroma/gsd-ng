@@ -6,6 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, extractCurrentMilestone, output, error, planningPaths } = require('./core.cjs');
+const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
+const { RUNTIMES } = require('./template-processor.cjs');
 const { extractFrontmatter, spliceFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 const { detectWorkspaceType, generateMemoriesSection, generateMemoryMd } = require('./workspace.cjs');
@@ -726,20 +728,22 @@ function cmdValidateHealth(cwd, options) {
     }
   }
 
-  // ─── Check 9: CLAUDE.md exists when .planning/ exists ────────────────────
-  const claudeMdPath = path.join(cwd, 'CLAUDE.md');
+  // ─── Check 9: Project rules file exists when .planning/ exists ────────────
+  const gsdRuntime = process.env.GSD_RUNTIME || 'claude';
+  const projectRulesFile = (RUNTIMES[gsdRuntime] || RUNTIMES.claude).PROJECT_RULES_FILE;
+  const projectRulesPath = path.join(cwd, projectRulesFile);
   const memoryDir = path.join(cwd, '.claude', 'memory');
   const memoryDirExists = fs.existsSync(memoryDir);
-  const claudeMdExists = fs.existsSync(claudeMdPath);
+  const projectRulesExists = fs.existsSync(projectRulesPath);
 
-  if (!claudeMdExists) {
-    addIssue('warning', 'W010', 'CLAUDE.md not found — agents will not receive project instructions', 'Run /gsd:health --repair to generate CLAUDE.md with Memories section', true);
+  if (!projectRulesExists) {
+    addIssue('warning', 'W010', `${projectRulesFile} not found — agents will not receive project instructions`, `Run /gsd:health --repair to generate ${projectRulesFile} with Memories section`, true);
     if (!repairs.includes('writeCLAUDEmd')) repairs.push('writeCLAUDEmd');
   }
 
-  // ─── Check 10-12: Memory-related checks (gate on CLAUDE.md + memory dir) ──
-  if (claudeMdExists && memoryDirExists) {
-    const claudeContent = fs.readFileSync(claudeMdPath, 'utf-8');
+  // ─── Check 10-12: Memory-related checks (gate on project rules file + memory dir) ──
+  if (projectRulesExists && memoryDirExists) {
+    const claudeContent = fs.readFileSync(projectRulesPath, 'utf-8');
     const memFiles = fs.readdirSync(memoryDir)
       .filter(f => f.endsWith('.md') && f !== 'MEMORY.md');
 
@@ -998,19 +1002,14 @@ function cmdValidateHealth(cwd, options) {
           case 'createConfig':
           case 'resetConfig': {
             const defaults = {
-              model_profile: 'balanced',
-              commit_docs: true,
-              search_gitignored: false,
-              branching_strategy: 'none',
-              phase_branch_template: 'gsd/phase-{phase}-{slug}',
-              milestone_branch_template: 'gsd/{milestone}-{slug}',
-              workflow: {
-                research: true,
-                plan_check: true,
-                verifier: true,
-                nyquist_validation: true,
-              },
-              parallelization: true,
+              model_profile: DEFAULTS.model_profile,
+              commit_docs: DEFAULTS.commit_docs,
+              search_gitignored: DEFAULTS.search_gitignored,
+              branching_strategy: DEFAULTS.branching_strategy,
+              phase_branch_template: DEFAULTS.phase_branch_template,
+              milestone_branch_template: DEFAULTS.milestone_branch_template,
+              workflow: { ...WORKFLOW_DEFAULTS },
+              parallelization: DEFAULTS.parallelization,
             };
             fs.writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
             repairActions.push({ action: repair, success: true, path: 'config.json' });
@@ -1057,29 +1056,33 @@ function cmdValidateHealth(cwd, options) {
             break;
           }
           case 'writeCLAUDEmd': {
-            const claudePath = path.join(cwd, 'CLAUDE.md');
+            const repairRuntime = process.env.GSD_RUNTIME || 'claude';
+            const repairRulesFile = (RUNTIMES[repairRuntime] || RUNTIMES.claude).PROJECT_RULES_FILE;
+            const repairRulesPath = path.join(cwd, repairRulesFile);
             const memoriesSection = generateMemoriesSection(cwd);
-            if (fs.existsSync(claudePath)) {
+            if (fs.existsSync(repairRulesPath)) {
               // Append Memories section if not already present
-              let content = fs.readFileSync(claudePath, 'utf-8');
+              let content = fs.readFileSync(repairRulesPath, 'utf-8');
               if (!content.includes('## Memories')) {
                 content += '\n\n' + memoriesSection;
-                fs.writeFileSync(claudePath, content, 'utf-8');
+                fs.writeFileSync(repairRulesPath, content, 'utf-8');
               }
             } else {
-              // Create new CLAUDE.md with a project header and Memories section
+              // Create new project rules file with a project header and Memories section
               const projectName = path.basename(cwd);
               let content = `# ${projectName}\n\n`;
               if (memoriesSection) content += memoriesSection;
-              fs.writeFileSync(claudePath, content, 'utf-8');
+              fs.writeFileSync(repairRulesPath, content, 'utf-8');
             }
-            repairActions.push({ action: repair, success: true, path: 'CLAUDE.md' });
+            repairActions.push({ action: repair, success: true, path: repairRulesFile });
             break;
           }
           case 'syncCLAUDEmdMemories': {
-            const claudePath = path.join(cwd, 'CLAUDE.md');
-            if (fs.existsSync(claudePath)) {
-              let content = fs.readFileSync(claudePath, 'utf-8');
+            const syncRuntime = process.env.GSD_RUNTIME || 'claude';
+            const syncRulesFile = (RUNTIMES[syncRuntime] || RUNTIMES.claude).PROJECT_RULES_FILE;
+            const syncRulesPath = path.join(cwd, syncRulesFile);
+            if (fs.existsSync(syncRulesPath)) {
+              let content = fs.readFileSync(syncRulesPath, 'utf-8');
               const newSection = generateMemoriesSection(cwd);
               // Replace existing Memories section or append
               const sectionStart = content.indexOf('## Memories');
@@ -1091,8 +1094,8 @@ function cmdValidateHealth(cwd, options) {
               } else {
                 content += '\n\n' + newSection;
               }
-              fs.writeFileSync(claudePath, content, 'utf-8');
-              repairActions.push({ action: repair, success: true, path: 'CLAUDE.md' });
+              fs.writeFileSync(syncRulesPath, content, 'utf-8');
+              repairActions.push({ action: repair, success: true, path: syncRulesFile });
             }
             break;
           }

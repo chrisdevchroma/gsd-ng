@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error, execGit, loadConfig, planningPaths } = require('./core.cjs');
+const { DEFAULTS } = require('./defaults.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { cmdDetectPlatform } = require('./commands.cjs');
 
@@ -391,8 +392,8 @@ function resolveGitContext(cwd) {
     cli_install_url: platformInfo.cli_install_url || null,
     branching_strategy: configSubmodule.branching_strategy || 'none',
     auto_push: configSubmodule.auto_push !== undefined ? configSubmodule.auto_push : false,
-    phase_branch_template: configSubmodule.phase_branch_template || 'phase/{phase}-{slug}',
-    milestone_branch_template: configSubmodule.milestone_branch_template || 'milestone/{milestone}-{slug}',
+    phase_branch_template: configSubmodule.phase_branch_template || DEFAULTS.phase_branch_template,
+    milestone_branch_template: configSubmodule.milestone_branch_template || DEFAULTS.milestone_branch_template,
     review_branch_template: configSubmodule.review_branch_template || null,
     pr_draft: configSubmodule.pr_draft !== undefined ? configSubmodule.pr_draft : true,
     pr_template: configSubmodule.pr_template || null,
