@@ -995,6 +995,79 @@ test('AST-SAFETY-04: copilot local install does not create or modify CLAUDE.md',
   }
 });
 
+// ── AST-SAFETY-05: claude install fills AST block in agent-shared-context.md ──
+
+test('AST-SAFETY-05: claude local install fills AST safety block in agent-shared-context.md', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-05-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(result.status, 0,
+      'install.js --runtime claude --local must exit 0 (AST-SAFETY-05)\nstderr: ' + (result.stderr || ''));
+    const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
+    assert.ok(fs.existsSync(agentCtxPath),
+      'agent-shared-context.md must exist after claude local install (AST-SAFETY-05)');
+    const content = fs.readFileSync(agentCtxPath, 'utf8');
+    assert.ok(content.includes('GSD — AST Safety Rules'),
+      'agent-shared-context.md must contain AST safety block heading (AST-SAFETY-05)');
+    assert.ok(content.includes('brace expansion'),
+      'agent-shared-context.md must include brace expansion entry from template (AST-SAFETY-05)');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── AST-SAFETY-06: copilot install does NOT fill AST block in agent-shared-context.md ──
+
+test('AST-SAFETY-06: copilot local install does not fill AST safety block in agent-shared-context.md', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-06-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(result.status, 0,
+      'install.js --runtime copilot --local must exit 0 (AST-SAFETY-06)\nstderr: ' + (result.stderr || ''));
+    const agentCtxPath = path.join(tmpDir, '.github', 'gsd-ng', 'references', 'agent-shared-context.md');
+    assert.ok(fs.existsSync(agentCtxPath),
+      'agent-shared-context.md must exist after copilot local install (AST-SAFETY-06)');
+    const content = fs.readFileSync(agentCtxPath, 'utf8');
+    assert.ok(!content.includes('brace expansion'),
+      'agent-shared-context.md must NOT contain filled AST table for copilot runtime (AST-SAFETY-06)');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── AST-SAFETY-07: agent-shared-context.md fill is idempotent ────────────────
+
+test('AST-SAFETY-07: claude local install is idempotent — AST block in agent-shared-context.md not duplicated', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-07-'));
+  try {
+    const runInstall = () => spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    );
+    assert.strictEqual(runInstall().status, 0, 'First install must exit 0 (AST-SAFETY-07)');
+    assert.strictEqual(runInstall().status, 0, 'Second install must exit 0 (AST-SAFETY-07)');
+    const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
+    const content = fs.readFileSync(agentCtxPath, 'utf8');
+    const occurrences = (content.match(/## GSD — AST Safety Rules/g) || []).length;
+    assert.strictEqual(occurrences, 1,
+      'AST safety heading must appear exactly once after two installs (AST-SAFETY-07). Found: ' + occurrences);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 // ── COPILOT-10: SKILL.md name: fields must not contain colon character ────────
 
 test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no colons)', () => {
