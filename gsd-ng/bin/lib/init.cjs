@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
+const { DEFAULTS } = require('./defaults.cjs');
 const { validatePhaseNumber } = require('./security.cjs');
 const { adjustQuickTable } = require('./state.cjs');
 const { resolveGitContext } = require('./workspace.cjs');
@@ -1048,11 +1049,11 @@ const INIT_FIELD_DEFAULTS = {
   researcher_model: null,
   planner_model: null,
   // plain strings with defaults
-  branching_strategy: 'none',
-  target_branch: 'main',
-  remote: 'origin',
-  phase_branch_template: 'phase/{phase}-{slug}',
-  milestone_branch_template: 'milestone/{milestone}-{slug}',
+  branching_strategy: DEFAULTS.branching_strategy,
+  target_branch: DEFAULTS.target_branch,
+  remote: DEFAULTS.remote,
+  phase_branch_template: DEFAULTS.phase_branch_template,
+  milestone_branch_template: DEFAULTS.milestone_branch_template,
   // numbers
   plan_count: 0,
   incomplete_count: 0,

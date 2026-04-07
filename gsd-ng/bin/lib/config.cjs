@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error, planningPaths } = require('./core.cjs');
+const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 const {
   VALID_PROFILES,
   getAgentToModelMapForProfile,
@@ -97,19 +98,14 @@ function ensureConfigFile(cwd) {
 
   // Create default config (user-level defaults override hardcoded defaults)
   const hardcoded = {
-    model_profile: 'balanced',
-    commit_docs: true,
-    search_gitignored: false,
-    branching_strategy: 'none',
-    phase_branch_template: 'gsd/phase-{phase}-{slug}',
-    milestone_branch_template: 'gsd/{milestone}-{slug}',
-    workflow: {
-      research: true,
-      plan_check: true,
-      verifier: true,
-      nyquist_validation: true,
-    },
-    parallelization: true,
+    model_profile: DEFAULTS.model_profile,
+    commit_docs: DEFAULTS.commit_docs,
+    search_gitignored: DEFAULTS.search_gitignored,
+    branching_strategy: DEFAULTS.branching_strategy,
+    phase_branch_template: DEFAULTS.phase_branch_template,
+    milestone_branch_template: DEFAULTS.milestone_branch_template,
+    workflow: { ...WORKFLOW_DEFAULTS },
+    parallelization: DEFAULTS.parallelization,
   };
   const defaults = {
     ...hardcoded,
