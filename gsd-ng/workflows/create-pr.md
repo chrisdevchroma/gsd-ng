@@ -190,6 +190,27 @@ Save the current work branch for later:
 CURRENT_BRANCH=$(git -C "$GIT_CWD" branch --show-current)
 ```
 
+**Collision guard:** If the review branch name matches the current work branch, handle per mode to prevent data loss from `reset --hard`:
+```bash
+if [ "$REVIEW_BRANCH" = "$CURRENT_BRANCH" ]; then
+  if [ "$AUTO_MODE" = "true" ]; then
+    # Auto-suffix: append -2, -3, etc. until unique
+    SUFFIX=2
+    while [ "$REVIEW_BRANCH-$SUFFIX" = "$CURRENT_BRANCH" ] || git show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH-$SUFFIX" 2>/dev/null; do
+      SUFFIX=$((SUFFIX + 1))
+    done
+    REVIEW_BRANCH="$REVIEW_BRANCH-$SUFFIX"
+    echo "Auto-suffixed review branch to '$REVIEW_BRANCH' to avoid collision with work branch."
+  else
+    echo "Error: review branch '$REVIEW_BRANCH' is the same as work branch '$CURRENT_BRANCH'."
+    echo "This would destroy uncommitted work via 'git reset --hard'."
+    echo "Fix: set a distinct review_branch_template in config.json."
+    echo "  Example: node \"\$HOME/.claude/gsd-ng/bin/gsd-tools.cjs\" config-set git.review_branch_template 'review/{phase}-{slug}'"
+    exit 1
+  fi
+fi
+```
+
 Create or reset review branch from target_branch:
 ```bash
 if git -C "$GIT_CWD" show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH" 2>/dev/null; then
