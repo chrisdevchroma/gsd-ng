@@ -160,17 +160,16 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
 # Append to related: on the existing todo (may already have related: entries)
 EXISTING_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --default "")
-UPDATED_RELATED=$(echo "$EXISTING_RELATED" | node -e "
-  const newFile = process.argv[1];
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try {
-      const v = JSON.parse(d);
-      const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes(newFile)) arr.push(newFile);
-      console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify([newFile])); }
-  });
-" "$NEW_TODO_FILE")
+UPDATED_RELATED=$(node -e "
+  const existing = process.argv[1];
+  const newFile = process.argv[2];
+  try {
+    const v = existing ? JSON.parse(existing) : [];
+    const arr = Array.isArray(v) ? v : (v ? [v] : []);
+    if (!arr.includes(newFile)) arr.push(newFile);
+    console.log(JSON.stringify(arr));
+  } catch { console.log(JSON.stringify([newFile])); }
+" "$EXISTING_RELATED" "$NEW_TODO_FILE")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --value "$UPDATED_RELATED"
 ```

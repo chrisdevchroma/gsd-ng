@@ -68,7 +68,7 @@ Find highest existing phase:
 ```bash
 # Get sorted phase list, extract last one
 PHASES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phases list)
-HIGHEST=$(printf '%s\n' "$PHASES" | jq -r '.directories[-1]')
+HIGHEST=$(echo "$PHASES" | jq -r '.directories[-1]')
 ```
 
 New phases continue from there:

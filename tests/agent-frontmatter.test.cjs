@@ -30,13 +30,33 @@ const READ_ONLY_AGENTS = ALL_AGENTS.filter(name => !FILE_WRITING_AGENTS.includes
 
 // ─── Anti-Heredoc Instruction ────────────────────────────────────────────────
 
+const SHARED_CONTEXT_PATH = path.join(__dirname, '..', 'gsd-ng', 'references', 'agent-shared-context.md');
+
 describe('HDOC: anti-heredoc instruction', () => {
+  test('agent-shared-context.md has centralized anti-heredoc instruction', () => {
+    const content = fs.readFileSync(SHARED_CONTEXT_PATH, 'utf-8');
+    assert.ok(
+      content.includes("never use `Bash(cat << 'EOF')` or heredoc"),
+      'agent-shared-context.md missing anti-heredoc instruction (centralized copy)'
+    );
+  });
+
   for (const agent of FILE_WRITING_AGENTS) {
-    test(`${agent} has anti-heredoc instruction`, () => {
+    test(`${agent} references agent-shared-context.md (inherits anti-heredoc)`, () => {
       const content = fs.readFileSync(path.join(AGENTS_DIR, agent + '.md'), 'utf-8');
       assert.ok(
-        content.includes("never use `Bash(cat << 'EOF')` or heredoc"),
-        `${agent} missing anti-heredoc instruction`
+        content.includes('agent-shared-context'),
+        `${agent} does not reference agent-shared-context.md — anti-heredoc instruction not inherited`
+      );
+    });
+  }
+
+  for (const agent of FILE_WRITING_AGENTS) {
+    test(`${agent} has no duplicate anti-heredoc instruction`, () => {
+      const content = fs.readFileSync(path.join(AGENTS_DIR, agent + '.md'), 'utf-8');
+      assert.ok(
+        !content.includes("never use `Bash(cat << 'EOF')` or heredoc"),
+        `${agent} has duplicate anti-heredoc instruction — remove per-agent copy (centralized in agent-shared-context.md)`
       );
     });
   }

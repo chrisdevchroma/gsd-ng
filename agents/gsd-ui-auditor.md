@@ -263,8 +263,6 @@ npx shadcn diff {block} 2>/dev/null
 
 ## Output: UI-REVIEW.md
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation. Mandatory regardless of `commit_docs` setting.
-
 Write to: `$PHASE_DIR/$PADDED_PHASE-UI-REVIEW.md`
 
 ```markdown

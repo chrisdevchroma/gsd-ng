@@ -898,10 +898,10 @@ test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with ses
   }
 });
 
-// ── AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety block ──
+// ── BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks dir ──
 
-test('AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety block', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-01-'));
+test('BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks directory', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-01-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -910,27 +910,23 @@ test('AST-SAFETY-01: claude local install creates CLAUDE.md with AST safety bloc
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (AST-SAFETY-01)\nstderr: ' + (result.stderr || ''));
-    const claudeMdPath = path.join(tmpDir, 'CLAUDE.md');
-    assert.ok(fs.existsSync(claudeMdPath),
-      'CLAUDE.md must exist after claude local install (AST-SAFETY-01)');
-    const content = fs.readFileSync(claudeMdPath, 'utf8');
-    assert.ok(content.includes('GSD — AST Safety Rules'),
-      'CLAUDE.md must contain AST safety block heading (AST-SAFETY-01).\nActual content: ' + content.slice(0, 500));
-    assert.ok(content.includes('brace expansion'),
-      'CLAUDE.md must include brace expansion entry from AST safety template (AST-SAFETY-01)');
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-01)\nstderr: ' + (result.stderr || ''));
+    const hookPath = path.join(tmpDir, '.claude', 'hooks', 'bash-safety-hook.cjs');
+    assert.ok(fs.existsSync(hookPath),
+      'hooks/bash-safety-hook.cjs must exist after claude local install (BASH-HOOK-01)');
+    const content = fs.readFileSync(hookPath, 'utf8');
+    assert.ok(content.startsWith('#!/usr/bin/env node'),
+      'bash-safety-hook.cjs must start with #!/usr/bin/env node shebang (BASH-HOOK-01)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-02: claude local install appends to existing CLAUDE.md ──────────
+// ── BASH-HOOK-02: claude local install wires bash-safety-hook into settings.json ──
 
-test('AST-SAFETY-02: claude local install appends AST safety block to existing CLAUDE.md', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-02-'));
+test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.json PreToolUse', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-02-'));
   try {
-    const existingContent = '# My Project\n\nExisting project instructions.\n';
-    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), existingContent);
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'claude', '--local'],
@@ -938,21 +934,30 @@ test('AST-SAFETY-02: claude local install appends AST safety block to existing C
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (AST-SAFETY-02)\nstderr: ' + (result.stderr || ''));
-    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
-    assert.ok(content.includes('Existing project instructions.'),
-      'Existing CLAUDE.md content must be preserved (AST-SAFETY-02)');
-    assert.ok(content.includes('GSD — AST Safety Rules'),
-      'AST safety block must be appended (AST-SAFETY-02)');
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-02)\nstderr: ' + (result.stderr || ''));
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    assert.ok(fs.existsSync(settingsPath),
+      'settings.json must exist after claude local install (BASH-HOOK-02)');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const preToolUse = settings.hooks && settings.hooks.PreToolUse;
+    assert.ok(Array.isArray(preToolUse),
+      'settings.json must have hooks.PreToolUse array (BASH-HOOK-02)');
+    const bashSafetyEntry = preToolUse.find(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    );
+    assert.ok(bashSafetyEntry !== undefined,
+      'settings.json PreToolUse must contain an entry with bash-safety-hook.cjs (BASH-HOOK-02)');
+    assert.strictEqual(bashSafetyEntry.matcher, 'Bash',
+      'bash-safety-hook entry must have matcher: "Bash" (BASH-HOOK-02)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-03: idempotent — re-running does not duplicate block ───────────
+// ── BASH-HOOK-03: idempotent — re-running does not duplicate hook in PreToolUse ──
 
-test('AST-SAFETY-03: claude local install is idempotent — re-running does not duplicate AST block', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-03-'));
+test('BASH-HOOK-03: idempotent — re-running install does not duplicate bash-safety-hook in PreToolUse', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-03-'));
   try {
     const runInstall = () => spawnSync(
       process.execPath,
@@ -961,23 +966,27 @@ test('AST-SAFETY-03: claude local install is idempotent — re-running does not 
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     const r1 = runInstall();
-    assert.strictEqual(r1.status, 0, 'First install must exit 0 (AST-SAFETY-03)');
+    assert.strictEqual(r1.status, 0, 'First install must exit 0 (BASH-HOOK-03)');
     const r2 = runInstall();
-    assert.strictEqual(r2.status, 0, 'Second install must exit 0 (AST-SAFETY-03)');
-    const content = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
-    const occurrences = (content.match(/^## GSD — AST Safety Rules$/gm) || []).length;
-    assert.strictEqual(occurrences, 1,
-      'AST safety block heading (## GSD — AST Safety Rules) must appear exactly once after two installs (AST-SAFETY-03).\n' +
-      'Found: ' + occurrences + ' occurrences');
+    assert.strictEqual(r2.status, 0, 'Second install must exit 0 (BASH-HOOK-03)');
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const preToolUse = settings.hooks && settings.hooks.PreToolUse;
+    const bashSafetyEntries = (preToolUse || []).filter(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    );
+    assert.strictEqual(bashSafetyEntries.length, 1,
+      'bash-safety-hook.cjs must appear exactly once in PreToolUse after two installs (BASH-HOOK-03). ' +
+      'Found: ' + bashSafetyEntries.length + ' entries');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-04: copilot install does NOT touch CLAUDE.md ──────────────────
+// ── BASH-HOOK-04: copilot install does NOT wire bash-safety-hook into settings.json ──
 
-test('AST-SAFETY-04: copilot local install does not create or modify CLAUDE.md', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-04-'));
+test('BASH-HOOK-04: copilot local install does NOT wire bash-safety-hook into settings.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-04-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -986,19 +995,30 @@ test('AST-SAFETY-04: copilot local install does not create or modify CLAUDE.md',
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     assert.strictEqual(result.status, 0,
-      'install.js --runtime copilot --local must exit 0 (AST-SAFETY-04)\nstderr: ' + (result.stderr || ''));
-    const claudeMdPath = path.join(tmpDir, 'CLAUDE.md');
-    assert.ok(!fs.existsSync(claudeMdPath),
-      'CLAUDE.md must NOT be created by copilot install (AST-SAFETY-04)');
+      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-04)\nstderr: ' + (result.stderr || ''));
+    const settingsPath = path.join(tmpDir, '.github', 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const preToolUse = (settings.hooks && settings.hooks.PreToolUse) || [];
+      const hasBashSafety = preToolUse.some(entry =>
+        entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+      );
+      assert.ok(!hasBashSafety,
+        'copilot settings.json must NOT contain bash-safety-hook.cjs in PreToolUse (BASH-HOOK-04)');
+    }
+    // Guardrail: hook file must not exist in Copilot target (future runtime safety)
+    const hookFilePath = path.join(tmpDir, '.github', 'hooks', 'bash-safety-hook.cjs');
+    assert.ok(!fs.existsSync(hookFilePath),
+      'bash-safety-hook.cjs must NOT exist in Copilot hooks dir (BASH-HOOK-04)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-05: claude install fills AST block in agent-shared-context.md ──
+// ── BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md ──
 
-test('AST-SAFETY-05: claude local install fills AST safety block in agent-shared-context.md', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-05-'));
+test('BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md after claude install', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-05-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -1007,24 +1027,24 @@ test('AST-SAFETY-05: claude local install fills AST safety block in agent-shared
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (AST-SAFETY-05)\nstderr: ' + (result.stderr || ''));
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-05)\nstderr: ' + (result.stderr || ''));
     const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
     assert.ok(fs.existsSync(agentCtxPath),
-      'agent-shared-context.md must exist after claude local install (AST-SAFETY-05)');
+      'agent-shared-context.md must exist after claude local install (BASH-HOOK-05)');
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    assert.ok(content.includes('GSD — AST Safety Rules'),
-      'agent-shared-context.md must contain AST safety block heading (AST-SAFETY-05)');
-    assert.ok(content.includes('brace expansion'),
-      'agent-shared-context.md must include brace expansion entry from template (AST-SAFETY-05)');
+    assert.ok(content.includes('ALWAYS use the Write tool'),
+      'agent-shared-context.md must contain anti-heredoc instruction (BASH-HOOK-05)');
+    assert.ok(!content.includes('GSD — AST Safety Rules'),
+      'agent-shared-context.md must NOT contain AST Safety Rules markers (BASH-HOOK-05)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-06: copilot install does NOT fill AST block in agent-shared-context.md ──
+// ── BASH-HOOK-06: copilot install ALSO has anti-heredoc in agent-shared-context.md ──
 
-test('AST-SAFETY-06: copilot local install does not fill AST safety block in agent-shared-context.md', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-06-'));
+test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in agent-shared-context.md', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-06-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -1033,22 +1053,22 @@ test('AST-SAFETY-06: copilot local install does not fill AST safety block in age
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
     assert.strictEqual(result.status, 0,
-      'install.js --runtime copilot --local must exit 0 (AST-SAFETY-06)\nstderr: ' + (result.stderr || ''));
+      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-06)\nstderr: ' + (result.stderr || ''));
     const agentCtxPath = path.join(tmpDir, '.github', 'gsd-ng', 'references', 'agent-shared-context.md');
     assert.ok(fs.existsSync(agentCtxPath),
-      'agent-shared-context.md must exist after copilot local install (AST-SAFETY-06)');
+      'agent-shared-context.md must exist after copilot local install (BASH-HOOK-06)');
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    assert.ok(!content.includes('brace expansion'),
-      'agent-shared-context.md must NOT contain filled AST table for copilot runtime (AST-SAFETY-06)');
+    assert.ok(content.includes('ALWAYS use the Write tool'),
+      'agent-shared-context.md must contain anti-heredoc instruction for copilot runtime too (BASH-HOOK-06)');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// ── AST-SAFETY-07: agent-shared-context.md fill is idempotent ────────────────
+// ── BASH-HOOK-07: anti-heredoc not duplicated on re-install ──────────────────
 
-test('AST-SAFETY-07: claude local install is idempotent — AST block in agent-shared-context.md not duplicated', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-ast-07-'));
+test('BASH-HOOK-07: anti-heredoc not duplicated on re-install of claude local', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-07-'));
   try {
     const runInstall = () => spawnSync(
       process.execPath,
@@ -1056,13 +1076,13 @@ test('AST-SAFETY-07: claude local install is idempotent — AST block in agent-s
       { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }) }
     );
-    assert.strictEqual(runInstall().status, 0, 'First install must exit 0 (AST-SAFETY-07)');
-    assert.strictEqual(runInstall().status, 0, 'Second install must exit 0 (AST-SAFETY-07)');
+    assert.strictEqual(runInstall().status, 0, 'First install must exit 0 (BASH-HOOK-07)');
+    assert.strictEqual(runInstall().status, 0, 'Second install must exit 0 (BASH-HOOK-07)');
     const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    const occurrences = (content.match(/## GSD — AST Safety Rules/g) || []).length;
+    const occurrences = (content.match(/ALWAYS use the Write tool/g) || []).length;
     assert.strictEqual(occurrences, 1,
-      'AST safety heading must appear exactly once after two installs (AST-SAFETY-07). Found: ' + occurrences);
+      '"ALWAYS use the Write tool" must appear exactly once after two installs (BASH-HOOK-07). Found: ' + occurrences);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

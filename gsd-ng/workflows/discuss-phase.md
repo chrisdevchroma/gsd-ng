@@ -294,34 +294,32 @@ AskUserQuestion(
 # Append selected todo filename to source todo's related: field
 SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
-UPDATED_SOURCE=$(echo "$SOURCE_RELATED_RAW" | node -e "
-  const newFile = process.argv[1];
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try {
-      const v = JSON.parse(d);
-      const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes(newFile)) arr.push(newFile);
-      console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify([newFile])); }
-  });
-" "$SELECTED_FILE")
+UPDATED_SOURCE=$(node -e "
+  const existing = process.argv[1];
+  const newFile = process.argv[2];
+  try {
+    const v = existing ? JSON.parse(existing) : [];
+    const arr = Array.isArray(v) ? v : (v ? [v] : []);
+    if (!arr.includes(newFile)) arr.push(newFile);
+    console.log(JSON.stringify(arr));
+  } catch { console.log(JSON.stringify([newFile])); }
+" "$SOURCE_RELATED_RAW" "$SELECTED_FILE")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
 
 # Append source todo filename to selected todo's related: field (backlink)
 SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
   ".planning/todos/pending/$SELECTED_FILE" --field related --default "")
-UPDATED_SELECTED=$(echo "$SELECTED_RELATED_RAW" | node -e "
-  const newFile = process.argv[1];
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try {
-      const v = JSON.parse(d);
-      const arr = Array.isArray(v) ? v : (v ? [v] : []);
-      if (!arr.includes(newFile)) arr.push(newFile);
-      console.log(JSON.stringify(arr));
-    } catch { console.log(JSON.stringify([newFile])); }
-  });
-" "$SOURCE_TODO")
+UPDATED_SELECTED=$(node -e "
+  const existing = process.argv[1];
+  const newFile = process.argv[2];
+  try {
+    const v = existing ? JSON.parse(existing) : [];
+    const arr = Array.isArray(v) ? v : (v ? [v] : []);
+    if (!arr.includes(newFile)) arr.push(newFile);
+    console.log(JSON.stringify(arr));
+  } catch { console.log(JSON.stringify([newFile])); }
+" "$SELECTED_RELATED_RAW" "$SOURCE_TODO")
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
   ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
 ```
@@ -450,16 +448,15 @@ Extract the `Requirements:` field from the phase's ROADMAP.md section (available
 ```bash
 # Fetch phase data once for requirements and lineage analysis
 PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --json 2>/dev/null)
-REQUIREMENTS=$(echo "$PHASE_DATA" | node -e "
-  let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-    try {
-      const r=JSON.parse(d);
-      const m=(r.section||'').match(/\*\*Requirements\*\*:\s*([^\n]+)/i);
-      const requirements = m ? m[1].trim().replace(/^\[(.*)\]$/, '\$1').trim() : '';
-      console.log(requirements);
-    } catch { console.log(''); }
-  });
-")
+REQUIREMENTS=$(node -e "
+  const data = process.argv[1];
+  try {
+    const r = JSON.parse(data);
+    const m = (r.section||'').match(/\*\*Requirements\*\*:\s*([^\n]+)/i);
+    const requirements = m ? m[1].trim().replace(/^\[(.*)\]$/, '\$1').trim() : '';
+    console.log(requirements);
+  } catch { console.log(''); }
+" "$PHASE_DATA")
 
 if [ -z "$REQUIREMENTS" ] || [ "$REQUIREMENTS" = "TBD" ]; then
   echo "Advisory: No requirement IDs mapped for Phase ${PHASE}. Consider adding them to REQUIREMENTS.md and referencing in the ROADMAP.md Requirements field. Example: add FEAT-${PHASE}-01 to REQUIREMENTS.md and set **Requirements**: FEAT-${PHASE}-01 in the ROADMAP.md phase entry."
@@ -477,12 +474,11 @@ DEPENDS_ON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${
 # If empty: skip silently (no message, no note in CONTEXT.md)
 if [ -n "$DEPENDS_ON" ]; then
   # Extract parent phase numbers (depth 1 only — direct parents)
-  PARENT_PHASES=$(echo "$DEPENDS_ON" | node -e "
-    let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
-      const matches=[...d.matchAll(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)];
-      console.log(matches.map(m=>m[1]).join('\n'));
-    });
-  ")
+  PARENT_PHASES=$(node -e "
+    const d = process.argv[1];
+    const matches=[...d.matchAll(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)];
+    console.log(matches.map(m=>m[1]).join('\n'));
+  " "$DEPENDS_ON")
 
   # For each parent: fetch goal + success_criteria
   for PARENT_PHASE in $PARENT_PHASES; do

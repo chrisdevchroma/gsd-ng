@@ -485,8 +485,6 @@ Run pre-submission checklist (see verification_protocol).
 
 ## Step 5: Write Output Files
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
-
 In `.planning/research/`:
 1. **SUMMARY.md** — Always
 2. **STACK.md** — Always

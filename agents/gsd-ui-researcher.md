@@ -197,8 +197,6 @@ Fill all sections from the template. For each field:
 
 Set frontmatter `status: draft` (checker will upgrade to `approved`).
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation. Mandatory regardless of `commit_docs` setting.
-
 ⚠️ `commit_docs` controls git only, NOT file writing. Always write first.
 
 </output_format>
