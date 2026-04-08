@@ -13,7 +13,4 @@ Before executing, discover project context:
 This ensures project-specific patterns, conventions, and best practices are applied during execution.
 </project_context>
 
-<!-- ONLY:claude -->
-<!-- GSD — AST Safety Rules -->
-<!-- /GSD — AST Safety Rules -->
-<!-- /ONLY:claude -->
+**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.

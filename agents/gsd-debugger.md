@@ -824,8 +824,6 @@ ls .planning/debug/*.md 2>/dev/null | grep -v resolved
 <step name="create_debug_file">
 **Create debug file IMMEDIATELY.**
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
-
 **Parse origin todo (if routed from check-todos):**
 
 Check if the prompt/description contains `--todo-file`:

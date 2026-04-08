@@ -825,26 +825,6 @@ const claudeToCopilotTools = {
 const GSD_COPILOT_INSTRUCTIONS_MARKER = '<!-- GSD Configuration -->';
 const GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER = '<!-- /GSD Configuration -->';
 
-/**
- * HTML comment markers wrapping the GSD AST safety block in CLAUDE.md.
- * Idempotent: install checks for START marker before appending.
- *
- * AST safety reference — issue tracker links for maintainers:
- *  - #30435 https://github.com/anthropics/claude-code/issues/30435
- *    Core AST safety layer (here-strings, process sub, ANSI-C, heredoc) — by design
- *  - #42400 https://github.com/anthropics/claude-code/issues/42400
- *    Brace expansion regression in v2.1.90
- *  - #31373 https://github.com/anthropics/claude-code/issues/31373
- *    $() nested context prompts — by design
- *  - #28183 https://github.com/anthropics/claude-code/issues/28183
- *    && compound chain re-prompts
- *  - #22502 https://github.com/anthropics/claude-code/issues/22502
- *    for loop spurious directory prompts
- *  - #39875 https://github.com/anthropics/claude-code/issues/39875
- *    bypassPermissions does NOT suppress AST heuristics
- */
-const GSD_AST_SAFETY_MARKER = '<!-- GSD — AST Safety Rules -->';
-const GSD_AST_SAFETY_CLOSE_MARKER = '<!-- /GSD — AST Safety Rules -->';
 
 /**
  * Path and reference conversion applied to ALL Copilot content.
@@ -989,9 +969,7 @@ function mergeCopilotInstructions(instructionsPath, templateContent) {
   }
 }
 
-// injectFirstTurnRule, injectAstSafetyBlock, and fillAstSafetyBlock moved to
-// template-processor.cjs as injectAfterFrontmatter, injectAppendToFile, and
-// fillBetweenMarkers respectively.
+// injectFirstTurnRule moved to template-processor.cjs as injectAfterFrontmatter.
 
 /**
  * Remove the GSD block from copilot-instructions.md content.
@@ -1245,28 +1223,47 @@ function install(isGlobal) {
   fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
   console.log(`  ${green}✓${reset} Wrote package.json (CommonJS mode)`);
 
-  // Copy hooks from dist/ (bundled with dependencies)
+  // Copy hooks from dist/ (bundled with dependencies) and .cjs files directly from hooks/
   // Template paths for the target runtime (replaces '.claude' with correct config dir)
   const hooksSrc = path.join(src, 'hooks', 'dist');
-  if (fs.existsSync(hooksSrc)) {
+  const hooksCjsSrc = path.join(src, 'hooks');
+  if (fs.existsSync(hooksSrc) || fs.existsSync(hooksCjsSrc)) {
     const hooksDest = path.join(targetDir, 'hooks');
     fs.mkdirSync(hooksDest, { recursive: true });
-    const hookEntries = fs.readdirSync(hooksSrc);
     const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
-    for (const entry of hookEntries) {
-      const srcFile = path.join(hooksSrc, entry);
-      if (fs.statSync(srcFile).isFile()) {
-        const destFile = path.join(hooksDest, entry);
-        // Template .js files to replace '.claude' with runtime-specific config dir
-        if (entry.endsWith('.js')) {
-          let content = fs.readFileSync(srcFile, 'utf8');
-          content = content.replace(/'\.claude'/g, configDirReplacement);
-          fs.writeFileSync(destFile, content);
-        } else {
-          fs.copyFileSync(srcFile, destFile);
+
+    // Copy bundled .js hooks from dist/ (with config dir templating)
+    if (fs.existsSync(hooksSrc)) {
+      const hookEntries = fs.readdirSync(hooksSrc);
+      for (const entry of hookEntries) {
+        const srcFile = path.join(hooksSrc, entry);
+        if (fs.statSync(srcFile).isFile()) {
+          const destFile = path.join(hooksDest, entry);
+          // Template .js files to replace '.claude' with runtime-specific config dir
+          if (entry.endsWith('.js')) {
+            let content = fs.readFileSync(srcFile, 'utf8');
+            content = content.replace(/'\.claude'/g, configDirReplacement);
+            fs.writeFileSync(destFile, content);
+          } else {
+            fs.copyFileSync(srcFile, destFile);
+          }
         }
       }
     }
+
+    // Copy .cjs hooks directly from hooks/ (no bundling needed — no external dependencies)
+    if (fs.existsSync(hooksCjsSrc)) {
+      const cjsEntries = fs.readdirSync(hooksCjsSrc);
+      for (const entry of cjsEntries) {
+        if (entry.endsWith('.cjs')) {
+          const srcFile = path.join(hooksCjsSrc, entry);
+          if (fs.statSync(srcFile).isFile()) {
+            fs.copyFileSync(srcFile, path.join(hooksDest, entry));
+          }
+        }
+      }
+    }
+
     if (verifyInstalled(hooksDest, 'hooks')) {
       console.log(`  ${green}✓${reset} Installed hooks (bundled)`);
     } else {
@@ -1282,25 +1279,6 @@ function install(isGlobal) {
   // Write file manifest for future modification detection
   writeManifest(targetDir);
   console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
-
-  // Inject AST safety rules (Claude Code only — Copilot has no equivalent AST layer).
-  //
-  // AST safety: Claude Code's tree-sitter-bash heuristics fire independently of
-  // the sandbox/allowlist layer. No config option suppresses them (Issue #30435).
-  // Rules go into CLAUDE.md for the orchestrator session and are filled into
-  // agent-shared-context.md (marker placeholders) so subagents see them too.
-  // Single source of truth: gsd-ng/templates/ast-safety-rules.md
-  // See: https://github.com/anthropics/claude-code/issues/30435
-  if (runtime === 'claude') {
-    const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
-    const astTemplatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'ast-safety-rules.md');
-    injectAppendToFile(claudeMdPath, astTemplatePath, GSD_AST_SAFETY_MARKER);
-    console.log(`  ${green}✓${reset} Injected AST safety rules into CLAUDE.md`);
-
-    const agentSharedContextPath = path.join(targetDir, 'gsd-ng', 'references', 'agent-shared-context.md');
-    fillBetweenMarkers(agentSharedContextPath, astTemplatePath, GSD_AST_SAFETY_MARKER, GSD_AST_SAFETY_CLOSE_MARKER);
-    console.log(`  ${green}✓${reset} Filled AST safety rules in agent-shared-context.md`);
-  }
 
   // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib files.
   // Uses template-processor.cjs (centralized template engine).
@@ -1353,6 +1331,9 @@ function install(isGlobal) {
   const guardrailCommand = isGlobal
     ? buildHookCommand(targetDir, 'gsd-guardrail.js')
     : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-guardrail.js';
+  const bashSafetyCommand = isGlobal
+    ? buildHookCommand(targetDir, 'bash-safety-hook.cjs')
+    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/bash-safety-hook.cjs';
 
   // Configure hooks in settings.json
   if (!settings.hooks) {
@@ -1454,6 +1435,29 @@ function install(isGlobal) {
       ]
     });
     console.log(`  ${green}✓${reset} Configured workflow guardrail hook`);
+  }
+
+  // Configure PreToolUse hook for bash command safety (compound command allowlist).
+  // Replaces AST safety rules — transparent hook instead of model instructions.
+  // See: https://github.com/anthropics/claude-code/issues/30435
+  // Append at END of PreToolUse array — user's custom hooks run first.
+  if (runtime === 'claude') {
+    const hasGsdBashSafetyHook = settings.hooks.PreToolUse.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    );
+
+    if (!hasGsdBashSafetyHook) {
+      settings.hooks.PreToolUse.push({
+        matcher: 'Bash',
+        hooks: [
+          {
+            type: 'command',
+            command: bashSafetyCommand
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured bash command safety hook`);
+    }
   }
 
   // Seed permissions.allow from settings-sandbox.json template

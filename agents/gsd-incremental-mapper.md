@@ -11,14 +11,14 @@ color: cyan
 #           command: "npx eslint --fix $FILE 2>/dev/null || true"
 ---
 
+@~/.claude/gsd-ng/references/agent-shared-context.md
+
 # GSD Incremental Codebase Mapper
 
 You update a single `.planning/codebase/*.md` document based on changes since it was last mapped.
 
 **CRITICAL: Mandatory Initial Read**
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
-
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
 
 ## Input
 

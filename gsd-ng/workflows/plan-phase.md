@@ -463,14 +463,14 @@ ls "${PHASE_DIR}"/*-PLAN.md 2>/dev/null
 Extract from INIT JSON:
 
 ```bash
-STATE_PATH=$(printf '%s\n' "$INIT" | jq -r '.state_path // empty')
-ROADMAP_PATH=$(printf '%s\n' "$INIT" | jq -r '.roadmap_path // empty')
-REQUIREMENTS_PATH=$(printf '%s\n' "$INIT" | jq -r '.requirements_path // empty')
-RESEARCH_PATH=$(printf '%s\n' "$INIT" | jq -r '.research_path // empty')
-VERIFICATION_PATH=$(printf '%s\n' "$INIT" | jq -r '.verification_path // empty')
-UAT_PATH=$(printf '%s\n' "$INIT" | jq -r '.uat_path // empty')
-CONTEXT_PATH=$(printf '%s\n' "$INIT" | jq -r '.context_path // empty')
-GAP_RESEARCH_PATH=$(printf '%s\n' "$INIT" | jq -r '.gap_research_path // empty')
+STATE_PATH=$(echo "$INIT" | jq -r '.state_path // empty')
+ROADMAP_PATH=$(echo "$INIT" | jq -r '.roadmap_path // empty')
+REQUIREMENTS_PATH=$(echo "$INIT" | jq -r '.requirements_path // empty')
+RESEARCH_PATH=$(echo "$INIT" | jq -r '.research_path // empty')
+VERIFICATION_PATH=$(echo "$INIT" | jq -r '.verification_path // empty')
+UAT_PATH=$(echo "$INIT" | jq -r '.uat_path // empty')
+CONTEXT_PATH=$(echo "$INIT" | jq -r '.context_path // empty')
+GAP_RESEARCH_PATH=$(echo "$INIT" | jq -r '.gap_research_path // empty')
 ```
 
 ## 7.5. Verify Nyquist Artifacts

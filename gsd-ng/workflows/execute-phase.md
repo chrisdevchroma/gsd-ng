@@ -61,10 +61,10 @@ SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$I
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
   AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths 2>/dev/null)
-  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | node -e "try{const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a.length)}catch{console.log(0)}" 2>/dev/null)
+  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | jq 'length' 2>/dev/null || echo 0)
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
-    PATH1=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[0]||'')" 2>/dev/null)
-    PATH2=$(echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(a[1]||'')" 2>/dev/null)
+    PATH1=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[0] // ""' 2>/dev/null)
+    PATH2=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[1] // ""' 2>/dev/null)
     AskUserQuestion(
       question="Multiple submodules have changes. Which submodule(s) should be branched?",
       options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
@@ -74,7 +74,7 @@ if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
   else
     # 3+ ambiguous paths: text list + binary choice
     echo "Multiple submodules have changes:"
-    echo "$AMBIGUOUS_PATHS" | node -e "const a=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));a.forEach(p=>console.log('  - '+p));" 2>/dev/null
+    echo "$AMBIGUOUS_PATHS" | jq -r '.[] | "  - " + .' 2>/dev/null
     AskUserQuestion(
       question="Multiple submodules have uncommitted changes. How should branching proceed?",
       options=["Branch all of them", "Skip branching"]
