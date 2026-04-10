@@ -7,17 +7,24 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: release
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '22'
+
+      - name: Validate release
+        shell: bash
+        run: bash scripts/validate-release.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Install dev dependencies
         run: npm ci
@@ -28,7 +35,7 @@ jobs:
       - name: Build tarball
         run: node scripts/build-tarball.js
 
-      - name: Detect prerelease
+      - name: Detect prerelease and build release body
         id: meta
         shell: bash
         run: |
@@ -38,12 +45,24 @@ jobs:
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          # Link to the changelog file at the tagged revision for release details
+          BODY="See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/${TAG}/CHANGELOG.md) for details."
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Attest tarball provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4
+        with:
+          subject-path: dist/gsd-ng.tar.gz
 
       - name: Create GitHub Release as draft
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: dist/gsd-ng.tar.gz
+          body: ${{ steps.meta.outputs.body }}
           generate_release_notes: true
+          append_body: true
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           draft: true
 

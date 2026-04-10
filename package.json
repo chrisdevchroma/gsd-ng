@@ -10,8 +10,7 @@
     "commands",
     "gsd-ng",
     "agents",
-    "hooks/dist",
-    "scripts"
+    "hooks/dist"
   ],
   "keywords": [
     "claude",
@@ -21,7 +20,7 @@
     "context-engineering",
     "spec-driven-development"
   ],
-  "author": "TÂCHES",
+  "author": "chrisdevchroma",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,7 +31,7 @@
     "url": "https://github.com/chrisdevchroma/gsd-ng/issues"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "devDependencies": {
     "c8": "^11.0.0",

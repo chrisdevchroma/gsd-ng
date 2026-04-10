@@ -6,6 +6,7 @@ on:
       - '.planning/**'
       - '.claude/**'
       - '.github/**'
+      - 'scripts/**'
 
 permissions:
   checks: write
@@ -16,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout default branch (trusted)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         # No ref specified — defaults to default branch (trusted execution model)
         # PR diff data is fetched via GitHub API in ci-security-scan.cjs, not via checkout
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '22'
 
