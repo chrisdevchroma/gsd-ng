@@ -30,6 +30,24 @@ Feature and fix work targets `develop` via prefixed branches (`feat/`, `fix/`, `
 
 **Minor and major releases** are staged: one or more `-dev.N` versions are published to `dev` for validation, then a stable tag is pushed to publish to `latest`.
 
+### Triggering a release
+
+Releases can be triggered two ways:
+
+1. **Dispatch workflow** (or use the Actions tab):
+   - Pre-release from develop: `gh workflow run prepare-release.yml -f version=X.Y.Z-dev.N -f branch=develop`
+   - Stable release from main: `gh workflow run prepare-release.yml -f version=X.Y.Z -f branch=main`
+
+   This validates the version, bumps `package.json`, commits, tags, and pushes — then the release and publish workflows trigger automatically.
+
+2. **Manual:** Bump `package.json`, commit, push a `v<version>` tag. The `release.yml` and `publish.yml` workflows trigger on the tag push and validate that the tag matches `package.json`.
+
+## CI guardrails
+
+- **Tag-version validation:** Both `release.yml` and `publish.yml` verify the pushed tag matches the version in `package.json`. A mismatch fails the workflow before any publish occurs.
+- **CHANGELOG enforcement:** PRs to `main` that don't update `CHANGELOG.md` fail CI; PRs to other branches receive a non-blocking warning.
+- **Release approval:** Publishing to npm requires a reviewer to approve the `release` environment in GitHub.
+
 ## Conventional commits
 
-Branch prefixes map to version bumps — `fix/` triggers PATCH, `feat/` triggers MINOR. `chore/`, `docs/`, and `refactor/` produce no version change.
+Branch prefixes (`fix/`, `feat/`, `chore/`) and squash-merge commit messages categorize changes but do not drive automated version bumps. Version numbers are a deliberate human decision at release time, following gitflow conventions.

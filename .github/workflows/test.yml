@@ -16,6 +16,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  package-files-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+
+      - name: Validate package.json files allowlist
+        shell: bash
+        run: |
+          ALLOWED='bin commands gsd-ng agents hooks/dist'
+          FILES=$(node -p "require('./package.json').files.join(' ')")
+          for entry in $FILES; do
+            if ! echo "$ALLOWED" | grep -qw "$entry"; then
+              echo "::error::package.json files contain '$entry' which is not in the allowlist: $ALLOWED"
+              exit 1
+            fi
+          done
+          echo "package.json files OK: $FILES"
+
+  changelog-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Check CHANGELOG updated
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
+        shell: bash
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -q 'CHANGELOG.md'; then
+            echo "CHANGELOG.md updated"
+          else
+            if [ "$BASE_REF" = "main" ]; then
+              echo "::error::CHANGELOG.md must be updated for PRs to main"
+              exit 1
+            else
+              echo "::warning::CHANGELOG.md was not updated in this PR"
+            fi
+          fi
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -24,13 +72,13 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node-version: [20, 22]
+        node-version: [22, 24]
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'

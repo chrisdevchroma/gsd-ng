@@ -2,7 +2,7 @@
 
 ## Responsible Disclosure
 
-We take security seriously and appreciate responsible disclosure of vulnerabilities. If you discover a security vulnerability in GSD-NG, please report it directly to **security@devchroma.nl** instead of opening a public GitHub issue.
+We take security seriously and appreciate responsible disclosure of vulnerabilities. If you discover a security vulnerability in GSD-NG, please report it through [GitHub's private vulnerability reporting](https://github.com/chrisdevchroma/gsd-ng/security/advisories/new) instead of opening a public issue. Alternatively, email **security@devchroma.nl**.
 
 ### What to Include in Your Report
 

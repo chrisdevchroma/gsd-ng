@@ -1,0 +1,111 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0-dev.4, 1.0.0)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to release from'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+          - develop
+          - main
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+
+      - name: Validate version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          BRANCH: ${{ inputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION"
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            RELEASE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION")
+            if [ "$RELEASE_STATUS" = "200" ]; then
+              echo "::error::Tag v$VERSION and GitHub release already exist"
+              exit 1
+            fi
+            echo "::error::Tag v$VERSION exists but no GitHub release was found. Re-run the release and publish workflows from the Actions tab for this tag instead."
+            exit 1
+          fi
+          # Enforce gitflow: prereleases from develop, stable from main
+          if [[ "$VERSION" == *-* && "$BRANCH" != "develop" ]]; then
+            echo "::error::Prerelease versions must be released from develop, not $BRANCH"
+            exit 1
+          fi
+          if [[ "$VERSION" != *-* && "$BRANCH" != "main" ]]; then
+            echo "::error::Stable versions must be released from main, not $BRANCH"
+            exit 1
+          fi
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Releasing $VERSION (current: $CURRENT) from $BRANCH"
+
+      - name: Update package.json version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version
+
+      - name: Update package-lock.json
+        run: npm install --package-lock-only
+
+      - name: Validate CHANGELOG.md
+        shell: bash
+        run: |
+          if ! grep -q '## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no [Unreleased] section. Add release notes under [Unreleased] before running this workflow."
+            exit 1
+          fi
+          # Check that [Unreleased] has content (not just the heading followed by another heading or EOF)
+          CONTENT=$(sed -n '/## \[Unreleased\]/,/## \[/{ /## \[/d; /^$/d; p; }' CHANGELOG.md)
+          if [ -z "$CONTENT" ]; then
+            echo "::error::CHANGELOG.md [Unreleased] section is empty. Add release notes before running this workflow."
+            exit 1
+          fi
+
+      - name: Stamp CHANGELOG.md
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          if grep -q '## \[Unreleased\]' CHANGELOG.md; then
+            sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
+          fi
+
+      - name: Commit and tag
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "chore: release v$VERSION"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push --atomic origin "$BRANCH" "v$VERSION"

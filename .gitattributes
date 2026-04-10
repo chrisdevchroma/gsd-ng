@@ -1,0 +1,20 @@
+# Prevent accidental commit of large binaries
+*.tar.gz binary -diff
+*.zip binary -diff
+*.gz binary -diff
+*.tgz binary -diff
+
+# Exclude env files from GitHub language stats
+.env linguist-generated
+.env.* linguist-generated
+*.pem binary -diff
+*.key binary -diff
+
+# Normalize line endings for shell scripts
+*.sh text eol=lf
+*.cjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
