@@ -133,12 +133,12 @@ function reconstructFrontmatter(obj) {
           }
         } else {
           const sv = String(subval);
-          lines.push(`  ${subkey}: ${sv.includes(':') || sv.includes('#') ? `"${sv}"` : sv}`);
+          lines.push(`  ${subkey}: ${sv.includes(':') || sv.includes('#') || sv.includes(' \u2014 ') || sv.includes('(') || sv.includes(')') ? `"${sv}"` : sv}`);
         }
       }
     } else {
       const sv = String(value);
-      if (sv.includes(':') || sv.includes('#') || sv.startsWith('[') || sv.startsWith('{')) {
+      if (sv.includes(':') || sv.includes('#') || sv.startsWith('[') || sv.startsWith('{') || sv.includes(' \u2014 ') || sv.includes('(') || sv.includes(')')) {
         lines.push(`${key}: "${sv}"`);
       } else {
         lines.push(`${key}: ${sv}`);

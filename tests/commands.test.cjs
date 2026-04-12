@@ -1988,7 +1988,7 @@ describe('discoverTestCommand', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('returns npm test when package.json has a test script', () => {
@@ -2332,7 +2332,7 @@ describe('divergence helpers', () => {
       const entry = section.get('def5678');
       assert.strictEqual(entry.status, 'pending');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -2345,7 +2345,7 @@ describe('divergence helpers', () => {
       assert.ok(result instanceof Map, 'should return a Map');
       assert.strictEqual(result.size, 0, 'should be empty when section not found');
     } finally {
-      fs.rmSync(tmpDir2, { recursive: true, force: true });
+      cleanup(tmpDir2);
     }
   });
 
@@ -2716,7 +2716,7 @@ describe('cleanup command', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   // Test 1: dry-run with one completed milestone returns expected shape
@@ -2855,8 +2855,8 @@ describe('update command', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(fakeHome, { recursive: true, force: true });
+    cleanup(tmpDir);
+    cleanup(fakeHome);
   });
 
   // Helper: run update command via gsd-tools subprocess with test overrides injected via env vars.

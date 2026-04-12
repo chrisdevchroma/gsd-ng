@@ -10,7 +10,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const {
   loadConfig,
@@ -44,7 +44,7 @@ describe('loadConfig', () => {
 
   afterEach(() => {
     process.chdir(originalCwd);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   function writeConfig(obj) {
@@ -135,7 +135,7 @@ describe('resolveModelInternal', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   function writeConfig(obj) {
@@ -331,7 +331,7 @@ describe('safeReadFile', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('reads existing file', () => {
@@ -356,7 +356,7 @@ describe('pathExistsInternal', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('returns true for existing path', () => {
@@ -383,7 +383,7 @@ describe('getMilestoneInfo', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('extracts version and name from roadmap', () => {
@@ -490,7 +490,7 @@ describe('searchPhaseInDir', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('finds phase directory by normalized prefix', () => {
@@ -557,7 +557,7 @@ describe('findPhaseInternal', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('finds phase in current phases directory', () => {
@@ -598,7 +598,7 @@ describe('getRoadmapPhaseInternal', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   // Bug: getRoadmapPhaseInternal was missing from module.exports
@@ -680,7 +680,7 @@ describe('getMilestonePhaseFilter', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('filters directories to only current milestone phases', () => {

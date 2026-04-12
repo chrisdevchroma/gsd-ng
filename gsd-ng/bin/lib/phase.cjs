@@ -834,7 +834,7 @@ function cmdPhaseComplete(cwd, phaseNum) {
       `^(\\|\\s*${phaseEscaped}\\.?\\s[^|]*(?:\\|[^\\n]*)*)$`,
       'im'
     );
-    roadmapContent = roadmapContent.replace(tableRowPattern, (fullRow) => {
+    roadmapContent = replaceInCurrentMilestone(roadmapContent, tableRowPattern, (fullRow) => {
       const cells = fullRow.split('|').slice(1, -1);
       if (cells.length === 5) {
         // 5-col: Phase | Milestone | Plans | Status | Completed

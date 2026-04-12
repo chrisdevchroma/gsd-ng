@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const {
   validatePath,
@@ -39,7 +39,7 @@ describe('validatePath', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('Test 1: rejects null input', () => {
@@ -108,7 +108,7 @@ describe('requireSafePath', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('Test 7: returns resolved path for safe input (no throw)', () => {
@@ -652,7 +652,7 @@ describe('logSecurityEvent', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
     // Restore env vars
     if (origEnv.GSD_SECURITY_LOG_DIR !== undefined) {
       process.env.GSD_SECURITY_LOG_DIR = origEnv.GSD_SECURITY_LOG_DIR;
@@ -777,7 +777,7 @@ describe('scan-on-write integration', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
     if (origEnv.GSD_TEST_MODE !== undefined) {
       process.env.GSD_TEST_MODE = origEnv.GSD_TEST_MODE;
     } else {
@@ -887,7 +887,7 @@ describe('scan-on-read integration', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('cmdStateLoad returns state_raw unchanged when content is clean', () => {
@@ -986,7 +986,7 @@ describe('W020 health check integration', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
     if (origEnv.GSD_SECURITY_LOG_DIR !== undefined) {
       process.env.GSD_SECURITY_LOG_DIR = origEnv.GSD_SECURITY_LOG_DIR;
     } else {
@@ -1161,7 +1161,7 @@ describe('entropy scanning (Phase 40.1)', () => {
       const entropyFindings = result.findings.filter(f => f.startsWith('[entropy]'));
       assert.strictEqual(entropyFindings.length, 0, 'global config=false should disable entropy');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -1174,7 +1174,7 @@ describe('entropy scanning (Phase 40.1)', () => {
       const entropyFindings = result.findings.filter(f => f.startsWith('[entropy]'));
       assert.ok(entropyFindings.length > 0, 'missing config should default to enabled');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 

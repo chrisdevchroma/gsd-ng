@@ -329,7 +329,7 @@ describe('roadmap analyze command', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.phase_count, 3, 'should find 3 phases');
-    assert.strictEqual(output.phases[0].disk_status, 'complete', 'phase 1 complete');
+    assert.ok(output.phases[0].disk_status.startsWith('complete'), 'phase 1 complete');
     assert.strictEqual(output.phases[1].disk_status, 'planned', 'phase 2 planned');
     assert.strictEqual(output.phases[2].disk_status, 'no_directory', 'phase 3 no directory');
     assert.strictEqual(output.completed_phases, 1, '1 phase complete');
@@ -1140,4 +1140,84 @@ describe('roadmap get-phase --default flag', () => {
     assert.strictEqual(parsed.found, false, 'Should return found:false without --default');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getPhaseCompletionStatus helper — two-tier verified/unverified status
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getPhaseCompletionStatus helper', () => {
+  const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('3 plans 3 summaries no VERIFICATION.md returns complete (unverified)', () => {
+    fs.writeFileSync(path.join(tmpDir, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-02-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-03-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
+    const result = getPhaseCompletionStatus(tmpDir);
+    assert.strictEqual(result.isComplete, true, 'isComplete should be true');
+    assert.strictEqual(result.status, 'complete (unverified)', 'status should be complete (unverified)');
+  });
+
+  test('3 plans 3 summaries VERIFICATION.md with status: passed returns complete (verified)', () => {
+    fs.writeFileSync(path.join(tmpDir, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-02-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-03-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-VERIFICATION.md'), '---\nstatus: passed\n---\n# Verification');
+    const result = getPhaseCompletionStatus(tmpDir);
+    assert.strictEqual(result.isComplete, true, 'isComplete should be true');
+    assert.strictEqual(result.status, 'complete (verified)', 'status should be complete (verified)');
+  });
+
+  test('3 plans 3 summaries VERIFICATION.md with status: gaps_found returns complete (unverified)', () => {
+    fs.writeFileSync(path.join(tmpDir, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-02-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-03-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-VERIFICATION.md'), '---\nstatus: gaps_found\n---\n# Verification');
+    const result = getPhaseCompletionStatus(tmpDir);
+    assert.strictEqual(result.isComplete, true, 'isComplete should be true');
+    assert.strictEqual(result.status, 'complete (unverified)', 'status should be complete (unverified) for non-passed');
+  });
+
+  test('3 plans 2 summaries returns in_progress', () => {
+    fs.writeFileSync(path.join(tmpDir, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-02-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-03-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
+    const result = getPhaseCompletionStatus(tmpDir);
+    assert.strictEqual(result.isComplete, false, 'isComplete should be false');
+    assert.strictEqual(result.status, 'in_progress', 'status should be in_progress');
+  });
+
+  test('0 plans returns not_started', () => {
+    // tmpDir exists but has no PLAN files
+    const result = getPhaseCompletionStatus(tmpDir);
+    assert.strictEqual(result.isComplete, false, 'isComplete should be false');
+    assert.strictEqual(result.status, 'not_started', 'status should be not_started');
+  });
+
+  test('non-existent directory returns not_started', () => {
+    const result = getPhaseCompletionStatus('/tmp/gsd-nonexistent-dir-' + Date.now());
+    assert.strictEqual(result.isComplete, false, 'isComplete should be false');
+    assert.strictEqual(result.status, 'not_started', 'status should be not_started');
+  });
+});
+
 

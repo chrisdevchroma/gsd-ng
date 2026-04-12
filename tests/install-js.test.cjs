@@ -9,7 +9,7 @@ const path = require('path');
 const INSTALLER = path.resolve(__dirname, '..', 'bin', 'install.js');
 
 // Resolve a writable temp base — sandbox sets TMPDIR=/tmp/claude which may not exist on disk
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 const BASE_TMPDIR = resolveTmpDir();
 
 // ── TILDE-01: global install uses tilde paths, not absolute home dir ──────────
@@ -56,7 +56,7 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
       'Home dir: ' + homeDir
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -84,7 +84,7 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
       'Actual stdout: ' + output.slice(0, 500)
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -142,7 +142,7 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
       'install.js local install must produce fallback chain ${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)'
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -183,7 +183,7 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
       'Offending files: ' + badFiles.join(', ')
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -232,7 +232,7 @@ test('PERM-01: local install seeds permissions.allow with template entries (Bash
     assert.strictEqual(settings.sandbox && settings.sandbox.enabled, true, 'sandbox.enabled must be true by default (PERM-01)');
     assert.strictEqual(settings.sandbox && settings.sandbox.autoAllowBashIfSandboxed, true, 'sandbox.autoAllowBashIfSandboxed must be true by default (PERM-01)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -268,7 +268,7 @@ test('PERM-02: running --local install twice produces no duplicate entries in pe
     const uniqueEntries = new Set(allow);
     assert.strictEqual(uniqueEntries.size, allow.length, 'permissions.allow must have no duplicate entries after two installs (PERM-02)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -294,7 +294,7 @@ test('PERM-03: --local --no-seed-permissions-config does not create permissions.
     const hasAllow = settings.permissions !== undefined && settings.permissions.allow !== undefined;
     assert.ok(!hasAllow, 'permissions.allow must not exist when --no-seed-permissions-config is used (PERM-03)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -321,7 +321,7 @@ test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seed
     const sandboxEnabled = settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
     assert.ok(!sandboxEnabled, 'sandbox.enabled must not be set when --no-seed-sandbox-config is used (PERM-04)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -369,7 +369,7 @@ test('PERM-05: uninstall removes template-sourced entries from permissions.allow
     assert.ok(!allowAfter.includes('Agent(*)'), 'Agent(*) must be removed after uninstall (PERM-05)');
     assert.ok(!allowAfter.includes('Bash(node *)'), 'Bash(node *) must be removed after uninstall (PERM-05)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -402,7 +402,7 @@ test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', 
     const sandboxEnabled = settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
     assert.ok(!sandboxEnabled, 'sandbox.enabled must not be set when --no-seed-sandbox-config is used (SAND-01)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -428,7 +428,7 @@ test('RUNTIME-01: --local without --runtime exits non-zero with helpful error', 
       'must show "Error: --runtime required" message (RUNTIME-01)\nActual output: ' + output.slice(0, 500)
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -454,7 +454,7 @@ test('RUNTIME-02: --global without --runtime exits non-zero with helpful error',
       'must show "Error: --runtime required" message (RUNTIME-02)\nActual output: ' + output.slice(0, 500)
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -480,7 +480,7 @@ test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
       'must show "Error: --runtime required" message (RUNTIME-03)\nActual output: ' + output.slice(0, 500)
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -521,7 +521,7 @@ test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands'
       );
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -554,7 +554,7 @@ test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => 
       .filter(f => f.startsWith('gsd-') && f.endsWith('.agent.md'));
     assert.ok(agentFiles.length > 0, 'at least one gsd-*.agent.md file must exist (COPILOT-02)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -593,7 +593,7 @@ test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD m
       'copilot-instructions.md must contain GSD close marker (COPILOT-03)'
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -625,7 +625,7 @@ test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
       '.github/settings.json must NOT exist for Copilot install (COPILOT-04)'
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -688,7 +688,7 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
       }
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -763,7 +763,7 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
     const gsdNgDir = path.join(githubDir, 'gsd-ng');
     assert.ok(!fs.existsSync(gsdNgDir), 'gsd-ng/ directory must be removed after uninstall (COPILOT-06)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -823,7 +823,7 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
       'Offending files: ' + badFiles.join(', ')
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -861,7 +861,7 @@ test('COPILOT-08: --local --runtime copilot selects Copilot runtime', () => {
     const claudeDir = path.join(tmpDir, '.claude');
     assert.ok(!fs.existsSync(claudeDir), '.claude/ directory must NOT exist when --runtime copilot is used (COPILOT-08)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -894,7 +894,7 @@ test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with ses
       'sessionStart hook bash command must reference gsd-check-update (COPILOT-09)'
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -918,7 +918,7 @@ test('BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks d
     assert.ok(content.startsWith('#!/usr/bin/env node'),
       'bash-safety-hook.cjs must start with #!/usr/bin/env node shebang (BASH-HOOK-01)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -950,7 +950,7 @@ test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.js
     assert.strictEqual(bashSafetyEntry.matcher, 'Bash',
       'bash-safety-hook entry must have matcher: "Bash" (BASH-HOOK-02)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -979,7 +979,7 @@ test('BASH-HOOK-03: idempotent — re-running install does not duplicate bash-sa
       'bash-safety-hook.cjs must appear exactly once in PreToolUse after two installs (BASH-HOOK-03). ' +
       'Found: ' + bashSafetyEntries.length + ' entries');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -1011,7 +1011,7 @@ test('BASH-HOOK-04: copilot local install does NOT wire bash-safety-hook into se
     assert.ok(!fs.existsSync(hookFilePath),
       'bash-safety-hook.cjs must NOT exist in Copilot hooks dir (BASH-HOOK-04)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -1037,7 +1037,7 @@ test('BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md 
     assert.ok(!content.includes('GSD — AST Safety Rules'),
       'agent-shared-context.md must NOT contain AST Safety Rules markers (BASH-HOOK-05)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -1061,7 +1061,7 @@ test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in a
     assert.ok(content.includes('ALWAYS use the Write tool'),
       'agent-shared-context.md must contain anti-heredoc instruction for copilot runtime too (BASH-HOOK-06)');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -1084,7 +1084,7 @@ test('BASH-HOOK-07: anti-heredoc not duplicated on re-install of claude local', 
     assert.strictEqual(occurrences, 1,
       '"ALWAYS use the Write tool" must appear exactly once after two installs (BASH-HOOK-07). Found: ' + occurrences);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });
 
@@ -1131,6 +1131,6 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
       'Offending files:\n' + offending.map(s => '  ' + s).join('\n')
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   }
 });

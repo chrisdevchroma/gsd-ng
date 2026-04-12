@@ -9,7 +9,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, cleanup, cleanupSubdir } = require('./helpers.cjs');
 
 // ─── Helpers for setting up minimal valid projects ────────────────────────────
 
@@ -63,7 +63,7 @@ describe('validate health command', () => {
 
   test("returns 'broken' when .planning directory is missing", () => {
     // createTempProject creates .planning/phases — remove it entirely
-    fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
+    cleanupSubdir(tmpDir, '.planning');
 
     const result = runGsdTools('validate health', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);

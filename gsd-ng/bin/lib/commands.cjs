@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 const os = require('os');
-const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, extractCurrentMilestone, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
+const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, extractCurrentMilestone, getPhaseCompletionStatus, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES } = require('./model-profiles.cjs');
 const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
@@ -466,9 +466,12 @@ function cmdProgressRender(cwd, format) {
 
       let status;
       if (plans === 0) status = 'Pending';
-      else if (summaries >= plans) status = 'Complete';
-      else if (summaries > 0) status = 'In Progress';
-      else status = 'Planned';
+      else {
+        const { isComplete, status: cs } = getPhaseCompletionStatus(path.join(phasesDir, dir));
+        if (isComplete) status = cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
+        else if (summaries > 0) status = 'In Progress';
+        else status = 'Planned';
+      }
 
       phases.push({ number: phaseNum, name: phaseName, plans, summaries, status });
     }
@@ -847,9 +850,12 @@ function cmdStats(cwd, format) {
 
       let status;
       if (plans === 0) status = 'Not Started';
-      else if (summaries >= plans) status = 'Complete';
-      else if (summaries > 0) status = 'In Progress';
-      else status = 'Planned';
+      else {
+        const { isComplete, status: cs } = getPhaseCompletionStatus(path.join(phasesDir, dir));
+        if (isComplete) status = cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
+        else if (summaries > 0) status = 'In Progress';
+        else status = 'Planned';
+      }
 
       const existing = phasesByNumber.get(phaseNum);
       phasesByNumber.set(phaseNum, {
@@ -863,7 +869,7 @@ function cmdStats(cwd, format) {
   } catch {}
 
   const phases = [...phasesByNumber.values()].sort((a, b) => comparePhaseNum(a.number, b.number));
-  const completedPhases = phases.filter(p => p.status === 'Complete').length;
+  const completedPhases = phases.filter(p => p.status === 'Complete' || p.status === 'Complete (verified)').length;
   const planPercent = totalPlans > 0 ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100)) : 0;
   const percent = phases.length > 0 ? Math.min(100, Math.round((completedPhases / phases.length) * 100)) : 0;
 

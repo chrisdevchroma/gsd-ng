@@ -14,7 +14,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const HOOK_PATH = path.resolve(__dirname, '..', 'hooks', 'bash-safety-hook.cjs');
 
@@ -224,7 +224,7 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
       assert.ok(settings.permissions.allow.includes('Bash(git:*)'), 'Layer 1 Bash(git:*) should be present');
       assert.ok(settings.permissions.allow.includes('Bash(npm:*)'), 'Layer 3 Bash(npm:*) should be present');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -267,7 +267,7 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
       assert.ok(settings.permissions.allow.includes('Bash(npm:*)'), 'Layer 3 should be merged');
       assert.ok(settings.permissions.allow.includes('Bash(node:*)'), 'Layer 4 should be merged');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -290,7 +290,7 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
         loadMergedSettings({ CLAUDE_SETTINGS_PATH: badSettingsPath });
       });
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 });
@@ -635,7 +635,7 @@ describe('BASH-HOOK-GRACEFUL: hook process graceful degradation', () => {
     hermetic_home = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-hook-home-'));
   });
   after(() => {
-    fs.rmSync(hermetic_home, { recursive: true, force: true });
+    cleanup(hermetic_home);
   });
 
   function runHook(stdin, env = {}) {

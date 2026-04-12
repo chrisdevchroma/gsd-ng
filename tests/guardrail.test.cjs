@@ -3,9 +3,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { runHook } = require('./hook-harness.cjs');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup: cleanupDir } = require('./helpers.cjs');
 
 const HOOK_PATH = path.resolve(__dirname, '..', 'hooks', 'gsd-guardrail.js');
 
@@ -17,7 +16,7 @@ function makeTmpDir(prefix = 'gsd-guardrail-test-') {
   const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), prefix));
   return {
     tmpDir,
-    cleanup: () => fs.rmSync(tmpDir, { recursive: true, force: true }),
+    cleanup: () => cleanupDir(tmpDir),
   };
 }
 

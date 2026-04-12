@@ -13,8 +13,6 @@ const { describe, it, before } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-
 // Import the render functions from gsd-statusline.js
 const statusline = require('../hooks/gsd-statusline.js');
 const {
@@ -27,24 +25,7 @@ const {
 } = statusline;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-
-function makeTmpDir() {
-  // Try os.tmpdir() first; fall back to /tmp/claude-{uid}/ if the dir doesn't exist
-  // (sandbox sets TMPDIR=/tmp/claude which may not be created on disk)
-  const candidates = [os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'];
-  for (const base of candidates) {
-    try {
-      if (fs.existsSync(base)) {
-        return fs.mkdtempSync(path.join(base, 'statusline-test-'));
-      }
-    } catch (e) { /* try next */ }
-  }
-  throw new Error('No writable tmp directory found');
-}
-
-function cleanup(dir) {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
-}
+const { createTempProject, cleanup } = require('./helpers.cjs');
 
 // ─── formatTokenCount ────────────────────────────────────────────────────────
 
@@ -123,7 +104,7 @@ describe('renderGitBranch', () => {
   });
 
   it('returns empty string gracefully when cwd has no git repo', () => {
-    const tmpDir = makeTmpDir();
+    const tmpDir = createTempProject();
     try {
       const data = { workspace: { current_dir: tmpDir } };
       const config = {};
@@ -289,7 +270,7 @@ describe('renderCrossModelWarning', () => {
 
 describe('withCache', () => {
   it('calls computeFn and writes result when cache file does not exist', () => {
-    const tmpDir = makeTmpDir();
+    const tmpDir = createTempProject();
     const cacheFile = path.join(tmpDir, 'test.cache');
     try {
       let called = 0;
@@ -304,7 +285,7 @@ describe('withCache', () => {
   });
 
   it('returns cached value without calling computeFn when cache is fresh', () => {
-    const tmpDir = makeTmpDir();
+    const tmpDir = createTempProject();
     const cacheFile = path.join(tmpDir, 'test.cache');
     try {
       fs.writeFileSync(cacheFile, 'cached-value');
@@ -319,7 +300,7 @@ describe('withCache', () => {
   });
 
   it('returns empty string on error (computeFn throws)', () => {
-    const tmpDir = makeTmpDir();
+    const tmpDir = createTempProject();
     const cacheFile = path.join(tmpDir, 'test.cache');
     try {
       const result = withCache(cacheFile, 60, () => { throw new Error('compute failed'); });

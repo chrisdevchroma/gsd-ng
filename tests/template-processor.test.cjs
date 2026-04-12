@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { processTemplate, validateMarkers, buildContext, RUNTIMES, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const BASE_TMPDIR = resolveTmpDir();
 
@@ -205,7 +205,7 @@ describe('fillBetweenMarkers', () => {
       assert.ok(result.includes('before'), 'content before markers must be preserved');
       assert.ok(result.includes('after'), 'content after markers must be preserved');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -221,7 +221,7 @@ describe('fillBetweenMarkers', () => {
       assert.ok(result.includes('fresh content'), 'stale content must be replaced with template content');
       assert.ok(!result.includes('stale content'), 'stale content must not remain');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -234,7 +234,7 @@ describe('fillBetweenMarkers', () => {
         fillBetweenMarkers(path.join(tmpDir, 'missing.md'), templatePath, '<!-- S -->', '<!-- /S -->');
       });
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -249,7 +249,7 @@ describe('fillBetweenMarkers', () => {
       fillBetweenMarkers(targetPath, templatePath, '<!-- S -->', '<!-- /S -->');
       assert.equal(fs.readFileSync(targetPath, 'utf8'), original, 'file must be unchanged when markers absent');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -264,7 +264,7 @@ describe('fillBetweenMarkers', () => {
       const result = fs.readFileSync(targetPath, 'utf8');
       assert.ok(result.includes('bare template content'), 'bare template content must be injected as fallback');
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 });
