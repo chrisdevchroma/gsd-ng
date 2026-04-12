@@ -106,11 +106,16 @@ describe('lint: no bare roadmapContent.replace() in roadmap.cjs', () => {
     const roadmapSource = fs.readFileSync(
       path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'roadmap.cjs'), 'utf-8'
     );
-    const violations = roadmapSource.split('\n').filter(l =>
-      l.includes('roadmapContent.replace(') &&
-      !l.includes('replaceInCurrentMilestone') &&
-      !l.trim().startsWith('//')
-    );
+    const violations = [];
+    roadmapSource.split('\n').forEach((line, i) => {
+      if (
+        line.includes('roadmapContent.replace(') &&
+        !line.includes('replaceInCurrentMilestone') &&
+        !line.trim().startsWith('//')
+      ) {
+        violations.push(`roadmap.cjs:${i + 1}: ${line.trim()}`);
+      }
+    });
     assert.deepStrictEqual(violations, [],
       `Bare roadmapContent.replace() found (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
     );
