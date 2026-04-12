@@ -1079,7 +1079,7 @@ describe('init phase-op validates phase number (SEC-02)', () => {
 
 describe('init execute-phase submodule fields', () => {
   const { createSubmoduleWorkspace } = require('./helpers.cjs');
-  const cleanupDir = (dir) => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+  const cleanupDir = (dir) => { try { cleanup(dir); } catch {} };
 
   // Test via CLI since cmdInitExecutePhase calls output() -> process.exit()
   test('init execute-phase output includes submodule fields', () => {

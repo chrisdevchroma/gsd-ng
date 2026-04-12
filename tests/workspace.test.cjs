@@ -754,7 +754,7 @@ describe('resolveGitContext', () => {
       assert.strictEqual(parsed.submodule_is_active, false,
         'submodule_is_active should be false when git context resolution fails');
     } finally {
-      fs.rmSync(nonGitDir, { recursive: true, force: true });
+      cleanup(nonGitDir);
     }
   });
 

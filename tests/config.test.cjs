@@ -93,7 +93,7 @@ describe('config-ensure-section command', () => {
       assert.strictEqual(config.commit_docs, false, 'commit_docs should be overridden');
       assert.strictEqual(typeof config.branching_strategy, 'string', 'branching_strategy should be a string');
     } finally {
-      fs.rmSync(tmpHome, { recursive: true, force: true });
+      cleanup(tmpHome);
     }
   });
 
@@ -114,7 +114,7 @@ describe('config-ensure-section command', () => {
       assert.strictEqual(typeof config.workflow.plan_check, 'boolean', 'plan_check should be a boolean');
       assert.strictEqual(typeof config.workflow.verifier, 'boolean', 'verifier should be a boolean');
     } finally {
-      fs.rmSync(tmpHome, { recursive: true, force: true });
+      cleanup(tmpHome);
     }
   });
 });

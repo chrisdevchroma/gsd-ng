@@ -33,7 +33,7 @@ const {
 } = require('../benchmarks/benchmark-runner.cjs');
 
 const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 // ---------------------------------------------------------------------------
 // 1. Config parsing — BENCH-01
@@ -359,7 +359,7 @@ describe('results write', () => {
       // Verify it parses as valid JSON
       assert.doesNotThrow(() => JSON.parse(fs.readFileSync(filepath, 'utf-8')));
     } finally {
-      fs.rmSync(tmpResultDir, { recursive: true, force: true });
+      cleanup(tmpResultDir);
     }
   });
 
@@ -388,7 +388,7 @@ describe('results write', () => {
         );
       }
     } finally {
-      fs.rmSync(tmpResultDir, { recursive: true, force: true });
+      cleanup(tmpResultDir);
     }
   });
 });

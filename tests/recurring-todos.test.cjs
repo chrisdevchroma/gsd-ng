@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const { parseDuration, isRecurringDue, cmdTodoComplete, cmdRecurringDue, syncSingleRef } = require('../gsd-ng/bin/lib/commands.cjs');
 const { setJsonMode } = require('../gsd-ng/bin/lib/core.cjs');
@@ -143,7 +143,7 @@ describe('cmdTodoComplete - recurring', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   it('recurring todo stays in pending/ after completion', () => {
@@ -246,7 +246,7 @@ describe('cmdRecurringDue', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   it('returns empty list when no recurring todos exist', () => {
@@ -377,7 +377,7 @@ describe('cmdTodoComplete - inline issue sync', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   it('syncs external_ref on non-recurring completion when auto_sync is not false', () => {

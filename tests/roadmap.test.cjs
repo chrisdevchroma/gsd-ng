@@ -1289,3 +1289,27 @@ describe('lint: no inline redeclaration of helpers.cjs exports in test files', (
   }
 });
 
+describe('lint: no bare fs.rmSync with recursive:true in test files (use cleanup from helpers.cjs)', () => {
+  test('no test file calls fs.rmSync(x, { recursive: true, force: true }) directly', () => {
+    const self = path.basename(__filename);
+    const testFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.cjs') && f !== self);
+    const violations = [];
+    for (const file of testFiles) {
+      const src = fs.readFileSync(path.join(__dirname, file), 'utf-8');
+      src.split('\n').forEach((line, i) => {
+        if (
+          line.includes('fs.rmSync(') &&
+          line.includes('recursive: true') &&
+          !line.includes('path.join(') &&   // intentional partial deletes are allowed
+          !line.trim().startsWith('//')
+        ) {
+          violations.push(`${file}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(violations, [],
+      `Bare fs.rmSync with recursive:true found (use cleanup() from helpers.cjs instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
