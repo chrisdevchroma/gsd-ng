@@ -121,3 +121,37 @@ describe('lint: no bare roadmapContent.replace() in roadmap.cjs', () => {
     );
   });
 });
+
+// ── Rule 5: no bare roadmapContent.replace() in cmdPhaseComplete (phase.cjs) ──
+//
+// cmdPhaseRemove legitimately uses roadmapContent.replace() for low-level
+// mutations; cmdPhaseComplete must go through replaceInCurrentMilestone.
+// Scope the check to cmdPhaseComplete by scanning from its declaration line
+// to the next top-level `function` declaration (or EOF) — no brace-counting
+// needed, so string/template-literal braces can't fool it.
+
+describe('lint: no bare roadmapContent.replace() in cmdPhaseComplete (phase.cjs)', () => {
+  test('cmdPhaseComplete uses replaceInCurrentMilestone for all roadmap mutations', () => {
+    const phaseSource = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'phase.cjs'), 'utf-8'
+    );
+    const lines = phaseSource.split('\n');
+    const fnStartIdx = lines.findIndex(l => l.startsWith('function cmdPhaseComplete('));
+    assert.ok(fnStartIdx !== -1, 'cmdPhaseComplete must exist in phase.cjs');
+    const fnEndIdx = lines.findIndex((l, i) => i > fnStartIdx && /^function \w/.test(l));
+    const fnLines = lines.slice(fnStartIdx, fnEndIdx === -1 ? lines.length : fnEndIdx);
+    const violations = [];
+    fnLines.forEach((line, i) => {
+      if (
+        line.includes('roadmapContent.replace(') &&
+        !line.includes('replaceInCurrentMilestone') &&
+        !line.trim().startsWith('//')
+      ) {
+        violations.push(`phase.cjs:${fnStartIdx + i + 1}: ${line.trim()}`);
+      }
+    });
+    assert.deepStrictEqual(violations, [],
+      `Bare roadmapContent.replace() found in cmdPhaseComplete (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
+    );
+  });
+});
