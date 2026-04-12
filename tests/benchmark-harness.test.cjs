@@ -15,8 +15,6 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-
 // Resolve paths relative to the gsd-ng/ directory (cwd when running tests)
 const BENCHMARKS_DIR = path.join(__dirname, '..', 'benchmarks');
 const TASKS_DIR = path.join(BENCHMARKS_DIR, 'tasks');
@@ -35,15 +33,7 @@ const {
 } = require('../benchmarks/benchmark-runner.cjs');
 
 const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
-
-// Resolve writable temp dir (sandbox-safe, same pattern as helpers.cjs)
-function resolveTmpDir() {
-  const candidates = [process.env.TMPDIR, os.tmpdir(), `/tmp/claude-${process.getuid()}`, '/tmp'].filter(Boolean);
-  for (const dir of candidates) {
-    try { if (fs.existsSync(dir)) return dir; } catch {}
-  }
-  return os.tmpdir();
-}
+const { resolveTmpDir } = require('./helpers.cjs');
 
 // ---------------------------------------------------------------------------
 // 1. Config parsing — BENCH-01

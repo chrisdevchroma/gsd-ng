@@ -1150,12 +1150,11 @@ describe('getPhaseCompletionStatus helper', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = require('os').tmpdir() + '/gsd-test-completion-' + Date.now();
-    fs.mkdirSync(tmpDir, { recursive: true });
+    tmpDir = createTempProject();
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('3 plans 3 summaries no VERIFICATION.md returns complete (unverified)', () => {
@@ -1240,5 +1239,53 @@ describe('lint: no bare roadmapContent.replace() in roadmap.cjs', () => {
       `Bare roadmapContent.replace() found (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
     );
   });
+});
+
+describe('lint: no os.tmpdir() in test files (use resolveTmpDir from helpers.cjs)', () => {
+  test('no test file calls os.tmpdir() directly', () => {
+    const self = path.basename(__filename);
+    const testFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.cjs') && f !== self);
+    const violations = [];
+    for (const file of testFiles) {
+      const src = fs.readFileSync(path.join(__dirname, file), 'utf-8');
+      const lines = src.split('\n');
+      lines.forEach((line, i) => {
+        if (line.includes('os.tmpdir()') && !line.trim().startsWith('//')) {
+          violations.push(`${file}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(violations, [],
+      `Direct os.tmpdir() usage found (use resolveTmpDir() from helpers.cjs instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
+describe('lint: no inline redeclaration of helpers.cjs exports in test files', () => {
+  // Catches copy-paste of cleanup() or resolveTmpDir() instead of importing from helpers.cjs.
+  // Note: local helpers that *use* these (e.g. makeTmpDir returning {tmpDir, cleanup}) are fine.
+  const forbidden = [
+    { pattern: 'function cleanup(', hint: 'import cleanup from helpers.cjs' },
+    { pattern: 'function resolveTmpDir(', hint: 'import resolveTmpDir from helpers.cjs' },
+  ];
+
+  for (const { pattern, hint } of forbidden) {
+    test(`no test file declares \`${pattern.trim()}\` (${hint})`, () => {
+      const self = path.basename(__filename);
+      const testFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.cjs') && f !== self);
+      const violations = [];
+      for (const file of testFiles) {
+        const src = fs.readFileSync(path.join(__dirname, file), 'utf-8');
+        src.split('\n').forEach((line, i) => {
+          if (line.includes(pattern) && !line.trim().startsWith('//')) {
+            violations.push(`${file}:${i + 1}: ${line.trim()}`);
+          }
+        });
+      }
+      assert.deepStrictEqual(violations, [],
+        `Inline redeclaration of helper found:\n${violations.join('\n')}`
+      );
+    });
+  }
 });
 
