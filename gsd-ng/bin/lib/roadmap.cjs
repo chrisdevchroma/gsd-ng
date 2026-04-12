@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, extractCurrentMilestone, replaceInCurrentMilestone, planningPaths } = require('./core.cjs');
+const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, extractCurrentMilestone, replaceInCurrentMilestone, getPhaseCompletionStatus, planningPaths } = require('./core.cjs');
 
 function cmdRoadmapGetPhase(cwd, phaseNum, defaultValue) {
   const { roadmap: roadmapPath } = planningPaths(cwd);
@@ -159,7 +159,8 @@ function cmdRoadmapAnalyze(cwd, phaseFilter) {
         hasContext = phaseFiles.some(f => f.endsWith('-CONTEXT.md') || f === 'CONTEXT.md');
         hasResearch = phaseFiles.some(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
 
-        if (summaryCount >= planCount && planCount > 0) diskStatus = 'complete';
+        const { isComplete, status: completionStatus } = getPhaseCompletionStatus(path.join(phasesDir, dirMatch));
+        if (isComplete) diskStatus = completionStatus;  // 'complete (verified)' or 'complete (unverified)'
         else if (summaryCount > 0) diskStatus = 'partial';
         else if (planCount > 0) diskStatus = 'planned';
         else if (hasResearch) diskStatus = 'researched';
@@ -176,8 +177,8 @@ function cmdRoadmapAnalyze(cwd, phaseFilter) {
     // If roadmap marks phase complete, trust that over disk file structure.
     // Phases completed before GSD tracking (or via external tools) may lack
     // the standard PLAN/SUMMARY pairs but are still done.
-    if (roadmapComplete && diskStatus !== 'complete') {
-      diskStatus = 'complete';
+    if (roadmapComplete && !diskStatus.startsWith('complete')) {
+      diskStatus = 'complete (unverified)';
     }
 
     phases.push({
@@ -213,7 +214,7 @@ function cmdRoadmapAnalyze(cwd, phaseFilter) {
   // Aggregated stats
   const totalPlans = phases.reduce((sum, p) => sum + p.plan_count, 0);
   const totalSummaries = phases.reduce((sum, p) => sum + p.summary_count, 0);
-  const completedPhases = phases.filter(p => p.disk_status === 'complete').length;
+  const completedPhases = phases.filter(p => p.disk_status.startsWith('complete')).length;
 
   // Detect phases in summary list without detail sections (malformed ROADMAP)
   const checklistPattern = /-\s*\[[ x]\]\s*\*\*Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi;
@@ -268,8 +269,11 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
     return;
   }
 
-  const isComplete = summaryCount >= planCount;
-  const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
+  const phaseAbsDir = path.join(cwd, phaseInfo.directory);
+  const { isComplete, status: completionStatus } = getPhaseCompletionStatus(phaseAbsDir);
+  const status = isComplete
+    ? (completionStatus === 'complete (verified)' ? 'Complete (verified)' : 'Complete')
+    : summaryCount > 0 ? 'In Progress' : 'Planned';
   const today = new Date().toISOString().split('T')[0];
 
   if (!fs.existsSync(roadmapPath)) {
@@ -286,7 +290,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
     'im'
   );
   const dateField = isComplete ? ` ${today} ` : '  ';
-  roadmapContent = roadmapContent.replace(tableRowPattern, (fullRow) => {
+  roadmapContent = replaceInCurrentMilestone(roadmapContent, tableRowPattern, (fullRow) => {
     const cells = fullRow.split('|').slice(1, -1); // drop leading/trailing empty from split
     if (cells.length === 5) {
       // 5-col: Phase | Milestone | Plans | Status | Completed
@@ -330,7 +334,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
       `(-\\s*\\[) (\\]\\s*${planEscaped})`,
       'i'
     );
-    roadmapContent = roadmapContent.replace(planCheckboxPattern, '$1x$2');
+    roadmapContent = replaceInCurrentMilestone(roadmapContent, planCheckboxPattern, '$1x$2');
   }
 
   fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8');

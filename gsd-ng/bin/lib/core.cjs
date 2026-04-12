@@ -591,6 +591,46 @@ function getMilestonePhaseFilter(cwd) {
   return isDirInMilestone;
 }
 
+// ─── Phase Completion Status ────────────────────────────────────────────────
+
+/**
+ * Determine phase completion status with verification awareness.
+ * Returns { isComplete, status } where status is one of:
+ *   'not_started', 'in_progress', 'complete (verified)', 'complete (unverified)'
+ * isComplete is true when summaries >= plans (backward compatible).
+ * Verification is a qualifier, not a gate.
+ */
+function getPhaseCompletionStatus(phaseDir) {
+  if (!fs.existsSync(phaseDir)) {
+    return { isComplete: false, status: 'not_started' };
+  }
+  let files;
+  try {
+    files = fs.readdirSync(phaseDir);
+  } catch {
+    return { isComplete: false, status: 'not_started' };
+  }
+  const planCount = files.filter(f => f.match(/-PLAN\.md$/i) || f === 'PLAN.md').length;
+  const summaryCount = files.filter(f => f.match(/-SUMMARY\.md$/i) || f === 'SUMMARY.md').length;
+  if (planCount === 0) return { isComplete: false, status: 'not_started' };
+  if (summaryCount < planCount) return { isComplete: false, status: 'in_progress' };
+  // summaries >= plans — phase is complete. Check verification status.
+  const verificationFile = files.find(f => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md');
+  if (verificationFile) {
+    try {
+      const { extractFrontmatter } = require('./frontmatter.cjs');
+      const verContent = fs.readFileSync(path.join(phaseDir, verificationFile), 'utf-8');
+      const fm = extractFrontmatter(verContent);
+      if (fm && fm.status === 'passed') {
+        return { isComplete: true, status: 'complete (verified)' };
+      }
+    } catch {
+      // VERIFICATION.md unreadable — treat as unverified
+    }
+  }
+  return { isComplete: true, status: 'complete (unverified)' };
+}
+
 // ─── Summary body helpers ─────────────────────────────────────────────────
 
 /**
@@ -632,6 +672,7 @@ module.exports = {
   getMilestonePhaseFilter,
   extractCurrentMilestone,
   replaceInCurrentMilestone,
+  getPhaseCompletionStatus,
   toPosixPath,
   extractOneLinerFromBody,
   planningPaths,

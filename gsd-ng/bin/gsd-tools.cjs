@@ -197,7 +197,7 @@ const ALL_COMMANDS = [
 // ─── Subcommand Registry (for fuzzy subcommand matching) ─────────────────────
 
 const SUBCOMMANDS = {
-  state: ['load', 'json', 'update', 'get', 'patch', 'advance-plan', 'record-metric', 'update-progress', 'add-decision', 'add-blocker', 'resolve-blocker', 'record-session', 'begin-phase', 'adjust-quick-table'],
+  state: ['load', 'json', 'update', 'get', 'patch', 'advance-plan', 'record-metric', 'update-progress', 'add-decision', 'add-blocker', 'resolve-blocker', 'record-session', 'begin-phase', 'adjust-quick-table', 'rebuild-frontmatter'],
   template: ['select', 'fill'],
   frontmatter: ['get', 'set', 'merge', 'validate'],
   verify: ['plan-structure', 'phase-completeness', 'references', 'commits', 'artifacts', 'key-links'],
@@ -721,12 +721,38 @@ async function main() {
         state.cmdStateGet(cwd, args[2]);
       } else if (subcommand === 'patch') {
         const patches = {};
-        for (let i = 2; i < args.length; i += 2) {
-          const key = args[i].replace(/^--/, '');
-          const value = args[i + 1];
-          if (key && value !== undefined) {
-            patches[key] = value;
+        const fieldIdx = args.indexOf('--field');
+        const valueIdx = args.indexOf('--value');
+        if (fieldIdx !== -1 || valueIdx !== -1) {
+          // Named flag mode: --field NAME --value VALUE
+          if (fieldIdx === -1 || valueIdx === -1) {
+            process.stderr.write(JSON.stringify({ error: '--field and --value must be used together. Usage: state patch --field <name> --value <val>' }) + '\n');
+            process.exit(1);
           }
+          const key = args[fieldIdx + 1];
+          const val = args[valueIdx + 1];
+          if (!key || key.startsWith('--') || !val) {
+            process.stderr.write(JSON.stringify({ error: '--field and --value require arguments. Usage: state patch --field <name> --value <val>' }) + '\n');
+            process.exit(1);
+          }
+          patches[key] = val;
+        } else {
+          // Legacy positional mode: --key value pairs (strip -- prefix)
+          if (args.length < 4) {
+            process.stderr.write(JSON.stringify({ error: 'state patch requires at least one field-value pair. Usage: state patch --<field> <value> OR state patch --field <name> --value <val>' }) + '\n');
+            process.exit(1);
+          }
+          for (let i = 2; i < args.length; i += 2) {
+            const key = args[i].replace(/^--/, '');
+            const value = args[i + 1];
+            if (key && value !== undefined) {
+              patches[key] = value;
+            }
+          }
+        }
+        if (Object.keys(patches).length === 0) {
+          process.stderr.write(JSON.stringify({ error: 'No valid field-value pairs provided' }) + '\n');
+          process.exit(1);
         }
         state.cmdStatePatch(cwd, patches);
       } else if (subcommand === 'advance-plan') {
@@ -788,6 +814,8 @@ async function main() {
         );
       } else if (subcommand === 'adjust-quick-table') {
         state.cmdStateAdjustQuickTable(cwd);
+      } else if (subcommand === 'rebuild-frontmatter') {
+        state.cmdStateRebuildFrontmatter(cwd);
       } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd);
       } else {

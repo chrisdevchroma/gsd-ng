@@ -397,13 +397,17 @@ stopped_at: Plan 2 of Phase 3
   });
 
   test('normalizes various status values', () => {
+    // Bug 1a fix: only exact/known-prefix forms normalize; substring matches removed.
+    // "Phase complete — ready for verification" no longer coerces to "verifying" (was Bug 1a).
+    // "Milestone complete" no longer coerces to "completed" (was Bug 1a).
     const statusTests = [
       { input: 'In progress', expected: 'executing' },
       { input: 'Ready to execute', expected: 'executing' },
       { input: 'Paused at Plan 3', expected: 'paused' },
       { input: 'Ready to plan', expected: 'planning' },
-      { input: 'Phase complete — ready for verification', expected: 'verifying' },
-      { input: 'Milestone complete', expected: 'completed' },
+      // Bug 1a: The following now preserve their exact value (not coerced by substring match)
+      { input: 'Phase complete — ready for verification', expected: 'Phase complete — ready for verification' },
+      { input: 'Milestone complete', expected: 'Milestone complete' },
     ];
 
     for (const { input, expected } of statusTests) {
@@ -421,7 +425,8 @@ stopped_at: Plan 2 of Phase 3
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATE.md frontmatter sync (write operations add frontmatter)
+// STATE.md frontmatter sync (Bug 1 fix: writeStateMd is now a transparent write)
+// Frontmatter is only added/updated via explicit `state rebuild-frontmatter`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('STATE.md frontmatter sync', () => {
@@ -435,7 +440,9 @@ describe('STATE.md frontmatter sync', () => {
     cleanup(tmpDir);
   });
 
-  test('state update adds frontmatter to STATE.md', () => {
+  test('state update updates body field but does NOT auto-add frontmatter (Bug 1 fix)', () => {
+    // Bug 1 fix: writeStateMd is now a transparent write — no implicit syncStateFrontmatter.
+    // state update only updates the body field; frontmatter is NOT auto-generated.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -449,14 +456,35 @@ describe('STATE.md frontmatter sync', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
-    assert.ok(content.startsWith('---\n'), 'should start with frontmatter delimiter');
+    // Body field should be updated
+    assert.ok(content.includes('**Current Phase:** 02'), 'body field should be preserved');
+    assert.ok(content.includes('**Status:** Executing Plan 1'), 'updated field in body');
+    // Frontmatter should NOT be auto-added (no longer coupled to writeStateMd)
+    assert.ok(!content.startsWith('---\n'), 'frontmatter should NOT be auto-added on state update');
+  });
+
+  test('state rebuild-frontmatter explicitly adds frontmatter to STATE.md', () => {
+    // The explicit opt-in command to regenerate frontmatter from body.
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State
+
+**Current Phase:** 02
+**Status:** executing
+`
+    );
+
+    const result = runGsdTools(['state', 'rebuild-frontmatter'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(content.startsWith('---\n'), 'should start with frontmatter delimiter after rebuild');
     assert.ok(content.includes('gsd_state_version: 1.0'), 'should have version field');
     assert.ok(content.includes('current_phase: 02'), 'frontmatter should have current phase');
     assert.ok(content.includes('**Current Phase:** 02'), 'body field should be preserved');
-    assert.ok(content.includes('**Status:** Executing Plan 1'), 'updated field in body');
   });
 
-  test('state patch adds frontmatter', () => {
+  test('state patch updates body field but does NOT auto-add frontmatter (Bug 1 fix)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -471,10 +499,15 @@ describe('STATE.md frontmatter sync', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
-    assert.ok(content.startsWith('---\n'), 'should have frontmatter after patch');
+    // Body should be updated
+    assert.ok(content.includes('**Current Plan:** 04-02'), 'body field should be updated by patch');
+    // Frontmatter should NOT be auto-added
+    assert.ok(!content.startsWith('---\n'), 'frontmatter should NOT be auto-added on state patch');
   });
 
-  test('frontmatter is idempotent on multiple writes', () => {
+  test('multiple state updates do not accumulate frontmatter (Bug 1 fix)', () => {
+    // Previously: each write would call syncStateFrontmatter, potentially duplicating delimiters.
+    // Now: transparent writes; no frontmatter accumulation.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -488,13 +521,13 @@ describe('STATE.md frontmatter sync', () => {
     runGsdTools('state update Status "Paused"', tmpDir);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    // Should have zero frontmatter blocks (none auto-added)
     const delimiterCount = (content.match(/^---$/gm) || []).length;
-    assert.strictEqual(delimiterCount, 2, 'should have exactly one frontmatter block (2 delimiters)');
-    assert.ok(content.includes('status: paused'), 'frontmatter should reflect latest status');
+    assert.strictEqual(delimiterCount, 0, 'no frontmatter should be auto-added on multiple writes');
   });
 
-  test('preserves frontmatter status when body Status field is missing', () => {
-    // Simulate: frontmatter has status: executing, but body lost Status: field
+  test('preserves existing frontmatter unchanged when updating body (Bug 1 fix)', () => {
+    // writeStateMd is transparent — existing frontmatter in content is preserved as-is.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `---
@@ -509,15 +542,18 @@ milestone: v1.0
 `
     );
 
-    // Any writeStateMd triggers syncStateFrontmatter — use state update on a field that exists
+    // state update now only changes the body field; frontmatter is not touched
     runGsdTools('state update "Current Plan" "03-03"', tmpDir);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
-    assert.ok(content.includes('status: executing'), 'should preserve existing status, not overwrite with unknown');
-    assert.ok(!content.includes('status: unknown'), 'should not contain unknown status');
+    // The existing frontmatter should be preserved (transparent write)
+    assert.ok(content.includes('status: executing'), 'existing frontmatter should be preserved by transparent write');
+    assert.ok(content.includes('**Current Plan:** 03-03'), 'body field should be updated');
   });
 
   test('round-trip: write then read via state json', () => {
+    // state json reads from frontmatter if present, otherwise builds from body.
+    // After an update, the frontmatter may be stale — state json falls back to body parsing.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -537,6 +573,7 @@ milestone: v1.0
     assert.ok(result.success, `state json failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
+    // state json builds frontmatter on-the-fly from body when no frontmatter exists
     assert.strictEqual(output.current_phase, '07', 'round-trip: phase preserved');
     assert.strictEqual(output.current_phase_name, 'Production', 'round-trip: phase name preserved');
     assert.strictEqual(output.status, 'executing', 'round-trip: status normalized');
@@ -906,6 +943,73 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
       'reason should mention STATE.md'
     );
   });
+
+  // Bug 2 fix tests: --field/--value named flag parsing
+  test('state patch --field NAME --value VALUE sets correct field (not "field" key)', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdTools(['state', 'patch', '--field', 'Status', '--value', 'executing'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Status:** executing'), 'Status field should be updated to "executing"');
+    assert.ok(!updated.includes('**field:**'), 'should not create a field named "field"');
+    assert.ok(!updated.includes('**value:**'), 'should not create a field named "value"');
+  });
+
+  test('state patch --field without --value exits non-zero with error mentioning --value', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdToolsWithStderr(['state', 'patch', '--field', 'Status'], tmpDir);
+    assert.ok(!result.success, 'Command should exit non-zero when --value is missing');
+    assert.ok(
+      result.stderr.includes('--value') || result.output.includes('--value'),
+      `Error output should mention "--value". Got stderr: ${result.stderr}, stdout: ${result.output}`
+    );
+  });
+
+  test('state patch --value without --field exits non-zero with error mentioning --field', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdToolsWithStderr(['state', 'patch', '--value', 'executing'], tmpDir);
+    assert.ok(!result.success, 'Command should exit non-zero when --field is missing');
+    assert.ok(
+      result.stderr.includes('--field') || result.output.includes('--field'),
+      `Error output should mention "--field". Got stderr: ${result.stderr}, stdout: ${result.output}`
+    );
+  });
+
+  test('state patch with no args exits non-zero', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdToolsWithStderr(['state', 'patch'], tmpDir);
+    assert.ok(!result.success, 'Command should exit non-zero with no args');
+  });
+
+  test('state patch --status executing (legacy positional mode) still works', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdTools(['state', 'patch', '--Status', 'executing'], tmpDir);
+    assert.ok(result.success, `Legacy positional patch should still succeed: ${result.error}`);
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Status:** executing'), 'Status should be updated via legacy mode');
+  });
+
+  // Bug 3 fix tests: post-write verification in cmdStateUpdate
+  test('state update returns {updated: true} when value persists after write', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
+
+    const result = runGsdTools('state update Status "Phase complete" --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.updated, true, 'updated should be true after successful write');
+
+    // Verify the value actually persisted
+    const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(content.includes('**Status:** Phase complete'), 'Value should have persisted to disk');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1028,6 +1132,89 @@ describe('cmdStateAdvancePlan (state advance-plan)', () => {
     const output = JSON.parse(result.output);
     assert.strictEqual(output.advanced, false);
     assert.strictEqual(output.reason, 'last_plan');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('Phase complete'), 'Status should contain Phase complete');
+  });
+
+  // Bug 4 fix tests: advance-plan format preservation
+  test('preserves compound prefix: "02-08" advances to "02-09"', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Plan:** 02-08\n**Total Plans in Phase:** 10\n**Status:** Executing\n**Last Activity:** 2024-01-10\n`
+    );
+
+    const result = runGsdTools('state advance-plan --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, true, 'advanced should be true');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Current Plan:** 02-09'), 'Current Plan should be "02-09", not "3" or "9"');
+  });
+
+  test('preserves zero-padding: "08" advances to "09"', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Plan:** 08\n**Total Plans in Phase:** 10\n**Status:** Executing\n**Last Activity:** 2024-01-10\n`
+    );
+
+    const result = runGsdTools('state advance-plan --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, true, 'advanced should be true');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Current Plan:** 09'), 'Current Plan should be "09" not "9"');
+  });
+
+  test('bare integer "8" advances to "9" (no padding)', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Plan:** 8\n**Total Plans in Phase:** 10\n**Status:** Executing\n**Last Activity:** 2024-01-10\n`
+    );
+
+    const result = runGsdTools('state advance-plan --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, true, 'advanced should be true');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Current Plan:** 9'), 'Current Plan should be "9"');
+    assert.ok(!updated.includes('**Current Plan:** 09'), 'Should not zero-pad bare integer');
+  });
+
+  test('different prefix width: "1-03" advances to "1-04"', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Plan:** 1-03\n**Total Plans in Phase:** 10\n**Status:** Executing\n**Last Activity:** 2024-01-10\n`
+    );
+
+    const result = runGsdTools('state advance-plan --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, true, 'advanced should be true');
+
+    const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(updated.includes('**Current Plan:** 1-04'), 'Current Plan should be "1-04"');
+  });
+
+  test('marks phase complete at last plan with compound prefix format', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Current Plan:** 02-10\n**Total Plans in Phase:** 10\n**Status:** Executing\n**Last Activity:** 2024-01-10\n`
+    );
+
+    const result = runGsdTools('state advance-plan --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.advanced, false, 'advanced should be false on last plan');
+    assert.strictEqual(output.reason, 'last_plan', 'reason should be last_plan');
 
     const updated = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
     assert.ok(updated.includes('Phase complete'), 'Status should contain Phase complete');
@@ -1847,5 +2034,214 @@ status: testing
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.decisions.length, 3, 'should return all 3 decisions when --current flag not used');
+  });
+});
+
+// ─── Bug 6: Frontmatter-safe field operations ─────────────────────────────────
+
+describe('stateExtractField frontmatter safety (Bug 6)', () => {
+  const { stateExtractField } = require('../gsd-ng/bin/lib/state.cjs');
+
+  test('does not extract from frontmatter — returns body value when both exist', () => {
+    const content = `---\nstatus: completed\n---\n\n**Status:** executing`;
+    const result = stateExtractField(content, 'Status');
+    assert.strictEqual(result, 'executing', 'should return body value, not frontmatter value');
+  });
+
+  test('does not extract from frontmatter — only field in frontmatter returns null', () => {
+    const content = `---\ncurrent_plan: 5\n---\n\n# Project State\n\nNo plan field in body.`;
+    const result = stateExtractField(content, 'current_plan');
+    assert.strictEqual(result, null, 'should return null when field only in frontmatter');
+  });
+
+  test('still extracts plain field from body when no frontmatter', () => {
+    const content = `**Status:** executing`;
+    const result = stateExtractField(content, 'Status');
+    assert.strictEqual(result, 'executing');
+  });
+
+  test('stripFrontmatter handles CRLF line endings', () => {
+    // stateExtractField uses stripFrontmatter internally — test via a CRLF document
+    const content = `---\r\nstatus: frontmatter-value\r\n---\r\n\r\n**Status:** body-value`;
+    const result = stateExtractField(content, 'Status');
+    assert.strictEqual(result, 'body-value', 'should handle CRLF line endings in frontmatter delimiter');
+  });
+});
+
+describe('stateReplaceField frontmatter safety (Bug 6)', () => {
+  const { stateReplaceField } = require('../gsd-ng/bin/lib/state.cjs');
+
+  test('does not modify frontmatter — only replaces in body', () => {
+    const content = `---\ncurrent_plan: 5\n---\n\n**Current Plan:** 3`;
+    const result = stateReplaceField(content, 'Current Plan', '7');
+    assert.ok(result !== null, 'should succeed');
+    // Frontmatter value should be unchanged
+    assert.ok(result.includes('current_plan: 5'), 'frontmatter should be unchanged');
+    // Body value should be updated
+    assert.ok(result.includes('**Current Plan:** 7'), 'body value should be updated');
+  });
+
+  test('returns null when field not found in body', () => {
+    const content = `---\ncurrent_plan: 5\n---\n\n**Other Field:** value`;
+    const result = stateReplaceField(content, 'Current Plan', '7');
+    assert.strictEqual(result, null, 'should return null when field absent from body');
+  });
+
+  test('handles content without frontmatter', () => {
+    const content = `**Status:** executing`;
+    const result = stateReplaceField(content, 'Status', 'completed');
+    assert.ok(result !== null);
+    assert.ok(result.includes('**Status:** completed'));
+  });
+});
+
+// ─── Bug 1: writeStateMd decoupling ──────────────────────────────────────────
+
+describe('writeStateMd decoupling (Bug 1)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('writeStateMd writes content as-is without calling syncStateFrontmatter', () => {
+    // Write a STATE.md with known body content — if syncStateFrontmatter were called
+    // it would regenerate the frontmatter from the body, potentially changing it.
+    // We pass content with a deliberately unusual frontmatter to detect any transformation.
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+    const uniqueMarker = 'UNIQUE_MARKER_SHOULD_NOT_BE_REMOVED_12345';
+    const content = `---\n${uniqueMarker}: yes\n---\n\n**Status:** executing\n`;
+    const { writeStateMd } = require('../gsd-ng/bin/lib/state.cjs');
+
+    writeStateMd(statePath, content, tmpDir);
+
+    const written = fs.readFileSync(statePath, 'utf-8');
+    assert.ok(
+      written.includes(uniqueMarker),
+      `writeStateMd should write content as-is; unique frontmatter key should be preserved. Got:\n${written}`
+    );
+  });
+
+  test('writeStateMd still performs scanForInjection advisory check (exits 0 on injection)', () => {
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+    const injectionContent = `**Status:** executing\n<!-- <script>alert(1)</script> -->\n`;
+    const { writeStateMd } = require('../gsd-ng/bin/lib/state.cjs');
+    // Should not throw — advisory only
+    assert.doesNotThrow(() => writeStateMd(statePath, injectionContent, tmpDir));
+    const written = fs.readFileSync(statePath, 'utf-8');
+    assert.ok(written.includes('executing'), 'should still write content despite injection detection');
+  });
+});
+
+// ─── Bug 1a: Status normalization exact matching ──────────────────────────────
+
+describe('buildStateFrontmatter status normalization — exact match only (Bug 1a)', () => {
+  // We test via the CLI's state json command, which calls buildStateFrontmatter
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeStateAndGetStatus(statusLine) {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Status:** ${statusLine}\n`
+    );
+    const result = runGsdTools(['state', 'json'], tmpDir);
+    if (!result.success) return null;
+    try {
+      return JSON.parse(result.output).status;
+    } catch {
+      return null;
+    }
+  }
+
+  test('"gap closure complete" does NOT become "completed"', () => {
+    const normalized = writeStateAndGetStatus('gap closure complete');
+    assert.notStrictEqual(normalized, 'completed', '"gap closure complete" should not normalize to completed');
+  });
+
+  test('"Phase complete — ready for verification" does NOT become "completed"', () => {
+    const normalized = writeStateAndGetStatus('Phase complete — ready for verification');
+    assert.notStrictEqual(normalized, 'completed');
+  });
+
+  test('"complete (unverified)" does NOT become "completed"', () => {
+    const normalized = writeStateAndGetStatus('complete (unverified)');
+    assert.notStrictEqual(normalized, 'completed');
+  });
+
+  test('"verification failed" does NOT become "verifying"', () => {
+    const normalized = writeStateAndGetStatus('verification failed');
+    assert.notStrictEqual(normalized, 'verifying', '"verification failed" should not normalize to verifying');
+  });
+
+  test('"unverified" does NOT become "verifying"', () => {
+    const normalized = writeStateAndGetStatus('unverified');
+    assert.notStrictEqual(normalized, 'verifying');
+  });
+
+  test('"completed" (exact) DOES become "completed"', () => {
+    const normalized = writeStateAndGetStatus('completed');
+    assert.strictEqual(normalized, 'completed');
+  });
+
+  test('"done" (exact) DOES become "completed"', () => {
+    const normalized = writeStateAndGetStatus('done');
+    assert.strictEqual(normalized, 'completed');
+  });
+
+  test('"verifying" (exact) DOES become "verifying"', () => {
+    const normalized = writeStateAndGetStatus('verifying');
+    assert.strictEqual(normalized, 'verifying');
+  });
+});
+
+// ─── Bug 1: cmdStateRebuildFrontmatter command ────────────────────────────────
+
+describe('state rebuild-frontmatter command (Bug 1)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('rebuild-frontmatter reads STATE.md, runs syncStateFrontmatter, writes result', () => {
+    // Write STATE.md with a body that has known fields but no frontmatter
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# Project State\n\n**Status:** executing\n**Current Phase:** 42\n`
+    );
+
+    const result = runGsdTools(['state', 'rebuild-frontmatter'], tmpDir);
+    assert.ok(result.success, `rebuild-frontmatter should succeed: ${result.error || result.output}`);
+
+    const written = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    // After rebuild, frontmatter should be present
+    assert.ok(written.startsWith('---\n'), 'should have frontmatter after rebuild');
+    assert.ok(written.includes('current_phase: 42'), 'frontmatter should reflect body current_phase');
+  });
+
+  test('rebuild-frontmatter returns error when STATE.md not found', () => {
+    // tmpDir has no STATE.md (planning dir only has no file)
+    fs.rmSync(path.join(tmpDir, '.planning', 'STATE.md'), { force: true });
+    const result = runGsdTools(['state', 'rebuild-frontmatter'], tmpDir);
+    // Either fails gracefully or outputs error JSON
+    const outputText = result.output || result.error || '';
+    const isError = !result.success || outputText.includes('error') || outputText.includes('not found');
+    assert.ok(isError, 'should report error when STATE.md missing');
   });
 });

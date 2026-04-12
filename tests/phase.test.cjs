@@ -2048,3 +2048,37 @@ describe('phase insert inserts checkbox line in ROADMAP phases list', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Lint test — no bare roadmapContent.replace() in phase.cjs
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('lint: no bare roadmapContent.replace() in cmdPhaseComplete (phase.cjs)', () => {
+  test('cmdPhaseComplete uses replaceInCurrentMilestone for all roadmap mutations', () => {
+    const phaseSource = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'phase.cjs'), 'utf-8'
+    );
+    // Extract the cmdPhaseComplete function body (from function declaration to end of its block)
+    const fnStart = phaseSource.indexOf('function cmdPhaseComplete(');
+    assert.ok(fnStart !== -1, 'cmdPhaseComplete function must exist in phase.cjs');
+    // Find the end of the function by tracking brace depth
+    let depth = 0;
+    let fnEnd = fnStart;
+    let inFn = false;
+    for (let i = fnStart; i < phaseSource.length; i++) {
+      if (phaseSource[i] === '{') { depth++; inFn = true; }
+      if (phaseSource[i] === '}') { depth--; }
+      if (inFn && depth === 0) { fnEnd = i + 1; break; }
+    }
+    const fnBody = phaseSource.slice(fnStart, fnEnd);
+    const lines = fnBody.split('\n');
+    const violations = lines.filter(l =>
+      l.includes('roadmapContent.replace(') &&
+      !l.includes('replaceInCurrentMilestone') &&
+      !l.trim().startsWith('//')
+    );
+    assert.deepStrictEqual(violations, [],
+      `Bare roadmapContent.replace() found in cmdPhaseComplete (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
+    );
+  });
+});
+

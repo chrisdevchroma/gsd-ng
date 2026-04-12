@@ -351,3 +351,65 @@ must_haves:
   });
 });
 
+// ─── Bug 1c: reconstructFrontmatter quoting for em-dashes and parentheses ────
+
+describe('reconstructFrontmatter — em-dash and parentheses quoting (Bug 1c)', () => {
+  test('quotes value containing em-dash', () => {
+    const result = reconstructFrontmatter({ status: 'Phase complete \u2014 ready' });
+    assert.ok(
+      result.includes('status: "Phase complete \u2014 ready"'),
+      `expected quoted em-dash value, got: ${result}`
+    );
+  });
+
+  test('quotes value containing parentheses', () => {
+    const result = reconstructFrontmatter({ stopped_at: 'Phase 52 (ast-safety)' });
+    assert.ok(
+      result.includes('stopped_at: "Phase 52 (ast-safety)"'),
+      `expected quoted parentheses value, got: ${result}`
+    );
+  });
+
+  test('does NOT quote plain values (regression guard)', () => {
+    const result = reconstructFrontmatter({ status: 'executing' });
+    assert.ok(
+      result.includes('status: executing') && !result.includes('"executing"'),
+      `plain value should not be quoted, got: ${result}`
+    );
+  });
+
+  test('quotes nested subkey value containing em-dash', () => {
+    const result = reconstructFrontmatter({ meta: { label: 'Phase 1 \u2014 done' } });
+    assert.ok(
+      result.includes('label: "Phase 1 \u2014 done"'),
+      `expected nested em-dash value to be quoted, got: ${result}`
+    );
+  });
+
+  test('quotes nested subkey value containing parentheses', () => {
+    const result = reconstructFrontmatter({ meta: { name: 'worker (prod)' } });
+    assert.ok(
+      result.includes('name: "worker (prod)"'),
+      `expected nested parentheses value to be quoted, got: ${result}`
+    );
+  });
+
+  test('round-trip: em-dash value survives extract then reconstruct', () => {
+    const original = '---\nstatus: "Phase complete \u2014 ready"\n---\n';
+    const extracted = extractFrontmatter(original);
+    const reconstructed = reconstructFrontmatter(extracted);
+    const roundTrip = `---\n${reconstructed}\n---\n`;
+    const extracted2 = extractFrontmatter(roundTrip);
+    assert.strictEqual(extracted2.status, extracted.status, 'em-dash value should round-trip unchanged');
+  });
+
+  test('round-trip: parentheses value survives extract then reconstruct', () => {
+    const original = '---\nstopped_at: "Phase 52 (ast-safety)"\n---\n';
+    const extracted = extractFrontmatter(original);
+    const reconstructed = reconstructFrontmatter(extracted);
+    const roundTrip = `---\n${reconstructed}\n---\n`;
+    const extracted2 = extractFrontmatter(roundTrip);
+    assert.strictEqual(extracted2.stopped_at, extracted.stopped_at, 'parentheses value should round-trip unchanged');
+  });
+});
+
