@@ -1264,12 +1264,15 @@ describe('lint: no os.tmpdir() in test files (use resolveTmpDir from helpers.cjs
 describe('lint: no inline redeclaration of helpers.cjs exports in test files', () => {
   // Catches copy-paste of cleanup() or resolveTmpDir() instead of importing from helpers.cjs.
   // Note: local helpers that *use* these (e.g. makeTmpDir returning {tmpDir, cleanup}) are fine.
+  // `exclude` lets us rule out legitimate forms like `const cleanup = require(...)`.
   const forbidden = [
     { pattern: 'function cleanup(', hint: 'import cleanup from helpers.cjs' },
     { pattern: 'function resolveTmpDir(', hint: 'import resolveTmpDir from helpers.cjs' },
+    { pattern: 'const cleanup = ', hint: 'import cleanup from helpers.cjs', exclude: 'require(' },
+    { pattern: 'const resolveTmpDir = ', hint: 'import resolveTmpDir from helpers.cjs', exclude: 'require(' },
   ];
 
-  for (const { pattern, hint } of forbidden) {
+  for (const { pattern, hint, exclude } of forbidden) {
     test(`no test file declares \`${pattern.trim()}\` (${hint})`, () => {
       const self = path.basename(__filename);
       const testFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.cjs') && f !== self);
@@ -1277,7 +1280,11 @@ describe('lint: no inline redeclaration of helpers.cjs exports in test files', (
       for (const file of testFiles) {
         const src = fs.readFileSync(path.join(__dirname, file), 'utf-8');
         src.split('\n').forEach((line, i) => {
-          if (line.includes(pattern) && !line.trim().startsWith('//')) {
+          if (
+            line.includes(pattern) &&
+            (!exclude || !line.includes(exclude)) &&
+            !line.trim().startsWith('//')
+          ) {
             violations.push(`${file}:${i + 1}: ${line.trim()}`);
           }
         });
@@ -1289,8 +1296,8 @@ describe('lint: no inline redeclaration of helpers.cjs exports in test files', (
   }
 });
 
-describe('lint: no bare fs.rmSync with recursive:true in test files (use cleanup from helpers.cjs)', () => {
-  test('no test file calls fs.rmSync(x, { recursive: true, force: true }) directly', () => {
+describe('lint: no bare recursive dir deletion in test files (use cleanup/cleanupSubdir from helpers.cjs)', () => {
+  test('no test file calls fs.rmSync or fs.rmdirSync with recursive:true directly', () => {
     const self = path.basename(__filename);
     const testFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.cjs') && f !== self);
     const violations = [];
@@ -1298,9 +1305,8 @@ describe('lint: no bare fs.rmSync with recursive:true in test files (use cleanup
       const src = fs.readFileSync(path.join(__dirname, file), 'utf-8');
       src.split('\n').forEach((line, i) => {
         if (
-          line.includes('fs.rmSync(') &&
+          (line.includes('fs.rmSync(') || line.includes('fs.rmdirSync(')) &&
           line.includes('recursive: true') &&
-          !line.includes('path.join(') &&   // intentional partial deletes are allowed
           !line.trim().startsWith('//')
         ) {
           violations.push(`${file}:${i + 1}: ${line.trim()}`);
@@ -1308,7 +1314,7 @@ describe('lint: no bare fs.rmSync with recursive:true in test files (use cleanup
       });
     }
     assert.deepStrictEqual(violations, [],
-      `Bare fs.rmSync with recursive:true found (use cleanup() from helpers.cjs instead):\n${violations.join('\n')}`
+      `Bare recursive dir deletion found (use cleanup() or cleanupSubdir() from helpers.cjs instead):\n${violations.join('\n')}`
     );
   });
 });

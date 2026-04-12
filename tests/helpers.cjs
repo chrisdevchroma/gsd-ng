@@ -104,6 +104,12 @@ function cleanup(tmpDir) {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
+// Delete a subdirectory (or any known path) inside a temp project.
+// Use this instead of bare fs.rmSync(path.join(...)) so lint rules stay clean.
+function cleanupSubdir(base, ...segments) {
+  fs.rmSync(path.join(base, ...segments), { recursive: true, force: true });
+}
+
 /**
  * Create a submodule workspace with one or more submodule repos.
  *
@@ -207,4 +213,4 @@ function touchSubmodule(workspaceDir, submodulePath) {
   );
 }
 
-module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, TOOLS_PATH, createSubmoduleWorkspace, touchSubmodule };
+module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, cleanupSubdir, resolveTmpDir, TOOLS_PATH, createSubmoduleWorkspace, touchSubmodule };
