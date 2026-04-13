@@ -695,6 +695,73 @@ However, the practical reality:
 
 The Output efficiency strategy directives ("try the simplest approach first", "do not overdo it") cannot be disabled via any Claude Code setting. CLAUDE.md overrides compete with the system prompt and produce non-deterministic behavior (see the [CLAUDE.md limitation analysis](#claudemd-override-partial-mitigation-only) above). tweakcc is currently the only reliable way to remove these directives on versions where they exist (v2.1.64–v2.1.98), short of waiting for Anthropic to ship a toggle or upgrading to v2.1.100+ (which brings the token inflation problem).
 
+Beyond the Output efficiency prompt, tweakcc can also strip other client-side token waste — see the token budget analysis below.
+
+---
+
+## Token budget: two separate problems
+
+There are two distinct token overhead issues affecting Claude Code. They have different causes, affect different version ranges, and have different fix paths.
+
+### Problem 1: Client-side prompt bloat (~24K tokens, v2.1.97+)
+
+In v2.1.97 (Apr 8), Anthropic replaced the Agent SDK documentation with Managed Agents documentation — 11 new reference files (+23,865 tokens per [Piebald-AI changelog](https://github.com/Piebald-AI/claude-code-system-prompts/blob/v2.1.104/CHANGELOG.md)). These are **embedded directly in the cli.js bundle as string literals** and loaded into every session's system prompt, regardless of whether you use Managed Agents.
+
+This affects **v2.1.97 and later**, including v2.1.98 (the recommended pin target).
+
+The embedded docs include:
+- Managed Agents overview, core concepts, quickstart
+- Language-specific references (Python, TypeScript, cURL)
+- Client patterns, events/streaming, environments, tools/skills
+- Onboarding flow, endpoint reference, vaults, permissions
+
+These are fetched from `platform.claude.com/docs/en/managed-agents/` URLs but compiled into the bundle at build time — they consume context window space whether or not the user ever asks about Managed Agents.
+
+**Fix: tweakcc can remove these.** They're client-side string literals in cli.js. Stripping them saves ~24K tokens per session.
+
+### Problem 2: Server-side injection (~20K tokens, v2.1.100+)
+
+Documented in [#46917](https://github.com/anthropics/claude-code/issues/46917) and detailed in the [token inflation section](#issue-46917-server-side-token-inflation-in-v2.1.100) above. The server adds ~20K extra `cache_creation_input_tokens` per request that don't appear in the client payload. These tokens enter the model's context window.
+
+This affects **v2.1.100 and later**. Not present in v2.1.98 or earlier.
+
+**Fix: none.** This happens server-side after the request leaves your machine. Neither tweakcc nor any client-side modification can address it. The only workaround is downgrading to v2.1.98 or earlier.
+
+### Combined impact
+
+| Version | Client-side Managed Agents docs | Server-side injection | Total overhead | tweakcc-removable |
+|---------|:---:|:---:|:---:|:---:|
+| **v2.1.92** | Not present | Not present | ~0 | — |
+| **v2.1.97–v2.1.98** | **~24K tokens** | Not present | ~24K | ~24K (all of it) |
+| **v2.1.100+** | ~24K tokens | **~20K tokens** | ~44K | ~24K (client-side only) |
+
+On v2.1.98 with tweakcc: strip the Output efficiency prompt + Managed Agents docs = **~25K+ tokens saved** per session, with zero functional loss (unless you're building Managed Agents apps).
+
+On v2.1.100+ with tweakcc: strip the Managed Agents docs = ~24K saved, but the ~20K server-side injection remains untouchable.
+
+### What changed between v2.1.98 and v2.1.104
+
+For users considering whether to stay on v2.1.98 or upgrade, here's what was added/fixed:
+
+**v2.1.100** (Apr 10) — prompt changes:
+- Removed Output efficiency section (the strategy directives)
+- Removed "Exploratory questions" and "User-facing communication style" sections
+- Net: -845 prompt tokens
+
+**v2.1.101** (Apr 10) — major release:
+- `/team-onboarding` command
+- OS CA certificate trust by default (enterprise TLS proxies)
+- **Security: command injection fix** in LSP `which` fallback
+- **Security: `permissions.deny` rules now properly override hook `permissionDecision: "ask"`**
+- Memory leak fix for long sessions (historical message copies in virtual scroller)
+- Fixed hardcoded 5-minute request timeout for slow backends
+- Many `/resume`, sandbox, Remote Control fixes
+
+**v2.1.104** (Apr 11):
+- Patch release, not in official changelog (likely minor fixes)
+
+The security fixes in v2.1.101 are notable — the `permissions.deny` override fix means deny rules were previously bypassable via hooks, and the command injection in LSP detection is a direct code execution vulnerability. Users who rely on deny rules or LSP integration should weigh these against the token inflation cost.
+
 ---
 
 ## Version pinning strategies
@@ -928,29 +995,34 @@ Three independent issues affect Claude Code quality. **No single version is free
 | 2 | **Medium effort default** | `effort=85` reduced thinking budgets from high to medium | v2.1.68 (Mar 4) | Configurable since v2.1.72 (`/effort`), v2.1.76 (`effortLevel` setting). Default raised to high for API/Team/Enterprise in v2.1.94, but **still medium for Max/Pro** |
 | 3 | **Output efficiency strategy directives** | System prompt includes "try the simplest approach first", "do not overdo it" — steers model toward shallow solutions | v2.1.64 (Mar 3) | Removed in v2.1.100 (Apr 10). **No settings toggle** — CLAUDE.md override is unreliable (see [limitation analysis](#claudemd-override-partial-mitigation-only)); [tweakcc](#tweakcc-system-prompt-patching) can remove it from the binary |
 
-A fourth issue, unrelated to reasoning quality:
+Two additional issues, unrelated to reasoning quality but affecting token budget (see [Token budget analysis](#token-budget-two-separate-problems) for full details):
 
 | # | Factor | Cause | Introduced | Removed/fixed |
 |---|--------|-------|-----------|---------------|
-| 4 | **Server-side token inflation** | ~20K extra `cache_creation_input_tokens` per request, server-side | v2.1.100 (Apr 10) | Open ([#46917](https://github.com/anthropics/claude-code/issues/46917)), status unknown on v2.1.104 |
+| 4 | **Client-side Managed Agents docs (~24K)** | 11 reference docs embedded in cli.js, loaded every session | v2.1.97 (Apr 8) | Not removed. **tweakcc can strip them** from the bundle. |
+| 5 | **Server-side token injection (~20K)** | Extra `cache_creation_input_tokens` added server-side | v2.1.100 (Apr 10) | Open ([#46917](https://github.com/anthropics/claude-code/issues/46917)). **No client-side fix.** |
 
 ### Version tradeoff matrix
 
-| Version range | Factor 1: Adaptive thinking | Factor 2: Effort default | Factor 3: Output efficiency prompt | Factor 4: Token inflation | Available controls |
-|---------------|:--:|:--:|:--:|:--:|---|
-| **v2.1.63** (Feb 28) | On | High (pre-medium) | Not present | No | `DISABLE_ADAPTIVE_THINKING` only — no `/effort`, no `effortLevel` |
-| **v2.1.64–v2.1.65** (Mar 3) | On | High (pre-medium) | **Present** | No | `DISABLE_ADAPTIVE_THINKING` only |
-| **v2.1.66–v2.1.68** (Mar 4) | On | **Medium (newly introduced)** | Gap (removed, re-added v2.1.69) | No | `DISABLE_ADAPTIVE_THINKING` only — no way to raise effort back |
-| **v2.1.69–v2.1.71** (Mar 5–9) | On | Medium | **Present** | No | `DISABLE_ADAPTIVE_THINKING` only |
-| **v2.1.72–v2.1.88** (Mar 10–31) | On | Medium | Present | No | `/effort`, `DISABLE_ADAPTIVE_THINKING` |
-| **v2.1.89–v2.1.98** (Apr 1–9) | On | Medium | Present | No | `/effort`, `effortLevel`, `showThinkingSummaries`, `DISABLE_ADAPTIVE_THINKING`. **v2.1.98 is the recommended pin** — last version before token inflation, used as the "good" baseline in the #46917 investigation. v2.1.99 was never published. |
-| **v2.1.100+** (Apr 10+) | On | Medium | **Removed** | **~20K extra tokens** | All controls available |
+| Version range | 1: Adaptive thinking | 2: Effort default | 3: Output efficiency | 4: Managed Agents docs | 5: Server-side injection |
+|---------------|:--:|:--:|:--:|:--:|:--:|
+| **v2.1.63** (Feb 28) | On | High | Not present | Not present | No |
+| **v2.1.64–v2.1.65** (Mar 3) | On | High | **Present** | Not present | No |
+| **v2.1.66–v2.1.68** (Mar 4) | On | **Medium** | Gap | Not present | No |
+| **v2.1.69–v2.1.71** (Mar 5–9) | On | Medium | **Present** | Not present | No |
+| **v2.1.72–v2.1.88** (Mar 10–31) | On | Medium | Present | Not present | No |
+| **v2.1.89–v2.1.96** (Apr 1–8) | On | Medium | Present | Not present | No |
+| **v2.1.97–v2.1.98** (Apr 8–9) | On | Medium | Present | **~24K tokens** | No |
+| **v2.1.100+** (Apr 10+) | On | Medium | **Removed** | ~24K tokens | **~20K tokens** |
+
+**v2.1.98 is the recommended pin** — last version before server-side token injection, all controls available. v2.1.99 was never published.
 
 Reading the table:
-- **Bold** = regression factor active in that range
-- Factors 1 and 2 are configurable via settings on v2.1.72+
+- **Bold** = factor active or newly introduced in that range
+- Factors 1 and 2 are configurable via settings on v2.1.72+ (`effortLevel: "high"`, `DISABLE_ADAPTIVE_THINKING=1`)
 - Factor 3 has no settings toggle — CLAUDE.md override is unreliable; [tweakcc](#tweakcc-system-prompt-patching) can remove it; or upgrade to v2.1.100+ where it's gone
-- Factor 4 has no user-side fix except downgrading
+- Factor 4 is client-side — [tweakcc can strip it](#token-budget-two-separate-problems) (~24K saved)
+- Factor 5 is server-side — no client-side fix, only downgrading to v2.1.98 or earlier
 
 ### The tradeoff
 
@@ -972,9 +1044,9 @@ There are three defensible positions as of April 2026:
 ```
 
 ```bash
-# Remove the Output efficiency section from the binary
+# Remove the Output efficiency section AND Managed Agents docs from the binary
 npx tweakcc
-# → use the interactive TUI to customize/remove the Output efficiency system prompt
+# → use the interactive TUI to customize/remove system prompts
 # After each Claude Code update: npx tweakcc --apply
 ```
 
@@ -983,7 +1055,8 @@ npx tweakcc
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | **Removed from binary** | tweakcc patch |
-| 4. Token inflation | Not present | — |
+| 4. Managed Agents docs (~24K) | **Removable** | tweakcc patch (skip if you build Managed Agents apps) |
+| 5. Server-side injection | Not present on v2.1.98 | — |
 
 #### Option B: Pin v2.1.98 + settings + CLAUDE.md override (if tweakcc is not acceptable)
 
@@ -1013,11 +1086,12 @@ rather than guess.
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | **Partially mitigated** | CLAUDE.md override (non-deterministic, see [limitations](#claudemd-override-partial-mitigation-only)) |
-| 4. Token inflation | Not present | — |
+| 4. Managed Agents docs (~24K) | **Active** | Not addressed (would need tweakcc, which this option avoids) |
+| 5. Server-side injection | Not present on v2.1.98 | — |
 
-#### Option C: v2.1.100+ (latest) + settings (if token inflation is acceptable)
+#### Option C: v2.1.100+ (latest) + settings + tweakcc (if security fixes outweigh token cost)
 
-Gets the clean removal of the Output efficiency prompt by Anthropic. No binary patching, no CLAUDE.md contradictions. But pays ~20K extra tokens per request until [#46917](https://github.com/anthropics/claude-code/issues/46917) is resolved.
+Gets the clean removal of the Output efficiency prompt by Anthropic, plus security fixes from v2.1.101 (command injection, deny rule bypass). tweakcc can strip the Managed Agents docs. But pays ~20K extra server-side tokens per request until [#46917](https://github.com/anthropics/claude-code/issues/46917) is resolved — tweakcc cannot fix this.
 
 ```json
 // ~/.claude/settings.json
@@ -1035,7 +1109,8 @@ Gets the clean removal of the Output efficiency prompt by Anthropic. No binary p
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | Removed by Anthropic | — |
-| 4. Token inflation | **Active (~40% overhead)** | No user-side fix; monitor [#46917](https://github.com/anthropics/claude-code/issues/46917) |
+| 4. Managed Agents docs (~24K) | **Removable** | tweakcc patch |
+| 5. Server-side injection (~20K) | **Active** | No client-side fix; monitor [#46917](https://github.com/anthropics/claude-code/issues/46917) |
 
 #### Not recommended: downgrading to v2.1.63 or earlier
 
@@ -1047,6 +1122,7 @@ You escape Factors 2 and 3, but lose all configuration controls (`/effort`, `eff
 
 | Date | Change |
 |------|--------|
+| 2026-04-14 | Added token budget analysis: client-side Managed Agents docs (~24K, tweakcc-removable) vs server-side injection (~20K, unfixable). Updated tradeoff matrix to 5 factors. Added v2.1.98–v2.1.104 changelog summary. |
 | 2026-04-13 | Added binary backup/re-download from GCS bucket with URL pattern and checksum verification |
 | 2026-04-13 | Added version pinning strategies section (native + DISABLE_AUTOUPDATER, npm pinning, comparison table) |
 | 2026-04-13 | Added ToS analysis for tweakcc (Section D.4 reverse engineering clause vs practical tolerance) |
