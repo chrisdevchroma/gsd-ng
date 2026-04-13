@@ -985,9 +985,9 @@ claude --version
 
 ## No clean version exists (as of 2026-04-13)
 
-Three independent issues affect Claude Code quality. **No single version is free of all three.** Every version requires at least one workaround.
+Five independent issues affect Claude Code quality and token efficiency. **No single version is free of all five.** Every version requires at least one workaround.
 
-### The three regression factors
+### The five factors
 
 | # | Factor | Cause | Introduced | Removed/fixed |
 |---|--------|-------|-----------|---------------|
@@ -995,7 +995,7 @@ Three independent issues affect Claude Code quality. **No single version is free
 | 2 | **Medium effort default** | `effort=85` reduced thinking budgets from high to medium | v2.1.68 (Mar 4) | Configurable since v2.1.72 (`/effort`), v2.1.76 (`effortLevel` setting). Default raised to high for API/Team/Enterprise in v2.1.94, but **still medium for Max/Pro** |
 | 3 | **Output efficiency strategy directives** | System prompt includes "try the simplest approach first", "do not overdo it" — steers model toward shallow solutions | v2.1.64 (Mar 3) | Removed in v2.1.100 (Apr 10). **No settings toggle** — CLAUDE.md override is unreliable (see [limitation analysis](#claudemd-override-partial-mitigation-only)); [tweakcc](#tweakcc-system-prompt-patching) can remove it from the binary |
 
-Two additional issues, unrelated to reasoning quality but affecting token budget (see [Token budget analysis](#token-budget-two-separate-problems) for full details):
+Two additional issues unrelated to reasoning quality but affecting token budget (see [Token budget analysis](#token-budget-two-separate-problems) for details):
 
 | # | Factor | Cause | Introduced | Removed/fixed |
 |---|--------|-------|-----------|---------------|
@@ -1030,7 +1030,7 @@ There are three defensible positions as of April 2026:
 
 #### Option A: Pin v2.1.98 + settings + tweakcc (recommended)
 
-**v2.1.98 is the best version to pin.** It's the last before the ~20K token inflation (#46917), has all configuration controls, and was used as the "good" baseline in the token inflation investigation. v2.1.99 was never published — v2.1.98 is the absolute last version before v2.1.100 introduced the inflation. Fixes all three reasoning factors reliably. Requires reapplying the tweakcc patch after updates.
+**v2.1.98 is the best version to pin.** It's the last before the ~20K server-side token injection (#46917), has all configuration controls, and was used as the "good" baseline in the token inflation investigation. v2.1.99 was never published. Addresses all 5 factors: 3 reasoning factors fixed via settings+tweakcc, Managed Agents docs strippable via tweakcc, server-side injection not present. Requires reapplying the tweakcc patch after updates.
 
 ```json
 // ~/.claude/settings.json
