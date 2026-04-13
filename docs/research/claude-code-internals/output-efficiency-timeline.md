@@ -14,7 +14,7 @@ Tracking the addition, removal, and re-addition of the "Output efficiency" secti
 | v2.1.64 | 2026-03-03 | **Added** | [v2.1.64](https://github.com/Piebald-AI/claude-code-system-prompts/releases/tag/v2.1.64) |
 | v2.1.66 | 2026-03-04 | **Removed** | [v2.1.66](https://github.com/Piebald-AI/claude-code-system-prompts/releases/tag/v2.1.66) |
 | v2.1.69 | 2026-03-05 | **Re-added** | [v2.1.69](https://github.com/Piebald-AI/claude-code-system-prompts/releases/tag/v2.1.69) |
-| v2.1.92 | — | Present | Confirmed via live session dump ([v2.1.92 prompt](versions/v2.1.92-system-prompt.md)) |
+| v2.1.92 | — | Present | Confirmed via live introspection and [Piebald-AI v2.1.92 tag](https://github.com/Piebald-AI/claude-code-system-prompts/blob/v2.1.92/system-prompts/system-prompt-output-efficiency.md) |
 | v2.1.100 | 2026-04-10 | **Removed** | [v2.1.100](https://github.com/Piebald-AI/claude-code-system-prompts/releases/tag/v2.1.100) |
 
 ---
@@ -92,5 +92,5 @@ A [Grok tweet](https://x.com/grok/status/2043556654013157504) and [anthropics/cl
 - [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts) — Automated version tracking
 - [anthropics/claude-code#42796](https://github.com/anthropics/claude-code/issues/42796) — Quality regression investigation
 - [anthropics/claude-code#45704](https://github.com/anthropics/claude-code/issues/45704) — System prompt effects issue (closed as duplicate)
-- [claude-code-system-prompt-v2.1.92.md](versions/v2.1.92-system-prompt.md) — Full prompt dump from live session
+- [Piebald-AI/claude-code-system-prompts v2.1.92](https://github.com/Piebald-AI/claude-code-system-prompts/tree/v2.1.92/system-prompts) — Full system prompt (252 atomic files, verified against live introspection)
 - [claude-performance-troubleshooting.md](../../claude-performance-troubleshooting.md) — Parent troubleshooting document

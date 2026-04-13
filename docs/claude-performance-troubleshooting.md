@@ -567,7 +567,7 @@ The claim further asserts that Anthropic uses a different, superior internal pro
 
 ### What's true
 
-1. **The Output efficiency section exists and has a turbulent history.** It is present in v2.1.92 (confirmed from a live session dump — see [v2.1.92-system-prompt.md](research/claude-code-internals/versions/v2.1.92-system-prompt.md)). Per [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts) release tracking, the section has been added and removed multiple times:
+1. **The Output efficiency section exists and has a turbulent history.** It is present in v2.1.92 (confirmed from live session introspection and verified against [Piebald-AI/claude-code-system-prompts v2.1.92 tag](https://github.com/Piebald-AI/claude-code-system-prompts/blob/v2.1.92/system-prompts/system-prompt-output-efficiency.md) — word-for-word match). Per Piebald-AI release tracking, the section has been added and removed multiple times:
 
    | Version | Date | Status | Source |
    |---------|------|--------|--------|
@@ -1063,7 +1063,7 @@ You escape Factors 2 and 3, but lose all configuration controls (`/effort`, `eff
 
 ## Appendix: System prompt reference
 
-A full dump of the Claude Code v2.1.92 system prompt (as seen by the model) is available at [v2.1.92-system-prompt.md](research/claude-code-internals/versions/v2.1.92-system-prompt.md). This captures the prompt text, section structure, and dynamic injection points. Tool JSON schemas are omitted — see [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts) for per-version tool definitions.
+The full Claude Code system prompt for any version is available at [Piebald-AI/claude-code-system-prompts](https://github.com/Piebald-AI/claude-code-system-prompts), decomposed into ~252 atomic files per version with metadata. Use git tags to access specific versions (e.g. [v2.1.92](https://github.com/Piebald-AI/claude-code-system-prompts/tree/v2.1.92/system-prompts), [v2.1.98](https://github.com/Piebald-AI/claude-code-system-prompts/tree/v2.1.98/system-prompts), [v2.1.104](https://github.com/Piebald-AI/claude-code-system-prompts/tree/v2.1.104/system-prompts)). Content verified against live session introspection — word-for-word match.
 
 ## Appendix: Research
 
