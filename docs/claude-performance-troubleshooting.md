@@ -31,7 +31,7 @@ If a session feels degraded — Claude is editing without reading, claiming comp
 
 ### CLAUDE.md override (partial mitigation only)
 
-Add to your project or user-level CLAUDE.md to counteract the Output efficiency strategy directives (present in v2.1.64–v2.1.99):
+Add to your project or user-level CLAUDE.md to counteract the Output efficiency strategy directives (present in v2.1.64–v2.1.98):
 
 ```markdown
 When facing complex tasks: read all relevant files before editing, consider edge
@@ -693,7 +693,7 @@ However, the practical reality:
 
 ### Why this matters
 
-The Output efficiency strategy directives ("try the simplest approach first", "do not overdo it") cannot be disabled via any Claude Code setting. CLAUDE.md overrides compete with the system prompt and produce non-deterministic behavior (see the [CLAUDE.md limitation analysis](#claudemd-override-partial-mitigation-only) above). tweakcc is currently the only reliable way to remove these directives on versions where they exist (v2.1.64–v2.1.99), short of waiting for Anthropic to ship a toggle or upgrading to v2.1.100+ (which brings the token inflation problem).
+The Output efficiency strategy directives ("try the simplest approach first", "do not overdo it") cannot be disabled via any Claude Code setting. CLAUDE.md overrides compete with the system prompt and produce non-deterministic behavior (see the [CLAUDE.md limitation analysis](#claudemd-override-partial-mitigation-only) above). tweakcc is currently the only reliable way to remove these directives on versions where they exist (v2.1.64–v2.1.98), short of waiting for Anthropic to ship a toggle or upgrading to v2.1.100+ (which brings the token inflation problem).
 
 ---
 
@@ -943,7 +943,7 @@ A fourth issue, unrelated to reasoning quality:
 | **v2.1.66–v2.1.68** (Mar 4) | On | **Medium (newly introduced)** | Gap (removed, re-added v2.1.69) | No | `DISABLE_ADAPTIVE_THINKING` only — no way to raise effort back |
 | **v2.1.69–v2.1.71** (Mar 5–9) | On | Medium | **Present** | No | `DISABLE_ADAPTIVE_THINKING` only |
 | **v2.1.72–v2.1.88** (Mar 10–31) | On | Medium | Present | No | `/effort`, `DISABLE_ADAPTIVE_THINKING` |
-| **v2.1.89–v2.1.99** (Apr 1–9) | On | Medium | Present | No | `/effort`, `effortLevel`, `showThinkingSummaries`, `DISABLE_ADAPTIVE_THINKING` |
+| **v2.1.89–v2.1.98** (Apr 1–9) | On | Medium | Present | No | `/effort`, `effortLevel`, `showThinkingSummaries`, `DISABLE_ADAPTIVE_THINKING`. **v2.1.98 is the recommended pin** — last version before token inflation, used as the "good" baseline in the #46917 investigation. v2.1.99 was never published. |
 | **v2.1.100+** (Apr 10+) | On | Medium | **Removed** | **~20K extra tokens** | All controls available |
 
 Reading the table:
@@ -956,9 +956,9 @@ Reading the table:
 
 There are three defensible positions as of April 2026:
 
-#### Option A: v2.1.89–v2.1.99 + settings + tweakcc (recommended)
+#### Option A: Pin v2.1.98 + settings + tweakcc (recommended)
 
-Fixes all three reasoning factors reliably. Avoids token inflation. Requires reapplying the tweakcc patch after each Claude Code update.
+**v2.1.98 is the best version to pin.** It's the last before the ~20K token inflation (#46917), has all configuration controls, and was used as the "good" baseline in the token inflation investigation. v2.1.99 was never published — v2.1.98 is the absolute last version before v2.1.100 introduced the inflation. Fixes all three reasoning factors reliably. Requires reapplying the tweakcc patch after updates.
 
 ```json
 // ~/.claude/settings.json
@@ -985,9 +985,9 @@ npx tweakcc
 | 3. Output efficiency prompt | **Removed from binary** | tweakcc patch |
 | 4. Token inflation | Not present | — |
 
-#### Option B: v2.1.89–v2.1.99 + settings + CLAUDE.md override (if tweakcc is not acceptable)
+#### Option B: Pin v2.1.98 + settings + CLAUDE.md override (if tweakcc is not acceptable)
 
-Same as Option A but uses a CLAUDE.md override instead of tweakcc to address Factor 3. Simpler, no binary patching, but **Factor 3 mitigation is unreliable** — the CLAUDE.md override directly contradicts the system prompt and the model may follow either instruction non-deterministically (see [limitation analysis](#claudemd-override-partial-mitigation-only)).
+Same as Option A (pin v2.1.98) but uses a CLAUDE.md override instead of tweakcc to address Factor 3. Simpler, no binary patching, but **Factor 3 mitigation is unreliable** — the CLAUDE.md override directly contradicts the system prompt and the model may follow either instruction non-deterministically (see [limitation analysis](#claudemd-override-partial-mitigation-only)).
 
 ```json
 // ~/.claude/settings.json
