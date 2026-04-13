@@ -703,21 +703,15 @@ Beyond the Output efficiency prompt, tweakcc can also strip other client-side to
 
 There are two distinct token overhead issues affecting Claude Code. They have different causes, affect different version ranges, and have different fix paths.
 
-### Problem 1: Client-side prompt bloat (~24K tokens, v2.1.97+)
+### ~~Problem 1: Client-side prompt bloat (~24K tokens, v2.1.97+)~~ — NOT CONFIRMED
 
-In v2.1.97 (Apr 8), Anthropic replaced the Agent SDK documentation with Managed Agents documentation — 11 new reference files (+23,865 tokens per [Piebald-AI changelog](https://github.com/Piebald-AI/claude-code-system-prompts/blob/v2.1.104/CHANGELOG.md)). These are **embedded directly in the cli.js bundle as string literals** and loaded into every session's system prompt, regardless of whether you use Managed Agents.
+In v2.1.97 (Apr 8), Anthropic replaced the Agent SDK documentation with Managed Agents documentation — 11 new reference files (+23,865 tokens per [Piebald-AI changelog](https://github.com/Piebald-AI/claude-code-system-prompts/blob/v2.1.104/CHANGELOG.md)). These are embedded in the cli.js bundle as string literals with WebFetch URLs pointing to `platform.claude.com/docs/en/managed-agents/`.
 
-This affects **v2.1.97 and later**, including v2.1.98 (the recommended pin target).
+However, **[first-hand measurements](#first-hand-measurements-2026-04-14) show v2.1.92 and v2.1.98 have effectively identical token counts** (~76 token difference) despite v2.1.98 containing the Managed Agents docs in the bundle. This means the docs are **lazy-loaded** — only fetched and injected into context when the user asks about Managed Agents, not on every session.
 
-The embedded docs include:
-- Managed Agents overview, core concepts, quickstart
-- Language-specific references (Python, TypeScript, cURL)
-- Client patterns, events/streaming, environments, tools/skills
-- Onboarding flow, endpoint reference, vaults, permissions
+The Piebald-AI changelog's "+23,865 tokens" likely reflects the total size of the added prompt files, not the per-session cost. The docs exist in the bundle but are gated behind a trigger mechanism (probably the `/claude-api` skill or similar routing).
 
-These are fetched from `platform.claude.com/docs/en/managed-agents/` URLs but compiled into the bundle at build time — they consume context window space whether or not the user ever asks about Managed Agents.
-
-**Fix: tweakcc can remove these.** They're client-side string literals in cli.js. Stripping them saves ~24K tokens per session.
+**Impact: negligible for most users.** No tweakcc patching needed unless you specifically want to prevent the docs from being fetchable at all.
 
 ### Problem 2: Server-side injection (~20K tokens, v2.1.100+)
 
@@ -727,17 +721,54 @@ This affects **v2.1.100 and later**. Not present in v2.1.98 or earlier.
 
 **Fix: none.** This happens server-side after the request leaves your machine. Neither tweakcc nor any client-side modification can address it. The only workaround is downgrading to v2.1.98 or earlier.
 
-### Combined impact
+### First-hand measurements (2026-04-14)
 
-| Version | Client-side Managed Agents docs | Server-side injection | Total overhead | tweakcc-removable |
-|---------|:---:|:---:|:---:|:---:|
-| **v2.1.92** | Not present | Not present | ~0 | — |
-| **v2.1.97–v2.1.98** | **~24K tokens** | Not present | ~24K | ~24K (all of it) |
-| **v2.1.100+** | ~24K tokens | **~20K tokens** | ~44K | ~24K (client-side only) |
+We ran v2.1.92, v2.1.98, and v2.1.104 through `--print "..." --output-format json` to capture actual `cache_creation_input_tokens` and `cache_read_input_tokens` from the API response. Tests repeated with multiple settings configurations (custom `effortLevel: "high"` + `DISABLE_ADAPTIVE_THINKING=1`, clean settings override, and default effort + adaptive thinking enabled). **Settings do not affect token counts** — they change API parameters (`thinking.type`, `output_config.effort`), not system prompt size.
 
-On v2.1.98 with tweakcc: strip the Output efficiency prompt + Managed Agents docs = **~25K+ tokens saved** per session, with zero functional loss (unless you're building Managed Agents apps).
+**Empty directory (no CLAUDE.md, no hooks, no git):**
 
-On v2.1.100+ with tweakcc: strip the Managed Agents docs = ~24K saved, but the ~20K server-side injection remains untouchable.
+| Version | input_tokens | cache_creation | cache_read | **Total** | Delta from v2.1.98 |
+|---------|--:|--:|--:|--:|--:|
+| v2.1.92 | 10 | 4,445 | 11,384 | **15,839** | -76 |
+| **v2.1.98** | 10 | 15,901 | 0 | **15,911** | baseline |
+| v2.1.104 | 15 | 22,871 | 0 | **22,886** | **+6,975** |
+
+**Real project (gsd-ng workspace with CLAUDE.md, hooks, git):**
+
+| Version | input_tokens | cache_creation | cache_read | **Total** | Delta from v2.1.98 |
+|---------|--:|--:|--:|--:|--:|
+| v2.1.92 | 10 | 19,304 | 0 | **19,314** | -76 |
+| **v2.1.98** | 10 | 19,380 | 0 | **19,390** | baseline |
+| v2.1.104 | 15 | 28,025 | 0 | **28,040** | **+8,650** |
+
+### Analysis
+
+**v2.1.92 and v2.1.98 are effectively identical** — ~76 token difference, consistent across all runs and contexts. The Managed Agents reference docs added in v2.1.97 (+23,865 tokens per Piebald changelog) are **not loaded into every session**. They appear to be deferred/lazy-loaded via WebFetch when the user asks about Managed Agents, despite being embedded as string literals in the bundle.
+
+**v2.1.104 adds ~7–9K tokens over v2.1.98**, not the ~20K reported in [#46917](https://github.com/anthropics/claude-code/issues/46917). The measured delta is consistent with the Piebald prompt changelog additions between these versions:
+
+| Version | Piebald delta | Cumulative |
+|---------|--:|--:|
+| v2.1.98 | +2,045 | — |
+| v2.1.100 | -845 | +1,200 |
+| v2.1.101 | +4,676 | +5,876 |
+
+~5.9K of prompt additions accounts for most of the ~7K measured delta. The remaining ~1K may be tool descriptions, system reminders, or other minor additions not tracked by Piebald.
+
+### Discrepancy with #46917
+
+The #46917 author measured ~20K delta between v2.1.98 and v2.1.100 in April 2026. Our measurement shows ~7K delta between v2.1.98 and v2.1.104 two weeks later. Possible explanations:
+
+1. **Server-side injection was rolled back.** Anthropic may have reverted the server-side addition after #46917 gained attention (83 upvotes, assigned to @notitatall). The issue is still open but the fix may have been deployed silently.
+2. **Different testing conditions.** The #46917 author used `claude-code-logger` (HTTP proxy capturing full request/response bodies). Our test used `--output-format json` which reports the API's `usage` object. If the server-side injection was billed but not reflected in the usage response, our method would miss it.
+3. **Account-type differences.** The #46917 author was on Max (5x). Different subscription tiers may have different server-side prompt injections.
+4. **Time-dependent A/B testing.** Anthropic may have been running the injection as an experiment on a subset of requests.
+
+**To definitively resolve this**, the HTTP proxy method from #46917 should be replicated — it captures the raw `Content-Length` and compares it to billed tokens, bypassing any discrepancies between what the client sees and what the server bills. Our `--output-format json` method only sees what the API reports in the response.
+
+### Practical impact
+
+Regardless of whether the ~20K server-side injection is still active, the measured overhead on v2.1.104 vs v2.1.98 is **~7–9K tokens** in the `usage` response. On a 1M context window this is <1% — less impactful than originally feared from the #46917 report. However, on a Max plan with rate limits, every token counts for quota consumption.
 
 ### What changed between v2.1.98 and v2.1.104
 
@@ -999,8 +1030,8 @@ Two additional issues unrelated to reasoning quality but affecting token budget 
 
 | # | Factor | Cause | Introduced | Removed/fixed |
 |---|--------|-------|-----------|---------------|
-| 4 | **Client-side Managed Agents docs (~24K)** | 11 reference docs embedded in cli.js, loaded every session | v2.1.97 (Apr 8) | Not removed. **tweakcc can strip them** from the bundle. |
-| 5 | **Server-side token injection (~20K)** | Extra `cache_creation_input_tokens` added server-side | v2.1.100 (Apr 10) | Open ([#46917](https://github.com/anthropics/claude-code/issues/46917)). **No client-side fix.** |
+| 4 | **Managed Agents docs** | 11 reference docs embedded in cli.js | v2.1.97 (Apr 8) | [Measured as lazy-loaded](#first-hand-measurements-2026-04-14) — not consuming tokens unless invoked. |
+| 5 | **Server-side token overhead** | Extra tokens added server-side | v2.1.100 (Apr 10) | [Measured at +7–9K](#first-hand-measurements-2026-04-14), not the ~20K originally reported in [#46917](https://github.com/anthropics/claude-code/issues/46917). May have been partially rolled back. |
 
 ### Version tradeoff matrix
 
@@ -1012,17 +1043,17 @@ Two additional issues unrelated to reasoning quality but affecting token budget 
 | **v2.1.69–v2.1.71** (Mar 5–9) | On | Medium | **Present** | Not present | No |
 | **v2.1.72–v2.1.88** (Mar 10–31) | On | Medium | Present | Not present | No |
 | **v2.1.89–v2.1.96** (Apr 1–8) | On | Medium | Present | Not present | No |
-| **v2.1.97–v2.1.98** (Apr 8–9) | On | Medium | Present | **~24K tokens** | No |
-| **v2.1.100+** (Apr 10+) | On | Medium | **Removed** | ~24K tokens | **~20K tokens** |
+| **v2.1.97–v2.1.98** (Apr 8–9) | On | Medium | Present | Not measured (lazy-loaded) | No |
+| **v2.1.100+** (Apr 10+) | On | Medium | **Removed** | Not measured (lazy-loaded) | **+7–9K measured** (see [measurements](#first-hand-measurements-2026-04-14)) |
 
-**v2.1.98 is the recommended pin** — last version before server-side token injection, all controls available. v2.1.99 was never published.
+**v2.1.98 is the recommended pin** — effectively identical token count to v2.1.92, all controls available. v2.1.99 was never published.
 
 Reading the table:
 - **Bold** = factor active or newly introduced in that range
 - Factors 1 and 2 are configurable via settings on v2.1.72+ (`effortLevel: "high"`, `DISABLE_ADAPTIVE_THINKING=1`)
 - Factor 3 has no settings toggle — CLAUDE.md override is unreliable; [tweakcc](#tweakcc-system-prompt-patching) can remove it; or upgrade to v2.1.100+ where it's gone
-- Factor 4 is client-side — [tweakcc can strip it](#token-budget-two-separate-problems) (~24K saved)
-- Factor 5 is server-side — no client-side fix, only downgrading to v2.1.98 or earlier
+- Factor 4 (Managed Agents docs) appears to be **lazy-loaded, not loaded every session** — [first-hand measurements](#first-hand-measurements-2026-04-14) show v2.1.92 and v2.1.98 have identical token counts despite v2.1.98 having the docs in the bundle
+- Factor 5 measured at **+7–9K** over v2.1.98, not the ~20K originally reported in #46917 — may have been partially rolled back server-side (see [discrepancy analysis](#discrepancy-with-46917))
 
 ### The tradeoff
 
@@ -1044,9 +1075,9 @@ There are three defensible positions as of April 2026:
 ```
 
 ```bash
-# Remove the Output efficiency section AND Managed Agents docs from the binary
+# Remove the Output efficiency section from the binary
 npx tweakcc
-# → use the interactive TUI to customize/remove system prompts
+# → use the interactive TUI to customize/remove the Output efficiency system prompt
 # After each Claude Code update: npx tweakcc --apply
 ```
 
@@ -1055,8 +1086,8 @@ npx tweakcc
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | **Removed from binary** | tweakcc patch |
-| 4. Managed Agents docs (~24K) | **Removable** | tweakcc patch (skip if you build Managed Agents apps) |
-| 5. Server-side injection | Not present on v2.1.98 | — |
+| 4. Managed Agents docs | Not loaded (lazy) | [Measured: v2.1.98 = v2.1.92](#first-hand-measurements-2026-04-14) |
+| 5. Server-side overhead | Not present on v2.1.98 | [Measured: 0 delta vs v2.1.92](#first-hand-measurements-2026-04-14) |
 
 #### Option B: Pin v2.1.98 + settings + CLAUDE.md override (if tweakcc is not acceptable)
 
@@ -1086,8 +1117,8 @@ rather than guess.
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | **Partially mitigated** | CLAUDE.md override (non-deterministic, see [limitations](#claudemd-override-partial-mitigation-only)) |
-| 4. Managed Agents docs (~24K) | **Active** | Not addressed (would need tweakcc, which this option avoids) |
-| 5. Server-side injection | Not present on v2.1.98 | — |
+| 4. Managed Agents docs | Not loaded (lazy) | [Measured: v2.1.98 = v2.1.92](#first-hand-measurements-2026-04-14) |
+| 5. Server-side overhead | Not present on v2.1.98 | [Measured: 0 delta vs v2.1.92](#first-hand-measurements-2026-04-14) |
 
 #### Option C: v2.1.100+ (latest) + settings + tweakcc (if security fixes outweigh token cost)
 
@@ -1109,8 +1140,8 @@ Gets the clean removal of the Output efficiency prompt by Anthropic, plus securi
 | 1. Adaptive thinking | Fixed | `DISABLE_ADAPTIVE_THINKING=1` |
 | 2. Medium effort | Fixed | `effortLevel: "high"` |
 | 3. Output efficiency prompt | Removed by Anthropic | — |
-| 4. Managed Agents docs (~24K) | **Removable** | tweakcc patch |
-| 5. Server-side injection (~20K) | **Active** | No client-side fix; monitor [#46917](https://github.com/anthropics/claude-code/issues/46917) |
+| 4. Managed Agents docs | Not loaded (lazy) | — |
+| 5. Server-side overhead | **+7–9K measured** | [May have been partially rolled back](#discrepancy-with-46917); monitor [#46917](https://github.com/anthropics/claude-code/issues/46917) |
 
 #### Not recommended: downgrading to v2.1.63 or earlier
 
