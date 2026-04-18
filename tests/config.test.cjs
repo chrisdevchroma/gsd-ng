@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { runGsdTools, createTempProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
+const { EFFORT_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -579,5 +580,95 @@ describe('Per-submodule config keys (SUBMOD-01)', () => {
     const result = runGsdTools('config-get git.submodule.workspace_branch', tmpDir);
     // Should succeed (returns value for migration) but stderr has warning
     assert.match(result.stderr || result.output || result.error || '', /deprecated/i);
+  });
+});
+
+// ─── EFFORT_PROFILES ──────────────────────────────────────────────────────────
+
+describe('EFFORT_PROFILES', () => {
+  const EXPECTED_AGENTS = [
+    'gsd-planner',
+    'gsd-roadmapper',
+    'gsd-executor',
+    'gsd-phase-researcher',
+    'gsd-project-researcher',
+    'gsd-research-synthesizer',
+    'gsd-debugger',
+    'gsd-codebase-mapper',
+    'gsd-incremental-mapper',
+    'gsd-verifier',
+    'gsd-plan-checker',
+    'gsd-integration-checker',
+    'gsd-nyquist-auditor',
+    'gsd-ui-researcher',
+    'gsd-ui-checker',
+    'gsd-ui-auditor',
+  ];
+
+  test('Test 1: EFFORT_PROFILES has all 16 agent entries', () => {
+    const agents = Object.keys(EFFORT_PROFILES);
+    assert.strictEqual(agents.length, 16, `Expected 16 agents, got ${agents.length}: ${agents.join(', ')}`);
+    for (const agent of EXPECTED_AGENTS) {
+      assert.ok(agent in EFFORT_PROFILES, `Missing agent: ${agent}`);
+    }
+  });
+
+  test('Test 2: EFFORT_PROFILES quality profile has correct max/high values', () => {
+    assert.strictEqual(EFFORT_PROFILES['gsd-planner'].quality, 'max');
+    assert.strictEqual(EFFORT_PROFILES['gsd-debugger'].quality, 'max');
+    assert.strictEqual(EFFORT_PROFILES['gsd-verifier'].quality, 'max');
+    assert.strictEqual(EFFORT_PROFILES['gsd-roadmapper'].quality, 'max');
+    assert.strictEqual(EFFORT_PROFILES['gsd-executor'].quality, 'high');
+  });
+
+  test('Test 3: EFFORT_PROFILES balanced profile has all agents set to inherit', () => {
+    for (const [agent, profiles] of Object.entries(EFFORT_PROFILES)) {
+      assert.strictEqual(
+        profiles.balanced,
+        'inherit',
+        `Expected balanced to be 'inherit' for ${agent}, got '${profiles.balanced}'`
+      );
+    }
+  });
+
+  test('Test 4: EFFORT_PROFILES budget profile has correct high/medium values', () => {
+    assert.strictEqual(EFFORT_PROFILES['gsd-planner'].budget, 'high');
+    assert.strictEqual(EFFORT_PROFILES['gsd-executor'].budget, 'high');
+    assert.strictEqual(EFFORT_PROFILES['gsd-debugger'].budget, 'high');
+    assert.strictEqual(EFFORT_PROFILES['gsd-verifier'].budget, 'high');
+    assert.strictEqual(EFFORT_PROFILES['gsd-codebase-mapper'].budget, 'medium');
+  });
+
+  test('Test 5: getAgentToEffortMapForProfile quality returns object with all 16 agents mapped', () => {
+    const map = getAgentToEffortMapForProfile('quality');
+    assert.strictEqual(typeof map, 'object');
+    assert.strictEqual(Object.keys(map).length, 16);
+    for (const agent of EXPECTED_AGENTS) {
+      assert.ok(agent in map, `Missing agent in quality map: ${agent}`);
+      assert.strictEqual(typeof map[agent], 'string');
+    }
+  });
+
+  test('Test 6: getAgentToEffortMapForProfile balanced returns all values as inherit', () => {
+    const map = getAgentToEffortMapForProfile('balanced');
+    for (const [agent, effort] of Object.entries(map)) {
+      assert.strictEqual(effort, 'inherit', `Expected 'inherit' for ${agent}, got '${effort}'`);
+    }
+  });
+
+  test('Test 7: formatAgentToEffortMapAsTable produces string with Agent and Effort column headers', () => {
+    const map = getAgentToEffortMapForProfile('quality');
+    const table = formatAgentToEffortMapAsTable(map);
+    assert.strictEqual(typeof table, 'string');
+    assert.ok(table.includes('Agent'), 'Table should contain "Agent" header');
+    assert.ok(table.includes('Effort'), 'Table should contain "Effort" header');
+  });
+
+  test('Test 8: VALID_PROFILES is shared — quality, balanced, budget profiles exist in EFFORT_PROFILES', () => {
+    const firstAgent = EFFORT_PROFILES['gsd-planner'];
+    assert.ok('quality' in firstAgent, 'quality profile should exist');
+    assert.ok('balanced' in firstAgent, 'balanced profile should exist');
+    assert.ok('budget' in firstAgent, 'budget profile should exist');
+    assert.strictEqual(Object.keys(firstAgent).length, 3, 'Should have exactly 3 profiles');
   });
 });
