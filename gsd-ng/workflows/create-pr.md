@@ -230,7 +230,7 @@ git -C "$GIT_CWD" merge --squash "$CURRENT_BRANCH" 2>&1
 # Build squash commit message from plan summaries
 SQUASH_MSG=""
 for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-  ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "")
+  ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner)
   if [ -n "$ONE_LINER" ]; then
     PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
     SQUASH_MSG="${SQUASH_MSG}- ${PLAN_ID}: ${ONE_LINER}\n"
@@ -321,7 +321,7 @@ else
   # Extract plan summaries
   PLAN_SUMMARIES=""
   for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-    ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "")
+    ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner)
     if [ -n "$ONE_LINER" ]; then
       PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
       PLAN_SUMMARIES="${PLAN_SUMMARIES}\n- **${PLAN_ID}**: ${ONE_LINER}"

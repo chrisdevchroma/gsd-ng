@@ -17,6 +17,7 @@ const reset = '\x1b[0m';
 // Get version from package.json
 const pkg = require('../package.json');
 const { processTemplate, buildContext, injectAfterFrontmatter, injectAppendToFile, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const { getPlatformCliPatterns, PLATFORM_TO_CLI } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 
 // Parse args
 const args = process.argv.slice(2);
@@ -632,12 +633,11 @@ function uninstall(isGlobal) {
         for (const cli of platformCLIs) {
           try {
             execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
-            dynamicEntries.push(`Bash(${cli} *)`);
+            dynamicEntries.push(...getPlatformCliPatterns(cli));
           } catch {
             // CLI not installed — skip
           }
         }
-
         const removalSet = new Set([...templateEntries, ...dynamicEntries]);
         const before = settings.permissions.allow.length;
         settings.permissions.allow = settings.permissions.allow.filter(e => !removalSet.has(e));
@@ -1577,7 +1577,7 @@ function install(isGlobal) {
       for (const cli of platformCLIs) {
         try {
           execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
-          dynamicEntries.push(`Bash(${cli} *)`);
+          dynamicEntries.push(...getPlatformCliPatterns(cli));
         } catch {
           // CLI not installed — skip
         }
@@ -1589,10 +1589,11 @@ function install(isGlobal) {
         if (fs.existsSync(configPath)) {
           const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
           const platform = config.git?.platform;
-          const platformToCli = { github: 'gh', gitlab: 'glab', forgejo: 'fj', gitea: 'tea' };
-          if (platform && platformToCli[platform]) {
-            const entry = `Bash(${platformToCli[platform]} *)`;
-            if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
+          if (platform && PLATFORM_TO_CLI[platform]) {
+            const cliPatterns = getPlatformCliPatterns(PLATFORM_TO_CLI[platform]);
+            for (const entry of cliPatterns) {
+              if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
+            }
           }
         }
       } catch {

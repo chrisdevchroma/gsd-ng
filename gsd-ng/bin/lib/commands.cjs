@@ -9,6 +9,7 @@ const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, com
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES, EFFORT_PROFILES } = require('./model-profiles.cjs');
 const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
+const { getPlatformCliPatterns, PLATFORM_TO_CLI } = require('./allowlist.cjs');
 
 function cmdGenerateSlug(text) {
   if (!text) {
@@ -359,14 +360,12 @@ function cmdSummaryExtract(cwd, summaryPath, fields, defaultValue) {
     });
   };
 
-  // Extract one-liner from body when not in frontmatter: first line matching **bold text** pattern
-  let oneLiner = fm['one-liner'] || null;
-  if (!oneLiner) {
-    const body = content.replace(/^---[\s\S]*?---\n?/, '');
-    const boldMatch = body.match(/^\*\*([^*]+)\*\*/m);
-    if (boldMatch) {
-      oneLiner = boldMatch[1].trim();
-    }
+  // Extract one-liner from body: first line matching **bold text** pattern
+  let oneLiner = null;
+  const body = content.replace(/^---[\s\S]*?---\n?/, '');
+  const boldMatch = body.match(/^\*\*(.+?)\*\*\s*$/m);
+  if (boldMatch) {
+    oneLiner = boldMatch[1].trim();
   }
 
   // Build full result
@@ -3382,7 +3381,7 @@ function cmdGenerateAllowlist(cwd) {
   for (const cli of platformCLIs) {
     try {
       execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
-      dynamicEntries.add(`Bash(${cli} *)`);
+      for (const p of getPlatformCliPatterns(cli)) dynamicEntries.add(p);
     } catch {
       // CLI not installed — skip
     }
@@ -3395,9 +3394,8 @@ function cmdGenerateAllowlist(cwd) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       // If a specific platform is configured, ensure its CLI is in the allowlist
       const platform = config.git?.platform;
-      const platformToCli = { github: 'gh', gitlab: 'glab', forgejo: 'fj', gitea: 'tea' };
-      if (platform && platformToCli[platform]) {
-        dynamicEntries.add(`Bash(${platformToCli[platform]} *)`);
+      if (platform && PLATFORM_TO_CLI[platform]) {
+        for (const p of getPlatformCliPatterns(PLATFORM_TO_CLI[platform])) dynamicEntries.add(p);
       }
     }
   } catch {}

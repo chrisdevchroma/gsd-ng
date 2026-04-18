@@ -621,36 +621,6 @@ At milestone completion, GSD offers squash merge (recommended) or merge with his
 
 ---
 
-## Security
-
-### Protecting Sensitive Files
-
-GSD's installer automatically seeds a `permissions.deny` list in `settings.json` that blocks access to sensitive files (`.env`, `.pem`, `.key`, credentials, `.aws/`, `.ssh/`, `.npmrc`, and more).
-
-To see the full deny list, inspect `gsd-ng/gsd-ng/templates/settings-sandbox.json`.
-
-To add custom deny patterns, edit your project's `.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "deny": [
-      "Read(.env)",
-      "Read(**/*.pem)",
-      "Read(**/.ssh/*)"
-    ]
-  }
-}
-```
-
-> [!IMPORTANT]
-> GSD's sandbox deny list prevents Claude from reading sensitive files, reducing the risk of secrets appearing in generated code. For additional protection, consider a pre-commit hook like [git-secrets](https://github.com/awslabs/git-secrets) or [detect-secrets](https://github.com/Yelp/detect-secrets).
-
-> [!NOTE]
-> **Linux users:** The sandbox template uses bare `Edit`, `Write`, and `Read` permissions (without glob patterns) because Linux's bubblewrap sandbox ignores gitignore-style globs in these rules. See [#16170](https://github.com/anthropics/claude-code/issues/16170) and [#6881](https://github.com/anthropics/claude-code/issues/6881).
-
----
-
 ## Troubleshooting
 
 **Commands not found after install?**
