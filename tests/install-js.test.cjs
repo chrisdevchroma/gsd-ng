@@ -1134,3 +1134,122 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
     cleanup(tmpDir);
   }
 });
+
+// ── SVN-01: copilot install writes snapshot VERSION (not verbatim copy) ───────
+
+test('SVN-01: --runtime copilot --local writes .github/gsd-ng/VERSION with resolved version', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-01-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime copilot --local must exit 0 (SVN-01)\nstderr: ' + (result.stderr || '')
+    );
+
+    const versionPath = path.join(tmpDir, '.github', 'gsd-ng', 'VERSION');
+    assert.ok(fs.existsSync(versionPath), '.github/gsd-ng/VERSION must exist after copilot install (SVN-01)');
+
+    const versionContent = fs.readFileSync(versionPath, 'utf8').trim();
+    const pkg = require('../package.json');
+    // Accept both clean version (tagged release) and snapshot version+hash (dev checkout).
+    const snapshotRegex = new RegExp('^' + pkg.version.replace(/[.+]/g, '\\$&') + '(\\+[0-9a-f]{7,})?$');
+    assert.ok(
+      snapshotRegex.test(versionContent),
+      'copilot VERSION must match ' + snapshotRegex + ' (SVN-01). Got: ' + JSON.stringify(versionContent)
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── SVN-02: banner output prints resolved (snapshot-aware) version ────────────
+
+test('SVN-02: --runtime claude --local banner prints resolved version matching VERSION file', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-02-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (SVN-02)\nstderr: ' + (result.stderr || '')
+    );
+
+    const versionPath = path.join(tmpDir, '.claude', 'gsd-ng', 'VERSION');
+    assert.ok(fs.existsSync(versionPath), '.claude/gsd-ng/VERSION must exist (SVN-02)');
+    const versionContent = fs.readFileSync(versionPath, 'utf8').trim();
+
+    // Banner line format: "  gsd-ng \x1b[2mv<version>\x1b[0m\n"
+    // Strip ANSI and check the banner contains "gsd-ng v<versionContent>".
+    const stdout = result.stdout || '';
+    // Remove ANSI escape sequences for readable matching.
+    const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    const expectedBannerFragment = 'gsd-ng v' + versionContent;
+    assert.ok(
+      clean.includes(expectedBannerFragment),
+      'Banner must contain "' + expectedBannerFragment + '" matching VERSION file (SVN-02).\n' +
+      'Stdout (ANSI-stripped, first 500 chars): ' + clean.slice(0, 500)
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── SVN-03: manifest.version matches VERSION file byte-for-byte ───────────────
+
+test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION file contents', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-03-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (SVN-03)\nstderr: ' + (result.stderr || '')
+    );
+
+    const versionPath = path.join(tmpDir, '.claude', 'gsd-ng', 'VERSION');
+    const manifestPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    assert.ok(fs.existsSync(versionPath), 'VERSION must exist (SVN-03)');
+    assert.ok(fs.existsSync(manifestPath), 'gsd-file-manifest.json must exist (SVN-03)');
+
+    const versionContent = fs.readFileSync(versionPath, 'utf8');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+    assert.strictEqual(
+      manifest.version,
+      versionContent,
+      'manifest.version must equal VERSION file contents (SVN-03). ' +
+      'manifest.version=' + JSON.stringify(manifest.version) +
+      ' VERSION=' + JSON.stringify(versionContent)
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
