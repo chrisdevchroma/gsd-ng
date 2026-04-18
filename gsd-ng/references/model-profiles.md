@@ -91,3 +91,84 @@ Read-only exploration and pattern extraction. No reasoning required, just struct
 
 **Why `inherit` instead of passing `opus` directly?**
 Claude Code's `"opus"` alias maps to a specific model version. Organizations may block older opus versions while allowing newer ones. The `inherit` profile causes `resolveModelInternal` to return `null`, which omits the `model` parameter from Agent tool calls. This lets opus-tier agents inherit whatever model the user's session is running. This avoids version conflicts and silent fallbacks to Sonnet.
+
+## Effort Profiles
+
+Effort profiles control the `effort:` frontmatter injected into agent spawn calls. This maps each agent to a thinking budget tier. Effort is Claude-only — it is not injected for Copilot runtimes.
+
+### Effort Profile Definitions
+
+| Agent | `quality` | `balanced` | `budget` |
+|-------|-----------|------------|----------|
+| gsd-planner | max | inherit | high |
+| gsd-roadmapper | max | inherit | high |
+| gsd-executor | high | inherit | high |
+| gsd-phase-researcher | high | inherit | medium |
+| gsd-project-researcher | high | inherit | medium |
+| gsd-research-synthesizer | high | inherit | medium |
+| gsd-debugger | max | inherit | high |
+| gsd-codebase-mapper | high | inherit | medium |
+| gsd-incremental-mapper | high | inherit | medium |
+| gsd-verifier | max | inherit | high |
+| gsd-plan-checker | high | inherit | medium |
+| gsd-integration-checker | high | inherit | medium |
+| gsd-nyquist-auditor | high | inherit | medium |
+| gsd-ui-researcher | high | inherit | medium |
+| gsd-ui-checker | high | inherit | medium |
+| gsd-ui-auditor | high | inherit | medium |
+
+### Valid Effort Values
+
+- `low` — Minimal thinking budget
+- `medium` — Moderate thinking budget
+- `high` — High thinking budget
+- `max` — Maximum thinking budget
+- `inherit` — Omit effort from spawn; session default applies (current behavior)
+
+### Effort Resolution Order
+
+```
+1. Check effort_overrides[agent] in .planning/config.json
+2. If no override, look up agent in EFFORT_PROFILES[agent][profile]
+3. If value is 'inherit', return null (omit effort parameter)
+4. If runtime != 'claude', return null (effort unsupported)
+```
+
+### Runtime Gating
+
+Effort is only injected when `runtime` in `.planning/config.json` is `"claude"`. Copilot installs always receive null from `resolveEffortInternal` regardless of profile or overrides. The `runtime` field is written by `install.js` at install time.
+
+### Per-Agent Effort Overrides
+
+Override specific agents without changing the entire profile:
+
+```json
+{
+  "model_profile": "balanced",
+  "effort_overrides": {
+    "gsd-executor": "max",
+    "gsd-planner": "high"
+  }
+}
+```
+
+Configure via CLI: `gsd-tools config-set effort_overrides.gsd-executor max`
+
+Overrides take precedence over the profile. Valid values: `low`, `medium`, `high`, `max`.
+
+### Profile Philosophy
+
+**quality** — Maximum reasoning power
+- Critical decision-makers (planner, roadmapper, debugger, verifier) at `max`
+- All other agents at `high`
+- No agent below `high` — use when quota is available and correctness is critical
+
+**balanced** (default) — Session default applies
+- All agents at `inherit` — omits effort from spawn
+- Current behavior preserved: matches session-level thinking budget
+- Use for normal development when you don't want to override session settings
+
+**budget** — Reduced thinking where safe
+- Decision-makers (planner, executor, debugger, verifier) at `high`
+- Mechanical/read-only agents (researchers, mappers, checkers) at `medium`
+- Use when conserving budget; never drops below `medium`

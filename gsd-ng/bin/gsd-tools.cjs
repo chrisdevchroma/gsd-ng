@@ -15,6 +15,7 @@
  *   state get [section]                Get STATE.md content or section
  *   state patch --field val ...        Batch update STATE.md fields
  *   resolve-model <agent-type>         Get model for agent based on profile
+ *   resolve-effort <agent-type>        Get effort for agent based on profile
  *   find-phase <phase>                 Find phase directory by number
  *   commit <message> [--files f1 f2]   Commit planning docs
  *   verify-summary <path>              Verify a SUMMARY.md file
@@ -180,7 +181,7 @@ const testBaseline = require('./lib/test-baseline.cjs');
 // ─── Command Registry (for typo detection) ────────────────────────────────────
 
 const ALL_COMMANDS = [
-  'state', 'resolve-model', 'find-phase', 'commit', 'verify-summary',
+  'state', 'resolve-model', 'resolve-effort', 'find-phase', 'commit', 'verify-summary',
   'template', 'frontmatter', 'verify', 'generate-slug', 'current-timestamp',
   'list-todos', 'recurring-due', 'staleness-check', 'verify-path-exists',
   'config-ensure-section', 'config-set', 'config-set-model-profile',
@@ -834,6 +835,11 @@ async function main() {
 
     case 'resolve-model': {
       commands.cmdResolveModel(cwd, args[1]);
+      break;
+    }
+
+    case 'resolve-effort': {
+      commands.cmdResolveEffort(cwd, args[1]);
       break;
     }
 

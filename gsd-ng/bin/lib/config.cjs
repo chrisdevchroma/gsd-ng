@@ -9,7 +9,9 @@ const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 const {
   VALID_PROFILES,
   getAgentToModelMapForProfile,
+  getAgentToEffortMapForProfile,
   formatAgentToModelMapAsTable,
+  formatAgentToEffortMapAsTable,
 } = require('./model-profiles.cjs');
 
 const VALID_CONFIG_KEYS = new Set([
@@ -38,6 +40,8 @@ const VALID_CONFIG_KEYS = new Set([
 ]);
 
 const SUBMODULE_KEY_PATTERN = /^git\.submodules\.[^.]+\.(target_branch|branching_strategy|phase_branch_template|milestone_branch_template|review_branch_template|remote|auto_push|platform|pr_template|pr_draft|commit_format|commit_template|versioning_scheme|type_aliases|ssh_check)$/;
+
+const EFFORT_OVERRIDE_KEY_PATTERN = /^effort_overrides\.[a-z][\w-]+$/;
 
 const CONFIG_KEY_SUGGESTIONS = {
   'workflow.nyquist_validation_enabled': 'workflow.nyquist_validation',
@@ -196,7 +200,7 @@ function cmdConfigSet(cwd, keyPath, value) {
     error('git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.');
   }
 
-  if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath)) {
+  if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath) && !EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)) {
     error(`Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`);
   }
 
@@ -286,16 +290,19 @@ function cmdConfigSetModelProfile(cwd, profile) {
 
   // Build result value / message and return
   const agentToModelMap = getAgentToModelMapForProfile(normalizedProfile);
+  const agentToEffortMap = getAgentToEffortMapForProfile(normalizedProfile);
   const result = {
     updated: true,
     profile: normalizedProfile,
     previousProfile,
     agentToModelMap,
+    agentToEffortMap,
   };
   const rawValue = getCmdConfigSetModelProfileResultMessage(
     normalizedProfile,
     previousProfile,
-    agentToModelMap
+    agentToModelMap,
+    agentToEffortMap
   );
   output(result, rawValue);
 }
@@ -307,21 +314,25 @@ function cmdConfigSetModelProfile(cwd, profile) {
 function getCmdConfigSetModelProfileResultMessage(
   normalizedProfile,
   previousProfile,
-  agentToModelMap
+  agentToModelMap,
+  agentToEffortMap
 ) {
   const agentToModelTable = formatAgentToModelMapAsTable(agentToModelMap);
+  const agentToEffortTable = agentToEffortMap ? formatAgentToEffortMapAsTable(agentToEffortMap) : null;
   const didChange = previousProfile !== normalizedProfile;
   const paragraphs = didChange
     ? [
-        `✓ Model profile set to: ${normalizedProfile} (was: ${previousProfile})`,
-        'Agents will now use:',
+        `\u2713 Model profile set to: ${normalizedProfile} (was: ${previousProfile})`,
+        'Model assignments:',
         agentToModelTable,
+        ...(agentToEffortTable ? ['Effort assignments:', agentToEffortTable] : []),
         'Next spawned agents will use the new profile.',
       ]
     : [
-        `✓ Model profile is already set to: ${normalizedProfile}`,
-        'Agents are using:',
+        `\u2713 Model profile is already set to: ${normalizedProfile}`,
+        'Model assignments:',
         agentToModelTable,
+        ...(agentToEffortTable ? ['Effort assignments:', agentToEffortTable] : []),
       ];
   return paragraphs.join('\n\n');
 }
