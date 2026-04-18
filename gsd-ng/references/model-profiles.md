@@ -128,10 +128,10 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 ### Effort Resolution Order
 
 ```
-1. Check effort_overrides[agent] in .planning/config.json
-2. If no override, look up agent in EFFORT_PROFILES[agent][profile]
-3. If value is 'inherit', return null (omit effort parameter)
-4. If runtime != 'claude', return null (effort unsupported)
+1. If runtime != 'claude', return null (effort unsupported)
+2. Check effort_overrides[agent] in .planning/config.json
+3. If no override, look up agent in EFFORT_PROFILES[agent][profile]
+4. If value is 'inherit', return null (omit effort parameter)
 ```
 
 ### Runtime Gating
@@ -154,7 +154,7 @@ Override specific agents without changing the entire profile:
 
 Configure via CLI: `gsd-tools config-set effort_overrides.gsd-executor max`
 
-Overrides take precedence over the profile. Valid values: `low`, `medium`, `high`, `max`.
+Overrides take precedence over the profile. Valid values: `low`, `medium`, `high`, `max`, `inherit`. Use `inherit` to clear the per-agent override so effort is omitted/null and the session-level behavior is preserved.
 
 ### Profile Philosophy
 
