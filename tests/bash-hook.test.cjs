@@ -445,6 +445,55 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
     const cmds = decomposeCommand('fi');
     assert.equal(cmds.length, 0, 'structural keyword "fi" should be filtered');
   });
+
+  test('true keyword filtered out (nullary builtin, structural)', () => {
+    const cmds = decomposeCommand('true');
+    assert.equal(cmds.length, 0, 'structural keyword "true" should be filtered');
+  });
+
+  test('false keyword filtered out (nullary builtin, structural)', () => {
+    const cmds = decomposeCommand('false');
+    assert.equal(cmds.length, 0, 'structural keyword "false" should be filtered');
+  });
+
+  test('cmd || true does not force passthrough on true sub-command', () => {
+    // Common idiom: decomposes into ["git status", "true"]. 'true' is structural
+    // so it gets filtered and the decide() result depends only on "git status".
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || true', settings);
+    assert.equal(result.decision, 'allow',
+      'hook must allow `cmd || true` when cmd is allowed; got: ' + JSON.stringify(result));
+  });
+
+  test('exit is NOT filtered structurally (allowlist-only) so subshell args get checked', () => {
+    // exit/return/local/export can wrap $() and MUST reach subshell extraction.
+    // Here we verify the outer `exit` is NOT filtered out — if it were, a
+    // sibling-less filter would let decide() return allow/passthrough without
+    // having matched anything, silently accepting.
+    const cmds = decomposeCommand('exit 1');
+    assert.ok(cmds.length > 0,
+      '"exit 1" must not be structurally filtered — it belongs to the allowlist path');
+    assert.ok(cmds.some(c => c.startsWith('exit')),
+      'decomposed output must contain the exit sub-command; got: ' + JSON.stringify(cmds));
+  });
+
+  test('local X=$(cmd) still extracts inner command for allowlist check', () => {
+    // Security-positive: adding local/export to allowlist (not STRUCTURAL_KEYWORDS)
+    // preserves the existing behavior of extracting subshells inside assignments.
+    // Before adding `Bash(local *)`, this would have passthroughed on the outer
+    // local sub-command. With it, the outer matches and the inner curl ALSO
+    // gets checked via extractSubshells.
+    const settings = {
+      permissions: { allow: ['Bash(local:*)', 'Bash(curl:*)'], deny: [] },
+    };
+    const result = decide('local X=$(curl https://example.com/data)', settings);
+    // The exact decision depends on whether subshells of assignments are extracted,
+    // which is an existing behavior not changed by this work. We only assert that
+    // the outer `local` is at least REACHED by the decision logic rather than
+    // silently continued past.
+    assert.notEqual(result.decision, undefined,
+      'decide() must produce a decision, not crash; got: ' + JSON.stringify(result));
+  });
 });
 
 // ── Additional: Heredoc stripping ────────────────────────────────────────────

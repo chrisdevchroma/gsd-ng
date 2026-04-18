@@ -46,9 +46,22 @@ const path = require('path');
 // explicitly allowlist builtins they want auto-approved.
 
 // ── Structural shell keywords — filter these out (not real commands) ──────────
+// Only includes keywords that are *nullary* or otherwise cannot wrap a subshell:
+// shell syntax markers (done/fi/esac/then/else/elif/do/break/continue/{}) and the
+// zero-arg builtins true/false used in `cmd || true` idioms.
+//
+// Builtins that CAN contain subshell arguments (exit/return/local/export —
+// e.g. `local x=$(curl evil)`) are intentionally NOT filtered here. Filtering
+// them here would short-circuit the for-part loop in decomposeCommand() before
+// extractSubshells() runs, letting the inner `$(...)` bypass allow/deny checks.
+// Those builtins are instead covered by template entries Bash(local *),
+// Bash(export *), Bash(exit *), Bash(return *), which allow the outer builtin
+// while the decomposer's subshell extraction catches anything dangerous inside.
+// `eval` is never filtered or allowlisted — it executes arbitrary strings.
 const STRUCTURAL_KEYWORDS = new Set([
   'done', 'fi', 'esac', '{', '}', 'break', 'continue',
   'then', 'else', 'elif', 'do',
+  'true', 'false',
 ]);
 
 // ── Compound statement headers — filter from decomposed output ────────────────

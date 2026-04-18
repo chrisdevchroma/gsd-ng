@@ -10,12 +10,12 @@ const {
   PLATFORM_TO_CLI,
 } = require(path.resolve(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 
-// ── ALLOW-01: getPlatformCliPatterns('gh') returns patterns for all 6 subcommands ──
+// ── ALLOW-01: getPlatformCliPatterns('gh') returns patterns for all 7 subcommands ──
 
-describe('ALLOW-01: getPlatformCliPatterns(gh) returns patterns for all 6 subcommands', () => {
-  test('returns 12 patterns (2 per subcommand x 6 subcommands)', () => {
+describe('ALLOW-01: getPlatformCliPatterns(gh) returns patterns for all 7 subcommands', () => {
+  test('returns 14 patterns (2 per subcommand x 7 subcommands)', () => {
     const patterns = getPlatformCliPatterns('gh');
-    assert.strictEqual(patterns.length, 12, `Expected 12 patterns, got ${patterns.length}`);
+    assert.strictEqual(patterns.length, 14, `Expected 14 patterns, got ${patterns.length}`);
   });
 
   test('includes Bash(gh pr *) and Bash(gh pr)', () => {
@@ -52,6 +52,12 @@ describe('ALLOW-01: getPlatformCliPatterns(gh) returns patterns for all 6 subcom
     const patterns = getPlatformCliPatterns('gh');
     assert.ok(patterns.includes('Bash(gh repo *)'), 'Missing Bash(gh repo *)');
     assert.ok(patterns.includes('Bash(gh repo)'), 'Missing Bash(gh repo)');
+  });
+
+  test('includes Bash(gh search *) and Bash(gh search)', () => {
+    const patterns = getPlatformCliPatterns('gh');
+    assert.ok(patterns.includes('Bash(gh search *)'), 'Missing Bash(gh search *)');
+    assert.ok(patterns.includes('Bash(gh search)'), 'Missing Bash(gh search)');
   });
 });
 

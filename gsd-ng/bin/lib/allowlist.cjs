@@ -8,7 +8,7 @@
  *                  gh extension (arbitrary code execution risk)
  */
 const CLI_SUBCOMMANDS = {
-  gh:   ['pr', 'issue', 'release', 'workflow', 'auth', 'repo'],
+  gh:   ['pr', 'issue', 'release', 'workflow', 'auth', 'repo', 'search'],
   glab: ['mr', 'issue', 'release', 'ci', 'auth', 'repo'],
   fj:   ['pr', 'issue', 'release', 'actions', 'auth', 'repo'],
   tea:  ['pr', 'pulls', 'issue', 'issues', 'release', 'releases', 'login', 'repo', 'repos', 'actions'],
