@@ -137,6 +137,45 @@ describe('BASH-HOOK-09: commandMatchesPattern', () => {
   });
 });
 
+// ── BASH-HOOK-14: Bug 10 regression — trailing-star patterns match zero-arg commands ──
+
+describe('BASH-HOOK-14: trailing-star patterns match zero-arg commands (Bug 10 fix)', () => {
+  test('Bash(echo *) matches bare "echo" (zero args)', () => {
+    assert.ok(commandMatchesPattern('echo', 'Bash(echo *)'));
+  });
+
+  test('Bash(echo *) still matches "echo hello" (with args)', () => {
+    assert.ok(commandMatchesPattern('echo hello', 'Bash(echo *)'));
+  });
+
+  test('Bash(gh pr *) matches bare "gh pr" (multi-word zero args)', () => {
+    assert.ok(commandMatchesPattern('gh pr', 'Bash(gh pr *)'));
+  });
+
+  test('Bash(gh pr *) matches "gh pr list" (multi-word with args)', () => {
+    assert.ok(commandMatchesPattern('gh pr list', 'Bash(gh pr *)'));
+  });
+
+  test('Bash(gh pr *) does NOT match bare "gh" (partial prefix)', () => {
+    assert.ok(!commandMatchesPattern('gh', 'Bash(gh pr *)'));
+  });
+
+  test('Bash(npm run *) matches "npm run build" (existing behavior preserved)', () => {
+    assert.ok(commandMatchesPattern('npm run build', 'Bash(npm run *)'));
+  });
+
+  test('parseBashPattern("Bash(echo *)") returns prefix type (not glob)', () => {
+    const parsed = parseBashPattern('Bash(echo *)');
+    assert.strictEqual(parsed.type, 'prefix');
+    assert.strictEqual(parsed.prefix, 'echo');
+  });
+
+  test('parseBashPattern("Bash(*.sh)") returns glob type (non-trailing-star unaffected)', () => {
+    const parsed = parseBashPattern('Bash(*.sh)');
+    assert.strictEqual(parsed.type, 'glob');
+  });
+});
+
 // ── BASH-HOOK-10: compound all-match -> approve ───────────────────────────────
 
 describe('BASH-HOOK-10: compound all-match -> approve', () => {

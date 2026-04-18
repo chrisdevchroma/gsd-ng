@@ -189,7 +189,7 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
 
 // ── PERM-06: settings-sandbox.json template contains Agent(*), bare Edit, bare Write, bare Read ──
 
-test('PERM-06: settings-sandbox.json template contains Agent(*), bare Edit, bare Write, bare Read', () => {
+test('PERM-06: settings-sandbox.json template contains Agent(*), bare Edit/Write/Read, no deny rules, subshell builtins', () => {
   const templatePath = path.resolve(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
   const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
   const allow = template.permissions.allow;
@@ -199,11 +199,57 @@ test('PERM-06: settings-sandbox.json template contains Agent(*), bare Edit, bare
   assert.ok(allow.includes('Read'), 'template must include bare Read for Linux bubblewrap compatibility');
   assert.ok(allow.indexOf('Edit(*)') === -1, 'template must NOT include Edit(*) -- use bare Edit instead');
   assert.ok(allow.indexOf('Write(*)') === -1, 'template must NOT include Write(*) -- use bare Write instead');
-  const deny = template.permissions.deny;
-  assert.ok(Array.isArray(deny) && deny.length >= 20, 'template must include permissions.deny with at least 20 entries');
-  assert.ok(deny.includes('Read(.env)'), 'template deny must include Read(.env)');
-  assert.ok(deny.includes('Read(**/.aws/*)'), 'template deny must include Read(**/.aws/*)');
-  assert.ok(deny.includes('Read(**/.ssh/*)'), 'template deny must include Read(**/.ssh/*)');
+  // Deny rules dropped per Phase 52 -- GSD-NG ships allow rules only
+  assert.strictEqual(template.permissions.deny, undefined, 'template must NOT have permissions.deny section (deny rules dropped in Phase 52)');
+
+  // Verify new subshell builtins were added (Bug 9 fix)
+  assert.ok(allow.includes('Bash(basename *)'), 'template must include Bash(basename *)');
+  assert.ok(allow.includes('Bash(dirname *)'), 'template must include Bash(dirname *)');
+  assert.ok(allow.includes('Bash(cut *)'), 'template must include Bash(cut *)');
+  assert.ok(allow.includes('Bash(tee *)'), 'template must include Bash(tee *)');
+  assert.ok(allow.includes('Bash(uniq *)'), 'template must include Bash(uniq *)');
+  assert.ok(allow.includes('Bash(seq *)'), 'template must include Bash(seq *)');
+});
+
+// ── PERM-07: install seeds granular platform CLI patterns, not blanket wildcards ──
+
+test('PERM-07: local install seeds granular gh subcommand patterns (not blanket Bash(gh *))', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm07-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(result.status, 0, 'install must exit 0 (PERM-07)\nstderr: ' + (result.stderr || ''));
+
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const allow = settings.permissions.allow;
+
+    // gh is typically installed in CI/dev environments
+    // If gh is installed, we should see granular patterns
+    try {
+      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      // gh is installed -- verify granular patterns
+      assert.ok(allow.includes('Bash(gh pr *)'), 'must include Bash(gh pr *) when gh is installed (PERM-07)');
+      assert.ok(allow.includes('Bash(gh pr)'), 'must include Bash(gh pr) when gh is installed (PERM-07)');
+      assert.ok(allow.includes('Bash(gh issue *)'), 'must include Bash(gh issue *) when gh is installed (PERM-07)');
+      assert.ok(!allow.includes('Bash(gh *)'), 'must NOT include blanket Bash(gh *) (PERM-07)');
+      assert.ok(!allow.includes('Bash(gh api *)'), 'must NOT include Bash(gh api *) (PERM-07)');
+      assert.ok(!allow.includes('Bash(gh extension *)'), 'must NOT include Bash(gh extension *) (PERM-07)');
+    } catch {
+      // gh not installed -- just verify no blanket pattern leaked
+      assert.ok(!allow.includes('Bash(gh *)'), 'must NOT include blanket Bash(gh *) even without gh installed (PERM-07)');
+    }
+  } finally {
+    cleanup(tmpDir);
+  }
 });
 
 // ── PERM-01: local install seeds permissions.allow with template entries ──────
