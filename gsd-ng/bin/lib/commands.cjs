@@ -344,14 +344,12 @@ function cmdSummaryExtract(cwd, summaryPath, fields, defaultValue) {
     });
   };
 
-  // Extract one-liner from body when not in frontmatter: first line matching **bold text** pattern
-  let oneLiner = fm['one-liner'] || null;
-  if (!oneLiner) {
-    const body = content.replace(/^---[\s\S]*?---\n?/, '');
-    const boldMatch = body.match(/^\*\*([^*]+)\*\*/m);
-    if (boldMatch) {
-      oneLiner = boldMatch[1].trim();
-    }
+  // Extract one-liner from body: first line matching **bold text** pattern
+  let oneLiner = null;
+  const body = content.replace(/^---[\s\S]*?---\n?/, '');
+  const boldMatch = body.match(/^\*\*(.+?)\*\*\s*$/m);
+  if (boldMatch) {
+    oneLiner = boldMatch[1].trim();
   }
 
   // Build full result
