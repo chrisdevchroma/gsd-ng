@@ -25,6 +25,7 @@ const hasLocal = args.includes('--local') || args.includes('-l');
 const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 const noSeedPermissionsConfig = args.includes('--no-seed-permissions-config');
 let noSeedSandboxConfig = args.includes('--no-seed-sandbox-config');
+const hasSnapshot = args.includes('--snapshot');
 const runtimeArgIdx = args.findIndex(a => a === '--runtime');
 const runtimeArgVal = runtimeArgIdx !== -1 ? args[runtimeArgIdx + 1] : null;
 // Runtime is ONLY set via --runtime flag. No implicit default.
@@ -113,7 +114,8 @@ function getGlobalDir(rt, explicitDir = null) {
   return path.join(os.homedir(), '.claude');
 }
 
-const banner = '\n' +
+function buildBanner(version) {
+  return '\n' +
   cyan + '   ██████╗ ███████╗██████╗\n' +
   '  ██╔════╝ ██╔════╝██╔══██╗\n' +
   '  ██║  ███╗███████╗██║  ██║\n' +
@@ -127,9 +129,10 @@ const banner = '\n' +
   '        ██║ ╚████║╚██████╔╝\n' +
   '        ╚═╝  ╚═══╝ ╚═════╝' + reset + '\n' +
   '\n' +
-  '  gsd-ng ' + dim + 'v' + pkg.version + reset + '\n' +
+  '  gsd-ng ' + dim + 'v' + version + reset + '\n' +
   '  A meta-prompting, context engineering and spec-driven\n' +
   '  development system for Claude Code.\n';
+}
 
 // Parse --config-dir argument
 function parseConfigDirArg() {
@@ -159,7 +162,59 @@ const explicitConfigDir = parseConfigDirArg();
 const hasHelp = args.includes('--help') || args.includes('-h');
 const forceStatusline = args.includes('--force-statusline');
 
-console.log(banner);
+/**
+ * Resolve the installed version string, appending +<hash> build metadata
+ * when installing from a git checkout that isn't an exact release tag.
+ *
+ * Auto-snapshot triggers when:
+ *   - Running from a git working tree (not an npm tarball install)
+ *   - HEAD does not point to a tag matching `v<pkg.version>`
+ *
+ * --snapshot flag forces the +hash suffix regardless of branch/tag state.
+ *
+ * @param {string} baseVersion - Clean semver from package.json (e.g., '1.0.0-dev.3')
+ * @returns {string} baseVersion, or baseVersion+<hash> for snapshot installs
+ */
+function resolveInstalledVersion(baseVersion) {
+  const src = path.join(__dirname, '..');
+
+  // Not a git repo (e.g., installed via npm tarball) — use clean version
+  if (!fs.existsSync(path.join(src, '.git'))) return baseVersion;
+
+  try {
+    const hash = execSync('git rev-parse --short HEAD', {
+      cwd: src, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000
+    }).toString().trim();
+
+    if (!hash) return baseVersion;
+
+    // --snapshot always appends hash
+    if (hasSnapshot) return `${baseVersion}+${hash}`;
+
+    // Auto-snapshot: check if HEAD is exactly the release tag for this version
+    const exactTag = execSync(`git tag --points-at HEAD`, {
+      cwd: src, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000
+    }).toString().trim();
+
+    const releaseTags = exactTag.split('\n').filter(t => t.trim());
+    const isTagged = releaseTags.some(t => t.trim() === `v${baseVersion}`);
+
+    // If HEAD is the exact release tag, use clean version (this IS the release)
+    if (isTagged) return baseVersion;
+
+    // Otherwise, this is a dev checkout — append hash
+    return `${baseVersion}+${hash}`;
+  } catch {
+    return baseVersion;
+  }
+}
+
+// Single source of truth for the installed version string — used by banner,
+// VERSION file writes (both runtimes), and the file manifest. Computed once
+// to avoid repeated git probes and guarantee consistency across all surfaces.
+const INSTALLED_VERSION = resolveInstalledVersion(pkg.version);
+
+console.log(buildBanner(INSTALLED_VERSION));
 
 if (hasUninstall) {
   console.log(`  ${yellow}Mode: Uninstall${reset}\n`);
@@ -167,7 +222,7 @@ if (hasUninstall) {
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-c, --config-dir <path>${reset}            Specify custom config directory\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx gsd-ng --runtime claude --global --config-dir ~/.claude-work\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over the CLAUDE_CONFIG_DIR environment variable.\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-c, --config-dir <path>${reset}            Specify custom config directory\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx gsd-ng --runtime claude --global --config-dir ~/.claude-work\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over the CLAUDE_CONFIG_DIR environment variable.\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
   process.exit(0);
 }
 
@@ -700,11 +755,11 @@ function generateManifest(dir, baseDir) {
 /**
  * Write file manifest after installation for future modification detection
  */
-function writeManifest(configDir) {
+function writeManifest(configDir, version) {
   const gsdDir = path.join(configDir, 'gsd-ng');
   const commandsDir = path.join(configDir, 'commands', 'gsd');
   const agentsDir = path.join(configDir, 'agents');
-  const manifest = { version: pkg.version, timestamp: new Date().toISOString(), files: {} };
+  const manifest = { version: version || pkg.version, timestamp: new Date().toISOString(), files: {} };
 
   const gsdHashes = generateManifest(gsdDir);
   for (const [rel, hash] of Object.entries(gsdHashes)) {
@@ -1130,6 +1185,15 @@ function install(isGlobal) {
     if (failures.length > 0) {
       console.log(`\n  ${yellow}⚠ ${failures.length} component(s) failed to install${reset}`);
     }
+
+    // Write VERSION file (snapshot-aware, same as claude path) — overrides any
+    // verbatim copy from source tree so copilot installs get the same +hash
+    // suffix on dev checkouts.
+    const versionDest = path.join(targetDir, 'gsd-ng', 'VERSION');
+    fs.mkdirSync(path.dirname(versionDest), { recursive: true });
+    fs.writeFileSync(versionDest, INSTALLED_VERSION);
+    console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
+
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
   }
 
@@ -1207,11 +1271,11 @@ function install(isGlobal) {
     }
   }
 
-  // Write VERSION file
+  // Write VERSION file (with +hash for snapshot/develop installs)
   const versionDest = path.join(targetDir, 'gsd-ng', 'VERSION');
-  fs.writeFileSync(versionDest, pkg.version);
+  fs.writeFileSync(versionDest, INSTALLED_VERSION);
   if (verifyFileInstalled(versionDest, 'VERSION')) {
-    console.log(`  ${green}✓${reset} Wrote VERSION (${pkg.version})`);
+    console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
   } else {
     failures.push('VERSION');
   }
@@ -1277,7 +1341,7 @@ function install(isGlobal) {
   }
 
   // Write file manifest for future modification detection
-  writeManifest(targetDir);
+  writeManifest(targetDir, INSTALLED_VERSION);
   console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
   // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib files.
