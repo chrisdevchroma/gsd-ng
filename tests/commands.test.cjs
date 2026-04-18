@@ -290,7 +290,6 @@ describe('summary-extract command', () => {
     fs.writeFileSync(
       path.join(phaseDir, '01-01-SUMMARY.md'),
       `---
-one-liner: Set up Prisma with User and Project models
 key-files:
   - prisma/schema.prisma
   - src/lib/db.ts
@@ -310,6 +309,8 @@ requirements-completed:
 ---
 
 # Summary
+
+**Set up Prisma with User and Project models**
 
 Full summary content here.
 `
@@ -335,7 +336,6 @@ Full summary content here.
     fs.writeFileSync(
       path.join(phaseDir, '01-01-SUMMARY.md'),
       `---
-one-liner: Set up database
 key-files:
   - prisma/schema.prisma
 tech-stack:
@@ -348,6 +348,10 @@ key-decisions:
 requirements-completed:
   - AUTH-01
 ---
+
+# Summary
+
+**Set up database**
 `
     );
 
@@ -401,10 +405,11 @@ key-files:
     fs.writeFileSync(
       path.join(phaseDir, '01-01-SUMMARY.md'),
       `---
-one-liner: Minimal summary
 ---
 
 # Summary
+
+**Minimal summary**
 `
     );
 
@@ -418,6 +423,34 @@ one-liner: Minimal summary
     assert.deepStrictEqual(output.patterns, [], 'patterns defaults to empty');
     assert.deepStrictEqual(output.decisions, [], 'decisions defaults to empty');
     assert.deepStrictEqual(output.requirements_completed, [], 'requirements_completed defaults to empty');
+  });
+
+  test('extracts one-liner from body when text contains literal asterisks', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(phaseDir, '01-01-SUMMARY.md'),
+      `---
+phase: "01"
+---
+
+# Phase 1: Foundation Summary
+
+**Replaced blanket Bash(cli *) wildcards with granular patterns**
+
+## Performance
+
+- **Duration:** 15 min
+`
+    );
+
+    const result = runGsdTools('summary-extract .planning/phases/01-foundation/01-01-SUMMARY.md --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.one_liner, 'Replaced blanket Bash(cli *) wildcards with granular patterns',
+      'one-liner with asterisks should be extracted from body');
   });
 
   test('parses key-decisions with rationale', () => {
@@ -3231,8 +3264,7 @@ describe('summary-extract --default flag', () => {
   test('returns actual value when file found (default unused)', () => {
     const summaryDir = path.join(tmpDir, '.planning', 'phases', '01-test');
     fs.mkdirSync(summaryDir, { recursive: true });
-    // one-liner uses hyphen key in frontmatter (matching cmdSummaryExtract's fm['one-liner'])
-    const summaryContent = `---\nphase: "01"\nplan: "01"\nsubsystem: test\ntags: []\nduration: 5m\ncompleted: "2026-01-01"\none-liner: "Built the thing"\n---\n\n# Summary\n`;
+    const summaryContent = `---\nphase: "01"\nplan: "01"\nsubsystem: test\ntags: []\nduration: 5m\ncompleted: "2026-01-01"\n---\n\n# Summary\n\n**Built the thing**\n`;
     fs.writeFileSync(path.join(summaryDir, '01-01-SUMMARY.md'), summaryContent);
     const result = runGsdTools(['summary-extract', '.planning/phases/01-test/01-01-SUMMARY.md', '--fields', 'one_liner', '--default', '', '--json'], tmpDir);
     assert.ok(result.success, `Command should succeed`);
