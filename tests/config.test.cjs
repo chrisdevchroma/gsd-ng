@@ -672,3 +672,77 @@ describe('EFFORT_PROFILES', () => {
     assert.strictEqual(Object.keys(firstAgent).length, 3, 'Should have exactly 3 profiles');
   });
 });
+
+// ─── set-profile effort display and config-set effort_overrides (EFF-04, EFF-05) ─
+
+describe('set-profile effort display and effort_overrides config-set (EFF-04, EFF-05)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runGsdTools('config-ensure-section', tmpDir);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('Test 6: cmdConfigSetModelProfile result includes agentToEffortMap field', () => {
+    const result = runGsdTools('config-set-model-profile quality --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('agentToEffortMap' in output, 'result should include agentToEffortMap');
+    assert.ok(typeof output.agentToEffortMap === 'object', 'agentToEffortMap should be an object');
+    assert.ok('gsd-executor' in output.agentToEffortMap, 'agentToEffortMap should have gsd-executor key');
+  });
+
+  test('Test 7: set-profile raw message includes "Effort" table header', () => {
+    const result = runGsdTools('config-set-model-profile quality', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    assert.ok(
+      result.output.includes('Effort'),
+      `Raw output should contain "Effort" table header. Got: ${result.output.substring(0, 300)}`
+    );
+  });
+
+  test('Test 9: config-set accepts effort_overrides.gsd-executor as valid key', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor max', tmpDir);
+    assert.ok(
+      result.success,
+      `config-set effort_overrides.gsd-executor should succeed, got error: ${result.error}`
+    );
+
+    const config = JSON.parse(
+      require('fs').readFileSync(require('path').join(tmpDir, '.planning', 'config.json'), 'utf-8')
+    );
+    assert.strictEqual(config.effort_overrides['gsd-executor'], 'max');
+  });
+
+  test('Test 10: config-set accepts effort_overrides.gsd-planner as valid key', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-planner high', tmpDir);
+    assert.ok(
+      result.success,
+      `config-set effort_overrides.gsd-planner should succeed, got error: ${result.error}`
+    );
+
+    const config = JSON.parse(
+      require('fs').readFileSync(require('path').join(tmpDir, '.planning', 'config.json'), 'utf-8')
+    );
+    assert.strictEqual(config.effort_overrides['gsd-planner'], 'high');
+  });
+
+  test('Test 11: config-set rejects effort_overrides_typo.gsd-executor as invalid key', () => {
+    const result = runGsdTools('config-set effort_overrides_typo.gsd-executor max', tmpDir);
+    assert.strictEqual(
+      result.success,
+      false,
+      'effort_overrides_typo.gsd-executor should be rejected as unknown config key'
+    );
+    assert.ok(
+      result.error.includes('Unknown config key'),
+      `Expected "Unknown config key" in error, got: ${result.error}`
+    );
+  });
+});
