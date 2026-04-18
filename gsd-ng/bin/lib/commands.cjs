@@ -5,9 +5,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 const os = require('os');
-const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, extractCurrentMilestone, getPhaseCompletionStatus, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
+const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, resolveEffortInternal, extractCurrentMilestone, getPhaseCompletionStatus, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
-const { MODEL_PROFILES } = require('./model-profiles.cjs');
+const { MODEL_PROFILES, EFFORT_PROFILES } = require('./model-profiles.cjs');
 const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
 
 function cmdGenerateSlug(text) {
@@ -223,6 +223,22 @@ function cmdResolveModel(cwd, agentType) {
     ? { model, profile }
     : { model, profile, unknown_agent: true };
   output(result, model);
+}
+
+function cmdResolveEffort(cwd, agentType) {
+  if (!agentType) {
+    error('agent-type required');
+  }
+
+  const config = loadConfig(cwd);
+  const profile = config.model_profile || 'balanced';
+  const effort = resolveEffortInternal(cwd, agentType);
+
+  const agentEfforts = EFFORT_PROFILES[agentType];
+  const result = agentEfforts
+    ? { effort, profile }
+    : { effort, profile, unknown_agent: true };
+  output(result, effort || 'inherit');
 }
 
 function applyCommitFormat(message, config, context) {
@@ -4007,6 +4023,7 @@ module.exports = {
   cmdVerifyPathExists,
   cmdHistoryDigest,
   cmdResolveModel,
+  cmdResolveEffort,
   applyCommitFormat,
   appendIssueTrailers,
   cmdCommit,

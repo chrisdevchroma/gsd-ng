@@ -15,6 +15,7 @@ const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 const {
   loadConfig,
   resolveModelInternal,
+  resolveEffortInternal,
   escapeRegex,
   generateSlugInternal,
   normalizePhaseName,
@@ -1053,5 +1054,81 @@ describe('output() inline default and --file flag', () => {
     const coreExports = require('../gsd-ng/bin/lib/core.cjs');
     assert.strictEqual(typeof coreExports.setFileOutput, 'function', 'setFileOutput should be exported');
     assert.strictEqual(typeof coreExports.setResolveOutput, 'undefined', 'setResolveOutput should NOT be exported');
+  });
+});
+
+// ─── resolveEffortInternal ─────────────────────────────────────────────────────
+
+describe('resolveEffortInternal', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-test-'));
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeConfig(obj) {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify(obj, null, 2)
+    );
+  }
+
+  test('Test 1: returns max for gsd-planner when model_profile=quality and no overrides', () => {
+    writeConfig({ model_profile: 'quality' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, 'max');
+  });
+
+  test('Test 2: returns null for gsd-planner when model_profile=balanced (inherit resolves to null)', () => {
+    writeConfig({ model_profile: 'balanced' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, null);
+  });
+
+  test('Test 3: returns effort_overrides value when set (override takes precedence over profile)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      effort_overrides: { 'gsd-planner': 'max' },
+    });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, 'max');
+  });
+
+  test('Test 4: returns null for effort_overrides=inherit (override set to inherit resolves to null)', () => {
+    writeConfig({
+      model_profile: 'quality',
+      effort_overrides: { 'gsd-planner': 'inherit' },
+    });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, null);
+  });
+
+  test('Test 5: returns null for unknown agent (not in EFFORT_PROFILES)', () => {
+    writeConfig({ model_profile: 'quality' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-nonexistent');
+    assert.strictEqual(result, null);
+  });
+
+  test('Test 6: returns null when config.runtime is copilot (non-Claude runtime suppression)', () => {
+    writeConfig({ model_profile: 'quality', runtime: 'copilot' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, null);
+  });
+
+  test('Test 7: returns normal value when config.runtime is claude', () => {
+    writeConfig({ model_profile: 'quality', runtime: 'claude' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, 'max');
+  });
+
+  test('Test 8: returns normal value when config.runtime is undefined (backward compat)', () => {
+    writeConfig({ model_profile: 'quality' });
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    assert.strictEqual(result, 'max');
   });
 });

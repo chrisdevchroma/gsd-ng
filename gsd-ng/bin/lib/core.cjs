@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync, spawnSync } = require('child_process');
-const { MODEL_PROFILES } = require('./model-profiles.cjs');
+const { MODEL_PROFILES, EFFORT_PROFILES } = require('./model-profiles.cjs');
 const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
@@ -221,6 +221,8 @@ function loadConfig(cwd) {
       nyquist_validation: get('nyquist_validation', { section: 'workflow', field: 'nyquist_validation' }) ?? defaults.nyquist_validation,
       parallelization,
       model_overrides: parsed.model_overrides || null,
+      effort_overrides: parsed.effort_overrides || null,
+      runtime: parsed.runtime || null,
     };
   } catch {
     return defaults;
@@ -500,6 +502,31 @@ function resolveModelInternal(cwd, agentType) {
   return agentModels[profile] || agentModels['balanced'] || 'sonnet';
 }
 
+function resolveEffortInternal(cwd, agentType) {
+  const config = loadConfig(cwd);
+
+  // Non-Claude runtimes do not support effort: frontmatter — skip silently.
+  // When runtime is null/undefined, default to claude behavior (backward compat).
+  if (config.runtime && config.runtime !== 'claude') {
+    return null;
+  }
+
+  // 1. Check per-agent effort override first
+  const override = config.effort_overrides?.[agentType];
+  if (override) {
+    return override === 'inherit' ? null : override;
+  }
+
+  // 2. Fall back to profile lookup
+  const profile = config.model_profile || 'balanced';
+  const agentEfforts = EFFORT_PROFILES[agentType];
+  if (!agentEfforts) return null; // Unknown agent -> inherit
+
+  const effort = agentEfforts[profile];
+  if (!effort || effort === 'inherit') return null; // null -> omit from spawn
+  return effort;
+}
+
 // ─── Misc utilities ───────────────────────────────────────────────────────────
 
 function pathExistsInternal(cwd, targetPath) {
@@ -666,6 +693,7 @@ module.exports = {
   getArchivedPhaseDirs,
   getRoadmapPhaseInternal,
   resolveModelInternal,
+  resolveEffortInternal,
   pathExistsInternal,
   generateSlugInternal,
   getMilestoneInfo,
