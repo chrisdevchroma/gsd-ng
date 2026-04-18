@@ -26,6 +26,32 @@ const MODEL_PROFILES = {
 const VALID_PROFILES = Object.keys(MODEL_PROFILES['gsd-planner']);
 
 /**
+ * Mapping of GSD agent to effort level for each profile.
+ *
+ * Quality: critical decision-makers (planner, roadmapper, debugger, verifier) at max, others at high.
+ * Balanced: all inherit (session default applies, matches current behavior).
+ * Budget: writers/decision-makers at high, mechanical/read-only agents at medium.
+ */
+const EFFORT_PROFILES = {
+  'gsd-planner':              { quality: 'max',     balanced: 'inherit', budget: 'high' },
+  'gsd-roadmapper':           { quality: 'max',     balanced: 'inherit', budget: 'high' },
+  'gsd-executor':             { quality: 'high',    balanced: 'inherit', budget: 'high' },
+  'gsd-phase-researcher':     { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-project-researcher':   { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-research-synthesizer': { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-debugger':             { quality: 'max',     balanced: 'inherit', budget: 'high' },
+  'gsd-codebase-mapper':      { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-incremental-mapper':   { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-verifier':             { quality: 'max',     balanced: 'inherit', budget: 'high' },
+  'gsd-plan-checker':         { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-integration-checker':  { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-nyquist-auditor':      { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-ui-researcher':        { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-ui-checker':           { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+  'gsd-ui-auditor':           { quality: 'high',    balanced: 'inherit', budget: 'medium' },
+};
+
+/**
  * Formats the agent-to-model mapping as a human-readable table (in string format).
  *
  * @param {Object<string, string>} agentToModelMap - A mapping from agent to model
@@ -60,9 +86,47 @@ function getAgentToModelMapForProfile(normalizedProfile) {
   return agentToModelMap;
 }
 
+/**
+ * Formats the agent-to-effort mapping as a human-readable table (in string format).
+ *
+ * @param {Object<string, string>} agentToEffortMap - A mapping from agent to effort level
+ * @returns {string} A formatted table string
+ */
+function formatAgentToEffortMapAsTable(agentToEffortMap) {
+  const agentWidth = Math.max('Agent'.length, ...Object.keys(agentToEffortMap).map((a) => a.length));
+  const effortWidth = Math.max(
+    'Effort'.length,
+    ...Object.values(agentToEffortMap).map((e) => e.length)
+  );
+  const sep = '\u2500'.repeat(agentWidth + 2) + '\u253C' + '\u2500'.repeat(effortWidth + 2);
+  const header = ' ' + 'Agent'.padEnd(agentWidth) + ' \u2502 ' + 'Effort'.padEnd(effortWidth);
+  let table = header + '\n' + sep + '\n';
+  for (const [agent, effort] of Object.entries(agentToEffortMap)) {
+    table += ' ' + agent.padEnd(agentWidth) + ' \u2502 ' + effort.padEnd(effortWidth) + '\n';
+  }
+  return table;
+}
+
+/**
+ * Returns a mapping from agent to effort level for the given effort profile.
+ *
+ * @param {string} normalizedProfile - The normalized (lowercase and trimmed) profile name
+ * @returns {Object<string, string>} A mapping from agent to effort for the given profile
+ */
+function getAgentToEffortMapForProfile(normalizedProfile) {
+  const agentToEffortMap = {};
+  for (const [agent, profileToEffortMap] of Object.entries(EFFORT_PROFILES)) {
+    agentToEffortMap[agent] = profileToEffortMap[normalizedProfile];
+  }
+  return agentToEffortMap;
+}
+
 module.exports = {
   MODEL_PROFILES,
+  EFFORT_PROFILES,
   VALID_PROFILES,
   formatAgentToModelMapAsTable,
+  formatAgentToEffortMapAsTable,
   getAgentToModelMapForProfile,
+  getAgentToEffortMapForProfile,
 };

@@ -1051,6 +1051,43 @@ function stripGsdFromCopilotInstructions(content) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Write the runtime field to .planning/config.json so effort-gating
+ * can determine whether effort: frontmatter should be injected.
+ * Creates .planning/ and config.json if they don't exist.
+ * Preserves existing config values — only sets/updates "runtime".
+ */
+function writeRuntimeToConfig(rt) {
+  const configDir = path.join(process.cwd(), '.planning');
+  const configPath = path.join(configDir, 'config.json');
+
+  // Ensure .planning directory exists
+  try {
+    fs.mkdirSync(configDir, { recursive: true });
+  } catch {}
+
+  let config = {};
+  try {
+    if (fs.existsSync(configPath)) {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch {
+    // If config.json is corrupt, start fresh
+    config = {};
+  }
+
+  config.runtime = rt;
+
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  } catch {
+    // If .planning is gitignored or read-only, silently skip
+    // runtime will default to claude behavior in loadConfig
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function install(isGlobal) {
   const dirName = getDirName(runtime);
   const src = path.join(__dirname, '..');
@@ -1193,6 +1230,9 @@ function install(isGlobal) {
     fs.mkdirSync(path.dirname(versionDest), { recursive: true });
     fs.writeFileSync(versionDest, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
+
+    // Persist runtime to .planning/config.json for effort-gating
+    writeRuntimeToConfig(runtime);
 
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
   }
@@ -1604,6 +1644,9 @@ function install(isGlobal) {
       // Template missing or unreadable — skip
     }
   }
+
+  // Persist runtime to .planning/config.json for effort-gating
+  writeRuntimeToConfig(runtime);
 
   return { settingsPath, settings, statuslineCommand };
 }

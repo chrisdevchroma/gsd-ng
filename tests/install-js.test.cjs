@@ -1299,3 +1299,141 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
     cleanup(tmpDir);
   }
 });
+
+// ── RUNTIME-01: install.js writes runtime field to .planning/config.json ─────
+
+test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .planning/config.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-claude-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local --runtime claude must exit 0 (RUNTIME-01)\nstderr: ' + (result.stderr || '')
+    );
+
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    assert.ok(fs.existsSync(configPath), '.planning/config.json must exist after install (RUNTIME-01)');
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.strictEqual(
+      config.runtime,
+      'claude',
+      'config.json must contain "runtime":"claude" after claude install (RUNTIME-01)'
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .planning/config.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-copilot-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local --runtime copilot must exit 0 (RUNTIME-02)\nstderr: ' + (result.stderr || '')
+    );
+
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    assert.ok(fs.existsSync(configPath), '.planning/config.json must exist after copilot install (RUNTIME-02)');
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.strictEqual(
+      config.runtime,
+      'copilot',
+      'config.json must contain "runtime":"copilot" after copilot install (RUNTIME-02)'
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('RUNTIME-03: install.js preserves existing config.json values when writing runtime field', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-preserve-'));
+  try {
+    // Create .planning dir and pre-existing config.json with some values
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ model_profile: 'quality', commit_docs: false }, null, 2),
+      'utf-8'
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js must exit 0 even when config.json already exists (RUNTIME-03)\nstderr: ' + (result.stderr || '')
+    );
+
+    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
+    assert.strictEqual(config.runtime, 'claude', 'runtime field must be added (RUNTIME-03)');
+    assert.strictEqual(config.model_profile, 'quality', 'existing model_profile must be preserved (RUNTIME-03)');
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('RUNTIME-04: install.js updates existing runtime field in config.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-update-'));
+  try {
+    // Pre-create config.json with runtime: copilot
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ runtime: 'copilot' }, null, 2),
+      'utf-8'
+    );
+
+    // Install with claude runtime — should update to claude
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+
+    assert.strictEqual(result.status, 0, 'install.js must exit 0 (RUNTIME-04)\nstderr: ' + (result.stderr || ''));
+
+    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
+    assert.strictEqual(config.runtime, 'claude', 'runtime must be updated from copilot to claude (RUNTIME-04)');
+  } finally {
+    cleanup(tmpDir);
+  }
+});

@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, resolveEffortInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, planningPaths } = require('./core.cjs');
 const { DEFAULTS } = require('./defaults.cjs');
 const { validatePhaseNumber } = require('./security.cjs');
 const { adjustQuickTable } = require('./state.cjs');
@@ -55,6 +55,10 @@ function cmdInitExecutePhase(cwd, phase) {
     // Models
     executor_model: resolveModelInternal(cwd, 'gsd-executor'),
     verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
+
+    // Efforts
+    executor_effort: resolveEffortInternal(cwd, 'gsd-executor'),
+    verifier_effort: resolveEffortInternal(cwd, 'gsd-verifier'),
 
     // Config flags
     commit_docs: config.commit_docs,
@@ -211,6 +215,11 @@ function cmdInitPlanPhase(cwd, phase) {
     planner_model: resolveModelInternal(cwd, 'gsd-planner'),
     checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
 
+    // Efforts
+    researcher_effort: resolveEffortInternal(cwd, 'gsd-phase-researcher'),
+    planner_effort: resolveEffortInternal(cwd, 'gsd-planner'),
+    checker_effort: resolveEffortInternal(cwd, 'gsd-plan-checker'),
+
     // Workflow flags
     research_enabled: config.research,
     plan_checker_enabled: config.plan_checker,
@@ -315,6 +324,11 @@ function cmdInitNewProject(cwd) {
     synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
     roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
 
+    // Efforts
+    researcher_effort: resolveEffortInternal(cwd, 'gsd-project-researcher'),
+    synthesizer_effort: resolveEffortInternal(cwd, 'gsd-research-synthesizer'),
+    roadmapper_effort: resolveEffortInternal(cwd, 'gsd-roadmapper'),
+
     // Config
     commit_docs: config.commit_docs,
 
@@ -348,6 +362,11 @@ function cmdInitNewMilestone(cwd) {
     researcher_model: resolveModelInternal(cwd, 'gsd-project-researcher'),
     synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
     roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
+
+    // Efforts
+    researcher_effort: resolveEffortInternal(cwd, 'gsd-project-researcher'),
+    synthesizer_effort: resolveEffortInternal(cwd, 'gsd-research-synthesizer'),
+    roadmapper_effort: resolveEffortInternal(cwd, 'gsd-roadmapper'),
 
     // Config
     commit_docs: config.commit_docs,
@@ -421,6 +440,12 @@ function cmdInitQuick(cwd, description, verifyMode) {
     executor_model: resolveModelInternal(cwd, 'gsd-executor'),
     checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
     verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
+
+    // Efforts
+    planner_effort: resolveEffortInternal(cwd, 'gsd-planner'),
+    executor_effort: resolveEffortInternal(cwd, 'gsd-executor'),
+    checker_effort: resolveEffortInternal(cwd, 'gsd-plan-checker'),
+    verifier_effort: resolveEffortInternal(cwd, 'gsd-verifier'),
 
     // Config
     commit_docs: config.commit_docs,

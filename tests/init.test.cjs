@@ -200,6 +200,113 @@ describe('init commands', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Effort fields in init commands (EFF-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Effort fields in init commands (EFF-03)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeClaudeConfig(dir) {
+    const configPath = path.join(dir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ model_profile: 'quality', runtime: 'claude' }, null, 2), 'utf-8');
+  }
+
+  function writeCopilotConfig(dir) {
+    const configPath = path.join(dir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ model_profile: 'quality', runtime: 'copilot' }, null, 2), 'utf-8');
+  }
+
+  test('Test 1: init execute-phase result includes executor_effort and verifier_effort fields', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    writeClaudeConfig(tmpDir);
+
+    const result = runGsdTools('init execute-phase 03 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('executor_effort' in output, 'executor_effort should be present');
+    assert.ok('verifier_effort' in output, 'verifier_effort should be present');
+    assert.ok(output.executor_effort !== undefined, 'executor_effort should not be undefined');
+    assert.ok(output.verifier_effort !== undefined, 'verifier_effort should not be undefined');
+  });
+
+  test('Test 2: init plan-phase result includes researcher_effort, planner_effort, checker_effort', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    writeClaudeConfig(tmpDir);
+
+    const result = runGsdTools('init plan-phase 03 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('researcher_effort' in output, 'researcher_effort should be present');
+    assert.ok('planner_effort' in output, 'planner_effort should be present');
+    assert.ok('checker_effort' in output, 'checker_effort should be present');
+  });
+
+  test('Test 3: init new-project result includes researcher_effort, synthesizer_effort, roadmapper_effort', () => {
+    writeClaudeConfig(tmpDir);
+
+    const result = runGsdTools('init new-project --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('researcher_effort' in output, 'researcher_effort should be present');
+    assert.ok('synthesizer_effort' in output, 'synthesizer_effort should be present');
+    assert.ok('roadmapper_effort' in output, 'roadmapper_effort should be present');
+  });
+
+  test('Test 4: init new-milestone result includes researcher_effort, synthesizer_effort, roadmapper_effort', () => {
+    writeClaudeConfig(tmpDir);
+
+    const result = runGsdTools('init new-milestone --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('researcher_effort' in output, 'researcher_effort should be present');
+    assert.ok('synthesizer_effort' in output, 'synthesizer_effort should be present');
+    assert.ok('roadmapper_effort' in output, 'roadmapper_effort should be present');
+  });
+
+  test('Test 5: init quick result includes planner_effort, executor_effort, checker_effort, verifier_effort', () => {
+    writeClaudeConfig(tmpDir);
+
+    const result = runGsdTools('init quick test-task --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.ok('planner_effort' in output, 'planner_effort should be present');
+    assert.ok('executor_effort' in output, 'executor_effort should be present');
+    assert.ok('checker_effort' in output, 'checker_effort should be present');
+    assert.ok('verifier_effort' in output, 'verifier_effort should be present');
+  });
+
+  test('Test 8: effort fields are null when config.json has runtime=copilot', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    writeCopilotConfig(tmpDir);
+
+    const result = runGsdTools('init execute-phase 03 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.executor_effort, null, 'executor_effort should be null for copilot runtime');
+    assert.strictEqual(output.verifier_effort, null, 'verifier_effort should be null for copilot runtime');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // cmdInitTodos (INIT-01)
 // ─────────────────────────────────────────────────────────────────────────────
 
