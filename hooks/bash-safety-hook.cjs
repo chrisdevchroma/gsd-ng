@@ -728,6 +728,12 @@ function parseBashPattern(pattern) {
   }
 
   // No colon — exact or glob match against full command
+  // Fix for Bug 10: patterns ending with " *" (e.g. "echo *", "gh pr *")
+  // should match zero-arg case. Treat as prefix match instead of glob.
+  if (inner.endsWith(' *') && !inner.slice(0, -2).includes('*') && !inner.includes('?')) {
+    return { type: 'prefix', prefix: inner.slice(0, -2) };
+  }
+  // Fall through to regex for non-trailing-star globs (e.g. "*.sh", "test?")
   if (inner.includes('*') || inner.includes('?')) {
     const regex = globToRegex(inner);
     return { type: 'glob', prefix: inner.split(/[*?]/)[0].trim(), regex };
