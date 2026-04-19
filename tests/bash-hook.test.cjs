@@ -499,13 +499,14 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
   });
 
   test('local X=$(cmd) extracts inner command (decision != allow when inner not allowlisted)', () => {
-    // Security property: `local X=$(curl ...)` is a standalone assignment
-    // whose subshell body must be inspected. With ONLY `Bash(local:*)`
-    // allowlisted (no curl entry), the outer `local` assignment gets filtered
-    // as isStandaloneAssignment, but extractSubshells() on the raw part must
-    // still recurse into $(curl ...) and block it. We assert the decision is
-    // NOT 'allow' — previously this test tautologically asserted
-    // `decision !== undefined`, which merely confirmed the hook did not crash.
+    // Security property: `local X=$(curl ...)` is a `local` builtin
+    // invocation (not a standalone assignment — isStandaloneAssignment
+    // only matches bare `NAME=value` at the start of a normalized
+    // command). With only `Bash(local:*)` allowlisted, the outer
+    // `local X=...` matches the allowlist, but extractSubshells() runs
+    // on the raw part before the allowlist check and surfaces the
+    // inner `curl` for its own allow/deny evaluation. Since curl is
+    // not allowlisted, the overall decision must NOT be 'allow'.
     const settings = {
       permissions: { allow: ['Bash(local:*)'], deny: [] },
     };
@@ -522,20 +523,11 @@ describe('BASH-HOOK-CLASS-INVARIANT: subshell args bypass structural filter rega
   // runs on every rawPart BEFORE structural/compound-header/assignment
   // filters, so a structural keyword like `then`, `else`, `elif`, `do`,
   // `break`, or `continue` wrapping a $() argument cannot silently bypass
-  // allow/deny. Each case below would previously have matched
-  // STRUCTURAL_KEYWORDS on firstWord and short-circuited out of the
-  // decomposer, auto-approving whatever wrapped `$()` contained.
-  //
-  // Note on current code: `normalizeCommand` already strips `then/else/elif/do`
-  // as leading tokens, so those four keywords do NOT currently manifest the
-  // full bypass via `decision === 'allow'` (they produce `passthrough`
-  // because the subshell is re-surfaced). `break`/`continue` DO currently
-  // bypass when combined with a sibling allowlisted command (see
-  // sibling-allowlisted tests below), because `normalizeCommand` keeps them
-  // as firstWord and STRUCTURAL_KEYWORDS short-circuits extraction. The
-  // canonical 6 tests below fix the class-invariant for all keywords
-  // regardless of normalize behavior; the two sibling-allowlisted tests
-  // demonstrate the concrete bypass this fix closes.
+  // allow/deny. The six uniform tests prove this property holds across
+  // the keyword set; two sibling-allowlisted tests (below) exercise the
+  // specific shape where a sibling sub-command is allowlisted — the
+  // concrete manifestation that makes the bypass directly observable
+  // as `decision === 'allow'` rather than merely `passthrough`.
 
   const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
 

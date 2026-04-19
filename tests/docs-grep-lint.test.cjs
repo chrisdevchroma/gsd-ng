@@ -144,7 +144,13 @@ function findChainedPrefixTrap(line) {
   const left = line.slice(0, pipeIdx);
   const right = line.slice(pipeIdx + 1);
 
-  if (!/\bgrep\b/.test(left)) return null;
+  // Identify stage 1 as the LAST command on the left side (the one that
+  // actually pipes into stage 2). Anything like `echo grep ... | grep '^x'`
+  // should NOT trigger the detector — the `echo` doesn't produce grep's
+  // output format.
+  const leftSegments = left.split(/(?:&&|\|\||;)/);
+  const stage1 = leftSegments[leftSegments.length - 1].trim();
+  if (!/^grep\b/.test(stage1)) return null;
   if (!/\bgrep\b/.test(right)) return null;
 
   // Extract the portion of stage-2's regex after the first `^` anchor.
@@ -158,10 +164,10 @@ function findChainedPrefixTrap(line) {
   if (/^\[0-9\]\+[-:\[\]]/.test(afterCaret)) return null;
   if (/^\[\^[-:]/.test(afterCaret)) return null;
 
-  const flagHasN = /\bgrep\b[^|]*\s-[A-Za-z]*n[A-Za-z]*(\s|$)/.test(left);
-  const flagHasH = /\bgrep\b[^|]*\s-[A-Za-z]*H[A-Za-z]*(\s|$)/.test(left);
-  const flagHasR = /\bgrep\b[^|]*\s-[A-Za-z]*[rR][A-Za-z]*(\s|$)/.test(left);
-  const flagHasLowerH = /\bgrep\b[^|]*\s-[A-Za-z]*h[A-Za-z]*(\s|$)/.test(left) && !flagHasH;
+  const flagHasN = /\s-[A-Za-z]*n[A-Za-z]*(\s|$)/.test(stage1);
+  const flagHasH = /\s-[A-Za-z]*H[A-Za-z]*(\s|$)/.test(stage1);
+  const flagHasR = /\s-[A-Za-z]*[rR][A-Za-z]*(\s|$)/.test(stage1);
+  const flagHasLowerH = /\s-[A-Za-z]*h[A-Za-z]*(\s|$)/.test(stage1) && !flagHasH;
 
   if (flagHasN) return "stage 1 uses -n (line-number prefix); stage 2 anchors with ^ and does not consume the prefix";
   if (flagHasH) return "stage 1 uses -H (filename prefix); stage 2 anchors with ^ and does not consume the prefix";
@@ -169,8 +175,7 @@ function findChainedPrefixTrap(line) {
 
   // Multi-file auto-prefix: ≥2 path args cause grep to prepend `FILENAME:`
   // unless -h is used.
-  const grepStart = left.lastIndexOf('grep');
-  const paths = countFileArgsInGrep(left.slice(grepStart));
+  const paths = countFileArgsInGrep(stage1);
   if (paths >= 2 && !flagHasLowerH) {
     return "stage 1 has " + paths + " file args (multi-file auto-prefixes filename); stage 2 anchors with ^ and does not consume the prefix";
   }
@@ -259,6 +264,17 @@ describe('docs-grep-lint detectors', () => {
   test('findChainedPrefixTrap ignores stage 1 without prefix-adding flags', () => {
     assert.equal(findChainedPrefixTrap('grep "foo" f | grep -E "^const"'), null);
     assert.equal(findChainedPrefixTrap('grep -A 5 "foo" f | grep -E "^const"'), null);
+  });
+
+  test('findChainedPrefixTrap ignores lines where stage 1 is not actually grep', () => {
+    // `echo grep ...` is an echo command, not a grep. The word "grep"
+    // appears in the output but the command doesn't produce grep's
+    // output format, so no prefix trap exists.
+    assert.equal(findChainedPrefixTrap('echo grep foo | grep -E "^x"'), null);
+    assert.equal(findChainedPrefixTrap('printf "grep -n bar" | grep -E "^y"'), null);
+    // But a `cd foo && grep -n bar | grep -E "^x"` IS a real trap — grep
+    // is the last command before the pipe.
+    assert.ok(findChainedPrefixTrap('cd foo && grep -n "bar" f | grep -E "^x"'));
   });
 
   test('findChainedPrefixTrap catches multi-file auto-prefix', () => {

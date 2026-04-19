@@ -26,7 +26,7 @@ const REPO_ROOT = path.join(__dirname, '..');
 
 // Directories scanned. All `.cjs` and `.js` files below these roots get
 // linted (non-recursive for simplicity; expand if project layout grows).
-const SCAN_DIRS = ['tests', 'hooks', 'bin', 'bin/lib', 'scripts'];
+const SCAN_DIRS = ['tests', 'hooks', 'bin', 'gsd-ng/bin', 'gsd-ng/bin/lib', 'scripts'];
 
 function listCodeFiles() {
   const out = [];
