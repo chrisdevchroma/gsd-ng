@@ -124,25 +124,16 @@ run its own permission logic, which may still allow the command based on
 looser top-level matching, or may prompt the user. The hook never forces
 a prompt; it only actively approves or actively denies.
 
-## Template location and synchronization
+## Template location
 
-Two template copies ship in the source tree:
+One canonical template ships in the source tree:
 
-- `gsd-ng/templates/settings-sandbox.json` — Claude Code runtime source
-- `.github/gsd-ng/templates/settings-sandbox.json` — Copilot runtime source
-
-These must stay byte-identical for the permissions block. Divergence
-confuses the install-time merge. After editing, confirm parity with:
-
-```sh
-diff gsd-ng/templates/settings-sandbox.json \
-     .github/gsd-ng/templates/settings-sandbox.json
-```
+- `gsd-ng/templates/settings-sandbox.json` — consumed by `bin/install.js`
+  for both Claude Code and Copilot runtimes.
 
 ## How additions land in an installed workspace
 
-1. Edit the source in `gsd-ng/templates/settings-sandbox.json` (and its
-   `.github/...` mirror).
+1. Edit the source in `gsd-ng/templates/settings-sandbox.json`.
 2. Commit in the submodule boundary.
 3. Run `node bin/install.js --local --runtime claude` (or copilot) from
    the consuming workspace.
