@@ -41,8 +41,8 @@ const path = require('path');
 // (liberzon/claude-hooks) never had this feature.
 //
 // Builtins are now approved through the same allowlist path as everything else.
-// GSD-NG's settings-sandbox.json template already includes Bash(echo:*),
-// Bash(cd:*), etc. — so sandbox users see no change. Non-sandbox users must
+// GSD-NG's settings-sandbox.json template already includes Bash(echo *),
+// Bash(cd *), etc. — so sandbox users see no change. Non-sandbox users must
 // explicitly allowlist builtins they want auto-approved.
 
 // ── Structural shell keywords — filter these out (not real commands) ──────────

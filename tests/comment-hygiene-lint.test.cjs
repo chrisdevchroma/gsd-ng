@@ -76,14 +76,15 @@ function isInsideString(line, idx) {
 }
 
 // Detector: PR / pull-request references in comments.
+// Accepts both "pull request #N" and hyphenated "pull-request #N".
 // Intentionally NOT checked against test names — test prose often
-// describes input data that contains "pull request #N". PR refs in
+// describes input data that contains the literal phrase. PR refs in
 // test-name parenthetical suffixes are caught by the incident-marker
 // detector below.
 function findPRReference(line) {
   const ctx = commentContext(line);
   if (!ctx.comment) return null;
-  const m = /\b(?:PR|pull request)\s*#?\d+\b/i.exec(ctx.comment);
+  const m = /\b(?:PR|pull[- ]request)\s*#?\d+\b/i.exec(ctx.comment);
   if (m) return "PR reference '" + m[0] + "' — PR context belongs in commit messages / PR descriptions, not in code";
   return null;
 }
@@ -130,13 +131,56 @@ const DETECTORS = [
   { name: 'Test-name incident marker', fn: findTestNameIncidentMarker },
 ];
 
+// Walk a file and extract the portion of each line that falls inside a
+// /* ... */ block comment. Returns Map<lineIndex, text>. Maintains
+// cross-line state so multi-line block comments (JSDoc-style /** ... */)
+// are handled correctly. Skips `/*` occurrences inside strings.
+function extractBlockCommentText(content) {
+  const lines = content.split('\n');
+  const result = new Map();
+  let inBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let buf = '';
+    let pos = 0;
+    while (pos < line.length) {
+      if (inBlock) {
+        const end = line.indexOf('*/', pos);
+        if (end === -1) {
+          buf += line.slice(pos);
+          pos = line.length;
+        } else {
+          buf += line.slice(pos, end);
+          pos = end + 2;
+          inBlock = false;
+        }
+      } else {
+        const starIdx = line.indexOf('/*', pos);
+        if (starIdx === -1) break;
+        if (isInsideString(line, starIdx)) { pos = starIdx + 2; continue; }
+        pos = starIdx + 2;
+        inBlock = true;
+      }
+    }
+    if (buf) result.set(i, buf);
+  }
+  return result;
+}
+
 function lintFile(abs) {
   const content = fs.readFileSync(abs, 'utf8');
   const lines = content.split('\n');
+  const blockMap = extractBlockCommentText(content);
   const violations = [];
   for (let i = 0; i < lines.length; i++) {
+    // Enrich the line with any block-comment text on this line so
+    // detectors (which use line-comment extraction) also see /* ... */
+    // content. Append as a trailing // suffix; commentContext finds
+    // the first // and takes everything after it.
+    const block = blockMap.get(i);
+    const forDetectors = block ? lines[i] + ' //BLOCK ' + block : lines[i];
     for (const { name, fn } of DETECTORS) {
-      const reason = fn(lines[i]);
+      const reason = fn(forDetectors);
       if (reason) violations.push({ line: i + 1, detector: name, reason, text: lines[i].trim() });
     }
   }
@@ -152,6 +196,11 @@ describe('comment-hygiene detectors', () => {
     assert.ok(findPRReference('  // fix for PR #37'));
     assert.ok(findPRReference('// added in pull request 12'));
     assert.ok(findPRReference('// regression from PR42'));
+  });
+
+  test('findPRReference accepts hyphenated "pull-request"', () => {
+    assert.ok(findPRReference('// fix for pull-request #42'));
+    assert.ok(findPRReference('// see Pull-Request 12 for context'));
   });
 
   test('findPRReference ignores PR references inside test-name prose', () => {
@@ -211,6 +260,28 @@ describe('comment-hygiene detectors', () => {
     assert.equal(findTestNameIncidentMarker("  test('regression test for bypass', () => {});"), null);
   });
 
+  test('extractBlockCommentText captures single-line block comments', () => {
+    const content = 'const x = 5; /* PR #42 fix */\nconst y = 6;';
+    const map = extractBlockCommentText(content);
+    assert.ok(map.get(0));
+    assert.match(map.get(0), /PR #42/);
+    assert.equal(map.get(1), undefined);
+  });
+
+  test('extractBlockCommentText captures multi-line JSDoc blocks', () => {
+    const content = '/**\n * PR #42 context here\n * more text\n */\nconst x = 5;';
+    const map = extractBlockCommentText(content);
+    // Each line of the block (0, 1, 2, 3) should have some captured content.
+    assert.match(map.get(1), /PR #42/);
+    assert.ok(map.has(2));
+  });
+
+  test('extractBlockCommentText ignores /* inside strings', () => {
+    const content = 'const s = "/* not a comment */";';
+    const map = extractBlockCommentText(content);
+    assert.equal(map.get(0), undefined);
+  });
+
   test('isInsideString detects unclosed single/double quotes', () => {
     assert.equal(isInsideString('const x = "foo //', 17), true);
     assert.equal(isInsideString('const x = "foo"; //', 17), false);
@@ -261,6 +332,7 @@ describe('comment-hygiene real code', () => {
 module.exports = {
   commentContext,
   isInsideString,
+  extractBlockCommentText,
   findPRReference,
   findRoundReference,
   findTestNameIncidentMarker,
