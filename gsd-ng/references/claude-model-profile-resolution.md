@@ -24,7 +24,7 @@ Task(
 )
 ```
 
-**Note:** `null` is returned only when `model_profile` is `inherit` or the agent has no row in `MODEL_PROFILES`. A `null` value causes the `model` parameter to be omitted from the Task call, so the spawned agent inherits the parent session's model.
+**Note:** `null` is returned only when `model_profile` is `inherit`. A `null` value causes the `model` parameter to be omitted from the Task call, so the spawned agent inherits the parent session's model. Agents with no `MODEL_PROFILES` row fall through to `'sonnet'` (a literal fallback, not null) — see the EFFORT/MODEL key parity test in `tests/config.test.cjs` that prevents this from happening accidentally.
 
 ## Usage
 
