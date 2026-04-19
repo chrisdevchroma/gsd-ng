@@ -320,7 +320,7 @@ grep -n -E "=[[:space:]]*\[\]|=[[:space:]]*\{\}|=[[:space:]]*null|=[[:space:]]*u
 # Props with hardcoded empty values (React/Vue/Svelte stub indicators)
 grep -n -E "=\{\[\]\}|=\{\{\}\}|=\{null\}|=\{undefined\}|=\{''\}|=\{\"\"\}" "$file" 2>/dev/null
 # Console.log only implementations
-grep -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^[[:space:]]*const|^[[:space:]]*function|^[[:space:]]*=>"
+grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^[[:digit:]]+[-:][[:space:]]*const|^[[:digit:]]+[-:][[:space:]]*function|^[[:digit:]]+[-:][[:space:]]*=>"
 ```
 
 Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ Info (notable)

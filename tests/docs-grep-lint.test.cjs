@@ -74,36 +74,107 @@ function findPCREescape(line) {
   return "PCRE-only escape '" + m[0] + "' in grep -E (use POSIX [[:space:]]/[[:alnum:]_]/[[:digit:]] or their negations)";
 }
 
-// Detect chained grep pipelines where stage 1 adds a prefix and stage 2
-// anchors with `^`. Heuristic, not a full parser — looks for the shape
-// "grep [flags incl. -n/-r OR multi-file args] ... | grep ... '^...'".
+// Count likely file-path arguments to a single grep command. Best-effort:
+// tokenizes the command line, strips flags (handling short flags that
+// consume a value: -e, -f, -A, -B, -C), treats the first remaining
+// non-flag as the pattern, and counts the rest as path args.
+// Returns 0 if the command doesn't start with `grep`.
+function countFileArgsInGrep(grepCmd) {
+  const m = /^\s*grep\b(.*)$/.exec(grepCmd);
+  if (!m) return 0;
+  const rest = m[1];
+  const tokens = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else current += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (/\s/.test(ch)) {
+      if (current) { tokens.push(current); current = ''; }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
+
+  const nonFlags = [];
+  let patternProvidedByFlag = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.startsWith('--')) {
+      // --regexp=PAT / --file=PAT provide the pattern; --regexp / --file
+      // followed by a separate arg also consume it.
+      if (/^--(regexp|file)=/.test(t)) patternProvidedByFlag = true;
+      else if (/^--(regexp|file)$/.test(t)) { patternProvidedByFlag = true; i++; }
+      continue;
+    }
+    if (t.startsWith('-') && t.length > 1) {
+      const last = t[t.length - 1];
+      if (last === 'e' || last === 'f') { patternProvidedByFlag = true; i++; }
+      else if (last === 'A' || last === 'B' || last === 'C') { i++; }
+      continue;
+    }
+    nonFlags.push(t);
+  }
+  // If the pattern came from -e/-f, all positional non-flags are paths.
+  // Otherwise, the first non-flag is the pattern and the rest are paths.
+  return patternProvidedByFlag ? nonFlags.length : Math.max(0, nonFlags.length - 1);
+}
+
+// Detect chained grep pipelines where stage 1 adds a per-line prefix and
+// stage 2 anchors with `^` in a way that can't match the prefix.
+//
+// Stage 1 adds a prefix via:
+//   * -n (line-number prefix: `N:` for matches, `N-` for context lines)
+//   * -H (force-filename prefix: `FILENAME:`)
+//   * -r / -R (recursive — adds `FILENAME:` prefix)
+//   * multi-file invocation (≥2 path args auto-add `FILENAME:`) unless
+//     suppressed by -h
+//
+// Stage 2 is considered safe if its `^`-anchored pattern EXPLICITLY
+// consumes the prefix (e.g. `^[[:digit:]]+[-:]...` for -n output). Only
+// non-prefix-aware anchors count as traps.
 function findChainedPrefixTrap(line) {
   const pipeIdx = line.indexOf('|');
   if (pipeIdx === -1) return null;
   const left = line.slice(0, pipeIdx);
   const right = line.slice(pipeIdx + 1);
 
-  // Stage 1 must be a grep.
-  if (!/^\s*grep\b/.test(left.trim()) && !/\bgrep\b/.test(left)) return null;
-
-  // Stage 2 must be a grep anchored with ^ (inside a quoted pattern).
+  if (!/\bgrep\b/.test(left)) return null;
   if (!/\bgrep\b/.test(right)) return null;
-  const anchoredPattern = /\bgrep\b[^'"]*['"][^'"]*\^/.test(right);
-  if (!anchoredPattern) return null;
 
-  // Stage 1 adds a prefix if: -n flag, -r/-R (recursive adds filename),
-  // or multi-file (>=2 path args → grep auto-prefixes filename).
-  // Short-option bundles like `-nH` also count.
+  // Extract the portion of stage-2's regex after the first `^` anchor.
+  const anchoredMatch = /\bgrep\b[^'"]*['"]([^'"]*?)\^([^'"]*)['"]/.exec(right);
+  if (!anchoredMatch) return null;
+  const afterCaret = anchoredMatch[2];
+
+  // Prefix-aware stage-2 anchors are safe: they consume the prefix
+  // explicitly before matching the intended content.
+  if (/^\[\[:digit:\]\]\+[-:\[\]]/.test(afterCaret)) return null;
+  if (/^\[0-9\]\+[-:\[\]]/.test(afterCaret)) return null;
+  if (/^\[\^[-:]/.test(afterCaret)) return null;
+
   const flagHasN = /\bgrep\b[^|]*\s-[A-Za-z]*n[A-Za-z]*(\s|$)/.test(left);
   const flagHasH = /\bgrep\b[^|]*\s-[A-Za-z]*H[A-Za-z]*(\s|$)/.test(left);
   const flagHasR = /\bgrep\b[^|]*\s-[A-Za-z]*[rR][A-Za-z]*(\s|$)/.test(left);
-
-  // Suppress if -h flag explicitly strips filename.
   const flagHasLowerH = /\bgrep\b[^|]*\s-[A-Za-z]*h[A-Za-z]*(\s|$)/.test(left) && !flagHasH;
 
-  if (flagHasN) return "stage 1 uses -n (line-number prefix); stage 2 anchors with ^ — pipeline won't match";
-  if (flagHasH) return "stage 1 uses -H (filename prefix); stage 2 anchors with ^ — pipeline won't match";
-  if (flagHasR && !flagHasLowerH) return "stage 1 uses -r (adds filename prefix); stage 2 anchors with ^ — pipeline won't match";
+  if (flagHasN) return "stage 1 uses -n (line-number prefix); stage 2 anchors with ^ and does not consume the prefix";
+  if (flagHasH) return "stage 1 uses -H (filename prefix); stage 2 anchors with ^ and does not consume the prefix";
+  if (flagHasR && !flagHasLowerH) return "stage 1 uses -r (filename prefix); stage 2 anchors with ^ and does not consume the prefix";
+
+  // Multi-file auto-prefix: ≥2 path args cause grep to prepend `FILENAME:`
+  // unless -h is used.
+  const grepStart = left.lastIndexOf('grep');
+  const paths = countFileArgsInGrep(left.slice(grepStart));
+  if (paths >= 2 && !flagHasLowerH) {
+    return "stage 1 has " + paths + " file args (multi-file auto-prefixes filename); stage 2 anchors with ^ and does not consume the prefix";
+  }
+
   return null;
 }
 
@@ -190,6 +261,33 @@ describe('docs-grep-lint detectors', () => {
     assert.equal(findChainedPrefixTrap('grep -A 5 "foo" f | grep -E "^const"'), null);
   });
 
+  test('findChainedPrefixTrap catches multi-file auto-prefix', () => {
+    // ≥2 path args cause grep to prepend `FILENAME:` unless -h is used.
+    assert.ok(findChainedPrefixTrap('grep -E "^VAR=" .env .env.local | grep -E "^VAR=value"'));
+    assert.ok(findChainedPrefixTrap('grep "foo" a.txt b.txt c.txt | grep -E "^bar"'));
+  });
+
+  test('findChainedPrefixTrap ignores multi-file when -h suppresses filename', () => {
+    assert.equal(findChainedPrefixTrap('grep -h "foo" a.txt b.txt | grep -E "^bar"'), null);
+  });
+
+  test('findChainedPrefixTrap ignores prefix-aware stage 2 anchors', () => {
+    // Stage 2 that explicitly consumes the prefix is safe.
+    assert.equal(findChainedPrefixTrap('grep -n "foo" f | grep -E "^[[:digit:]]+[-:][[:space:]]*const"'), null);
+    assert.equal(findChainedPrefixTrap('grep -n -B 2 "foo" f | grep -E "^[0-9]+[-:]const"'), null);
+    assert.equal(findChainedPrefixTrap('grep -r "foo" src/ | grep -E "^[^:]+:[[:space:]]*const"'), null);
+  });
+
+  test('countFileArgsInGrep tokenizes common forms', () => {
+    assert.equal(countFileArgsInGrep('grep "pat" file1'), 1);
+    assert.equal(countFileArgsInGrep('grep -E "pat" file1 file2'), 2);
+    assert.equal(countFileArgsInGrep('grep -n -B 2 -A 2 "pat" file1 file2 file3'), 3);
+    // -e takes a value (the pattern), so remaining positional is paths only.
+    assert.equal(countFileArgsInGrep('grep -e "pat" file1 file2'), 2);
+    // Bare flag bundle.
+    assert.equal(countFileArgsInGrep('grep -inr "pat" src/'), 1);
+  });
+
   test('findGroupedAltInGrepE catches (a|b) inside grep -E', () => {
     assert.ok(findGroupedAltInGrepE('grep -E "export (function|const)" file'));
     assert.ok(findGroupedAltInGrepE("grep -E '^(GET|POST)' file"));
@@ -253,5 +351,6 @@ module.exports = {
   findPCREescape,
   findChainedPrefixTrap,
   findGroupedAltInGrepE,
+  countFileArgsInGrep,
   lintContent,
 };
