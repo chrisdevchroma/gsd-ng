@@ -122,8 +122,11 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 - `low` — Minimal thinking budget
 - `medium` — Moderate thinking budget
 - `high` — High thinking budget
+- `xhigh` — Extra-high thinking budget (Opus 4.7, between high and max). Override-only — not assigned in any default profile.
 - `max` — Maximum thinking budget
 - `inherit` — Omit effort from spawn; session default applies (current behavior)
+
+**Tier ordering (ascending thinking budget):** `low < medium < high < xhigh < max`. Use `inherit` to explicitly omit the frontmatter.
 
 ### Effort Resolution Order
 
@@ -132,6 +135,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 2. Check effort_overrides[agent] in .planning/config.json
 3. If no override, look up agent in EFFORT_PROFILES[agent][profile]
 4. If value is 'inherit', return null (omit effort parameter)
+5. If resolveModelInternal(agent) === 'haiku', return null (haiku does not support the effort: frontmatter). Emit a one-line stderr warning only if step 2 produced an explicit non-inherit override.
 ```
 
 ### Runtime Gating
@@ -154,7 +158,7 @@ Override specific agents without changing the entire profile:
 
 Configure via CLI: `gsd-tools config-set effort_overrides.gsd-executor max`
 
-Overrides take precedence over the profile. Valid values: `low`, `medium`, `high`, `max`, `inherit`. Use `inherit` to clear the per-agent override so effort is omitted/null and the session-level behavior is preserved.
+Overrides take precedence over the profile. Valid values: `low`, `medium`, `high`, `xhigh`, `max`, `inherit`. Use `inherit` to clear the per-agent override so effort is omitted/null and the session-level behavior is preserved.
 
 ### Profile Philosophy
 

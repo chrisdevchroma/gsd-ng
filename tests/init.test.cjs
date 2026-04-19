@@ -304,6 +304,29 @@ describe('Effort fields in init commands (EFF-03)', () => {
     assert.strictEqual(output.executor_effort, null, 'executor_effort should be null for copilot runtime');
     assert.strictEqual(output.verifier_effort, null, 'verifier_effort should be null for copilot runtime');
   });
+
+  function writeClaudeHaikuExecutorConfig(dir) {
+    const configPath = path.join(dir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      model_profile: 'balanced',
+      runtime: 'claude',
+      model_overrides: { 'gsd-executor': 'haiku' },
+    }, null, 2), 'utf-8');
+  }
+
+  test('Test 9: effort fields are null when agent resolves to haiku model', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    writeClaudeHaikuExecutorConfig(tmpDir);
+
+    const result = runGsdTools('init execute-phase 03 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.executor_effort, null,
+      'executor_effort should be null when gsd-executor resolves to haiku');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
