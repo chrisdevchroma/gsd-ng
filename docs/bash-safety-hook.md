@@ -183,7 +183,7 @@ Integration tests for the install-time allowlist generation live in
 Run both before any changes to the hook or allowlist:
 
 ```sh
-cd gsd-ng && node --test tests/bash-hook.test.cjs tests/allowlist.test.cjs
+node --test tests/bash-hook.test.cjs tests/allowlist.test.cjs
 ```
 
 ## Files to know

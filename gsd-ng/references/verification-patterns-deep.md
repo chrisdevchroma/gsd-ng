@@ -171,7 +171,7 @@ echo "SELECT COUNT(*) FROM $table_name" | npx prisma db execute --stdin
 ```
 ```bash
 # File exists and exports function
-[ -f "$hook_path" ] && grep -E "export function|export const|export default function|export default const" "$hook_path"
+[ -f "$hook_path" ] && grep -E "export function|export const|^export default\b" "$hook_path"
 ```
 ```bash
 # Hook uses React hooks (for custom hooks)
