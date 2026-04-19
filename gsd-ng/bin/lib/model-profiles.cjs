@@ -1,7 +1,7 @@
 /**
  * Mapping of GSD agent to model for each profile.
  *
- * Should be in sync with the profiles table in `gsd-ng/references/model-profiles.md`. But
+ * Should be in sync with the profiles table in `gsd-ng/references/claude-model-profiles.md`. But
  * possibly worth making this the single source of truth at some point, and removing the markdown
  * reference table in favor of programmatically determining the model to use for an agent (which
  * would be faster, use fewer tokens, and be less error-prone).
@@ -29,14 +29,8 @@ const VALID_PROFILES = Object.keys(MODEL_PROFILES['gsd-planner']);
  * Valid values for the `effort:` frontmatter field and for `effort_overrides.*`
  * entries in .planning/config.json.
  *
- * Tier ordering (ascending thinking budget):
- *   low < medium < high < xhigh < max
- *
- * `inherit` is a sentinel meaning "omit `effort:` from the spawn so the session
- * default applies"; it resolves to null in resolveEffortInternal.
- *
- * Note: `xhigh` is a valid override value but is NOT present in any default
- * EFFORT_PROFILES row — it is opt-in via `effort_overrides` only.
+ * Tier ordering (ascending thinking budget): low < medium < high < xhigh < max.
+ * `inherit` resolves to null in resolveEffortInternal (omits the field).
  */
 const VALID_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh', 'max', 'inherit'];
 

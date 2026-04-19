@@ -1199,9 +1199,84 @@ describe('resolveEffortInternal', () => {
       result = resolveEffortInternal(tmpDir, 'gsd-planner');
     });
     const captured = stopStderrCapture();
-    // resolveModelInternal returns null for profile=inherit; haiku skip does not apply
-    // Profile lookup for 'inherit' key returns undefined -> null
     assert.strictEqual(result, null, 'Expected null when profile is inherit');
     assert.strictEqual(captured, '', 'No warning when model resolves to null (not haiku)');
+  });
+
+  test('Test 14: explicit override max + sonnet model — skip + warn (max requires opus)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'sonnet' },
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'max effort dropped because sonnet is not opus');
+    assert.ok(captured.includes('max'), `Warning should mention max, got: ${captured}`);
+    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
+    assert.ok(captured.includes('gsd-executor'), `Warning should mention agent, got: ${captured}`);
+  });
+
+  test('Test 15: explicit override xhigh + sonnet model — skip + warn (xhigh requires opus)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'sonnet' },
+      effort_overrides: { 'gsd-executor': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'xhigh effort dropped because sonnet is not opus');
+    assert.ok(captured.includes('xhigh'), `Warning should mention xhigh, got: ${captured}`);
+    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
+  });
+
+  test('Test 16: profile-derived max + sonnet model — silent skip, no warning', () => {
+    // gsd-verifier in quality profile: effort=max, model=sonnet — incompatible pair
+    writeConfig({ model_profile: 'quality' });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-verifier');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'profile-derived max effort dropped silently for sonnet model');
+    assert.strictEqual(captured, '', 'No warning for profile-derived skip (no explicit override)');
+  });
+
+  test('Test 17: opus model + max effort — passes through (compatible)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'opus' },
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'max', 'max passes through when model is opus');
+    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+  });
+
+  test('Test 18: opus model + xhigh effort — passes through (compatible)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'opus' },
+      effort_overrides: { 'gsd-executor': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'xhigh', 'xhigh passes through when model is opus');
+    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+  });
+
+  test('Test 19: profile=inherit with explicit max override — no skip (model unknown)', () => {
+    writeConfig({
+      model_profile: 'inherit',
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'max', 'max passes through when model is unknown (inherit)');
+    assert.strictEqual(captured, '', 'No warning when model is unknown — cannot determine compatibility');
   });
 });

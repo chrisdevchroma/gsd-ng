@@ -527,17 +527,23 @@ function resolveEffortInternal(cwd, agentType) {
     effort = (!profileEffort || profileEffort === 'inherit') ? null : profileEffort;
   }
 
-  // Haiku does not support the `effort:` frontmatter field. If the resolved model
-  // is haiku, suppress effort (return null). Warn only when an explicit override
-  // was present — profile-derived values skip silently.
-  // If resolveModelInternal returns null (session-inherit), we cannot know the
-  // real model; do NOT apply the haiku skip in that case.
+  // Model-tier compatibility: haiku does not support effort at all; xhigh and max
+  // are opus-only tiers. When the resolved model is known and incompatible with the
+  // resolved effort, suppress (return null) and warn only on explicit overrides.
+  // resolveModelInternal returns null for session-inherit — leave those alone.
   const resolvedModel = resolveModelInternal(cwd, agentType);
-  if (resolvedModel === 'haiku') {
+  const haikuSkip = resolvedModel === 'haiku';
+  const opusOnlySkip =
+    resolvedModel && resolvedModel !== 'opus' && (effort === 'xhigh' || effort === 'max');
+  if (haikuSkip || opusOnlySkip) {
     if (hasExplicitOverride && effort !== null) {
+      const overrideValue = config.effort_overrides[agentType];
+      const reason = haikuSkip
+        ? 'haiku does not support effort: frontmatter'
+        : `${effort} requires opus (resolved model: ${resolvedModel})`;
       fs.writeSync(
         2,
-        `Warning: effort_overrides.${agentType}="${config.effort_overrides[agentType]}" ignored — resolved model is haiku (does not support effort: frontmatter)\n`
+        `Warning: effort_overrides.${agentType}="${overrideValue}" ignored — ${reason}\n`
       );
     }
     return null;
