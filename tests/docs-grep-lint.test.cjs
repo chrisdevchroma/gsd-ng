@@ -48,12 +48,14 @@ function extractBashBlocks(content) {
   let inBlock = false;
   let blockStart = 0;
   let buf = [];
+  // Fences may be indented (e.g. inside list items), so allow leading
+  // whitespace on both the opening and closing fence lines.
   for (let i = 0; i < lines.length; i++) {
-    if (!inBlock && /^```(bash|sh)\b/.test(lines[i])) {
+    if (!inBlock && /^\s*```(bash|sh)\b/.test(lines[i])) {
       inBlock = true;
       blockStart = i + 2;
       buf = [];
-    } else if (inBlock && /^```\s*$/.test(lines[i])) {
+    } else if (inBlock && /^\s*```\s*$/.test(lines[i])) {
       blocks.push({ startLine: blockStart, lines: buf });
       inBlock = false;
     } else if (inBlock) {
@@ -334,6 +336,25 @@ describe('docs-grep-lint detectors', () => {
     // and also rare in the codebase. Keep scope narrow: only flag when
     // the group actually contains `|`.
     assert.equal(findGroupedAltInGrepE('grep -E "export (async )?function" file'), null);
+  });
+
+  test('extractBashBlocks handles indented fences (inside list items)', () => {
+    const content = [
+      '- Step 1:',         // 1
+      '',                  // 2
+      '  ```bash',         // 3
+      '  grep foo bar',    // 4
+      '  ```',             // 5
+      '',                  // 6
+      '    ```sh',         // 7
+      '    echo x',        // 8
+      '    ```',           // 9
+    ].join('\n');
+    const blocks = extractBashBlocks(content);
+    assert.equal(blocks.length, 2);
+    assert.equal(blocks[0].startLine, 4);
+    assert.equal(blocks[0].lines[0], '  grep foo bar');
+    assert.equal(blocks[1].startLine, 8);
   });
 
   test('extractBashBlocks finds fenced bash blocks with correct line numbers', () => {

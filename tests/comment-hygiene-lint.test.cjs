@@ -24,24 +24,25 @@ const assert = require('node:assert');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
-// Directories scanned. All `.cjs` and `.js` files below these roots get
-// linted (non-recursive for simplicity; expand if project layout grows).
-const SCAN_DIRS = ['tests', 'hooks', 'bin', 'gsd-ng/bin', 'gsd-ng/bin/lib', 'scripts'];
+// Directory roots scanned recursively. Every `.cjs` / `.js` file below
+// any of these (at any depth) gets linted.
+const SCAN_DIRS = ['tests', 'hooks', 'bin', 'gsd-ng/bin', 'scripts'];
 
 function listCodeFiles() {
-  const out = [];
+  const seen = new Set();
   for (const dir of SCAN_DIRS) {
     const abs = path.join(REPO_ROOT, dir);
     let entries;
-    try { entries = fs.readdirSync(abs, { withFileTypes: true }); }
+    try { entries = fs.readdirSync(abs, { recursive: true, withFileTypes: true }); }
     catch { continue; }
     for (const e of entries) {
       if (!e.isFile()) continue;
       if (!/\.(cjs|js)$/.test(e.name)) continue;
-      out.push(path.join(dir, e.name));
+      const parent = e.parentPath || e.path || abs;
+      seen.add(path.relative(REPO_ROOT, path.join(parent, e.name)));
     }
   }
-  return out;
+  return [...seen].sort();
 }
 
 // Extract the portion of a line that's "comment context" — text after
@@ -235,6 +236,14 @@ describe('comment-hygiene real code', () => {
 
   test('at least one file was scanned (sanity)', () => {
     assert.ok(files.length > 0, 'listCodeFiles() returned no files — scan directories may be misconfigured');
+  });
+
+  test('listCodeFiles() recurses into nested directories', () => {
+    // tests/e2e/smoke.test.cjs should be covered via recursive scan from
+    // the `tests` root. If the scan stops recursing, nested test files
+    // would silently escape the lint.
+    assert.ok(files.some(f => /^tests\/[^/]+\/.+\.(cjs|js)$/.test(f)),
+      'listCodeFiles() should include at least one nested file like tests/<sub>/*.cjs — got: ' + files.slice(0, 5).join(', '));
   });
 
   for (const rel of files) {
