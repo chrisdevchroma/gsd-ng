@@ -511,19 +511,38 @@ function resolveEffortInternal(cwd, agentType) {
     return null;
   }
 
-  // 1. Check per-agent effort override first
-  const override = config.effort_overrides?.[agentType];
-  if (override) {
-    return override === 'inherit' ? null : override;
+  // Resolve effort from override or profile (unchanged logic).
+  const hasExplicitOverride = Object.prototype.hasOwnProperty.call(
+    config.effort_overrides || {}, agentType
+  );
+  let effort;
+  if (hasExplicitOverride) {
+    const override = config.effort_overrides[agentType];
+    effort = override === 'inherit' ? null : override;
+  } else {
+    const profile = config.model_profile || 'balanced';
+    const agentEfforts = EFFORT_PROFILES[agentType];
+    if (!agentEfforts) return null;
+    const profileEffort = agentEfforts[profile];
+    effort = (!profileEffort || profileEffort === 'inherit') ? null : profileEffort;
   }
 
-  // 2. Fall back to profile lookup
-  const profile = config.model_profile || 'balanced';
-  const agentEfforts = EFFORT_PROFILES[agentType];
-  if (!agentEfforts) return null; // Unknown agent -> inherit
+  // Haiku does not support the `effort:` frontmatter field. If the resolved model
+  // is haiku, suppress effort (return null). Warn only when an explicit override
+  // was present — profile-derived values skip silently.
+  // If resolveModelInternal returns null (session-inherit), we cannot know the
+  // real model; do NOT apply the haiku skip in that case.
+  const resolvedModel = resolveModelInternal(cwd, agentType);
+  if (resolvedModel === 'haiku') {
+    if (hasExplicitOverride && effort !== null) {
+      fs.writeSync(
+        2,
+        `Warning: effort_overrides.${agentType}="${config.effort_overrides[agentType]}" ignored — resolved model is haiku (does not support effort: frontmatter)\n`
+      );
+    }
+    return null;
+  }
 
-  const effort = agentEfforts[profile];
-  if (!effort || effort === 'inherit') return null; // null -> omit from spawn
   return effort;
 }
 

@@ -1131,4 +1131,77 @@ describe('resolveEffortInternal', () => {
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     assert.strictEqual(result, 'max');
   });
+
+  // Haiku-skip tests (Tests 9-13)
+
+  let stderrBuffer = '';
+  let origWriteSync;
+
+  function startStderrCapture() {
+    stderrBuffer = '';
+    origWriteSync = fs.writeSync;
+    fs.writeSync = (fd, data) => {
+      if (fd === 2) { stderrBuffer += String(data); return String(data).length; }
+      return origWriteSync(fd, data);
+    };
+  }
+
+  function stopStderrCapture() {
+    fs.writeSync = origWriteSync;
+    return stderrBuffer;
+  }
+
+  test('Test 9: returns null for haiku model from profile (budget profile, gsd-research-synthesizer)', () => {
+    writeConfig({ model_profile: 'budget' });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-research-synthesizer');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when resolved model is haiku (from profile)');
+    assert.strictEqual(captured, '', 'No warning should emit for profile-derived haiku (no explicit override)');
+  });
+
+  test('Test 10: returns null when model_overrides forces haiku (quality profile, gsd-planner)', () => {
+    writeConfig({ model_profile: 'quality', model_overrides: { 'gsd-planner': 'haiku' } });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when model_overrides forces haiku');
+  });
+
+  test('Test 11: returns null AND emits warning when explicit effort_override + haiku model', () => {
+    writeConfig({
+      model_profile: 'quality',
+      model_overrides: { 'gsd-planner': 'haiku' },
+      effort_overrides: { 'gsd-planner': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when effort override is ignored due to haiku model');
+    assert.ok(captured.includes('haiku'), `Warning should mention haiku, got: ${captured}`);
+    assert.ok(captured.includes('gsd-planner'), `Warning should mention gsd-planner, got: ${captured}`);
+  });
+
+  test('Test 12: no warning when balanced profile (inherit effort, no explicit override)', () => {
+    writeConfig({ model_profile: 'balanced' });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null for balanced profile (inherit resolves to null)');
+    assert.strictEqual(captured, '', 'No warning for profile-derived effort (no explicit override)');
+  });
+
+  test('Test 13: profile=inherit (resolveModelInternal returns null) — no haiku skip, no crash', () => {
+    writeConfig({ model_profile: 'inherit' });
+    startStderrCapture();
+    let result;
+    assert.doesNotThrow(() => {
+      result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    });
+    const captured = stopStderrCapture();
+    // resolveModelInternal returns null for profile=inherit; haiku skip does not apply
+    // Profile lookup for 'inherit' key returns undefined -> null
+    assert.strictEqual(result, null, 'Expected null when profile is inherit');
+    assert.strictEqual(captured, '', 'No warning when model resolves to null (not haiku)');
+  });
 });
