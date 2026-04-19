@@ -15,7 +15,8 @@ const MODEL_PROFILES = {
   'gsd-research-synthesizer': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-debugger': { quality: 'opus', balanced: 'sonnet', budget: 'sonnet' },
   'gsd-codebase-mapper': { quality: 'sonnet', balanced: 'haiku', budget: 'haiku' },
-  'gsd-verifier': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
+  'gsd-incremental-mapper': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
+  'gsd-verifier': { quality: 'opus', balanced: 'sonnet', budget: 'haiku' },
   'gsd-plan-checker': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-integration-checker': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-nyquist-auditor': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
@@ -40,10 +41,6 @@ const VALID_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh', 'max', 'inherit']
  * Quality: critical decision-makers (planner, roadmapper, debugger, verifier) at max, others at high.
  * Balanced: all inherit (session default applies, matches current behavior).
  * Budget: writers/decision-makers at high, mechanical/read-only agents at medium.
- *
- * Tier ordering (ascending thinking budget): low < medium < high < xhigh < max.
- * Note: `xhigh` is not assigned in any default profile row — it is opt-in via
- * `effort_overrides` only.
  */
 const EFFORT_PROFILES = {
   'gsd-planner':              { quality: 'max',     balanced: 'inherit', budget: 'high' },

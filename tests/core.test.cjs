@@ -1232,14 +1232,18 @@ describe('resolveEffortInternal', () => {
     assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
   });
 
-  test('Test 16: profile-derived max + sonnet model — silent skip, no warning', () => {
-    // gsd-verifier in quality profile: effort=max, model=sonnet — incompatible pair
-    writeConfig({ model_profile: 'quality' });
+  test('Test 16: profile-derived max + sonnet via model_overrides — silent skip, no warning', () => {
+    // Quality profile gives gsd-planner effort=max; force model to sonnet via override.
+    // Effort is profile-derived (no effort_overrides), so the skip is silent.
+    writeConfig({
+      model_profile: 'quality',
+      model_overrides: { 'gsd-planner': 'sonnet' },
+    });
     startStderrCapture();
-    const result = resolveEffortInternal(tmpDir, 'gsd-verifier');
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     const captured = stopStderrCapture();
     assert.strictEqual(result, null, 'profile-derived max effort dropped silently for sonnet model');
-    assert.strictEqual(captured, '', 'No warning for profile-derived skip (no explicit override)');
+    assert.strictEqual(captured, '', 'No warning for profile-derived skip (no explicit effort override)');
   });
 
   test('Test 17: opus model + max effort — passes through (compatible)', () => {
