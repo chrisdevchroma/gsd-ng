@@ -18,7 +18,7 @@ independently.
 
 Secondarily, returning `{"permissionDecision":"allow"}` from the hook
 suppresses the tree-sitter-walker prompt described in
-`claude-stability/docs/research/claude-code-internals/tree-sitter-walker-regression.md`
+[`claude-stability/docs/research/claude-code-internals/tree-sitter-walker-regression.md`](https://github.com/chrisdevchroma/claude-stability/blob/main/docs/research/claude-code-internals/tree-sitter-walker-regression.md)
 for any command the hook can fully approve.
 
 ## Pipeline inside the hook
