@@ -2393,7 +2393,8 @@ function priorityOrder(classification) {
 
 /**
  * Extract PR number from commit subject.
- * Matches: (#1234), PR #1234, Merge pull request #1234
+ * Matches the number inside forms like `(#N)`, `PR #N`,
+ * or `Merge pull request #N`.
  *
  * @param {string} subject
  * @returns {string|null}

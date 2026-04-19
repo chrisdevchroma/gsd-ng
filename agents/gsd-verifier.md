@@ -228,7 +228,7 @@ For each link:
 ### Pattern: Component → API
 
 ```bash
-grep -E "fetch\(['\"].*$api_path|axios\.(get|post).*$api_path" "$component" 2>/dev/null
+grep -E "fetch\(['\"].*$api_path|axios\.get.*$api_path|axios\.post.*$api_path" "$component" 2>/dev/null
 grep -A 5 "fetch\|axios" "$component" | grep -E "await|\.then|setData|setState" 2>/dev/null
 ```
 
@@ -237,8 +237,8 @@ Status: WIRED (call + response handling) | PARTIAL (call, no response use) | NOT
 ### Pattern: API → Database
 
 ```bash
-grep -E "prisma\.$model|db\.$model|$model\.(find|create|update|delete)" "$route" 2>/dev/null
-grep -E "return.*json.*\w+|res\.json\(\w+" "$route" 2>/dev/null
+grep -E "prisma\.$model|db\.$model|$model\.find|$model\.create|$model\.update|$model\.delete" "$route" 2>/dev/null
+grep -E "return.*json.*[[:alnum:]_]+|res\.json\([[:alnum:]_]+" "$route" 2>/dev/null
 ```
 
 Status: WIRED (query + result returned) | PARTIAL (query, static return) | NOT_WIRED (no query)
@@ -316,11 +316,11 @@ grep -n -E "placeholder|coming soon|will be here|not yet implemented|not availab
 # Empty implementations
 grep -n -E "return null|return \{\}|return \[\]|=> \{\}" "$file" 2>/dev/null
 # Hardcoded empty data (common stub patterns)
-grep -n -E "=\s*\[\]|=\s*\{\}|=\s*null|=\s*undefined" "$file" 2>/dev/null | grep -v -E "(test|spec|mock|fixture|\.test\.|\.spec\.)" 2>/dev/null
+grep -n -E "=[[:space:]]*\[\]|=[[:space:]]*\{\}|=[[:space:]]*null|=[[:space:]]*undefined" "$file" 2>/dev/null | grep -v -E "test|spec|mock|fixture|\.test\.|\.spec\." 2>/dev/null
 # Props with hardcoded empty values (React/Vue/Svelte stub indicators)
-grep -n -E "=\{(\[\]|\{\}|null|undefined|''|\"\")\}" "$file" 2>/dev/null
+grep -n -E "=\{\[\]\}|=\{\{\}\}|=\{null\}|=\{undefined\}|=\{''\}|=\{\"\"\}" "$file" 2>/dev/null
 # Console.log only implementations
-grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^\s*(const|function|=>)"
+grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^[[:digit:]]+[-:][[:space:]]*const|^[[:digit:]]+[-:][[:space:]]*function|^[[:digit:]]+[-:][[:space:]]*=>"
 ```
 
 Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ Info (notable)
