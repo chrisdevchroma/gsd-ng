@@ -16,7 +16,7 @@ const reset = '\x1b[0m';
 
 // Get version from package.json
 const pkg = require('../package.json');
-const { processTemplate, buildContext, injectAfterFrontmatter, injectAppendToFile, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const { processTemplate, buildContext, injectAppendToFile, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
 const { getPlatformCliPatterns, PLATFORM_TO_CLI } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 
 // Parse args
@@ -353,11 +353,6 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(localClaudeRegex, `./${dirName}/`);
       // Template variable: project rules file path (Claude Code uses CLAUDE.md)
       content = content.replace(/\{\{PROJECT_RULES_FILE\}\}/g, 'CLAUDE.md');
-      // Inject first-turn rule into Claude command files that use AskUserQuestion
-      if (isCommand && runtime === 'claude' && content.includes('AskUserQuestion')) {
-        const ftrTemplate = path.join(__dirname, '..', 'gsd-ng', 'templates', 'first-turn-rule.md');
-        content = injectAfterFrontmatter(content, ftrTemplate, 'first_turn_rule');
-      }
       content = processAttribution(content, getCommitAttribution());
       fs.writeFileSync(destPath, content);
     } else {
@@ -1023,8 +1018,6 @@ function mergeCopilotInstructions(instructionsPath, templateContent) {
     fs.writeFileSync(instructionsPath, existing + separator + gsdBlock + '\n');
   }
 }
-
-// injectFirstTurnRule moved to template-processor.cjs as injectAfterFrontmatter.
 
 /**
  * Remove the GSD block from copilot-instructions.md content.

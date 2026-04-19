@@ -90,31 +90,6 @@ function buildContext(runtime, options) {
 }
 
 /**
- * Inject a template block after YAML frontmatter in a command file.
- * Idempotent: skips if the marker tag is already present.
- *
- * @param {string} content - File content with YAML frontmatter
- * @param {string} templatePath - Absolute path to template file
- * @param {string} marker - Tag name to check for idempotency (e.g. 'first_turn_rule')
- * @returns {string} Content with template injected, or unchanged if already present
- */
-function injectAfterFrontmatter(content, templatePath, marker) {
-  if (content.includes('<' + marker + '>')) {
-    return content; // Already injected
-  }
-  if (!fs.existsSync(templatePath)) {
-    return content; // Template missing — skip silently
-  }
-  const block = fs.readFileSync(templatePath, 'utf8').trim();
-  const frontmatterEnd = content.indexOf('\n---\n');
-  if (frontmatterEnd === -1) {
-    return content; // No frontmatter — skip
-  }
-  const insertPos = frontmatterEnd + 5;
-  return content.slice(0, insertPos) + '\n' + block + '\n' + content.slice(insertPos);
-}
-
-/**
  * Append a template block to a file. Creates the file if it doesn't exist.
  * Idempotent: skips if the marker string is already present in the file.
  *
@@ -171,4 +146,4 @@ function fillBetweenMarkers(filePath, templatePath, startMarker, endMarker) {
   fs.writeFileSync(filePath, before + innerContent + after, 'utf8');
 }
 
-module.exports = { processTemplate, validateMarkers, buildContext, RUNTIMES, injectAfterFrontmatter, injectAppendToFile, fillBetweenMarkers };
+module.exports = { processTemplate, validateMarkers, buildContext, RUNTIMES, injectAppendToFile, fillBetweenMarkers };
