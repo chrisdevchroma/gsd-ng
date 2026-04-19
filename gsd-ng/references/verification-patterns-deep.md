@@ -74,7 +74,7 @@ grep -E "fetch\(|axios\.|useSWR|useQuery|getServerSideProps|getStaticProps" "$co
 # Expanded from `export (async )?(function|const) (GET|POST|PUT|PATCH|DELETE)` —
 # grouped alternation trips Claude Code's tree-sitter walker (#42085/#43713).
 # Omits 5 `export async const METHOD` combos (not valid JS).
-grep -E "export function GET|export function POST|export function PUT|export function PATCH|export function DELETE|export async function GET|export async function POST|export async function PUT|export async function PATCH|export async function DELETE|export const GET|export const POST|export const PUT|export const PATCH|export const DELETE" "$route_path"
+grep -E "export function GET\(|export function POST\(|export function PUT\(|export function PATCH\(|export function DELETE\(|export async function GET\(|export async function POST\(|export async function PUT\(|export async function PATCH\(|export async function DELETE\(|export const GET[[:space:]]*=|export const POST[[:space:]]*=|export const PUT[[:space:]]*=|export const PATCH[[:space:]]*=|export const DELETE[[:space:]]*=" "$route_path"
 
 # Or Express-style handlers
 grep -E "\.get\(|\.post\(|\.put\(|\.patch\(|\.delete\(" "$route_path"
@@ -131,7 +131,7 @@ grep -E "^model $model_name|CREATE TABLE $table_name|export const $table_name" "
 ```
 ```bash
 # Has expected fields (not just id)
-grep -A 20 "model $model_name" "$schema_path" | grep -E "^\s+\w+\s+\w+"
+grep -A 20 "model $model_name" "$schema_path" | grep -E "^[[:space:]]+[[:alnum:]_]+[[:space:]]+[[:alnum:]_]+"
 
 # Has relationships if expected
 grep -E "@relation|REFERENCES|FOREIGN KEY" "$schema_path"
@@ -171,7 +171,7 @@ echo "SELECT COUNT(*) FROM $table_name" | npx prisma db execute --stdin
 ```
 ```bash
 # File exists and exports function
-[ -f "$hook_path" ] && grep -E "export function|export const|^export default\s" "$hook_path"
+[ -f "$hook_path" ] && grep -E "export function|export const|^export default[[:space:]]" "$hook_path"
 ```
 ```bash
 # Hook uses React hooks (for custom hooks)

@@ -46,9 +46,11 @@ const path = require('path');
 // explicitly allowlist builtins they want auto-approved.
 
 // ── Structural shell keywords — filter these out (not real commands) ──────────
-// Includes shell syntax markers that cannot take meaningful arguments
-// (done/fi/esac/then/else/elif/do/break/continue/{/}) plus the nullary
-// builtins `true`/`false` which are commonly used in the `cmd || true` idiom.
+// Control/syntax constructs that are not checkable commands. Includes shell
+// syntax markers (done/fi/esac/then/else/elif/do/{/}), loop-control builtins
+// (break/continue — accept an optional numeric arg but are not security-
+// relevant themselves), and the nullary-idiom builtins true/false (accept
+// and ignore any args; common in the `cmd || true` idiom).
 //
 // INVARIANT (enforced by decomposeCommand): extractSubshells() runs on every
 // rawPart BEFORE this filter is consulted. That means a structural keyword
