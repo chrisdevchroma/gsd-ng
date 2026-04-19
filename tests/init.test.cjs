@@ -641,7 +641,7 @@ describe('cmdInitPhaseOp fallback', () => {
     assert.strictEqual(output.phase_dir, null);
   });
 
-  test('decimal phase in ROADMAP found via fallback (regression)', () => {
+  test('decimal phase in ROADMAP found via fallback', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n\n### Phase 15: Base\n**Goal:** Base work\n**Plans:** TBD\n\n### Phase 15.1: Hotfix\n**Goal:** Emergency fix\n**Plans:** TBD\n\n### Phase 16: Next\n**Goal:** Next work\n**Plans:** TBD\n'
@@ -658,7 +658,7 @@ describe('cmdInitPhaseOp fallback', () => {
     assert.strictEqual(output.phase_dir, null);
   });
 
-  test('decimal phase in init plan-phase ROADMAP fallback (regression)', () => {
+  test('decimal phase in init plan-phase ROADMAP fallback', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n\n### Phase 15: Base\n**Goal:** Base work\n**Plans:** TBD\n\n### Phase 15.1: Hotfix\n**Goal:** Emergency fix\n**Plans:** TBD\n\n### Phase 16: Next\n**Goal:** Next work\n**Plans:** TBD\n'

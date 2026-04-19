@@ -502,7 +502,7 @@ describe('pattern audit — public dataset coverage', () => {
 
   // ─── 4 upstream-dropped patterns evaluation ───────────────────────────────
   //
-  // Upstream PR #1258 (commit 62db008) had 15 patterns. Phase 31 implemented 11.
+  // Upstream (liberzon/claude-hooks commit 62db008) had 15 patterns; NG implements 11.
   // The 4 patterns not in the initial INJECTION_PATTERNS array are the Unicode checks,
   // which were retained as opt-in via opts.strict rather than being dropped entirely.
   //

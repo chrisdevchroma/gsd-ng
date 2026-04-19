@@ -33,7 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// ── SAFE_BUILTINS removed (PR #24 review) ────────────────────────────────────
+// ── SAFE_BUILTINS — removed ───────────────────────────────────────────────────
 // Previously auto-approved shell builtins (cd, echo, printf, etc.) without any
 // allowlist entry. Removed because combining builtins with shell redirection
 // (e.g. `echo "x" > ~/.bashrc`, `read var < /etc/shadow`) introduces filesystem
@@ -329,7 +329,7 @@ function splitOnOperators(command) {
     // $( — enter subshell. Consume $( as a unit (i += 2) so the '(' is not
     // re-processed by the bare-paren handler, which would double-increment depth.
     // Python upstream: i += 2. Without this, depth stays >0 after the closing ')',
-    // preventing operator splitting — a security bypass (see PR #24 review).
+    // preventing operator splitting — a security bypass.
     if (ch === '$' && next === '(') {
       depth++;
       current += ch + next;

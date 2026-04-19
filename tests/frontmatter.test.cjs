@@ -370,7 +370,7 @@ describe('reconstructFrontmatter — em-dash and parentheses quoting (Bug 1c)', 
     );
   });
 
-  test('does NOT quote plain values (regression guard)', () => {
+  test('does NOT quote plain values', () => {
     const result = reconstructFrontmatter({ status: 'executing' });
     assert.ok(
       result.includes('status: executing') && !result.includes('"executing"'),
