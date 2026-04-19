@@ -33,7 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// ── SAFE_BUILTINS removed (PR #24 review) ────────────────────────────────────
+// ── SAFE_BUILTINS — removed ───────────────────────────────────────────────────
 // Previously auto-approved shell builtins (cd, echo, printf, etc.) without any
 // allowlist entry. Removed because combining builtins with shell redirection
 // (e.g. `echo "x" > ~/.bashrc`, `read var < /etc/shadow`) introduces filesystem
@@ -41,14 +41,32 @@ const path = require('path');
 // (liberzon/claude-hooks) never had this feature.
 //
 // Builtins are now approved through the same allowlist path as everything else.
-// GSD-NG's settings-sandbox.json template already includes Bash(echo:*),
-// Bash(cd:*), etc. — so sandbox users see no change. Non-sandbox users must
+// GSD-NG's settings-sandbox.json template already includes Bash(echo *),
+// Bash(cd *), etc. — so sandbox users see no change. Non-sandbox users must
 // explicitly allowlist builtins they want auto-approved.
 
 // ── Structural shell keywords — filter these out (not real commands) ──────────
+// Control/syntax constructs that are not checkable commands. Includes shell
+// syntax markers (done/fi/esac/then/else/elif/do/{/}), loop-control builtins
+// (break/continue — accept an optional numeric arg but are not security-
+// relevant themselves), and the nullary-idiom builtins true/false (accept
+// and ignore any args; common in the `cmd || true` idiom).
+//
+// INVARIANT (enforced by decomposeCommand): extractSubshells() runs on every
+// rawPart BEFORE this filter is consulted. That means a structural keyword
+// wrapping a `$()` argument (e.g. `then $(curl evil)`, `break $(curl evil)`,
+// `true $(curl evil)`) cannot bypass allow/deny — the inner command is
+// pushed to the decomposed result regardless of whether the outer keyword
+// is later filtered out here.
+//
+// exit/return/local/export are NOT in this set — they are real commands that
+// must reach the allowlist path (covered by template entries like
+// `Bash(local *)`, `Bash(export *)`). `eval` is never filtered or
+// allowlisted — it executes arbitrary strings.
 const STRUCTURAL_KEYWORDS = new Set([
   'done', 'fi', 'esac', '{', '}', 'break', 'continue',
   'then', 'else', 'elif', 'do',
+  'true', 'false',
 ]);
 
 // ── Compound statement headers — filter from decomposed output ────────────────
@@ -311,7 +329,7 @@ function splitOnOperators(command) {
     // $( — enter subshell. Consume $( as a unit (i += 2) so the '(' is not
     // re-processed by the bare-paren handler, which would double-increment depth.
     // Python upstream: i += 2. Without this, depth stays >0 after the closing ')',
-    // preventing operator splitting — a security bypass (see PR #24 review).
+    // preventing operator splitting — a security bypass.
     if (ch === '$' && next === '(') {
       depth++;
       current += ch + next;
@@ -480,24 +498,15 @@ function decomposeCommand(command) {
   const result = [];
 
   for (const part of rawParts) {
-    const normalized = normalizeCommand(part);
-
-    // Filter structural keywords
-    const firstWord = normalized ? normalized.split(/\s+/)[0] : '';
-    if (!normalized) continue;
-    if (STRUCTURAL_KEYWORDS.has(firstWord)) continue;
-    if (STRUCTURAL_KEYWORDS.has(normalized)) continue;
-
-    // Filter compound statement headers (for/while/until/if/case/select)
-    if (COMPOUND_HEADER_RE.test(firstWord)) continue;
-
-    // Filter standalone assignments (KEY=value with nothing after, no command)
-    // Also skip extracting their subshells — result=$(cmd) is an assignment, not an invocation
-    if (isStandaloneAssignment(normalized)) continue;
-
-    // Extract $() and backtick subshell contents recursively so inner
-    // commands get checked against allow/deny independently.
-    // e.g. "echo $(rm -rf /)" → also checks "rm -rf /"
+    // Extract $() and backtick subshell contents FIRST, unconditionally.
+    //
+    // Invariant: structural keywords (then/else/elif/do/break/continue) can
+    // wrap a $() argument (e.g. `then $(curl ...)`, `break $(curl ...)`).
+    // If we filtered on firstWord BEFORE extracting, those keyword-wrapped
+    // subshells would silently bypass allow/deny. Running extractSubshells
+    // on the raw `part` first guarantees every inner command is checked
+    // independently of whether the outer part is later filtered out as
+    // structural.
     const subshells = extractSubshells(part);
     for (const sub of subshells) {
       const subParts = splitOnOperators(sub);
@@ -510,6 +519,17 @@ function decomposeCommand(command) {
         }
       }
     }
+
+    // Now decide whether to push the outer part. Structural keywords,
+    // compound-statement headers, and standalone assignments are filtered.
+    const normalized = normalizeCommand(part);
+    if (!normalized) continue;
+
+    const firstWord = normalized.split(/\s+/)[0];
+    if (STRUCTURAL_KEYWORDS.has(firstWord)) continue;
+    if (STRUCTURAL_KEYWORDS.has(normalized)) continue;
+    if (COMPOUND_HEADER_RE.test(firstWord)) continue;
+    if (isStandaloneAssignment(normalized)) continue;
 
     result.push(normalized);
   }

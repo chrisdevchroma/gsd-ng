@@ -5,7 +5,7 @@
 > - `@~/.claude/gsd-ng/references/verification-patterns-standard.md` — full descriptions
 ```bash
 # Grep patterns for stub comments
-grep -E "(TODO|FIXME|XXX|HACK|PLACEHOLDER)" "$file"
+grep -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" "$file"
 grep -E "implement|add later|coming soon|will be" "$file" -i
 grep -E "// \.\.\.|/\* \.\.\. \*/|# \.\.\." "$file"
 ```
@@ -18,18 +18,18 @@ grep -E "\[.*\]|<.*>|\{.*\}" "$file"  # Template brackets left in
 ```bash
 # Functions that do nothing
 grep -E "return null|return undefined|return \{\}|return \[\]" "$file"
-grep -E "pass$|\.\.\.|\bnothing\b" "$file"
-grep -E "console\.(log|warn|error).*only" "$file"  # Log-only functions
+grep -E "pass$|\.\.\.|[[:space:]]nothing|^nothing" "$file"
+grep -E "console\.log.*only|console\.warn.*only|console\.error.*only" "$file"  # Log-only functions
 ```
 ```bash
 # Hardcoded IDs, counts, or content
 grep -E "id.*=.*['\"].*['\"]" "$file"  # Hardcoded string IDs
-grep -E "count.*=.*\d+|length.*=.*\d+" "$file"  # Hardcoded counts
-grep -E "\\\$\d+\.\d{2}|\d+ items" "$file"  # Hardcoded display values
+grep -E "count.*=.*[[:digit:]]+|length.*=.*[[:digit:]]+" "$file"  # Hardcoded counts
+grep -E "\\\$[[:digit:]]+\.[[:digit:]]{2}|[[:digit:]]+ items" "$file"  # Hardcoded display values
 ```
 ```bash
 # File exists and exports component
-[ -f "$component_path" ] && grep -E "export (default |)function|export const.*=.*\(" "$component_path"
+[ -f "$component_path" ] && grep -E "export default function|export function|export const.*=.*\(" "$component_path"
 ```
 ```bash
 # Returns actual JSX, not placeholder
@@ -61,7 +61,7 @@ grep -E "^import.*from" "$component_path"
 
 # Props are actually used (not just received)
 # Look for destructuring or props.X usage
-grep -E "\{ .* \}.*props|\bprops\.[a-zA-Z]+" "$component_path"
+grep -E "\{ .* \}.*props|[[:space:]]props\.[a-zA-Z]+|^props\.[a-zA-Z]+" "$component_path"
 
 # API calls exist (for data-fetching components)
 grep -E "fetch\(|axios\.|useSWR|useQuery|getServerSideProps|getStaticProps" "$component_path"
@@ -70,11 +70,14 @@ grep -E "fetch\(|axios\.|useSWR|useQuery|getServerSideProps|getStaticProps" "$co
 # Route file exists
 [ -f "$route_path" ]
 
-# Exports HTTP method handlers (Next.js App Router)
-grep -E "export (async )?(function|const) (GET|POST|PUT|PATCH|DELETE)" "$route_path"
+# Exports HTTP method handlers (Next.js App Router).
+# Expanded from `export (async )?(function|const) (GET|POST|PUT|PATCH|DELETE)` —
+# grouped alternation trips Claude Code's tree-sitter walker (#42085/#43713).
+# Omits 5 `export async const METHOD` combos (not valid JS).
+grep -E "export function GET\(|export function POST\(|export function PUT\(|export function PATCH\(|export function DELETE\(|export async function GET\(|export async function POST\(|export async function PUT\(|export async function PATCH\(|export async function DELETE\(|export const GET[[:space:]]*=|export const POST[[:space:]]*=|export const PUT[[:space:]]*=|export const PATCH[[:space:]]*=|export const DELETE[[:space:]]*=" "$route_path"
 
 # Or Express-style handlers
-grep -E "\.(get|post|put|patch|delete)\(" "$route_path"
+grep -E "\.get\(|\.post\(|\.put\(|\.patch\(|\.delete\(" "$route_path"
 ```
 ```bash
 # Has actual logic, not just return statement
@@ -128,7 +131,7 @@ grep -E "^model $model_name|CREATE TABLE $table_name|export const $table_name" "
 ```
 ```bash
 # Has expected fields (not just id)
-grep -A 20 "model $model_name" "$schema_path" | grep -E "^\s+\w+\s+\w+"
+grep -A 20 "model $model_name" "$schema_path" | grep -E "^[[:space:]]+[[:alnum:]_]+[[:space:]]+[[:alnum:]_]+"
 
 # Has relationships if expected
 grep -E "@relation|REFERENCES|FOREIGN KEY" "$schema_path"
@@ -168,7 +171,7 @@ echo "SELECT COUNT(*) FROM $table_name" | npx prisma db execute --stdin
 ```
 ```bash
 # File exists and exports function
-[ -f "$hook_path" ] && grep -E "export (default )?(function|const)" "$hook_path"
+[ -f "$hook_path" ] && grep -E "export function|export const|^export default[[:space:]]" "$hook_path"
 ```
 ```bash
 # Hook uses React hooks (for custom hooks)
@@ -235,7 +238,7 @@ grep -E "$VAR_NAME" src/env.ts src/env.mjs 2>/dev/null
 ```
 ```bash
 # Find the fetch/axios call
-grep -E "fetch\(['\"].*$api_path|axios\.(get|post).*$api_path" "$component_path"
+grep -E "fetch\(['\"].*$api_path|axios\.get.*$api_path|axios\.post.*$api_path" "$component_path"
 
 # Verify it's not commented out
 grep -E "fetch\(|axios\." "$component_path" | grep -v "^.*//.*fetch"
