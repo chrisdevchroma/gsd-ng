@@ -159,10 +159,14 @@ function findChainedPrefixTrap(line) {
   const afterCaret = anchoredMatch[2];
 
   // Prefix-aware stage-2 anchors are safe: they consume the prefix
-  // explicitly before matching the intended content.
-  if (/^\[\[:digit:\]\]\+[-:\[\]]/.test(afterCaret)) return null;
-  if (/^\[0-9\]\+[-:\[\]]/.test(afterCaret)) return null;
-  if (/^\[\^[-:]/.test(afterCaret)) return null;
+  // (filename + `:`/`-` separator, or line-number + `:`/`-`) explicitly
+  // before matching the intended content. The exemption requires BOTH
+  // a matching class with `+`/`*` quantifier AND a separator match
+  // immediately after — `^[^:]+const` without the `:` consume is NOT
+  // prefix-aware and remains a trap (the anchor can never line up).
+  if (/^\[\[:digit:\]\][*+][\[\-:]/.test(afterCaret)) return null;
+  if (/^\[0-9\][*+][\[\-:]/.test(afterCaret)) return null;
+  if (/^\[\^[^\]]*\][*+][\[\-:]/.test(afterCaret)) return null;
 
   const flagHasN = /\s-[A-Za-z]*n[A-Za-z]*(\s|$)/.test(stage1);
   const flagHasH = /\s-[A-Za-z]*H[A-Za-z]*(\s|$)/.test(stage1);
@@ -292,6 +296,17 @@ describe('docs-grep-lint detectors', () => {
     assert.equal(findChainedPrefixTrap('grep -n "foo" f | grep -E "^[[:digit:]]+[-:][[:space:]]*const"'), null);
     assert.equal(findChainedPrefixTrap('grep -n -B 2 "foo" f | grep -E "^[0-9]+[-:]const"'), null);
     assert.equal(findChainedPrefixTrap('grep -r "foo" src/ | grep -E "^[^:]+:[[:space:]]*const"'), null);
+  });
+
+  test('findChainedPrefixTrap still flags incomplete prefix-consume patterns', () => {
+    // `^[^:]+const` does NOT consume the `:` separator — for `-r` output
+    // like `file.js:  const`, `[^:]+` matches up to the colon, and then
+    // the next required literal `c` fails against the actual `:`. The
+    // pattern therefore can never match; it's a trap, not a prefix-aware
+    // anchor. This was a false-negative in the previous exemption regex.
+    assert.ok(findChainedPrefixTrap('grep -r "foo" src/ | grep -E "^[^:]+const"'));
+    assert.ok(findChainedPrefixTrap('grep -n "foo" f | grep -E "^[[:digit:]]+const"'));
+    assert.ok(findChainedPrefixTrap('grep -n "foo" f | grep -E "^[0-9]+const"'));
   });
 
   test('countFileArgsInGrep tokenizes common forms', () => {
