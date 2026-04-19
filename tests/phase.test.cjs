@@ -1955,7 +1955,7 @@ describe('phase add inserts checkbox line in ROADMAP phases list', () => {
     assert.ok(checkboxIdx < detailsIdx, 'checkbox line should appear before ## Phase Details');
   });
 
-  test('phase add details section still created', () => {
+  test('phase add details section still created (regression check)', () => {
     const result = runGsdTools('phase add User Dashboard', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
@@ -1966,7 +1966,7 @@ describe('phase add inserts checkbox line in ROADMAP phases list', () => {
     );
   });
 
-  test('phase add still creates directory', () => {
+  test('phase add still creates directory (regression check)', () => {
     const result = runGsdTools('phase add New Feature', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
@@ -2036,7 +2036,7 @@ describe('phase insert inserts checkbox line in ROADMAP phases list', () => {
     assert.ok(insertedIdx > parentIdx, 'inserted checkbox should appear after parent checkbox');
   });
 
-  test('phase insert details section still created', () => {
+  test('phase insert details section still created (regression check)', () => {
     const result = runGsdTools('phase insert 1 Fix Critical Bug', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 

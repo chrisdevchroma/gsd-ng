@@ -2673,7 +2673,7 @@ describe('cmdIssueSync verify state modes', () => {
   });
 
   // Test 6: close_state=close regression — calls close, not label
-  test('close_state=close calls close action', () => {
+  test('close_state=close calls close action (regression)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ issue_tracker: { close_state: 'close' } }, null, 2)

@@ -98,8 +98,14 @@ function findRoundReference(line) {
 }
 
 // Detector: incident-history marker inside a parenthetical suffix of a
-// test / describe name. Flags parentheticals containing a regression
-// word, a numeric PR reference, or a post-X / pre-X state marker.
+// test / describe name.
+//
+// Flags specific *incidents* (PR numbers, post-X / pre-X state markers)
+// but NOT *category labels* like `(regression)`, `(regression check)`,
+// `(regression guard)`. The latter describe the test's purpose (guards
+// a known class from recurring) — that's invariant information worth
+// preserving. `(PR #X regression)` is still caught because the PR
+// number is what's rotting, not the word "regression".
 function findTestNameIncidentMarker(line) {
   const ctx = commentContext(line);
   if (!ctx.testName) return null;
@@ -107,9 +113,6 @@ function findTestNameIncidentMarker(line) {
   let m;
   while ((m = parens.exec(ctx.testName)) !== null) {
     const inside = m[1];
-    if (/\bregression\b/i.test(inside)) {
-      return "Test name contains '(" + inside + ")' — describe the behavior tested, not the incident that motivated the test";
-    }
     if (/\bPR\s*#?\d+\b/i.test(inside)) {
       return "Test name contains '(" + inside + ")' — PR reference belongs in commit message, not test name";
     }
@@ -177,14 +180,24 @@ describe('comment-hygiene detectors', () => {
     assert.equal(findRoundReference('// perform one round of hashing'), null);
   });
 
-  test('findTestNameIncidentMarker detects regression / PR-number / post-X markers in parentheticals', () => {
-    assert.ok(findTestNameIncidentMarker("  test('bypass (regression)', () => {});"));
+  test('findTestNameIncidentMarker detects PR-number and post-X / pre-X markers in parentheticals', () => {
     assert.ok(findTestNameIncidentMarker("  test('bypass (PR #37 regression)', () => {});"));
     assert.ok(findTestNameIncidentMarker("  test('bypass (post-reorder)', () => {});"));
     assert.ok(findTestNameIncidentMarker("  test('bypass (pre-fix)', () => {});"));
   });
 
-  test('findTestNameIncidentMarker ignores legitimate parentheticals', () => {
+  test('findTestNameIncidentMarker allows regression category labels', () => {
+    // (regression) / (regression check) / (regression guard) are category
+    // labels describing the test's purpose — preserving them helps future
+    // maintainers understand why the test exists and why it shouldn't be
+    // reorganized away. Only specific incident citations (PR numbers,
+    // post-X / pre-X markers) are rotting; plain "regression" is not.
+    assert.equal(findTestNameIncidentMarker("  test('bypass (regression)', () => {});"), null);
+    assert.equal(findTestNameIncidentMarker("  test('phase add still creates dir (regression check)', () => {});"), null);
+    assert.equal(findTestNameIncidentMarker("  test('does NOT quote plain values (regression guard)', () => {});"), null);
+  });
+
+  test('findTestNameIncidentMarker ignores other legitimate parentheticals', () => {
     assert.equal(findTestNameIncidentMarker("  test('handles null (edge case)', () => {});"), null);
     assert.equal(findTestNameIncidentMarker("  test('foo (mirror of bar)', () => {});"), null);
     assert.equal(findTestNameIncidentMarker("  test('bypass (not auto-approved)', () => {});"), null);
