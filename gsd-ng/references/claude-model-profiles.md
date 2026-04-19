@@ -23,8 +23,8 @@ Model profiles control which Claude model each GSD agent uses. This allows balan
 ## Profile Philosophy
 
 **quality** - Maximum reasoning power
-- Opus for all decision-making agents
-- Sonnet for read-only verification
+- Opus for content producers (planner, roadmapper, executor, researchers, debugger, verifier, ui-researcher)
+- Sonnet for synthesizers, mappers, and checkers
 - Use when: quota available, critical architecture work
 
 **balanced** (default) - Smart allocation
