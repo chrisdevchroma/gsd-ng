@@ -1140,16 +1140,32 @@ describe('resolveEffortInternal', () => {
   function startStderrCapture() {
     stderrBuffer = '';
     origWriteSync = fs.writeSync;
-    fs.writeSync = (fd, data) => {
-      if (fd === 2) { stderrBuffer += String(data); return String(data).length; }
-      return origWriteSync(fd, data);
+    fs.writeSync = (...args) => {
+      const [fd, data] = args;
+      if (fd === 2) {
+        stderrBuffer += String(data);
+        return Buffer.isBuffer(data) ? data.length : String(data).length;
+      }
+      return origWriteSync(...args);
     };
   }
 
   function stopStderrCapture() {
-    fs.writeSync = origWriteSync;
+    if (origWriteSync) {
+      fs.writeSync = origWriteSync;
+      origWriteSync = undefined;
+    }
     return stderrBuffer;
   }
+
+  // Restore fs.writeSync even if a test throws between start/stop — prevents
+  // a failed assertion in one test from leaking the monkey-patch into the next.
+  afterEach(() => {
+    if (origWriteSync) {
+      fs.writeSync = origWriteSync;
+      origWriteSync = undefined;
+    }
+  });
 
   test('Test 9: returns null for haiku model from profile (budget profile, gsd-research-synthesizer)', () => {
     writeConfig({ model_profile: 'budget' });
