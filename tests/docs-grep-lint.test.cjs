@@ -1,31 +1,28 @@
 'use strict';
 
 // Lint for grep patterns embedded in documentation / reference / agent files.
-// Catches three regression classes observed on PR #37:
 //
-//   1. PCRE-only escapes in `grep -E` patterns (`\s`/`\b`/`\w`/`\d` and
-//      their negated forms). These fail silently on BSD grep and emit
-//      "stray \" warnings on GNU grep. Use POSIX bracket classes instead
+// Three detection classes:
+//
+//   1. PCRE-only escapes (`\s`/`\S`/`\b`/`\B`/`\w`/`\W`/`\d`/`\D`) in
+//      `grep -E` patterns. These fail silently on BSD grep and emit
+//      "stray \" warnings on GNU grep. Use POSIX bracket classes
 //      (`[[:space:]]`, `[[:alnum:]_]`, `[[:digit:]]`).
 //
-//   2. Chained grep pipelines where stage 1 adds a per-line prefix (`-n`
-//      line number, `-H`/`-r` filename, or multi-file auto-prefix) and
-//      stage 2 anchors a pattern with `^`. The anchor can never line up
+//   2. Chained grep pipelines where stage 1 adds a per-line prefix
+//      (`-n` line number, `-H`/`-r` filename, or multi-file auto-prefix)
+//      and stage 2 anchors with `^`. The anchor can never line up
 //      against the prefix, so the pipeline matches nothing.
 //
-//   3. Grouped alternation `(a|b)` inside `grep -E` patterns. gsd-ng
-//      workflows run under Claude Code whose tree-sitter walker crashes
-//      on this syntax (upstream #42085/#43713/#48717); use flat
-//      alternation instead.
+//   3. Grouped alternation `(a|b)` inside `grep -E`. gsd-ng workflows
+//      run under Claude Code whose tree-sitter walker crashes on this
+//      syntax (upstream claude-code#42085/#43713/#48717); use flat
+//      alternation.
 //
-// Each regression class is backed by a reference memory in
-// ~/.claude/memory/ (posix-regex-portability, chained-grep-prefix-trap)
-// plus the historical commits this PR was built from (2a3cf21 onward).
-//
-// The test runs synthetic-input self-tests (to prove the detectors work)
-// and then runs the detectors against the real doc set (to prove zero
-// violations ship). Adding a new file with violating grep patterns MUST
-// fail this test.
+// Structure: synthetic-input self-tests prove the detectors catch what
+// they claim to; real-doc tests assert zero violations across the
+// linted file set. A regression in a detector would silently let real
+// bugs through, so the self-tests are load-bearing.
 
 const fs = require('fs');
 const path = require('path');

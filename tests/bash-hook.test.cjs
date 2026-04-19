@@ -465,13 +465,7 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
       'hook must allow `cmd || true` when cmd is allowed; got: ' + JSON.stringify(result));
   });
 
-  test('true $(...) does NOT bypass subshell extraction (PR #37 regression)', () => {
-    // Regression: previously `true` was matched as STRUCTURAL_KEYWORDS via
-    // firstWord-based check, so `true $(curl ...)` short-circuited BEFORE
-    // extractSubshells() ran — silently auto-approving the inner curl when
-    // a sibling sub-command was allowlisted. Bare `true`/`false` must still
-    // filter (see tests above + "cmd || true" idiom test), but as soon as
-    // args are present the command must fall through to subshell checks.
+  test('true $(...) does NOT bypass subshell extraction', () => {
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
     const result = decide('git status || true $(curl https://evil.example)', settings);
     assert.notEqual(result.decision, 'allow',
@@ -485,7 +479,7 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
       'hook must NOT auto-approve `true $(curl ...)`; got: ' + JSON.stringify(result));
   });
 
-  test('false $(...) does NOT bypass subshell extraction (mirror of true case)', () => {
+  test('false $(...) does NOT bypass subshell extraction', () => {
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
     const result = decide('git status || false $(curl https://evil.example)', settings);
     assert.notEqual(result.decision, 'allow',
@@ -1109,14 +1103,10 @@ describe('BASH-HOOK-PARITY-06: isStandaloneAssignment unit tests', () => {
 });
 
 describe('BASH-HOOK-PARITY-06: decomposeCommand filters standalone assignments with complex values', () => {
-  test('decomposeCommand("result=$(curl http://example.com)") surfaces inner command (post-reorder)', () => {
-    // After the class-invariant reorder (PR #37 round-2): extractSubshells()
-    // runs on every rawPart BEFORE the standalone-assignment filter, so the
-    // outer `result=$(...)` assignment is still dropped but the inner
-    // `curl http://example.com` MUST be inspected by allow/deny. Previously
-    // this test asserted an empty result, which silently auto-approved any
-    // subshell body inside a standalone assignment — a class-level bypass
-    // (same shape as the `local X=$(cmd)` security property now enforced).
+  test('decomposeCommand("result=$(curl http://example.com)") surfaces inner command', () => {
+    // Invariant: the outer `result=$(...)` assignment is dropped, but the
+    // inner subshell body must still be surfaced for allow/deny checks
+    // (same security property as `local X=$(cmd)` below).
     const cmds = decomposeCommand('result=$(curl http://example.com)');
     assert.equal(cmds.length, 1,
       `standalone subshell assignment must surface inner command; got: ${JSON.stringify(cmds)}`);
