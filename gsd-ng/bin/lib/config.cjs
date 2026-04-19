@@ -8,6 +8,7 @@ const { output, error, planningPaths } = require('./core.cjs');
 const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 const {
   VALID_PROFILES,
+  VALID_EFFORT_VALUES,
   getAgentToModelMapForProfile,
   getAgentToEffortMapForProfile,
   formatAgentToModelMapAsTable,
@@ -202,6 +203,14 @@ function cmdConfigSet(cwd, keyPath, value) {
 
   if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath) && !EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)) {
     error(`Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`);
+  }
+
+  // Value-validation for effort_overrides.* keys: reject values outside the valid set.
+  if (EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath) && !VALID_EFFORT_VALUES.includes(value)) {
+    error(
+      `Invalid effort value "${value}" for ${keyPath}. ` +
+      `Valid values: ${VALID_EFFORT_VALUES.join(', ')}.`
+    );
   }
 
   // Parse value (handle booleans and numbers)

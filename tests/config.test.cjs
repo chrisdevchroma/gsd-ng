@@ -745,4 +745,51 @@ describe('set-profile effort display and effort_overrides config-set (EFF-04, EF
       `Expected "Unknown config key" in error, got: ${result.error}`
     );
   });
+
+  test('Test 12: config-set accepts effort_overrides.gsd-executor xhigh', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor xhigh', tmpDir);
+    assert.ok(
+      result.success,
+      `config-set effort_overrides.gsd-executor xhigh should succeed, got error: ${result.error}`
+    );
+
+    const config = JSON.parse(
+      require('fs').readFileSync(require('path').join(tmpDir, '.planning', 'config.json'), 'utf-8')
+    );
+    assert.strictEqual(config.effort_overrides['gsd-executor'], 'xhigh');
+  });
+
+  test('Test 13: config-set rejects invalid effort value (typo xhign)', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor xhign', tmpDir);
+    assert.strictEqual(
+      result.success,
+      false,
+      'effort_overrides.gsd-executor xhign should be rejected as invalid effort value'
+    );
+    assert.ok(
+      result.error.includes('xhign'),
+      `Expected "xhign" in error, got: ${result.error}`
+    );
+    assert.ok(
+      result.error.includes('low, medium, high, xhigh, max, inherit'),
+      `Expected valid values list in error, got: ${result.error}`
+    );
+  });
+
+  test('Test 14: config-set rejects invalid effort value (banana)', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor banana', tmpDir);
+    assert.strictEqual(
+      result.success,
+      false,
+      'effort_overrides.gsd-executor banana should be rejected as invalid effort value'
+    );
+    assert.ok(
+      result.error.includes('banana'),
+      `Expected "banana" in error, got: ${result.error}`
+    );
+    assert.ok(
+      result.error.includes('low, medium, high, xhigh, max, inherit'),
+      `Expected valid values list in error, got: ${result.error}`
+    );
+  });
 });

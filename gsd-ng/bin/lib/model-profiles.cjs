@@ -26,11 +26,30 @@ const MODEL_PROFILES = {
 const VALID_PROFILES = Object.keys(MODEL_PROFILES['gsd-planner']);
 
 /**
+ * Valid values for the `effort:` frontmatter field and for `effort_overrides.*`
+ * entries in .planning/config.json.
+ *
+ * Tier ordering (ascending thinking budget):
+ *   low < medium < high < xhigh < max
+ *
+ * `inherit` is a sentinel meaning "omit `effort:` from the spawn so the session
+ * default applies"; it resolves to null in resolveEffortInternal.
+ *
+ * Note: `xhigh` is a valid override value but is NOT present in any default
+ * EFFORT_PROFILES row — it is opt-in via `effort_overrides` only.
+ */
+const VALID_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh', 'max', 'inherit'];
+
+/**
  * Mapping of GSD agent to effort level for each profile.
  *
  * Quality: critical decision-makers (planner, roadmapper, debugger, verifier) at max, others at high.
  * Balanced: all inherit (session default applies, matches current behavior).
  * Budget: writers/decision-makers at high, mechanical/read-only agents at medium.
+ *
+ * Tier ordering (ascending thinking budget): low < medium < high < xhigh < max.
+ * Note: `xhigh` is not assigned in any default profile row — it is opt-in via
+ * `effort_overrides` only.
  */
 const EFFORT_PROFILES = {
   'gsd-planner':              { quality: 'max',     balanced: 'inherit', budget: 'high' },
@@ -125,6 +144,7 @@ module.exports = {
   MODEL_PROFILES,
   EFFORT_PROFILES,
   VALID_PROFILES,
+  VALID_EFFORT_VALUES,
   formatAgentToModelMapAsTable,
   formatAgentToEffortMapAsTable,
   getAgentToModelMapForProfile,
