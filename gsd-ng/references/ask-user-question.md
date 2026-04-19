@@ -1,9 +1,3 @@
-<!-- ONLY:claude -->
-<first_turn_rule>
-CRITICAL: AskUserQuestion is broken on the FIRST response turn after a command loads (Claude Code issue #29530). On your first response, do NOT call {{USER_QUESTION_TOOL}} — it must wait until turn two (after a user reply creates a turn boundary) to render reliably. Other tool work (Read, Bash, Agent, etc.) IS fine on turn one, but your first response's user-visible text must be only a brief plain-text status or "Ready" acknowledgment; detailed planning or execution prose must wait until after the turn boundary. After that first exchange, {{USER_QUESTION_TOOL}} works normally.
-</first_turn_rule>
-<!-- /ONLY:claude -->
-
 <tool_usage>
 CRITICAL: Every user choice in this workflow MUST be made via the {{USER_QUESTION_TOOL}} tool. NEVER write plain-text menus, lettered option lists (a/b/c), or numbered option lists. Presenting choices in plain text bypasses the interactive UI and violates this workflow's contract.
 
