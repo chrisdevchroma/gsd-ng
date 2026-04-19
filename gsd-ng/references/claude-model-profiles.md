@@ -122,7 +122,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 - `low` — Minimal thinking budget
 - `medium` — Moderate thinking budget
 - `high` — High thinking budget
-- `xhigh` — Extra-high thinking budget (Opus 4.7, between high and max). Override-only — not assigned in any default profile.
+- `xhigh` — Extra-high thinking budget (Opus 4.7, between high and max)
 - `max` — Maximum thinking budget
 - `inherit` — Omit effort from spawn; session default applies (current behavior)
 
@@ -135,7 +135,10 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 2. Check effort_overrides[agent] in .planning/config.json
 3. If no override, look up agent in EFFORT_PROFILES[agent][profile]
 4. If value is 'inherit', return null (omit effort parameter)
-5. If resolveModelInternal(agent) === 'haiku', return null (haiku does not support the effort: frontmatter). Emit a one-line stderr warning only if step 2 produced an explicit non-inherit override.
+5. Resolve the agent's model. If the model is incompatible with the effort, return null:
+   - haiku does not support the effort: frontmatter at all
+   - xhigh and max require opus
+   Emit a one-line stderr warning only if step 2 produced an explicit non-inherit override that is being dropped here.
 ```
 
 ### Runtime Gating
