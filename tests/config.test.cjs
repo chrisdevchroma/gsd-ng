@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { runGsdTools, createTempProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
-const { EFFORT_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
+const { EFFORT_PROFILES, MODEL_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -670,6 +670,23 @@ describe('EFFORT_PROFILES', () => {
     assert.ok('balanced' in firstAgent, 'balanced profile should exist');
     assert.ok('budget' in firstAgent, 'budget profile should exist');
     assert.strictEqual(Object.keys(firstAgent).length, 3, 'Should have exactly 3 profiles');
+  });
+
+  test('Test 9: EFFORT_PROFILES and MODEL_PROFILES share the same agent set (no key drift)', () => {
+    const effortKeys = Object.keys(EFFORT_PROFILES).sort();
+    const modelKeys = Object.keys(MODEL_PROFILES).sort();
+    const effortOnly = effortKeys.filter((k) => !modelKeys.includes(k));
+    const modelOnly = modelKeys.filter((k) => !effortKeys.includes(k));
+    assert.deepStrictEqual(
+      effortOnly,
+      [],
+      `Agents in EFFORT_PROFILES but missing from MODEL_PROFILES (would fall through to default 'sonnet'): ${effortOnly.join(', ')}`
+    );
+    assert.deepStrictEqual(
+      modelOnly,
+      [],
+      `Agents in MODEL_PROFILES but missing from EFFORT_PROFILES: ${modelOnly.join(', ')}`
+    );
   });
 });
 

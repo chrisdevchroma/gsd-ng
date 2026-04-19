@@ -20,15 +20,15 @@ Look up the agent in the table for the resolved profile. Pass the model paramete
 Task(
   prompt="...",
   subagent_type="gsd-planner",
-  model="{resolved_model}"  # null (inherit profile), "sonnet", or "haiku"
+  model="{resolved_model}"  # "opus", "sonnet", "haiku", or null
 )
 ```
 
-**Note:** Opus-tier agents resolve to `null` (not `"opus"` or `"inherit"`). The `null` return causes the `model` parameter to be omitted from Agent tool calls, so the agent inherits the parent session's model. This avoids conflicts with organization policies that may block specific opus versions.
+**Note:** `null` is returned only when `model_profile` is `inherit` or the agent has no row in `MODEL_PROFILES`. A `null` value causes the `model` parameter to be omitted from the Task call, so the spawned agent inherits the parent session's model.
 
 ## Usage
 
 1. Resolve once at orchestration start
 2. Store the profile value
 3. Look up each agent's model from the table when spawning
-4. Pass model parameter to each Task call (values: `null`, `"sonnet"`, `"haiku"` — null means omit the parameter)
+4. Pass model parameter to each Task call (values: `"opus"`, `"sonnet"`, `"haiku"`, or `null` — null means omit the parameter)
