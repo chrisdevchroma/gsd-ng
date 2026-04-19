@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { runGsdTools, createTempProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
-const { EFFORT_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
+const { EFFORT_PROFILES, MODEL_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -671,6 +671,23 @@ describe('EFFORT_PROFILES', () => {
     assert.ok('budget' in firstAgent, 'budget profile should exist');
     assert.strictEqual(Object.keys(firstAgent).length, 3, 'Should have exactly 3 profiles');
   });
+
+  test('Test 9: EFFORT_PROFILES and MODEL_PROFILES share the same agent set (no key drift)', () => {
+    const effortKeys = Object.keys(EFFORT_PROFILES).sort();
+    const modelKeys = Object.keys(MODEL_PROFILES).sort();
+    const effortOnly = effortKeys.filter((k) => !modelKeys.includes(k));
+    const modelOnly = modelKeys.filter((k) => !effortKeys.includes(k));
+    assert.deepStrictEqual(
+      effortOnly,
+      [],
+      `Agents in EFFORT_PROFILES but missing from MODEL_PROFILES (would fall through to default 'sonnet'): ${effortOnly.join(', ')}`
+    );
+    assert.deepStrictEqual(
+      modelOnly,
+      [],
+      `Agents in MODEL_PROFILES but missing from EFFORT_PROFILES: ${modelOnly.join(', ')}`
+    );
+  });
 });
 
 // ─── set-profile effort display and config-set effort_overrides (EFF-04, EFF-05) ─
@@ -743,6 +760,53 @@ describe('set-profile effort display and effort_overrides config-set (EFF-04, EF
     assert.ok(
       result.error.includes('Unknown config key'),
       `Expected "Unknown config key" in error, got: ${result.error}`
+    );
+  });
+
+  test('Test 12: config-set accepts effort_overrides.gsd-executor xhigh', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor xhigh', tmpDir);
+    assert.ok(
+      result.success,
+      `config-set effort_overrides.gsd-executor xhigh should succeed, got error: ${result.error}`
+    );
+
+    const config = JSON.parse(
+      require('fs').readFileSync(require('path').join(tmpDir, '.planning', 'config.json'), 'utf-8')
+    );
+    assert.strictEqual(config.effort_overrides['gsd-executor'], 'xhigh');
+  });
+
+  test('Test 13: config-set rejects invalid effort value (typo xhign)', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor xhign', tmpDir);
+    assert.strictEqual(
+      result.success,
+      false,
+      'effort_overrides.gsd-executor xhign should be rejected as invalid effort value'
+    );
+    assert.ok(
+      result.error.includes('xhign'),
+      `Expected "xhign" in error, got: ${result.error}`
+    );
+    assert.ok(
+      result.error.includes('low, medium, high, xhigh, max, inherit'),
+      `Expected valid values list in error, got: ${result.error}`
+    );
+  });
+
+  test('Test 14: config-set rejects invalid effort value (banana)', () => {
+    const result = runGsdTools('config-set effort_overrides.gsd-executor banana', tmpDir);
+    assert.strictEqual(
+      result.success,
+      false,
+      'effort_overrides.gsd-executor banana should be rejected as invalid effort value'
+    );
+    assert.ok(
+      result.error.includes('banana'),
+      `Expected "banana" in error, got: ${result.error}`
+    );
+    assert.ok(
+      result.error.includes('low, medium, high, xhigh, max, inherit'),
+      `Expected valid values list in error, got: ${result.error}`
     );
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Mapping of GSD agent to model for each profile.
  *
- * Should be in sync with the profiles table in `gsd-ng/references/model-profiles.md`. But
+ * Should be in sync with the profiles table in `gsd-ng/references/claude-model-profiles.md`. But
  * possibly worth making this the single source of truth at some point, and removing the markdown
  * reference table in favor of programmatically determining the model to use for an agent (which
  * would be faster, use fewer tokens, and be less error-prone).
@@ -15,7 +15,8 @@ const MODEL_PROFILES = {
   'gsd-research-synthesizer': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-debugger': { quality: 'opus', balanced: 'sonnet', budget: 'sonnet' },
   'gsd-codebase-mapper': { quality: 'sonnet', balanced: 'haiku', budget: 'haiku' },
-  'gsd-verifier': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
+  'gsd-incremental-mapper': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
+  'gsd-verifier': { quality: 'opus', balanced: 'sonnet', budget: 'haiku' },
   'gsd-plan-checker': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-integration-checker': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
   'gsd-nyquist-auditor': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
@@ -24,6 +25,15 @@ const MODEL_PROFILES = {
   'gsd-ui-auditor': { quality: 'sonnet', balanced: 'sonnet', budget: 'haiku' },
 };
 const VALID_PROFILES = Object.keys(MODEL_PROFILES['gsd-planner']);
+
+/**
+ * Valid values for the `effort:` frontmatter field and for `effort_overrides.*`
+ * entries in .planning/config.json.
+ *
+ * Tier ordering (ascending thinking budget): low < medium < high < xhigh < max.
+ * `inherit` resolves to null in resolveEffortInternal (omits the field).
+ */
+const VALID_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh', 'max', 'inherit'];
 
 /**
  * Mapping of GSD agent to effort level for each profile.
@@ -125,6 +135,7 @@ module.exports = {
   MODEL_PROFILES,
   EFFORT_PROFILES,
   VALID_PROFILES,
+  VALID_EFFORT_VALUES,
   formatAgentToModelMapAsTable,
   formatAgentToEffortMapAsTable,
   getAgentToModelMapForProfile,

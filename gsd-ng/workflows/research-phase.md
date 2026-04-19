@@ -8,7 +8,7 @@ Standalone research command. For most workflows, use `/gsd:plan-phase` which int
 
 ## Step 0: Resolve Model Profile
 
-@~/.claude/gsd-ng/references/model-profile-resolution.md
+@~/.claude/gsd-ng/references/claude-model-profile-resolution.md
 
 Resolve model for:
 - `gsd-phase-researcher`

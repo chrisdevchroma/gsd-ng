@@ -1131,4 +1131,172 @@ describe('resolveEffortInternal', () => {
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     assert.strictEqual(result, 'max');
   });
+
+  // Haiku-skip tests (Tests 9-13)
+
+  let stderrBuffer = '';
+  let origWriteSync;
+
+  function startStderrCapture() {
+    stderrBuffer = '';
+    origWriteSync = fs.writeSync;
+    fs.writeSync = (...args) => {
+      const [fd, data] = args;
+      if (fd === 2) {
+        stderrBuffer += String(data);
+        return Buffer.isBuffer(data) ? data.length : String(data).length;
+      }
+      return origWriteSync(...args);
+    };
+  }
+
+  function stopStderrCapture() {
+    if (origWriteSync) {
+      fs.writeSync = origWriteSync;
+      origWriteSync = undefined;
+    }
+    return stderrBuffer;
+  }
+
+  // Restore fs.writeSync even if a test throws between start/stop — prevents
+  // a failed assertion in one test from leaking the monkey-patch into the next.
+  afterEach(() => {
+    if (origWriteSync) {
+      fs.writeSync = origWriteSync;
+      origWriteSync = undefined;
+    }
+  });
+
+  test('Test 9: returns null for haiku model from profile (budget profile, gsd-research-synthesizer)', () => {
+    writeConfig({ model_profile: 'budget' });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-research-synthesizer');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when resolved model is haiku (from profile)');
+    assert.strictEqual(captured, '', 'No warning should emit for profile-derived haiku (no explicit override)');
+  });
+
+  test('Test 10: returns null when model_overrides forces haiku (quality profile, gsd-planner)', () => {
+    writeConfig({ model_profile: 'quality', model_overrides: { 'gsd-planner': 'haiku' } });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when model_overrides forces haiku');
+  });
+
+  test('Test 11: returns null AND emits warning when explicit effort_override + haiku model', () => {
+    writeConfig({
+      model_profile: 'quality',
+      model_overrides: { 'gsd-planner': 'haiku' },
+      effort_overrides: { 'gsd-planner': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when effort override is ignored due to haiku model');
+    assert.ok(captured.includes('haiku'), `Warning should mention haiku, got: ${captured}`);
+    assert.ok(captured.includes('gsd-planner'), `Warning should mention gsd-planner, got: ${captured}`);
+  });
+
+  test('Test 12: no warning when balanced profile (inherit effort, no explicit override)', () => {
+    writeConfig({ model_profile: 'balanced' });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null for balanced profile (inherit resolves to null)');
+    assert.strictEqual(captured, '', 'No warning for profile-derived effort (no explicit override)');
+  });
+
+  test('Test 13: profile=inherit (resolveModelInternal returns null) — no haiku skip, no crash', () => {
+    writeConfig({ model_profile: 'inherit' });
+    startStderrCapture();
+    let result;
+    assert.doesNotThrow(() => {
+      result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    });
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'Expected null when profile is inherit');
+    assert.strictEqual(captured, '', 'No warning when model resolves to null (not haiku)');
+  });
+
+  test('Test 14: explicit override max + sonnet model — skip + warn (max requires opus)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'sonnet' },
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'max effort dropped because sonnet is not opus');
+    assert.ok(captured.includes('max'), `Warning should mention max, got: ${captured}`);
+    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
+    assert.ok(captured.includes('gsd-executor'), `Warning should mention agent, got: ${captured}`);
+  });
+
+  test('Test 15: explicit override xhigh + sonnet model — skip + warn (xhigh requires opus)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'sonnet' },
+      effort_overrides: { 'gsd-executor': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'xhigh effort dropped because sonnet is not opus');
+    assert.ok(captured.includes('xhigh'), `Warning should mention xhigh, got: ${captured}`);
+    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
+  });
+
+  test('Test 16: profile-derived max + sonnet via model_overrides — silent skip, no warning', () => {
+    // Quality profile gives gsd-planner effort=max; force model to sonnet via override.
+    // Effort is profile-derived (no effort_overrides), so the skip is silent.
+    writeConfig({
+      model_profile: 'quality',
+      model_overrides: { 'gsd-planner': 'sonnet' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-planner');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, null, 'profile-derived max effort dropped silently for sonnet model');
+    assert.strictEqual(captured, '', 'No warning for profile-derived skip (no explicit effort override)');
+  });
+
+  test('Test 17: opus model + max effort — passes through (compatible)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'opus' },
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'max', 'max passes through when model is opus');
+    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+  });
+
+  test('Test 18: opus model + xhigh effort — passes through (compatible)', () => {
+    writeConfig({
+      model_profile: 'balanced',
+      model_overrides: { 'gsd-executor': 'opus' },
+      effort_overrides: { 'gsd-executor': 'xhigh' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'xhigh', 'xhigh passes through when model is opus');
+    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+  });
+
+  test('Test 19: profile=inherit with explicit max override — no skip (model unknown)', () => {
+    writeConfig({
+      model_profile: 'inherit',
+      effort_overrides: { 'gsd-executor': 'max' },
+    });
+    startStderrCapture();
+    const result = resolveEffortInternal(tmpDir, 'gsd-executor');
+    const captured = stopStderrCapture();
+    assert.strictEqual(result, 'max', 'max passes through when model is unknown (inherit)');
+    assert.strictEqual(captured, '', 'No warning when model is unknown — cannot determine compatibility');
+  });
 });

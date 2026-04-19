@@ -511,19 +511,44 @@ function resolveEffortInternal(cwd, agentType) {
     return null;
   }
 
-  // 1. Check per-agent effort override first
-  const override = config.effort_overrides?.[agentType];
-  if (override) {
-    return override === 'inherit' ? null : override;
+  // Resolve effort from override or profile (unchanged logic).
+  const hasExplicitOverride = Object.prototype.hasOwnProperty.call(
+    config.effort_overrides || {}, agentType
+  );
+  let effort;
+  if (hasExplicitOverride) {
+    const override = config.effort_overrides[agentType];
+    effort = override === 'inherit' ? null : override;
+  } else {
+    const profile = config.model_profile || 'balanced';
+    const agentEfforts = EFFORT_PROFILES[agentType];
+    if (!agentEfforts) return null;
+    const profileEffort = agentEfforts[profile];
+    effort = (!profileEffort || profileEffort === 'inherit') ? null : profileEffort;
   }
 
-  // 2. Fall back to profile lookup
-  const profile = config.model_profile || 'balanced';
-  const agentEfforts = EFFORT_PROFILES[agentType];
-  if (!agentEfforts) return null; // Unknown agent -> inherit
+  // Model-tier compatibility: haiku does not support effort at all; xhigh and max
+  // are opus-only tiers. When the resolved model is known and incompatible with the
+  // resolved effort, suppress (return null) and warn only on explicit overrides.
+  // resolveModelInternal returns null for session-inherit — leave those alone.
+  const resolvedModel = resolveModelInternal(cwd, agentType);
+  const haikuSkip = resolvedModel === 'haiku';
+  const opusOnlySkip =
+    resolvedModel && resolvedModel !== 'opus' && (effort === 'xhigh' || effort === 'max');
+  if (haikuSkip || opusOnlySkip) {
+    if (hasExplicitOverride && effort !== null) {
+      const overrideValue = config.effort_overrides[agentType];
+      const reason = haikuSkip
+        ? 'haiku does not support effort: frontmatter'
+        : `${effort} requires opus (resolved model: ${resolvedModel})`;
+      fs.writeSync(
+        2,
+        `Warning: effort_overrides.${agentType}="${overrideValue}" ignored — ${reason}\n`
+      );
+    }
+    return null;
+  }
 
-  const effort = agentEfforts[profile];
-  if (!effort || effort === 'inherit') return null; // null -> omit from spawn
   return effort;
 }
 
