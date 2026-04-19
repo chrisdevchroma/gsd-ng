@@ -6,6 +6,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const crypto = require('crypto');
+
 const INSTALLER = path.resolve(__dirname, '..', 'bin', 'install.js');
 
 // Resolve a writable temp base — sandbox sets TMPDIR=/tmp/claude which may not exist on disk
@@ -1433,6 +1435,160 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
 
     const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
     assert.strictEqual(config.runtime, 'claude', 'runtime must be updated from copilot to claude (RUNTIME-04)');
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-STAB-01: double-install is idempotent — no phantom local modifications ──
+
+test('MANIFEST-STAB-01: running --local claude install twice produces no "Found N locally modified" output and no populated gsd-local-patches/', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-stab-'));
+  try {
+    const runInstall = () => spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    const r1 = runInstall();
+    assert.strictEqual(r1.status, 0, 'first install must exit 0 (MANIFEST-STAB-01)\nstderr: ' + (r1.stderr || ''));
+    const r2 = runInstall();
+    assert.strictEqual(r2.status, 0, 'second install must exit 0 (MANIFEST-STAB-01)\nstderr: ' + (r2.stderr || ''));
+
+    const r2Stdout = r2.stdout || '';
+    assert.ok(
+      !/Found \d+ locally modified GSD file/.test(r2Stdout),
+      'second install must NOT report locally modified GSD files (MANIFEST-STAB-01).\n' +
+      'stdout: ' + r2Stdout.slice(0, 2000)
+    );
+
+    // gsd-local-patches either does not exist, or contains only meta/placeholder entries.
+    const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
+    if (fs.existsSync(patchesDir)) {
+      const entries = fs.readdirSync(patchesDir).filter(e => e !== '.gitkeep');
+      assert.strictEqual(
+        entries.length,
+        0,
+        'gsd-local-patches/ must be empty after double install (MANIFEST-STAB-01). Entries: ' + entries.join(', ')
+      );
+    }
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── TEMPLATE-RESOLVE-01: no unresolved {{…}} tokens in deployed .md files ──
+
+test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file under commands/gsd/ or gsd-ng/ contains {{USER_QUESTION_TOOL}} or {{PROJECT_RULES_FILE}}', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-tpl-resolve-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (TEMPLATE-RESOLVE-01)\nstderr: ' + (result.stderr || '')
+    );
+
+    const roots = [
+      path.join(tmpDir, '.claude', 'commands', 'gsd'),
+      path.join(tmpDir, '.claude', 'gsd-ng'),
+    ];
+    const BAD_TOKENS = ['{{USER_QUESTION_TOOL}}', '{{PROJECT_RULES_FILE}}'];
+
+    function walk(dir, out) {
+      if (!fs.existsSync(dir)) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full, out);
+        else if (entry.isFile() && entry.name.endsWith('.md')) out.push(full);
+      }
+    }
+
+    const mdFiles = [];
+    for (const root of roots) walk(root, mdFiles);
+    assert.ok(mdFiles.length > 0, 'expected deployed .md files to exist under commands/gsd/ and gsd-ng/ (TEMPLATE-RESOLVE-01)');
+
+    const offenders = [];
+    for (const f of mdFiles) {
+      const content = fs.readFileSync(f, 'utf8');
+      for (const tok of BAD_TOKENS) {
+        if (content.includes(tok)) {
+          offenders.push(path.relative(tmpDir, f) + ' :: ' + tok);
+          break;
+        }
+      }
+    }
+    assert.strictEqual(
+      offenders.length,
+      0,
+      'unresolved template tokens found in deployed .md files (TEMPLATE-RESOLVE-01):\n' + offenders.slice(0, 20).join('\n')
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-DISK-01: every manifest entry hashes to the on-disk file SHA256 ──
+
+test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.json entries match SHA256 of deployed files', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-disk-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (MANIFEST-DISK-01)\nstderr: ' + (result.stderr || '')
+    );
+
+    const configDir = path.join(tmpDir, '.claude');
+    const manifestPath = path.join(configDir, 'gsd-file-manifest.json');
+    assert.ok(fs.existsSync(manifestPath), 'gsd-file-manifest.json must exist (MANIFEST-DISK-01)');
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.ok(manifest.files && typeof manifest.files === 'object', 'manifest.files must be an object');
+    const entries = Object.entries(manifest.files);
+    assert.ok(entries.length > 0, 'manifest.files must be non-empty');
+
+    const mismatches = [];
+    for (const [relPath, storedHash] of entries) {
+      const full = path.join(configDir, relPath);
+      if (!fs.existsSync(full)) {
+        mismatches.push(relPath + ' :: MISSING_FILE');
+        continue;
+      }
+      const actual = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+      if (actual !== storedHash) {
+        mismatches.push(relPath + ' :: manifest=' + storedHash.slice(0, 12) + ' disk=' + actual.slice(0, 12));
+      }
+    }
+    assert.strictEqual(
+      mismatches.length,
+      0,
+      'manifest hashes must match on-disk SHA256 (MANIFEST-DISK-01):\n' + mismatches.slice(0, 20).join('\n')
+    );
   } finally {
     cleanup(tmpDir);
   }

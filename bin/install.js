@@ -1373,11 +1373,7 @@ function install(isGlobal) {
     process.exit(1);
   }
 
-  // Write file manifest for future modification detection
-  writeManifest(targetDir, INSTALLED_VERSION);
-  console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
-
-  // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib files.
+  // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib/commands files.
   // Uses template-processor.cjs (centralized template engine).
   // Copilot path handles this separately in convertClaudeToCopilotContent().
   // Path rewriting (e.g., ~/.claude/ -> ~/.copilot/) stays separate per design.
@@ -1387,6 +1383,7 @@ function install(isGlobal) {
       path.join(targetDir, 'gsd-ng', 'workflows'),
       path.join(targetDir, 'gsd-ng', 'references'),
       path.join(targetDir, 'gsd-ng', 'bin', 'lib'),
+      path.join(targetDir, 'commands', 'gsd'),
     ];
     for (const dir of claudeTemplateDirs) {
       if (!fs.existsSync(dir)) continue;
@@ -1405,6 +1402,11 @@ function install(isGlobal) {
       }
     }
   }
+
+  // Write file manifest AFTER template post-pass so hashes match resolved on-disk content.
+  // (If writeManifest ran before the loop, next install would detect phantom local modifications.)
+  writeManifest(targetDir, INSTALLED_VERSION);
+  console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
   // Report any backed-up local patches
   reportLocalPatches(targetDir);
