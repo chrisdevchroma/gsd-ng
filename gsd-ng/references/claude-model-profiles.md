@@ -124,7 +124,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 - `medium` — Moderate thinking budget
 - `high` — High thinking budget
 - `xhigh` — Extra-high thinking budget (Opus 4.7, between high and max)
-- `max` — Maximum thinking budget
+- `max` — Maximum thinking budget (Opus only)
 - `inherit` — Omit effort from spawn; session default applies (current behavior)
 
 **Tier ordering (ascending thinking budget):** `low < medium < high < xhigh < max`. Use `inherit` to explicitly omit the frontmatter.
