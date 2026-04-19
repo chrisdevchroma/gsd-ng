@@ -1,3 +1,3 @@
 <first_turn_rule>
-On your FIRST response after this command loads, output ONLY a brief plain-text status (e.g., "Loading context..." or a summary of what you'll do). Do NOT call {{USER_QUESTION_TOOL}} on this first turn. After the user replies, {{USER_QUESTION_TOOL}} works normally.
+On your FIRST response after this command loads, do NOT call {{USER_QUESTION_TOOL}} — it must wait until turn two so context is fully loaded. Other tool work (Read, Bash, Agent, etc.) is fine on turn one; post a brief plain-text status and proceed immediately with planning or execution. {{USER_QUESTION_TOOL}} works normally on subsequent turns.
 </first_turn_rule>

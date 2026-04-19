@@ -1,6 +1,6 @@
 <!-- ONLY:claude -->
 <first_turn_rule>
-CRITICAL: AskUserQuestion is broken on the FIRST response turn after a command loads (Claude Code issue #29530). On your very first response, output ONLY plain text -- a brief status message or "Ready" acknowledgment. Do NOT call {{USER_QUESTION_TOOL}} until the user replies (creating a turn boundary). After that first exchange, {{USER_QUESTION_TOOL}} works normally.
+CRITICAL: AskUserQuestion is broken on the FIRST response turn after a command loads (Claude Code issue #29530). On your first response, do NOT call {{USER_QUESTION_TOOL}} — it must wait until turn two (creating a turn boundary) to work reliably. Other tool work (Read, Bash, Agent, etc.) IS fine on turn one; post a brief plain-text status or "Ready" acknowledgment and proceed immediately with planning or execution. After that first exchange, {{USER_QUESTION_TOOL}} works normally.
 </first_turn_rule>
 <!-- /ONLY:claude -->
 
