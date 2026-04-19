@@ -238,7 +238,7 @@ Status: WIRED (call + response handling) | PARTIAL (call, no response use) | NOT
 
 ```bash
 grep -E "prisma\.$model|db\.$model|$model\.find|$model\.create|$model\.update|$model\.delete" "$route" 2>/dev/null
-grep -E "return.*json.*\w+|res\.json\(\w+" "$route" 2>/dev/null
+grep -E "return.*json.*[[:alnum:]_]+|res\.json\([[:alnum:]_]+" "$route" 2>/dev/null
 ```
 
 Status: WIRED (query + result returned) | PARTIAL (query, static return) | NOT_WIRED (no query)

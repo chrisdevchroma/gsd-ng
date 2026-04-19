@@ -18,14 +18,14 @@ grep -E "\[.*\]|<.*>|\{.*\}" "$file"  # Template brackets left in
 ```bash
 # Functions that do nothing
 grep -E "return null|return undefined|return \{\}|return \[\]" "$file"
-grep -E "pass$|\.\.\.|\bnothing\b" "$file"
+grep -E "pass$|\.\.\.|[[:space:]]nothing|^nothing" "$file"
 grep -E "console\.log.*only|console\.warn.*only|console\.error.*only" "$file"  # Log-only functions
 ```
 ```bash
 # Hardcoded IDs, counts, or content
 grep -E "id.*=.*['\"].*['\"]" "$file"  # Hardcoded string IDs
-grep -E "count.*=.*\d+|length.*=.*\d+" "$file"  # Hardcoded counts
-grep -E "\\\$\d+\.\d{2}|\d+ items" "$file"  # Hardcoded display values
+grep -E "count.*=.*[[:digit:]]+|length.*=.*[[:digit:]]+" "$file"  # Hardcoded counts
+grep -E "\\\$[[:digit:]]+\.[[:digit:]]{2}|[[:digit:]]+ items" "$file"  # Hardcoded display values
 ```
 ```bash
 # File exists and exports component
@@ -61,7 +61,7 @@ grep -E "^import.*from" "$component_path"
 
 # Props are actually used (not just received)
 # Look for destructuring or props.X usage
-grep -E "\{ .* \}.*props|\bprops\.[a-zA-Z]+" "$component_path"
+grep -E "\{ .* \}.*props|[[:space:]]props\.[a-zA-Z]+|^props\.[a-zA-Z]+" "$component_path"
 
 # API calls exist (for data-fetching components)
 grep -E "fetch\(|axios\.|useSWR|useQuery|getServerSideProps|getStaticProps" "$component_path"
