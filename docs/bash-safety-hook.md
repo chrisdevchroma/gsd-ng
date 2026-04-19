@@ -183,7 +183,6 @@ node --test tests/bash-hook.test.cjs tests/allowlist.test.cjs
 |---|---|
 | `hooks/bash-safety-hook.cjs` | The hook itself (decomposition, matching, decision) |
 | `gsd-ng/templates/settings-sandbox.json` | Default allow entries shipped with Claude runtime install |
-| `.github/gsd-ng/templates/settings-sandbox.json` | Same for Copilot runtime |
 | `bin/lib/allowlist.cjs` | Per-CLI granular pattern generator |
 | `bin/install.js` | Merges template + detected CLI patterns into user settings |
 | `tests/bash-hook.test.cjs` | Hook unit tests |
