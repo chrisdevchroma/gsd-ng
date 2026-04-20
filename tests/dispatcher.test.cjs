@@ -453,3 +453,52 @@ requirements-completed: [TEST-01]
     assert.deepStrictEqual(parsed.requirements_completed, ['TEST-01'], 'requirements_completed should contain TEST-01');
   });
 });
+
+// ─── sync-agents command (Phase 55) ──────────────────────────────────────────
+
+describe('sync-agents command (Phase 55)', () => {
+  let tmpDir;
+  const { createTempProjectWithAgents } = require('./helpers.cjs');
+  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+
+  test('EFFSYNC-CLI-01: sync-agents writes effort: frontmatter, prints clean summary on stdout, restart notice on stderr', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'claude', model_profile: 'quality' },
+    });
+    const result = runGsdTools(['sync-agents'], tmpDir);
+    assert.ok(result.success, `command failed: ${result.error}`);
+    const planner = fs.readFileSync(path.join(tmpDir, '.claude/agents/gsd-planner.md'), 'utf-8');
+    assert.match(planner, /^effort: max$/m);
+    // Stdout: clean summary, no restart notice substring
+    assert.ok(
+      result.output.includes('Synced 1 agent'),
+      `expected 'Synced 1 agent' in stdout: ${result.output}`
+    );
+    assert.ok(
+      !result.output.includes('Restart Claude Code'),
+      `restart notice should NOT appear in stdout (one-voice consistency): ${result.output}`
+    );
+    // Stderr: restart notice
+    assert.ok(
+      result.stderr.includes('Restart Claude Code to apply effort changes.'),
+      `restart notice missing from stderr: ${result.stderr}`
+    );
+  });
+
+  test('EFFSYNC-CLI-02: sync-agents reports "already in sync" on second run, no restart notice on stderr', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'claude', model_profile: 'quality' },
+    });
+    runGsdTools(['sync-agents'], tmpDir);
+    const second = runGsdTools(['sync-agents'], tmpDir);
+    assert.ok(second.success);
+    assert.ok(
+      second.output.includes('already in sync') || second.output.includes('Synced 0'),
+      `expected idempotent confirmation: ${second.output}`
+    );
+    assert.ok(
+      !second.stderr.includes('Restart Claude Code'),
+      `restart notice should NOT appear on idempotent run: ${second.stderr}`
+    );
+  });
+});

@@ -69,6 +69,26 @@ function createTempProject() {
   return tmpDir;
 }
 
+// Create temp directory structure with mock .claude/agents/*.md files
+//
+// @param {string[]} [agentNames=['gsd-planner','gsd-executor','gsd-verifier']] - Agent names
+// @param {object} [opts={}] - Options
+// @param {object} [opts.config] - If provided, written to .planning/config.json
+// @returns {string} tmpDir
+function createTempProjectWithAgents(agentNames = ['gsd-planner', 'gsd-executor', 'gsd-verifier'], opts = {}) {
+  const tmpDir = createTempProject();
+  fs.mkdirSync(path.join(tmpDir, '.claude', 'agents'), { recursive: true });
+  for (const name of agentNames) {
+    const content = `---\nname: ${name}\ndescription: Mock agent for tests\ntools: Read, Bash\ncolor: blue\n---\n\n# ${name}\n\nMock body.\n`;
+    fs.writeFileSync(path.join(tmpDir, '.claude', 'agents', `${name}.md`), content, 'utf8');
+  }
+  if (opts.config !== undefined) {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify(opts.config, null, 2), 'utf8');
+  }
+  return tmpDir;
+}
+
 // Create temp directory with initialized git repo and at least one commit
 //
 // @param {object} [opts={}] - Optional scaffolding options
@@ -213,4 +233,4 @@ function touchSubmodule(workspaceDir, submodulePath) {
   );
 }
 
-module.exports = { runGsdTools, createTempProject, createTempGitProject, cleanup, cleanupSubdir, resolveTmpDir, TOOLS_PATH, createSubmoduleWorkspace, touchSubmodule };
+module.exports = { runGsdTools, createTempProject, createTempProjectWithAgents, createTempGitProject, cleanup, cleanupSubdir, resolveTmpDir, TOOLS_PATH, createSubmoduleWorkspace, touchSubmodule };

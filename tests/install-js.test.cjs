@@ -1,5 +1,5 @@
 'use strict';
-const { test } = require('node:test');
+const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
@@ -1592,4 +1592,60 @@ test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.j
   } finally {
     cleanup(tmpDir);
   }
+});
+
+// ── Phase 55 effort frontmatter sync integration tests ──────────────────────
+
+describe('install.js - Phase 55 effort frontmatter sync', () => {
+  let tmpDir;
+  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+
+  test('EFFSYNC-INSTALL-01: Claude local install writes effort: max to gsd-planner.md when profile=quality', () => {
+    tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-install-'));
+    // Pre-seed config so resolveEffortInternal reads a known profile during install
+    const configDir = path.join(tmpDir, '.planning');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({
+      runtime: 'claude', model_profile: 'quality',
+    }));
+    const result = spawnSync(process.execPath, [
+      INSTALLER, '--runtime', 'claude', '--local',
+      '--no-seed-permissions-config', '--no-seed-sandbox-config',
+    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
+    const plannerPath = path.join(tmpDir, '.claude', 'agents', 'gsd-planner.md');
+    assert.ok(fs.existsSync(plannerPath), 'gsd-planner.md must be installed');
+    const planner = fs.readFileSync(plannerPath, 'utf-8');
+    assert.match(planner, /^effort: max$/m, 'effort: max must be in frontmatter');
+    // Plan 04 emits the restart notice on stderr when changes occur
+    assert.ok(
+      result.stderr.includes('Restart Claude Code to apply effort changes.'),
+      `restart notice missing from stderr: ${result.stderr}`
+    );
+  });
+
+  test('EFFSYNC-INSTALL-02: Copilot local install does NOT write effort: to any agent file', () => {
+    tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-copilot-'));
+    const result = spawnSync(process.execPath, [
+      INSTALLER, '--runtime', 'copilot', '--local',
+    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
+    const agentsDir = path.join(tmpDir, '.github', 'agents');
+    assert.ok(fs.existsSync(agentsDir), 'Copilot agents directory must exist');
+    const files = fs.readdirSync(agentsDir).filter(f => f.endsWith('.agent.md'));
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
+      assert.doesNotMatch(content, /^effort:/m, `${file} must not contain effort:`);
+    }
+  });
+
+  test('EFFSYNC-INSTALL-03: Copilot local install does NOT deploy gsd-set-profile skill', () => {
+    tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-copilot-skill-'));
+    const result = spawnSync(process.execPath, [
+      INSTALLER, '--runtime', 'copilot', '--local',
+    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
+    const setProfileSkill = path.join(tmpDir, '.github', 'skills', 'gsd-set-profile', 'SKILL.md');
+    assert.ok(!fs.existsSync(setProfileSkill), 'gsd-set-profile/SKILL.md must NOT exist for Copilot install');
+  });
 });

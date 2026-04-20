@@ -810,3 +810,97 @@ describe('set-profile effort display and effort_overrides config-set (EFF-04, EF
     );
   });
 });
+
+// ─── Phase 55 — effort sync wiring ───────────────────────────────────────────
+
+describe('Phase 55 — effort sync wiring', () => {
+  let tmpDir;
+  const { createTempProjectWithAgents } = require('./helpers.cjs');
+  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+
+  test('EFFSYNC-CONFIG-01: config-set-model-profile quality syncs agents and prints restart notice on stderr', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner', 'gsd-executor'], {
+      config: { runtime: 'claude', model_profile: 'balanced' },
+    });
+    const result = runGsdTools(['config-set-model-profile', 'quality'], tmpDir);
+    assert.ok(result.success, `command failed: ${result.error}`);
+    assert.ok(
+      result.stderr.includes('Restart Claude Code to apply effort changes.'),
+      `restart notice missing from stderr: ${result.stderr}`
+    );
+    const planner = fs.readFileSync(path.join(tmpDir, '.claude/agents/gsd-planner.md'), 'utf-8');
+    assert.match(planner, /^effort: max$/m);
+  });
+
+  test('EFFSYNC-CONFIG-02: config-set effort_overrides.gsd-executor low syncs and prints restart notice', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner', 'gsd-executor'], {
+      config: { runtime: 'claude', model_profile: 'quality' },
+    });
+    // First sync to baseline
+    runGsdTools(['config-set-model-profile', 'quality'], tmpDir);
+    const result = runGsdTools(['config-set', 'effort_overrides.gsd-executor', 'low'], tmpDir);
+    assert.ok(result.success, `command failed: ${result.error}`);
+    assert.ok(
+      result.stderr.includes('Restart Claude Code to apply effort changes.'),
+      `restart notice missing: ${result.stderr}`
+    );
+    const executor = fs.readFileSync(path.join(tmpDir, '.claude/agents/gsd-executor.md'), 'utf-8');
+    assert.match(executor, /^effort: low$/m);
+  });
+
+  test('EFFSYNC-CONFIG-03: restart notice is suppressed when no agent changed (idempotent re-set)', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'claude', model_profile: 'quality' },
+    });
+    runGsdTools(['config-set-model-profile', 'quality'], tmpDir); // baseline
+    const result = runGsdTools(['config-set-model-profile', 'quality'], tmpDir); // re-set, no change
+    assert.ok(result.success);
+    assert.ok(
+      !result.stderr.includes('Restart Claude Code'),
+      `restart notice should NOT appear when no changes: stderr was: ${result.stderr}`
+    );
+  });
+
+  test('EFFSYNC-CONFIG-04: config-get model_profile is gated to defaultValue on Copilot runtime', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      // hand-edited copilot config that includes profile keys (the strip must hide them)
+      config: { runtime: 'copilot', model_profile: 'quality', effort_overrides: { 'gsd-executor': 'high' } },
+    });
+    // With --default flag, Copilot consumer gets the default (key treated as not-present)
+    const withDefault = runGsdTools(['config-get', 'model_profile', '--default', 'balanced'], tmpDir);
+    assert.ok(withDefault.success, `expected success with --default, got: ${withDefault.error}`);
+    assert.match(
+      withDefault.output.trim(),
+      /^balanced$/,
+      `expected default 'balanced', got: ${withDefault.output}`
+    );
+    // Without --default, Copilot consumer gets a Key not found error
+    const noDefault = runGsdTools(['config-get', 'model_profile'], tmpDir);
+    assert.ok(!noDefault.success, `expected failure without --default, but command succeeded`);
+    assert.ok(
+      (noDefault.stderr || noDefault.error || '').includes('Key not found'),
+      `expected 'Key not found' error, got stderr=${noDefault.stderr} error=${noDefault.error}`
+    );
+  });
+
+  test('EFFSYNC-CONFIG-05: config-get model_profile returns the actual value on Claude runtime (no regression)', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'claude', model_profile: 'quality' },
+    });
+    const result = runGsdTools(['config-get', 'model_profile'], tmpDir);
+    assert.ok(result.success, `expected success, got: ${result.error}`);
+    assert.match(result.output.trim(), /^quality$/, `expected 'quality', got: ${result.output}`);
+  });
+
+  test('EFFSYNC-CONFIG-06: config-get effort_overrides.gsd-executor is gated on Copilot runtime', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'copilot', effort_overrides: { 'gsd-executor': 'high' } },
+    });
+    const result = runGsdTools(['config-get', 'effort_overrides.gsd-executor'], tmpDir);
+    assert.ok(!result.success, `expected failure on copilot, but command succeeded with output: ${result.output}`);
+    assert.ok(
+      (result.stderr || result.error || '').includes('Key not found'),
+      `expected 'Key not found' error, got stderr=${result.stderr} error=${result.error}`
+    );
+  });
+});

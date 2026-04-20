@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, planningPaths } = require('./core.cjs');
+const { output, error, planningPaths, loadConfig } = require('./core.cjs');
 const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 const {
   VALID_PROFILES,
@@ -14,6 +14,7 @@ const {
   formatAgentToModelMapAsTable,
   formatAgentToEffortMapAsTable,
 } = require('./model-profiles.cjs');
+const { syncAgentEffortFrontmatter, formatRestartNotice } = require('./effort-sync.cjs');
 
 const VALID_CONFIG_KEYS = new Set([
   'mode', 'granularity', 'parallelization', 'commit_docs', 'model_profile',
@@ -43,6 +44,12 @@ const VALID_CONFIG_KEYS = new Set([
 const SUBMODULE_KEY_PATTERN = /^git\.submodules\.[^.]+\.(target_branch|branching_strategy|phase_branch_template|milestone_branch_template|review_branch_template|remote|auto_push|platform|pr_template|pr_draft|commit_format|commit_template|versioning_scheme|type_aliases|ssh_check)$/;
 
 const EFFORT_OVERRIDE_KEY_PATTERN = /^effort_overrides\.[a-z][\w-]+$/;
+
+// Profile/effort keys are Claude-only surface (CONTEXT.md Area 1).
+// cmdConfigGet hides these from Copilot consumers — even if a hand-edited
+// copilot config.json contains them — so the read-side strip is robust
+// against future key additions.
+const PROFILE_EFFORT_KEY_PATTERN = /^(model_profile|model_overrides(\..+)?|effort_overrides(\..+)?)$/;
 
 const CONFIG_KEY_SUGGESTIONS = {
   'workflow.nyquist_validation_enabled': 'workflow.nyquist_validation',
@@ -220,6 +227,19 @@ function cmdConfigSet(cwd, keyPath, value) {
   else if (!isNaN(value) && value !== '') parsedValue = Number(value);
 
   const setConfigValueResult = setConfigValue(cwd, keyPath, parsedValue);
+
+  // For effort_overrides.* writes, sync deployed agent files immediately so the
+  // change takes effect on next Claude Code session restart.
+  if (EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)) {
+    const agentsDir = path.join(cwd, '.claude', 'agents');
+    const syncResult = syncAgentEffortFrontmatter(cwd, agentsDir);
+    const restartNotice = formatRestartNotice(syncResult.changes || []);
+    if (restartNotice) {
+      process.stderr.write(restartNotice + '\n');
+    }
+    setConfigValueResult.effortChanges = syncResult.changes || [];
+  }
+
   output(setConfigValueResult, `${keyPath}=${parsedValue}`);
 }
 
@@ -232,6 +252,25 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
 
   if (keyPath === 'git.submodule.workspace_branch') {
     process.stderr.write('Warning: git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.\n');
+  }
+
+  // Phase 55 Area 1 lock: profile/effort keys are Claude-only.
+  // When runtime === 'copilot', treat these keys as not-present so callers
+  // get the same not-found / defaultValue behaviour they would on a config
+  // that simply doesn't define them.
+  if (PROFILE_EFFORT_KEY_PATTERN.test(keyPath)) {
+    const cfg = loadConfig(cwd) || {};
+    const isClaudeCode = (cfg.runtime || 'claude') === 'claude';
+    if (isClaudeCode) {
+      // fall through to the existing lookup below
+    } else {
+      if (defaultValue !== undefined) {
+        output(defaultValue, String(defaultValue));
+        return;
+      }
+      error(`Key not found: ${keyPath}`);
+      return;
+    }
   }
 
   let config = {};
@@ -300,12 +339,23 @@ function cmdConfigSetModelProfile(cwd, profile) {
   // Build result value / message and return
   const agentToModelMap = getAgentToModelMapForProfile(normalizedProfile);
   const agentToEffortMap = getAgentToEffortMapForProfile(normalizedProfile);
+
+  // Sync effort: frontmatter into deployed agent files (Claude-only).
+  // Helper short-circuits on non-claude runtimes and missing .claude/agents dir.
+  const agentsDir = path.join(cwd, '.claude', 'agents');
+  const syncResult = syncAgentEffortFrontmatter(cwd, agentsDir);
+  const restartNotice = formatRestartNotice(syncResult.changes || []);
+  if (restartNotice) {
+    process.stderr.write(restartNotice + '\n');
+  }
+
   const result = {
     updated: true,
     profile: normalizedProfile,
     previousProfile,
     agentToModelMap,
     agentToEffortMap,
+    effortChanges: syncResult.changes || [],
   };
   const rawValue = getCmdConfigSetModelProfileResultMessage(
     normalizedProfile,
