@@ -208,6 +208,16 @@ function cmdConfigSet(cwd, keyPath, value) {
     error('git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.');
   }
 
+  // model_profile is a domain-level setting, not a flat key/value.
+  // Route users to the dedicated command so they get profile validation,
+  // agent effort sync, and the restart notice.
+  if (keyPath === 'model_profile') {
+    error(
+      "'model_profile' must be set via 'config-set-model-profile <profile>'. " +
+      "Setting it through 'config-set' skips agent effort sync, profile validation, and the restart notice."
+    );
+  }
+
   if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath) && !EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)) {
     error(`Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`);
   }

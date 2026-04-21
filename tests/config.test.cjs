@@ -136,16 +136,16 @@ describe('config-set command', () => {
   });
 
   test('sets a top-level string value', () => {
-    const result = runGsdTools('config-set model_profile quality --json', tmpDir);
+    const result = runGsdTools('config-set mode interactive --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, true);
-    assert.strictEqual(output.key, 'model_profile');
-    assert.strictEqual(output.value, 'quality');
+    assert.strictEqual(output.key, 'mode');
+    assert.strictEqual(output.value, 'interactive');
 
     const config = readConfig(tmpDir);
-    assert.strictEqual(config.model_profile, 'quality');
+    assert.strictEqual(config.mode, 'interactive');
   });
 
   test('coerces true to boolean', () => {
@@ -176,12 +176,12 @@ describe('config-set command', () => {
   });
 
   test('preserves plain strings', () => {
-    const result = runGsdTools('config-set model_profile hello', tmpDir);
+    const result = runGsdTools('config-set mode hello', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const config = readConfig(tmpDir);
-    assert.strictEqual(config.model_profile, 'hello');
-    assert.strictEqual(typeof config.model_profile, 'string');
+    assert.strictEqual(config.mode, 'hello');
+    assert.strictEqual(typeof config.mode, 'string');
   });
 
   test('sets nested values via dot-notation', () => {
@@ -902,5 +902,21 @@ describe('Phase 55 — effort sync wiring', () => {
       (result.stderr || result.error || '').includes('Key not found'),
       `expected 'Key not found' error, got stderr=${result.stderr} error=${result.error}`
     );
+  });
+
+  test('EFFSYNC-CONFIG-07: config-set model_profile is rejected and points users to config-set-model-profile', () => {
+    tmpDir = createTempProjectWithAgents(['gsd-planner'], {
+      config: { runtime: 'claude', model_profile: 'balanced' },
+    });
+    const result = runGsdTools(['config-set', 'model_profile', 'quality'], tmpDir);
+    assert.ok(!result.success, `expected failure, but config-set model_profile succeeded: ${result.output}`);
+    const msg = (result.stderr || result.error || '');
+    assert.ok(
+      msg.includes('config-set-model-profile'),
+      `error should name the correct command, got: ${msg}`
+    );
+    // The key must NOT have been written (value still matches the pre-seeded profile).
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning/config.json'), 'utf-8'));
+    assert.strictEqual(cfg.model_profile, 'balanced', 'config must be untouched by rejected set');
   });
 });
