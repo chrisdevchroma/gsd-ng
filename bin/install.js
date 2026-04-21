@@ -403,205 +403,205 @@ function uninstall(isGlobal) {
 
   if (isClaudeCode) {
     // 1. Remove GSD commands
-  const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
-  if (fs.existsSync(gsdCommandsDir)) {
-    fs.rmSync(gsdCommandsDir, { recursive: true });
-    removedCount++;
-    console.log(`  ${green}✓${reset} Removed commands/gsd/`);
-  }
-
-  // 2. Remove gsd-ng directory
-  const gsdDir = path.join(targetDir, 'gsd-ng');
-  if (fs.existsSync(gsdDir)) {
-    fs.rmSync(gsdDir, { recursive: true });
-    removedCount++;
-    console.log(`  ${green}✓${reset} Removed gsd-ng/`);
-  }
-
-  // 3. Remove GSD agents (gsd-*.md files only)
-  const agentsDir = path.join(targetDir, 'agents');
-  if (fs.existsSync(agentsDir)) {
-    const files = fs.readdirSync(agentsDir);
-    let agentCount = 0;
-    for (const file of files) {
-      if (file.startsWith('gsd-') && file.endsWith('.md')) {
-        fs.unlinkSync(path.join(agentsDir, file));
-        agentCount++;
-      }
-    }
-    if (agentCount > 0) {
+    const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
+    if (fs.existsSync(gsdCommandsDir)) {
+      fs.rmSync(gsdCommandsDir, { recursive: true });
       removedCount++;
-      console.log(`  ${green}✓${reset} Removed ${agentCount} GSD agents`);
+      console.log(`  ${green}✓${reset} Removed commands/gsd/`);
     }
-  }
 
-  // 4. Remove GSD hooks
-  const hooksDir = path.join(targetDir, 'hooks');
-  if (fs.existsSync(hooksDir)) {
-    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'gsd-sandbox-detect.js', 'gsd-guardrail.js'];
-    let hookCount = 0;
-    for (const hook of gsdHooks) {
-      const hookPath = path.join(hooksDir, hook);
-      if (fs.existsSync(hookPath)) {
-        fs.unlinkSync(hookPath);
-        hookCount++;
-      }
-    }
-    if (hookCount > 0) {
+    // 2. Remove gsd-ng directory
+    const gsdDir = path.join(targetDir, 'gsd-ng');
+    if (fs.existsSync(gsdDir)) {
+      fs.rmSync(gsdDir, { recursive: true });
       removedCount++;
-      console.log(`  ${green}✓${reset} Removed ${hookCount} GSD hooks`);
-    }
-  }
-
-  // 5. Remove GSD package.json (CommonJS mode marker)
-  const pkgJsonPath = path.join(targetDir, 'package.json');
-  if (fs.existsSync(pkgJsonPath)) {
-    try {
-      const content = fs.readFileSync(pkgJsonPath, 'utf8').trim();
-      // Only remove if it's our minimal CommonJS marker
-      if (content === '{"type":"commonjs"}') {
-        fs.unlinkSync(pkgJsonPath);
-        removedCount++;
-        console.log(`  ${green}✓${reset} Removed GSD package.json`);
-      }
-    } catch (e) {
-      // Ignore read errors
-    }
-  }
-
-  // 6. Clean up settings.json (remove GSD hooks and statusline)
-  const settingsPath = path.join(targetDir, 'settings.json');
-  if (fs.existsSync(settingsPath)) {
-    let settings = readSettings(settingsPath);
-    let settingsModified = false;
-
-    // Remove GSD statusline if it references our hook
-    if (settings.statusLine && settings.statusLine.command &&
-        settings.statusLine.command.includes('gsd-statusline')) {
-      delete settings.statusLine;
-      settingsModified = true;
-      console.log(`  ${green}✓${reset} Removed GSD statusline from settings`);
+      console.log(`  ${green}✓${reset} Removed gsd-ng/`);
     }
 
-    // Remove GSD hooks from SessionStart
-    if (settings.hooks && settings.hooks.SessionStart) {
-      const before = settings.hooks.SessionStart.length;
-      settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry => {
-        if (entry.hooks && Array.isArray(entry.hooks)) {
-          // Filter out GSD hooks
-          const hasGsdHook = entry.hooks.some(h =>
-            h.command && (h.command.includes('gsd-check-update') || h.command.includes('gsd-statusline'))
-          );
-          return !hasGsdHook;
+    // 3. Remove GSD agents (gsd-*.md files only)
+    const agentsDir = path.join(targetDir, 'agents');
+    if (fs.existsSync(agentsDir)) {
+      const files = fs.readdirSync(agentsDir);
+      let agentCount = 0;
+      for (const file of files) {
+        if (file.startsWith('gsd-') && file.endsWith('.md')) {
+          fs.unlinkSync(path.join(agentsDir, file));
+          agentCount++;
         }
-        return true;
-      });
-      if (settings.hooks.SessionStart.length < before) {
-        settingsModified = true;
-        console.log(`  ${green}✓${reset} Removed GSD hooks from settings`);
       }
-      // Clean up empty array
-      if (settings.hooks.SessionStart.length === 0) {
-        delete settings.hooks.SessionStart;
+      if (agentCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${agentCount} GSD agents`);
       }
     }
 
-    // Remove GSD hooks from PostToolUse
-    for (const eventName of ['PostToolUse']) {
-      if (settings.hooks && settings.hooks[eventName]) {
-        const before = settings.hooks[eventName].length;
-        settings.hooks[eventName] = settings.hooks[eventName].filter(entry => {
+    // 4. Remove GSD hooks
+    const hooksDir = path.join(targetDir, 'hooks');
+    if (fs.existsSync(hooksDir)) {
+      const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'gsd-sandbox-detect.js', 'gsd-guardrail.js'];
+      let hookCount = 0;
+      for (const hook of gsdHooks) {
+        const hookPath = path.join(hooksDir, hook);
+        if (fs.existsSync(hookPath)) {
+          fs.unlinkSync(hookPath);
+          hookCount++;
+        }
+      }
+      if (hookCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${hookCount} GSD hooks`);
+      }
+    }
+
+    // 5. Remove GSD package.json (CommonJS mode marker)
+    const pkgJsonPath = path.join(targetDir, 'package.json');
+    if (fs.existsSync(pkgJsonPath)) {
+      try {
+        const content = fs.readFileSync(pkgJsonPath, 'utf8').trim();
+        // Only remove if it's our minimal CommonJS marker
+        if (content === '{"type":"commonjs"}') {
+          fs.unlinkSync(pkgJsonPath);
+          removedCount++;
+          console.log(`  ${green}✓${reset} Removed GSD package.json`);
+        }
+      } catch (e) {
+        // Ignore read errors
+      }
+    }
+
+    // 6. Clean up settings.json (remove GSD hooks and statusline)
+    const settingsPath = path.join(targetDir, 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      let settings = readSettings(settingsPath);
+      let settingsModified = false;
+
+      // Remove GSD statusline if it references our hook
+      if (settings.statusLine && settings.statusLine.command &&
+          settings.statusLine.command.includes('gsd-statusline')) {
+        delete settings.statusLine;
+        settingsModified = true;
+        console.log(`  ${green}✓${reset} Removed GSD statusline from settings`);
+      }
+
+      // Remove GSD hooks from SessionStart
+      if (settings.hooks && settings.hooks.SessionStart) {
+        const before = settings.hooks.SessionStart.length;
+        settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry => {
           if (entry.hooks && Array.isArray(entry.hooks)) {
+            // Filter out GSD hooks
             const hasGsdHook = entry.hooks.some(h =>
-              h.command && h.command.includes('gsd-context-monitor')
+              h.command && (h.command.includes('gsd-check-update') || h.command.includes('gsd-statusline'))
             );
             return !hasGsdHook;
           }
           return true;
         });
-        if (settings.hooks[eventName].length < before) {
+        if (settings.hooks.SessionStart.length < before) {
           settingsModified = true;
-          console.log(`  ${green}✓${reset} Removed context monitor hook from settings`);
+          console.log(`  ${green}✓${reset} Removed GSD hooks from settings`);
         }
-        if (settings.hooks[eventName].length === 0) {
-          delete settings.hooks[eventName];
+        // Clean up empty array
+        if (settings.hooks.SessionStart.length === 0) {
+          delete settings.hooks.SessionStart;
         }
       }
-    }
 
-    // Remove GSD hooks from PreToolUse (gsd-sandbox-detect.js, gsd-guardrail.js)
-    if (settings.hooks && settings.hooks.PreToolUse) {
-      const before = settings.hooks.PreToolUse.length;
-      settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(entry => {
-        if (entry.hooks && Array.isArray(entry.hooks)) {
-          const hasGsdHook = entry.hooks.some(h =>
-            h.command && (h.command.includes('gsd-sandbox-detect') || h.command.includes('gsd-guardrail'))
-          );
-          return !hasGsdHook;
-        }
-        return true;
-      });
-      if (settings.hooks.PreToolUse.length < before) {
-        settingsModified = true;
-        console.log(`  ${green}✓${reset} Removed GSD PreToolUse hooks from settings`);
-      }
-      if (settings.hooks.PreToolUse.length === 0) {
-        delete settings.hooks.PreToolUse;
-      }
-    }
-
-    // Remove GSD-seeded permissions.allow entries
-    if (settings.permissions && Array.isArray(settings.permissions.allow)) {
-      const sandboxTemplatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
-      try {
-        let templateEntries = [];
-        if (fs.existsSync(sandboxTemplatePath)) {
-          const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
-          templateEntries = sandboxTemplate.permissions?.allow ?? [];
-        }
-
-        // Also compute dynamic platform CLI entries for removal
-        const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
-        const dynamicEntries = [];
-        for (const cli of platformCLIs) {
-          try {
-            execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
-            dynamicEntries.push(...getPlatformCliPatterns(cli));
-          } catch {
-            // CLI not installed — skip
+      // Remove GSD hooks from PostToolUse
+      for (const eventName of ['PostToolUse']) {
+        if (settings.hooks && settings.hooks[eventName]) {
+          const before = settings.hooks[eventName].length;
+          settings.hooks[eventName] = settings.hooks[eventName].filter(entry => {
+            if (entry.hooks && Array.isArray(entry.hooks)) {
+              const hasGsdHook = entry.hooks.some(h =>
+                h.command && h.command.includes('gsd-context-monitor')
+              );
+              return !hasGsdHook;
+            }
+            return true;
+          });
+          if (settings.hooks[eventName].length < before) {
+            settingsModified = true;
+            console.log(`  ${green}✓${reset} Removed context monitor hook from settings`);
+          }
+          if (settings.hooks[eventName].length === 0) {
+            delete settings.hooks[eventName];
           }
         }
-        const removalSet = new Set([...templateEntries, ...dynamicEntries]);
-        const before = settings.permissions.allow.length;
-        settings.permissions.allow = settings.permissions.allow.filter(e => !removalSet.has(e));
+      }
 
-        if (settings.permissions.allow.length < before) {
+      // Remove GSD hooks from PreToolUse (gsd-sandbox-detect.js, gsd-guardrail.js)
+      if (settings.hooks && settings.hooks.PreToolUse) {
+        const before = settings.hooks.PreToolUse.length;
+        settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(entry => {
+          if (entry.hooks && Array.isArray(entry.hooks)) {
+            const hasGsdHook = entry.hooks.some(h =>
+              h.command && (h.command.includes('gsd-sandbox-detect') || h.command.includes('gsd-guardrail'))
+            );
+            return !hasGsdHook;
+          }
+          return true;
+        });
+        if (settings.hooks.PreToolUse.length < before) {
           settingsModified = true;
-          console.log(`  ${green}✓${reset} Removed GSD permissions from settings`);
+          console.log(`  ${green}✓${reset} Removed GSD PreToolUse hooks from settings`);
         }
+        if (settings.hooks.PreToolUse.length === 0) {
+          delete settings.hooks.PreToolUse;
+        }
+      }
 
-        // Clean up empty structures
-        if (settings.permissions.allow.length === 0) {
-          delete settings.permissions.allow;
+      // Remove GSD-seeded permissions.allow entries
+      if (settings.permissions && Array.isArray(settings.permissions.allow)) {
+        const sandboxTemplatePath = path.join(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
+        try {
+          let templateEntries = [];
+          if (fs.existsSync(sandboxTemplatePath)) {
+            const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+            templateEntries = sandboxTemplate.permissions?.allow ?? [];
+          }
+
+          // Also compute dynamic platform CLI entries for removal
+          const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
+          const dynamicEntries = [];
+          for (const cli of platformCLIs) {
+            try {
+              execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
+              dynamicEntries.push(...getPlatformCliPatterns(cli));
+            } catch {
+              // CLI not installed — skip
+            }
+          }
+          const removalSet = new Set([...templateEntries, ...dynamicEntries]);
+          const before = settings.permissions.allow.length;
+          settings.permissions.allow = settings.permissions.allow.filter(e => !removalSet.has(e));
+
+          if (settings.permissions.allow.length < before) {
+            settingsModified = true;
+            console.log(`  ${green}✓${reset} Removed GSD permissions from settings`);
+          }
+
+          // Clean up empty structures
+          if (settings.permissions.allow.length === 0) {
+            delete settings.permissions.allow;
+          }
+          if (settings.permissions && Object.keys(settings.permissions).length === 0) {
+            delete settings.permissions;
+          }
+        } catch {
+          // Template missing or unreadable — skip
         }
-        if (settings.permissions && Object.keys(settings.permissions).length === 0) {
-          delete settings.permissions;
-        }
-      } catch {
-        // Template missing or unreadable — skip
+      }
+
+      // Clean up empty hooks object
+      if (settings.hooks && Object.keys(settings.hooks).length === 0) {
+        delete settings.hooks;
+      }
+
+      if (settingsModified) {
+        writeSettings(settingsPath, settings);
+        removedCount++;
       }
     }
-
-    // Clean up empty hooks object
-    if (settings.hooks && Object.keys(settings.hooks).length === 0) {
-      delete settings.hooks;
-    }
-
-    if (settingsModified) {
-      writeSettings(settingsPath, settings);
-      removedCount++;
-    }
-  }
 
     if (removedCount === 0) {
       console.log(`  ${yellow}⚠${reset} No GSD files found to remove.`);
@@ -1122,436 +1122,436 @@ function install(isGlobal) {
 
   if (isClaudeCode) {
     // Save any locally modified GSD files before they get wiped
-  saveLocalPatches(targetDir);
+    saveLocalPatches(targetDir);
 
-  // Claude Code: nested structure in commands/ directory
-  const commandsDir = path.join(targetDir, 'commands');
-  fs.mkdirSync(commandsDir, { recursive: true });
+    // Claude Code: nested structure in commands/ directory
+    const commandsDir = path.join(targetDir, 'commands');
+    fs.mkdirSync(commandsDir, { recursive: true });
 
-  const gsdSrc = path.join(src, 'commands', 'gsd');
-  const gsdDest = path.join(commandsDir, 'gsd');
-  copyWithPathReplacement(gsdSrc, gsdDest, pathPrefix, true);
-  if (verifyInstalled(gsdDest, 'commands/gsd')) {
-    console.log(`  ${green}✓${reset} Installed commands/gsd`);
-  } else {
-    failures.push('commands/gsd');
-  }
-
-  // Copy gsd-ng skill with path replacement
-  const skillSrc = path.join(src, 'gsd-ng');
-  const skillDest = path.join(targetDir, 'gsd-ng');
-  copyWithPathReplacement(skillSrc, skillDest, pathPrefix);
-  if (verifyInstalled(skillDest, 'gsd-ng')) {
-    console.log(`  ${green}✓${reset} Installed gsd-ng`);
-  } else {
-    failures.push('gsd-ng');
-  }
-
-  // Copy agents to agents directory
-  const agentsSrc = path.join(src, 'agents');
-  if (fs.existsSync(agentsSrc)) {
-    const agentsDest = path.join(targetDir, 'agents');
-    fs.mkdirSync(agentsDest, { recursive: true });
-
-    // Remove old GSD agents (gsd-*.md) before copying new ones
-    if (fs.existsSync(agentsDest)) {
-      for (const file of fs.readdirSync(agentsDest)) {
-        if (file.startsWith('gsd-') && file.endsWith('.md')) {
-          fs.unlinkSync(path.join(agentsDest, file));
-        }
-      }
-    }
-
-    // Copy new agents
-    const agentEntries = fs.readdirSync(agentsSrc, { withFileTypes: true });
-    for (const entry of agentEntries) {
-      if (entry.isFile() && entry.name.endsWith('.md')) {
-        let content = fs.readFileSync(path.join(agentsSrc, entry.name), 'utf8');
-        // Replace ~/.claude/ and $HOME/.claude/ as they are the source of truth in the repo
-        const dirRegex = /~\/\.claude\//g;
-        const homeDirRegex = /\$HOME\/\.claude\//g;
-        content = content.replace(dirRegex, toHomePrefix(pathPrefix));
-        content = content.replace(homeDirRegex, toHomePrefix(pathPrefix));
-        content = processAttribution(content, getCommitAttribution());
-        fs.writeFileSync(path.join(agentsDest, entry.name), content);
-      }
-    }
-    if (verifyInstalled(agentsDest, 'agents')) {
-      console.log(`  ${green}✓${reset} Installed agents`);
+    const gsdSrc = path.join(src, 'commands', 'gsd');
+    const gsdDest = path.join(commandsDir, 'gsd');
+    copyWithPathReplacement(gsdSrc, gsdDest, pathPrefix, true);
+    if (verifyInstalled(gsdDest, 'commands/gsd')) {
+      console.log(`  ${green}✓${reset} Installed commands/gsd`);
     } else {
-      failures.push('agents');
+      failures.push('commands/gsd');
     }
-  }
 
-  // Sync effort: frontmatter into deployed agent files (Claude-only, post-copy).
-  // Must run BEFORE writeManifest so manifest hashes the post-sync content.
-  // Note: this code path now lives inside Plan 03's outer `if (isClaudeCode) { ... }`
-  // wrapper, so the explicit isClaudeCode check below is technically redundant —
-  // keep it as a defensive guard that documents intent and survives future refactors.
-  if (isClaudeCode && fs.existsSync(path.join(targetDir, 'agents'))) {
-    const effortAgentsDir = path.join(targetDir, 'agents');
-    const syncResult = syncAgentEffortFrontmatter(process.cwd(), effortAgentsDir);
-    if (syncResult.changes && syncResult.changes.length > 0) {
-      console.log(`  ${green}✓${reset} Synced effort frontmatter (${syncResult.changes.length} agent${syncResult.changes.length === 1 ? '' : 's'} changed)`);
-      // CONTEXT.md Area 4 lock: restart notice on real changes at ALL three touchpoints
-      // (install, set-profile, config-set effort_overrides). Use stderr to match Plans 05/06
-      // emission style — keeps stdout / JSON-mode payloads clean and gives all three call
-      // sites one voice.
-      const restartNotice = formatRestartNotice(syncResult.changes);
-      if (restartNotice) {
-        process.stderr.write(restartNotice + '\n');
-      }
-    }
-  }
-
-  // Copy CHANGELOG.md
-  const changelogSrc = path.join(src, 'CHANGELOG.md');
-  const changelogDest = path.join(targetDir, 'gsd-ng', 'CHANGELOG.md');
-  if (fs.existsSync(changelogSrc)) {
-    fs.copyFileSync(changelogSrc, changelogDest);
-    if (verifyFileInstalled(changelogDest, 'CHANGELOG.md')) {
-      console.log(`  ${green}✓${reset} Installed CHANGELOG.md`);
+    // Copy gsd-ng skill with path replacement
+    const skillSrc = path.join(src, 'gsd-ng');
+    const skillDest = path.join(targetDir, 'gsd-ng');
+    copyWithPathReplacement(skillSrc, skillDest, pathPrefix);
+    if (verifyInstalled(skillDest, 'gsd-ng')) {
+      console.log(`  ${green}✓${reset} Installed gsd-ng`);
     } else {
-      failures.push('CHANGELOG.md');
+      failures.push('gsd-ng');
     }
-  }
 
-  // Write VERSION file (with +hash for snapshot/develop installs)
-  const versionDest = path.join(targetDir, 'gsd-ng', 'VERSION');
-  fs.writeFileSync(versionDest, INSTALLED_VERSION);
-  if (verifyFileInstalled(versionDest, 'VERSION')) {
-    console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
-  } else {
-    failures.push('VERSION');
-  }
+    // Copy agents to agents directory
+    const agentsSrc = path.join(src, 'agents');
+    if (fs.existsSync(agentsSrc)) {
+      const agentsDest = path.join(targetDir, 'agents');
+      fs.mkdirSync(agentsDest, { recursive: true });
 
-  // Write package.json to force CommonJS mode for GSD scripts
-  // Prevents "require is not defined" errors when project has "type": "module"
-  // Node.js walks up looking for package.json - this stops inheritance from project
-  const pkgJsonDest = path.join(targetDir, 'package.json');
-  fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
-  console.log(`  ${green}✓${reset} Wrote package.json (CommonJS mode)`);
-
-  // Copy hooks from dist/ (bundled with dependencies) and .cjs files directly from hooks/
-  // Template paths for the target runtime (replaces '.claude' with correct config dir)
-  const hooksSrc = path.join(src, 'hooks', 'dist');
-  const hooksCjsSrc = path.join(src, 'hooks');
-  if (fs.existsSync(hooksSrc) || fs.existsSync(hooksCjsSrc)) {
-    const hooksDest = path.join(targetDir, 'hooks');
-    fs.mkdirSync(hooksDest, { recursive: true });
-    const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
-
-    // Copy bundled .js hooks from dist/ (with config dir templating)
-    if (fs.existsSync(hooksSrc)) {
-      const hookEntries = fs.readdirSync(hooksSrc);
-      for (const entry of hookEntries) {
-        const srcFile = path.join(hooksSrc, entry);
-        if (fs.statSync(srcFile).isFile()) {
-          const destFile = path.join(hooksDest, entry);
-          // Template .js files to replace '.claude' with runtime-specific config dir
-          if (entry.endsWith('.js')) {
-            let content = fs.readFileSync(srcFile, 'utf8');
-            content = content.replace(/'\.claude'/g, configDirReplacement);
-            fs.writeFileSync(destFile, content);
-          } else {
-            fs.copyFileSync(srcFile, destFile);
+      // Remove old GSD agents (gsd-*.md) before copying new ones
+      if (fs.existsSync(agentsDest)) {
+        for (const file of fs.readdirSync(agentsDest)) {
+          if (file.startsWith('gsd-') && file.endsWith('.md')) {
+            fs.unlinkSync(path.join(agentsDest, file));
           }
         }
       }
+
+      // Copy new agents
+      const agentEntries = fs.readdirSync(agentsSrc, { withFileTypes: true });
+      for (const entry of agentEntries) {
+        if (entry.isFile() && entry.name.endsWith('.md')) {
+          let content = fs.readFileSync(path.join(agentsSrc, entry.name), 'utf8');
+          // Replace ~/.claude/ and $HOME/.claude/ as they are the source of truth in the repo
+          const dirRegex = /~\/\.claude\//g;
+          const homeDirRegex = /\$HOME\/\.claude\//g;
+          content = content.replace(dirRegex, toHomePrefix(pathPrefix));
+          content = content.replace(homeDirRegex, toHomePrefix(pathPrefix));
+          content = processAttribution(content, getCommitAttribution());
+          fs.writeFileSync(path.join(agentsDest, entry.name), content);
+        }
+      }
+      if (verifyInstalled(agentsDest, 'agents')) {
+        console.log(`  ${green}✓${reset} Installed agents`);
+      } else {
+        failures.push('agents');
+      }
     }
 
-    // Copy .cjs hooks directly from hooks/ (no bundling needed — no external dependencies)
-    if (fs.existsSync(hooksCjsSrc)) {
-      const cjsEntries = fs.readdirSync(hooksCjsSrc);
-      for (const entry of cjsEntries) {
-        if (entry.endsWith('.cjs')) {
-          const srcFile = path.join(hooksCjsSrc, entry);
+    // Sync effort: frontmatter into deployed agent files (Claude-only, post-copy).
+    // Must run BEFORE writeManifest so manifest hashes the post-sync content.
+    // Note: this code path now lives inside Plan 03's outer `if (isClaudeCode) { ... }`
+    // wrapper, so the explicit isClaudeCode check below is technically redundant —
+    // keep it as a defensive guard that documents intent and survives future refactors.
+    if (isClaudeCode && fs.existsSync(path.join(targetDir, 'agents'))) {
+      const effortAgentsDir = path.join(targetDir, 'agents');
+      const syncResult = syncAgentEffortFrontmatter(process.cwd(), effortAgentsDir);
+      if (syncResult.changes && syncResult.changes.length > 0) {
+        console.log(`  ${green}✓${reset} Synced effort frontmatter (${syncResult.changes.length} agent${syncResult.changes.length === 1 ? '' : 's'} changed)`);
+        // CONTEXT.md Area 4 lock: restart notice on real changes at ALL three touchpoints
+        // (install, set-profile, config-set effort_overrides). Use stderr to match Plans 05/06
+        // emission style — keeps stdout / JSON-mode payloads clean and gives all three call
+        // sites one voice.
+        const restartNotice = formatRestartNotice(syncResult.changes);
+        if (restartNotice) {
+          process.stderr.write(restartNotice + '\n');
+        }
+      }
+    }
+
+    // Copy CHANGELOG.md
+    const changelogSrc = path.join(src, 'CHANGELOG.md');
+    const changelogDest = path.join(targetDir, 'gsd-ng', 'CHANGELOG.md');
+    if (fs.existsSync(changelogSrc)) {
+      fs.copyFileSync(changelogSrc, changelogDest);
+      if (verifyFileInstalled(changelogDest, 'CHANGELOG.md')) {
+        console.log(`  ${green}✓${reset} Installed CHANGELOG.md`);
+      } else {
+        failures.push('CHANGELOG.md');
+      }
+    }
+
+    // Write VERSION file (with +hash for snapshot/develop installs)
+    const versionDest = path.join(targetDir, 'gsd-ng', 'VERSION');
+    fs.writeFileSync(versionDest, INSTALLED_VERSION);
+    if (verifyFileInstalled(versionDest, 'VERSION')) {
+      console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
+    } else {
+      failures.push('VERSION');
+    }
+
+    // Write package.json to force CommonJS mode for GSD scripts
+    // Prevents "require is not defined" errors when project has "type": "module"
+    // Node.js walks up looking for package.json - this stops inheritance from project
+    const pkgJsonDest = path.join(targetDir, 'package.json');
+    fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
+    console.log(`  ${green}✓${reset} Wrote package.json (CommonJS mode)`);
+
+    // Copy hooks from dist/ (bundled with dependencies) and .cjs files directly from hooks/
+    // Template paths for the target runtime (replaces '.claude' with correct config dir)
+    const hooksSrc = path.join(src, 'hooks', 'dist');
+    const hooksCjsSrc = path.join(src, 'hooks');
+    if (fs.existsSync(hooksSrc) || fs.existsSync(hooksCjsSrc)) {
+      const hooksDest = path.join(targetDir, 'hooks');
+      fs.mkdirSync(hooksDest, { recursive: true });
+      const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
+
+      // Copy bundled .js hooks from dist/ (with config dir templating)
+      if (fs.existsSync(hooksSrc)) {
+        const hookEntries = fs.readdirSync(hooksSrc);
+        for (const entry of hookEntries) {
+          const srcFile = path.join(hooksSrc, entry);
           if (fs.statSync(srcFile).isFile()) {
-            fs.copyFileSync(srcFile, path.join(hooksDest, entry));
-          }
-        }
-      }
-    }
-
-    if (verifyInstalled(hooksDest, 'hooks')) {
-      console.log(`  ${green}✓${reset} Installed hooks (bundled)`);
-    } else {
-      failures.push('hooks');
-    }
-  }
-
-  if (failures.length > 0) {
-    console.error(`\n  ${yellow}Installation incomplete!${reset} Failed: ${failures.join(', ')}`);
-    process.exit(1);
-  }
-
-  // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib/commands files.
-  // Uses template-processor.cjs (centralized template engine).
-  // Copilot path handles this separately in convertClaudeToCopilotContent().
-  // Path rewriting (e.g., ~/.claude/ -> ~/.copilot/) stays separate per design.
-  const ctx = buildContext('claude');
-  const claudeTemplateDirs = [
-    path.join(targetDir, 'gsd-ng', 'workflows'),
-    path.join(targetDir, 'gsd-ng', 'references'),
-    path.join(targetDir, 'gsd-ng', 'bin', 'lib'),
-    path.join(targetDir, 'commands', 'gsd'),
-  ];
-  for (const dir of claudeTemplateDirs) {
-    if (!fs.existsSync(dir)) continue;
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') || f.endsWith('.cjs'));
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      let content = fs.readFileSync(filePath, 'utf-8');
-      if (content.includes('{{') || content.includes('<!-- ONLY:')) {
-        try {
-          content = processTemplate(content, ctx);
-          fs.writeFileSync(filePath, content, 'utf-8');
-        } catch {
-          // Skip files with unbalanced markers (e.g., documentation containing example syntax)
-        }
-      }
-    }
-  }
-
-  // Write file manifest AFTER template post-pass so hashes match resolved on-disk content.
-  // (If writeManifest ran before the loop, next install would detect phantom local modifications.)
-  writeManifest(targetDir, INSTALLED_VERSION);
-  console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
-
-  // Report any backed-up local patches
-  reportLocalPatches(targetDir);
-
-  // Configure statusline and hooks in settings.json
-  const postToolEvent = 'PostToolUse';
-  const settingsPath = path.join(targetDir, 'settings.json');
-  const settings = readSettings(settingsPath);
-  const statuslineCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-statusline.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-statusline.js';
-  const updateCheckCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-check-update.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-check-update.js';
-  const contextMonitorCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-context-monitor.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-context-monitor.js';
-  const sandboxDetectCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-sandbox-detect.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-sandbox-detect.js';
-  const guardrailCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-guardrail.js')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-guardrail.js';
-  const bashSafetyCommand = isGlobal
-    ? buildHookCommand(targetDir, 'bash-safety-hook.cjs')
-    : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/bash-safety-hook.cjs';
-
-  // Configure hooks in settings.json
-  if (!settings.hooks) {
-    settings.hooks = {};
-  }
-
-  // Configure SessionStart hook for update checking
-  if (!settings.hooks.SessionStart) {
-    settings.hooks.SessionStart = [];
-  }
-
-  const hasGsdUpdateHook = settings.hooks.SessionStart.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-check-update'))
-  );
-
-  if (!hasGsdUpdateHook) {
-    settings.hooks.SessionStart.push({
-      hooks: [
-        {
-          type: 'command',
-          command: updateCheckCommand
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Configured update check hook`);
-  }
-
-  // Configure post-tool hook for context window monitoring
-  if (!settings.hooks[postToolEvent]) {
-    settings.hooks[postToolEvent] = [];
-  }
-
-  const hasContextMonitorHook = settings.hooks[postToolEvent].some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))
-  );
-
-  if (!hasContextMonitorHook) {
-    settings.hooks[postToolEvent].push({
-      matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
-      hooks: [
-        {
-          type: 'command',
-          command: contextMonitorCommand,
-          timeout: 10
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Configured context window monitor hook`);
-  } else {
-    // Migration: add matcher/timeout to existing context monitor hooks without them
-    for (const entry of settings.hooks[postToolEvent]) {
-      if (entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))) {
-        if (!entry.matcher) {
-          entry.matcher = 'Bash|Edit|Write|MultiEdit|Agent|Task';
-        }
-        for (const h of entry.hooks) {
-          if (h.command && h.command.includes('gsd-context-monitor') && !h.timeout) {
-            h.timeout = 10;
-          }
-        }
-      }
-    }
-  }
-
-  // Configure PreToolUse hook for sandbox detection
-  if (!settings.hooks.PreToolUse) {
-    settings.hooks.PreToolUse = [];
-  }
-
-  const hasGsdSandboxDetectHook = settings.hooks.PreToolUse.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-sandbox-detect'))
-  );
-
-  if (!hasGsdSandboxDetectHook) {
-    settings.hooks.PreToolUse.push({
-      hooks: [
-        {
-          type: 'command',
-          command: sandboxDetectCommand
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Configured sandbox detection hook`);
-  }
-
-  // Configure PreToolUse hook for workflow guardrail
-  const hasGsdGuardrailHook = settings.hooks.PreToolUse.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-guardrail'))
-  );
-
-  if (!hasGsdGuardrailHook) {
-    settings.hooks.PreToolUse.push({
-      matcher: 'Edit|Write|EnterPlanMode',
-      hooks: [
-        {
-          type: 'command',
-          command: guardrailCommand,
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Configured workflow guardrail hook`);
-  }
-
-  // Configure PreToolUse hook for bash command safety (compound command allowlist).
-  // Replaces AST safety rules — transparent hook instead of model instructions.
-  // See: https://github.com/anthropics/claude-code/issues/30435
-  // Append at END of PreToolUse array — user's custom hooks run first.
-  const hasGsdBashSafetyHook = settings.hooks.PreToolUse.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
-  );
-
-  if (!hasGsdBashSafetyHook) {
-    settings.hooks.PreToolUse.push({
-      matcher: 'Bash',
-      hooks: [
-        {
-          type: 'command',
-          command: bashSafetyCommand
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Configured bash command safety hook`);
-  }
-
-  // Seed permissions.allow from settings-sandbox.json template
-  if (!noSeedPermissionsConfig) {
-    const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
-    try {
-      const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
-      const templateEntries = sandboxTemplate.permissions?.allow ?? [];
-
-      // Detect platform CLIs dynamically
-      const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
-      const dynamicEntries = [];
-      for (const cli of platformCLIs) {
-        try {
-          execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
-          dynamicEntries.push(...getPlatformCliPatterns(cli));
-        } catch {
-          // CLI not installed — skip
-        }
-      }
-
-      // Also check .planning/config.json for configured platform
-      const configPath = path.join(process.cwd(), '.planning', 'config.json');
-      try {
-        if (fs.existsSync(configPath)) {
-          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          const platform = config.git?.platform;
-          if (platform && PLATFORM_TO_CLI[platform]) {
-            const cliPatterns = getPlatformCliPatterns(PLATFORM_TO_CLI[platform]);
-            for (const entry of cliPatterns) {
-              if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
+            const destFile = path.join(hooksDest, entry);
+            // Template .js files to replace '.claude' with runtime-specific config dir
+            if (entry.endsWith('.js')) {
+              let content = fs.readFileSync(srcFile, 'utf8');
+              content = content.replace(/'\.claude'/g, configDirReplacement);
+              fs.writeFileSync(destFile, content);
+            } else {
+              fs.copyFileSync(srcFile, destFile);
             }
           }
         }
-      } catch {
-        // config.json missing or unparseable — skip
       }
 
-      // Non-destructive merge: add missing entries, keep existing
-      const allNewEntries = [...templateEntries, ...dynamicEntries];
-      const existingAllow = settings.permissions?.allow ?? [];
-      const entriesToAdd = allNewEntries.filter(e => !existingAllow.includes(e));
+      // Copy .cjs hooks directly from hooks/ (no bundling needed — no external dependencies)
+      if (fs.existsSync(hooksCjsSrc)) {
+        const cjsEntries = fs.readdirSync(hooksCjsSrc);
+        for (const entry of cjsEntries) {
+          if (entry.endsWith('.cjs')) {
+            const srcFile = path.join(hooksCjsSrc, entry);
+            if (fs.statSync(srcFile).isFile()) {
+              fs.copyFileSync(srcFile, path.join(hooksDest, entry));
+            }
+          }
+        }
+      }
 
-      if (entriesToAdd.length > 0) {
-        if (!settings.permissions) settings.permissions = {};
-        if (!settings.permissions.allow) settings.permissions.allow = [];
-        settings.permissions.allow.push(...entriesToAdd);
-        console.log(`  ${green}✓${reset} Seeded ${entriesToAdd.length} permissions`);
+      if (verifyInstalled(hooksDest, 'hooks')) {
+        console.log(`  ${green}✓${reset} Installed hooks (bundled)`);
       } else {
-        console.log(`  ${green}✓${reset} Permissions already up to date`);
+        failures.push('hooks');
       }
-    } catch {
-      // Template missing or unreadable — skip silently
     }
-  }
 
-  // Seed sandbox settings by default (opt-out via --no-seed-sandbox-config)
-  if (!noSeedSandboxConfig) {
-    const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
-    try {
-      const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
-      let sandboxSeeded = false;
-
-      if (sandboxTemplate.sandbox) {
-        if (!settings.sandbox) settings.sandbox = {};
-        if (settings.sandbox.enabled === undefined && sandboxTemplate.sandbox.enabled !== undefined) {
-          settings.sandbox.enabled = sandboxTemplate.sandbox.enabled;
-          sandboxSeeded = true;
-        }
-        if (settings.sandbox.autoAllowBashIfSandboxed === undefined && sandboxTemplate.sandbox.autoAllowBashIfSandboxed !== undefined) {
-          settings.sandbox.autoAllowBashIfSandboxed = sandboxTemplate.sandbox.autoAllowBashIfSandboxed;
-          sandboxSeeded = true;
-        }
-      }
-
-      if (sandboxSeeded) {
-        console.log(`  ${green}✓${reset} Enabled sandbox mode`);
-      }
-    } catch {
-      // Template missing or unreadable — skip
+    if (failures.length > 0) {
+      console.error(`\n  ${yellow}Installation incomplete!${reset} Failed: ${failures.join(', ')}`);
+      process.exit(1);
     }
-  }
 
-  // Persist runtime to .planning/config.json for effort-gating
-  writeRuntimeToConfig(runtime);
+    // Resolve {{variables}} and <!-- ONLY:x --> markers in Claude workflow/reference/lib/commands files.
+    // Uses template-processor.cjs (centralized template engine).
+    // Copilot path handles this separately in convertClaudeToCopilotContent().
+    // Path rewriting (e.g., ~/.claude/ -> ~/.copilot/) stays separate per design.
+    const ctx = buildContext('claude');
+    const claudeTemplateDirs = [
+      path.join(targetDir, 'gsd-ng', 'workflows'),
+      path.join(targetDir, 'gsd-ng', 'references'),
+      path.join(targetDir, 'gsd-ng', 'bin', 'lib'),
+      path.join(targetDir, 'commands', 'gsd'),
+    ];
+    for (const dir of claudeTemplateDirs) {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') || f.endsWith('.cjs'));
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        let content = fs.readFileSync(filePath, 'utf-8');
+        if (content.includes('{{') || content.includes('<!-- ONLY:')) {
+          try {
+            content = processTemplate(content, ctx);
+            fs.writeFileSync(filePath, content, 'utf-8');
+          } catch {
+            // Skip files with unbalanced markers (e.g., documentation containing example syntax)
+          }
+        }
+      }
+    }
 
-  return { settingsPath, settings, statuslineCommand };
+    // Write file manifest AFTER template post-pass so hashes match resolved on-disk content.
+    // (If writeManifest ran before the loop, next install would detect phantom local modifications.)
+    writeManifest(targetDir, INSTALLED_VERSION);
+    console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
+
+    // Report any backed-up local patches
+    reportLocalPatches(targetDir);
+
+    // Configure statusline and hooks in settings.json
+    const postToolEvent = 'PostToolUse';
+    const settingsPath = path.join(targetDir, 'settings.json');
+    const settings = readSettings(settingsPath);
+    const statuslineCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-statusline.js')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-statusline.js';
+    const updateCheckCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-check-update.js')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-check-update.js';
+    const contextMonitorCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-context-monitor.js')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-context-monitor.js';
+    const sandboxDetectCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-sandbox-detect.js')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-sandbox-detect.js';
+    const guardrailCommand = isGlobal
+      ? buildHookCommand(targetDir, 'gsd-guardrail.js')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-guardrail.js';
+    const bashSafetyCommand = isGlobal
+      ? buildHookCommand(targetDir, 'bash-safety-hook.cjs')
+      : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/bash-safety-hook.cjs';
+
+    // Configure hooks in settings.json
+    if (!settings.hooks) {
+      settings.hooks = {};
+    }
+
+    // Configure SessionStart hook for update checking
+    if (!settings.hooks.SessionStart) {
+      settings.hooks.SessionStart = [];
+    }
+
+    const hasGsdUpdateHook = settings.hooks.SessionStart.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-check-update'))
+    );
+
+    if (!hasGsdUpdateHook) {
+      settings.hooks.SessionStart.push({
+        hooks: [
+          {
+            type: 'command',
+            command: updateCheckCommand
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured update check hook`);
+    }
+
+    // Configure post-tool hook for context window monitoring
+    if (!settings.hooks[postToolEvent]) {
+      settings.hooks[postToolEvent] = [];
+    }
+
+    const hasContextMonitorHook = settings.hooks[postToolEvent].some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))
+    );
+
+    if (!hasContextMonitorHook) {
+      settings.hooks[postToolEvent].push({
+        matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+        hooks: [
+          {
+            type: 'command',
+            command: contextMonitorCommand,
+            timeout: 10
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured context window monitor hook`);
+    } else {
+      // Migration: add matcher/timeout to existing context monitor hooks without them
+      for (const entry of settings.hooks[postToolEvent]) {
+        if (entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))) {
+          if (!entry.matcher) {
+            entry.matcher = 'Bash|Edit|Write|MultiEdit|Agent|Task';
+          }
+          for (const h of entry.hooks) {
+            if (h.command && h.command.includes('gsd-context-monitor') && !h.timeout) {
+              h.timeout = 10;
+            }
+          }
+        }
+      }
+    }
+
+    // Configure PreToolUse hook for sandbox detection
+    if (!settings.hooks.PreToolUse) {
+      settings.hooks.PreToolUse = [];
+    }
+
+    const hasGsdSandboxDetectHook = settings.hooks.PreToolUse.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-sandbox-detect'))
+    );
+
+    if (!hasGsdSandboxDetectHook) {
+      settings.hooks.PreToolUse.push({
+        hooks: [
+          {
+            type: 'command',
+            command: sandboxDetectCommand
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured sandbox detection hook`);
+    }
+
+    // Configure PreToolUse hook for workflow guardrail
+    const hasGsdGuardrailHook = settings.hooks.PreToolUse.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-guardrail'))
+    );
+
+    if (!hasGsdGuardrailHook) {
+      settings.hooks.PreToolUse.push({
+        matcher: 'Edit|Write|EnterPlanMode',
+        hooks: [
+          {
+            type: 'command',
+            command: guardrailCommand,
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured workflow guardrail hook`);
+    }
+
+    // Configure PreToolUse hook for bash command safety (compound command allowlist).
+    // Replaces AST safety rules — transparent hook instead of model instructions.
+    // See: https://github.com/anthropics/claude-code/issues/30435
+    // Append at END of PreToolUse array — user's custom hooks run first.
+    const hasGsdBashSafetyHook = settings.hooks.PreToolUse.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    );
+
+    if (!hasGsdBashSafetyHook) {
+      settings.hooks.PreToolUse.push({
+        matcher: 'Bash',
+        hooks: [
+          {
+            type: 'command',
+            command: bashSafetyCommand
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured bash command safety hook`);
+    }
+
+    // Seed permissions.allow from settings-sandbox.json template
+    if (!noSeedPermissionsConfig) {
+      const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
+      try {
+        const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+        const templateEntries = sandboxTemplate.permissions?.allow ?? [];
+
+        // Detect platform CLIs dynamically
+        const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
+        const dynamicEntries = [];
+        for (const cli of platformCLIs) {
+          try {
+            execSync(`which ${cli}`, { stdio: 'ignore', timeout: 2000 });
+            dynamicEntries.push(...getPlatformCliPatterns(cli));
+          } catch {
+            // CLI not installed — skip
+          }
+        }
+
+        // Also check .planning/config.json for configured platform
+        const configPath = path.join(process.cwd(), '.planning', 'config.json');
+        try {
+          if (fs.existsSync(configPath)) {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const platform = config.git?.platform;
+            if (platform && PLATFORM_TO_CLI[platform]) {
+              const cliPatterns = getPlatformCliPatterns(PLATFORM_TO_CLI[platform]);
+              for (const entry of cliPatterns) {
+                if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
+              }
+            }
+          }
+        } catch {
+          // config.json missing or unparseable — skip
+        }
+
+        // Non-destructive merge: add missing entries, keep existing
+        const allNewEntries = [...templateEntries, ...dynamicEntries];
+        const existingAllow = settings.permissions?.allow ?? [];
+        const entriesToAdd = allNewEntries.filter(e => !existingAllow.includes(e));
+
+        if (entriesToAdd.length > 0) {
+          if (!settings.permissions) settings.permissions = {};
+          if (!settings.permissions.allow) settings.permissions.allow = [];
+          settings.permissions.allow.push(...entriesToAdd);
+          console.log(`  ${green}✓${reset} Seeded ${entriesToAdd.length} permissions`);
+        } else {
+          console.log(`  ${green}✓${reset} Permissions already up to date`);
+        }
+      } catch {
+        // Template missing or unreadable — skip silently
+      }
+    }
+
+    // Seed sandbox settings by default (opt-out via --no-seed-sandbox-config)
+    if (!noSeedSandboxConfig) {
+      const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
+      try {
+        const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
+        let sandboxSeeded = false;
+
+        if (sandboxTemplate.sandbox) {
+          if (!settings.sandbox) settings.sandbox = {};
+          if (settings.sandbox.enabled === undefined && sandboxTemplate.sandbox.enabled !== undefined) {
+            settings.sandbox.enabled = sandboxTemplate.sandbox.enabled;
+            sandboxSeeded = true;
+          }
+          if (settings.sandbox.autoAllowBashIfSandboxed === undefined && sandboxTemplate.sandbox.autoAllowBashIfSandboxed !== undefined) {
+            settings.sandbox.autoAllowBashIfSandboxed = sandboxTemplate.sandbox.autoAllowBashIfSandboxed;
+            sandboxSeeded = true;
+          }
+        }
+
+        if (sandboxSeeded) {
+          console.log(`  ${green}✓${reset} Enabled sandbox mode`);
+        }
+      } catch {
+        // Template missing or unreadable — skip
+      }
+    }
+
+    // Persist runtime to .planning/config.json for effort-gating
+    writeRuntimeToConfig(runtime);
+
+    return { settingsPath, settings, statuslineCommand };
 
   } else {
     // Copilot: skills (from commands), agents, gsd-ng engine, copilot-instructions.md
