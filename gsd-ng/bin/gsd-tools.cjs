@@ -16,6 +16,7 @@
  *   state patch --field val ...        Batch update STATE.md fields
  *   resolve-model <agent-type>         Get model for agent based on profile
  *   resolve-effort <agent-type>        Get effort for agent based on profile
+ *   sync-agents [--agents-dir <path>]  Re-sync effort: frontmatter into agent files
  *   find-phase <phase>                 Find phase directory by number
  *   commit <message> [--files f1 f2]   Commit planning docs
  *   verify-summary <path>              Verify a SUMMARY.md file
@@ -177,11 +178,12 @@ const frontmatter = require('./lib/frontmatter.cjs');
 const workspace = require('./lib/workspace.cjs');
 const guard = require('./lib/guard.cjs');
 const testBaseline = require('./lib/test-baseline.cjs');
+const effortSync = require('./lib/effort-sync.cjs');
 
 // ─── Command Registry (for typo detection) ────────────────────────────────────
 
 const ALL_COMMANDS = [
-  'state', 'resolve-model', 'resolve-effort', 'find-phase', 'commit', 'verify-summary',
+  'state', 'resolve-model', 'resolve-effort', 'sync-agents', 'find-phase', 'commit', 'verify-summary',
   'template', 'frontmatter', 'verify', 'generate-slug', 'current-timestamp',
   'list-todos', 'recurring-due', 'staleness-check', 'verify-path-exists',
   'config-ensure-section', 'config-set', 'config-set-model-profile',
@@ -322,6 +324,7 @@ const ARG_SCHEMAS = {
   'commit':             { _self: { positional: { min: 0, max: null }, flags: ['--amend', '--files'] } },
   'verify-summary':     { _self: { positional: { min: 1, max: 1 }, flags: ['--check-count'] } },
   'staleness-check':    { _self: { positional: { min: 0, max: 0 }, flags: ['--count'] } },
+  'sync-agents':        { _self: { positional: { min: 0, max: 0 }, flags: ['--agents-dir'] } },
   'config-get':         { _self: { positional: { min: 1, max: 1 }, flags: ['--default'] } },
   'update':             { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run', '--local', '--global'] } },
   'scaffold':           { _self: { positional: { min: 1, max: null }, flags: ['--phase', '--name'] } },
@@ -840,6 +843,49 @@ async function main() {
 
     case 'resolve-effort': {
       commands.cmdResolveEffort(cwd, args[1]);
+      break;
+    }
+
+    case 'sync-agents': {
+      validateArgs('sync-agents', null, args.slice(1));
+      // Optional --agents-dir override (default: <cwd>/.claude/agents).
+      const agentsDirIdx = args.indexOf('--agents-dir');
+      const customAgentsDir = agentsDirIdx !== -1 ? args[agentsDirIdx + 1] : null;
+      const agentsDir = customAgentsDir
+        ? path.resolve(customAgentsDir)
+        : path.join(cwd, '.claude', 'agents');
+
+      if (!fs.existsSync(agentsDir)) {
+        coreOutput(
+          { skipped: true, reason: 'agents-dir-missing', agentsDir, changes: [] },
+          `No agents directory found at ${agentsDir} — run the installer first.`
+        );
+        break;
+      }
+
+      const syncResult = effortSync.syncAgentEffortFrontmatter(cwd, agentsDir);
+      const changeCount = (syncResult.changes || []).length;
+
+      // Build a clean stdout summary — NO restart notice embedded here.
+      // The restart notice goes to stderr separately so JSON-mode consumers
+      // get a clean payload on stdout and the notice doesn't pollute pipelines.
+      const syncSummary = syncResult.skipped
+        ? 'Skipped — non-Claude runtime.'
+        : (changeCount === 0
+          ? 'Agents already in sync.'
+          : `Synced ${changeCount} agent${changeCount === 1 ? '' : 's'}.`);
+
+      // Emit the restart notice via stderr ONLY when the helper reports real changes.
+      // Same emission shape as Plan 04 (install.js) and Plan 05 (config.cjs) — one voice.
+      const restartNotice = effortSync.formatRestartNotice(syncResult.changes || []);
+      if (restartNotice) {
+        process.stderr.write(restartNotice + '\n');
+      }
+
+      coreOutput(
+        { ...syncResult, restartNotice },
+        syncSummary
+      );
       break;
     }
 
