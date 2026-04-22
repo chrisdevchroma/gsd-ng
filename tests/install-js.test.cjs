@@ -21,12 +21,12 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
   try {
     const result = spawnSync(
       process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--global', '--config-dir', path.join(tmpDir, '.claude')],
+      [INSTALLER, '--runtime', 'claude', '--global'],
       {
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
       }
     );
 
@@ -69,12 +69,12 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
   try {
     const result = spawnSync(
       process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--global', '--uninstall', '--config-dir', path.join(tmpDir, '.claude')],
+      [INSTALLER, '--runtime', 'claude', '--global', '--uninstall'],
       {
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
       }
     );
 
@@ -189,18 +189,26 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
   }
 });
 
-// ── PERM-06: settings-sandbox.json template contains Agent(*), bare Edit, bare Write, bare Read ──
+// ── PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(*)/Write(*)/Read(*),
+//            no deny rules, subshell builtins.
+//
+//            Template uses canonical macOS forms (Edit(*), Write(*), Read(*)).
+//            install.js down-converts to bare forms on Linux via getReadEditWriteAllowRules().
+//            See 54-CONTEXT.md "Template allow canonicalisation" decision.
 
-test('PERM-06: settings-sandbox.json template contains Agent(*), bare Edit/Write/Read, no deny rules, subshell builtins', () => {
+test('PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(*)/Write(*)/Read(*), excludes bare Edit/Write/Read, no deny rules, subshell builtins', () => {
   const templatePath = path.resolve(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
   const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
   const allow = template.permissions.allow;
   assert.ok(allow.includes('Agent(*)'), 'template must include Agent(*)');
-  assert.ok(allow.includes('Edit'), 'template must include bare Edit (not Edit(*)) for Linux bubblewrap compatibility');
-  assert.ok(allow.includes('Write'), 'template must include bare Write (not Write(*)) for Linux bubblewrap compatibility');
-  assert.ok(allow.includes('Read'), 'template must include bare Read for Linux bubblewrap compatibility');
-  assert.ok(allow.indexOf('Edit(*)') === -1, 'template must NOT include Edit(*) -- use bare Edit instead');
-  assert.ok(allow.indexOf('Write(*)') === -1, 'template must NOT include Write(*) -- use bare Write instead');
+  // Template ships canonical macOS form; install.js down-converts to bare on Linux.
+  assert.ok(allow.includes('Edit(*)'), 'template must include canonical Edit(*) (down-converted to bare Edit on Linux at install time)');
+  assert.ok(allow.includes('Write(*)'), 'template must include canonical Write(*) (down-converted to bare Write on Linux at install time)');
+  assert.ok(allow.includes('Read(*)'), 'template must include canonical Read(*) (down-converted to bare Read on Linux at install time)');
+  // Two-sided contract: bare forms must NOT be present (ALLOW-17)
+  assert.ok(!allow.includes('Edit'), 'template must NOT include bare Edit — use Edit(*)');
+  assert.ok(!allow.includes('Write'), 'template must NOT include bare Write — use Write(*)');
+  assert.ok(!allow.includes('Read'), 'template must NOT include bare Read — use Read(*)');
   // Deny rules dropped per Phase 52 -- GSD-NG ships allow rules only
   assert.strictEqual(template.permissions.deny, undefined, 'template must NOT have permissions.deny section (deny rules dropped in Phase 52)');
 
@@ -487,12 +495,12 @@ test('RUNTIME-02: --global without --runtime exits non-zero with helpful error',
   try {
     const result = spawnSync(
       process.execPath,
-      [INSTALLER, '--global', '--config-dir', path.join(tmpDir, '.claude')],
+      [INSTALLER, '--global'],
       {
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
       }
     );
     assert.notStrictEqual(result.status, 0, '--global without --runtime must exit non-zero (RUNTIME-02)');
@@ -1372,6 +1380,95 @@ test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .pl
   }
 });
 
+// ── ALLOW-18: env var rename — GSD_TEST_FORCE_PLATFORM is the test seam ────────
+
+test('ALLOW-18: install.js seeding block uses GSD_TEST_FORCE_PLATFORM (not GSD_FORCE_PLATFORM)', () => {
+  // Static code inspection: the source must not reference the old env var name
+  const src = fs.readFileSync(INSTALLER, 'utf8');
+  assert.ok(
+    !src.includes('GSD_FORCE_PLATFORM'),
+    'install.js must not reference GSD_FORCE_PLATFORM (old name) — use GSD_TEST_FORCE_PLATFORM (ALLOW-18)'
+  );
+  assert.ok(
+    src.includes('GSD_TEST_FORCE_PLATFORM'),
+    'install.js must reference GSD_TEST_FORCE_PLATFORM at least once (ALLOW-18)'
+  );
+});
+
+// ── ALLOW-19: RW_FORMS imported from allowlist.cjs — no inline Set literal ──────
+
+test('ALLOW-19: install.js imports RW_FORMS from allowlist.cjs and uses no inline rwForms Set literal', () => {
+  const src = fs.readFileSync(INSTALLER, 'utf8');
+  // Must import RW_FORMS in the destructure
+  assert.ok(
+    src.includes('RW_FORMS'),
+    'install.js must import and reference RW_FORMS from allowlist.cjs (ALLOW-19)'
+  );
+  // Must not define an inline Set containing these canonical forms
+  assert.ok(
+    !src.includes("new Set(['Edit', 'Write', 'Read'"),
+    'install.js must not define an inline rwForms Set literal — use imported RW_FORMS (ALLOW-19)'
+  );
+});
+
+// ── ALLOW-19: GSD_TEST_FORCE_PLATFORM seam works at runtime ─────────────────────
+
+test('ALLOW-19: GSD_TEST_FORCE_PLATFORM env var controls platform detection in seeding block', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow19-'));
+  try {
+    // Install with GSD_TEST_FORCE_PLATFORM overriding to 'linux'
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'linux',
+        }),
+      }
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js must exit 0 when GSD_TEST_FORCE_PLATFORM=linux is set (ALLOW-19)\nstderr: ' + (result.stderr || '')
+    );
+    // settings.json must have been seeded (permissions block present)
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    assert.ok(fs.existsSync(settingsPath), 'settings.json must exist (ALLOW-19)');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.ok(
+      Array.isArray(settings.permissions && settings.permissions.allow),
+      'permissions.allow must be seeded when GSD_TEST_FORCE_PLATFORM is used (ALLOW-19)'
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-20: syncSection uses Set.has() for O(1) membership ─────────────────
+
+test('ALLOW-20: install.js syncSection uses Set.has() — not Array.includes() — for membership check', () => {
+  const src = fs.readFileSync(INSTALLER, 'utf8');
+  // New implementation: must use Set.has()
+  assert.ok(
+    src.includes('existingSet.has(e)'),
+    'syncSection must use existingSet.has(e) for membership check (ALLOW-20)'
+  );
+  // Old implementation: must not use Array.includes()
+  assert.ok(
+    !src.includes('existing.includes(e)'),
+    'syncSection must not use existing.includes(e) — replaced by Set.has() (ALLOW-20)'
+  );
+  // Return shape: merged and added fields must still be present
+  assert.ok(
+    src.includes('merged: [...existing, ...toAdd]'),
+    'syncSection must keep merged: [...existing, ...toAdd] return shape (ALLOW-20)'
+  );
+});
+
 test('RUNTIME-03: install.js preserves existing config.json values when writing runtime field', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-preserve-'));
   try {
@@ -1648,4 +1745,216 @@ describe('install.js - Phase 55 effort frontmatter sync', () => {
     const setProfileSkill = path.join(tmpDir, '.github', 'skills', 'gsd-set-profile', 'SKILL.md');
     assert.ok(!fs.existsSync(setProfileSkill), 'gsd-set-profile/SKILL.md must NOT exist for Copilot install');
   });
+});
+
+// ── ALLOW-07: install.js writes bare Edit/Write/Read on Linux ─────────────
+// Force Linux seeding via GSD_TEST_FORCE_PLATFORM and verify bare Edit/Write/Read
+// permissions are written instead of the globbed forms used on non-Linux platforms.
+
+test('ALLOW-07: install.js --local on Linux writes bare Edit/Write/Read forms', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-07-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'linux' }),
+      }
+    );
+    assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
+
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const allow = settings.permissions?.allow ?? [];
+
+    assert.ok(allow.includes('Edit'), 'Linux must include bare Edit');
+    assert.ok(allow.includes('Write'), 'Linux must include bare Write');
+    assert.ok(allow.includes('Read'), 'Linux must include bare Read');
+    assert.ok(!allow.includes('Edit(*)'), 'Linux must NOT include glob Edit(*)');
+    assert.ok(!allow.includes('Write(*)'), 'Linux must NOT include glob Write(*)');
+    assert.ok(!allow.includes('Read(*)'), 'Linux must NOT include glob Read(*)');
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-08: install.js writes canonical Edit(*)/Write(*)/Read(*) on macOS ──
+
+test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-08-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
+      }
+    );
+    assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'));
+    const allow = settings.permissions?.allow ?? [];
+    assert.ok(allow.includes('Edit(*)'));
+    assert.ok(allow.includes('Write(*)'));
+    assert.ok(allow.includes('Read(*)'));
+    assert.ok(!allow.includes('Edit'), 'macOS must not carry bare Edit');
+    // Narrowed verbs land — gated on gh presence on host (ALLOW-22 integration)
+    try {
+      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      assert.ok(allow.includes('Bash(gh repo view *)'), 'narrowed repo view must land');
+      assert.ok(allow.includes('Bash(gh label create *)'), 'narrowed label create must land');
+      assert.ok(!allow.includes('Bash(gh repo *)'), 'broad gh repo must NOT land (narrowed)');
+      assert.ok(!allow.includes('Bash(gh label *)'), 'broad gh label must NOT land (narrowed)');
+    } catch { /* gh not installed — skip narrow-verb assertions */ }
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-16: install.js writes canonical forms + narrowed CLI verbs on win32 ──
+
+test('ALLOW-16: install.js --local on win32 writes canonical glob forms and narrowed CLI verbs', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-16-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'win32' }),
+      }
+    );
+    assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'));
+    const allow = settings.permissions?.allow ?? [];
+
+    // Canonical forms present (win32 mirrors darwin per getReadEditWriteAllowRules)
+    assert.ok(allow.includes('Edit(*)'), 'win32 must include canonical Edit(*)');
+    assert.ok(allow.includes('Write(*)'), 'win32 must include canonical Write(*)');
+    assert.ok(allow.includes('Read(*)'), 'win32 must include canonical Read(*)');
+
+    // Bare forms absent
+    assert.ok(!allow.includes('Edit'), 'win32 must NOT carry bare Edit');
+    assert.ok(!allow.includes('Write'), 'win32 must NOT carry bare Write');
+    assert.ok(!allow.includes('Read'), 'win32 must NOT carry bare Read');
+
+    // Narrowed verbs land — gated on gh presence on host
+    try {
+      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      assert.ok(allow.includes('Bash(gh repo view *)'), 'narrowed repo view must land');
+      assert.ok(allow.includes('Bash(gh label create *)'), 'narrowed label create must land');
+      assert.ok(!allow.includes('Bash(gh repo *)'), 'broad gh repo must NOT land (narrowed)');
+      assert.ok(!allow.includes('Bash(gh label *)'), 'broad gh label must NOT land (narrowed)');
+    } catch { /* gh not installed — skip narrow-verb assertions */ }
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-09: allow section sync union preserves user entries + logs per-section count ──
+
+test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allow entries"', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-09-'));
+  try {
+    const configDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'settings.json'),
+      JSON.stringify({ permissions: { allow: ['Bash(custom-cmd *)'] } }, null, 2)
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
+      }
+    );
+    assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
+    assert.ok(settings.permissions.allow.includes('Bash(custom-cmd *)'), 'user entry must be preserved');
+    assert.ok(settings.permissions.allow.includes('Bash(node *)'), 'template entries must be added');
+    assert.match(result.stdout, /Added \d+ allow entries/, 'must log per-section allow count');
+    // Narrowed-verb check — gated on gh presence (ALLOW-22 integration)
+    try {
+      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      const allow = settings.permissions?.allow ?? [];
+      assert.ok(!allow.includes('Bash(gh repo *)'), 'linux install must not land broad gh repo (narrowed)');
+      assert.ok(allow.includes('Bash(gh repo view *)') || allow.length === 0, 'narrowed repo view lands when gh present');
+    } catch { /* gh not installed */ }
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-10: deny section sync is no-op today (template has no deny block) ──
+
+test('ALLOW-10: deny-section sync preserves user denies and does not log deny additions', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-10-'));
+  try {
+    const configDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'settings.json'),
+      JSON.stringify({ permissions: { allow: [], deny: ['Bash(user-deny *)'] } }, null, 2)
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
+      }
+    );
+    assert.strictEqual(result.status, 0);
+
+    const settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
+    assert.ok(settings.permissions.deny.includes('Bash(user-deny *)'), 'user deny must be preserved');
+    assert.doesNotMatch(result.stdout, /Added \d+ deny/, 'no deny additions expected');
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── ALLOW-11: "up to date" only after all three sections return zero additions ──
+
+test('ALLOW-11: second install logs "Permissions already up to date" (no per-section adds)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-11-'));
+  try {
+    const configDir = path.join(tmpDir, '.claude');
+    const spawn = () => spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
+      }
+    );
+    const first = spawn();
+    assert.strictEqual(first.status, 0);
+    const second = spawn();
+    assert.strictEqual(second.status, 0);
+    assert.match(second.stdout, /Permissions already up to date/);
+    assert.doesNotMatch(second.stdout, /Added \d+ allow entries/);
+  } finally {
+    cleanup(tmpDir);
+  }
 });

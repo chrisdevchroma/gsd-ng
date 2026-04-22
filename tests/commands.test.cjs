@@ -3272,3 +3272,132 @@ describe('summary-extract --default flag', () => {
     assert.strictEqual(parsed.one_liner, 'Built the thing', 'Should return actual value');
   });
 });
+
+// ── ALLOW-15: cmdGenerateAllowlist parity with install.js seeding ─────────────
+// `gsd-tools` supports a global `--json` flag (handled before command routing),
+// so `generate-allowlist --platform <linux|darwin> --json` returns
+// { permissions: { allow: [...] } } matching install.js's settings.json structure.
+
+describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => {
+  const pathMod = require('path');
+  const osMod = require('os');
+  const fsMod = require('fs');
+  const { spawnSync: spawnSyncMod } = require('node:child_process');
+  const INSTALLER = pathMod.resolve(__dirname, '..', 'bin', 'install.js');
+
+  function runInstallAndRead(platform) {
+    const tmpCwd = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'gsd-parity-'));
+    try {
+      const r = spawnSyncMod(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpCwd,
+          env: Object.assign({}, process.env, { HOME: osMod.homedir(), GSD_TEST_FORCE_PLATFORM: platform }),
+        }
+      );
+      assert.strictEqual(r.status, 0, `install.js failed on ${platform}: ${r.stderr}`);
+      return JSON.parse(fsMod.readFileSync(pathMod.join(tmpCwd, '.claude', 'settings.json'), 'utf8')).permissions.allow;
+    } finally {
+      try { fsMod.rmSync(tmpCwd, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  function runGenerateAllowlist(cwd, platform) {
+    const r = runGsdTools(`generate-allowlist --platform ${platform} --json`, cwd);
+    assert.ok(r.success, `generate-allowlist failed: ${r.error}`);
+    return JSON.parse(r.output).permissions.allow;
+  }
+
+  test('darwin: set-equal to install.js --local output', () => {
+    const cwd = createTempProject();
+    try {
+      const installAllow  = runInstallAndRead('darwin');
+      const generateAllow = runGenerateAllowlist(cwd, 'darwin');
+      assert.deepStrictEqual(new Set(installAllow), new Set(generateAllow),
+        `Set mismatch:\ninstall only: ${installAllow.filter(x => !generateAllow.includes(x)).join(', ')}\ngenerate only: ${generateAllow.filter(x => !installAllow.includes(x)).join(', ')}`);
+      // ALLOW-21/22 parity check: narrowed verbs appear in both outputs.
+      try {
+        require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+        assert.ok(installAllow.includes('Bash(gh repo view *)'), 'install.js must seed narrowed repo view');
+        assert.ok(generateAllow.includes('Bash(gh repo view *)'), 'generateSettings must emit narrowed repo view');
+        assert.ok(!installAllow.includes('Bash(gh repo *)'), 'install.js must NOT seed broad gh repo');
+        assert.ok(!generateAllow.includes('Bash(gh repo *)'), 'generateSettings must NOT emit broad gh repo');
+      } catch { /* gh not installed — skip narrow-verb parity */ }
+    } finally {
+      cleanup(cwd);
+    }
+  });
+
+  test('linux: set-equal to install.js --local output (bare Edit/Write/Read)', () => {
+    const cwd = createTempProject();
+    try {
+      const installAllow  = runInstallAndRead('linux');
+      const generateAllow = runGenerateAllowlist(cwd, 'linux');
+      assert.deepStrictEqual(new Set(installAllow), new Set(generateAllow));
+      assert.ok(generateAllow.includes('Edit'));
+      assert.ok(!generateAllow.includes('Edit(*)'));
+      // ALLOW-21/22 parity check: narrowed verbs appear in both outputs.
+      try {
+        require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+        assert.ok(installAllow.includes('Bash(gh repo view *)'), 'install.js must seed narrowed repo view');
+        assert.ok(generateAllow.includes('Bash(gh repo view *)'), 'generateSettings must emit narrowed repo view');
+        assert.ok(!installAllow.includes('Bash(gh repo *)'), 'install.js must NOT seed broad gh repo');
+        assert.ok(!generateAllow.includes('Bash(gh repo *)'), 'generateSettings must NOT emit broad gh repo');
+      } catch { /* gh not installed — skip narrow-verb parity */ }
+    } finally {
+      cleanup(cwd);
+    }
+  });
+
+  test('cmdGenerateAllowlist does not duplicate Bash(ssh-add *) (already in template)', () => {
+    const cwd = createTempProject();
+    try {
+      const generateAllow = runGenerateAllowlist(cwd, 'darwin');
+      const sshAddCount = generateAllow.filter(e => e === 'Bash(ssh-add *)').length;
+      assert.strictEqual(sshAddCount, 1, 'Bash(ssh-add *) must appear exactly once');
+    } finally {
+      cleanup(cwd);
+    }
+  });
+});
+
+// ── ALLOW-19: RW_FORMS dedup — commands.cjs imports from allowlist.cjs ────────
+// Verifies that commands.cjs no longer defines an inline rwForms Set literal and
+// instead imports RW_FORMS from allowlist.cjs (single source of truth).
+
+describe('ALLOW-19: commands.cjs uses RW_FORMS from allowlist.cjs (no inline Set)', () => {
+  const fsMod = require('fs');
+  const pathMod = require('path');
+  const COMMANDS_SRC = pathMod.resolve(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'commands.cjs');
+
+  test('commands.cjs require destructure includes RW_FORMS from allowlist.cjs', () => {
+    const src = fsMod.readFileSync(COMMANDS_SRC, 'utf8');
+    assert.ok(
+      /const\s*\{[^}]*RW_FORMS[^}]*\}\s*=\s*require\(['"]\.\/allowlist\.cjs['"]\)/.test(src),
+      'commands.cjs must destructure RW_FORMS from allowlist.cjs'
+    );
+  });
+
+  test('commands.cjs has no inline rwForms Set literal', () => {
+    const src = fsMod.readFileSync(COMMANDS_SRC, 'utf8');
+    assert.ok(
+      !/const\s+rwForms\s*=\s*new\s+Set\s*\(/.test(src),
+      'commands.cjs must not define an inline rwForms Set — use imported RW_FORMS'
+    );
+  });
+
+  test('commands.cjs filter uses RW_FORMS.has(e) not rwForms.has(e)', () => {
+    const src = fsMod.readFileSync(COMMANDS_SRC, 'utf8');
+    assert.ok(
+      /!RW_FORMS\.has\(e\)/.test(src),
+      'commands.cjs generateSettings filter must use !RW_FORMS.has(e)'
+    );
+    assert.ok(
+      !/!rwForms\.has\(e\)/.test(src),
+      'commands.cjs must not reference local rwForms variable in filter'
+    );
+  });
+});

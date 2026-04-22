@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Phase 54 + 54.1 — Allowlist hardening rework (ALLOW-01..22):
+  - `RW_FORMS` frozen-Set export in `allowlist.cjs`; `install.js` and `commands.cjs` consume this canonical source for bare/glob Edit/Write/Read permission forms
+  - `getReadEditWriteAllowRules(platform)` pure function down-converts to bare `Edit/Write/Read` on Linux (workaround for claude-code #16170/#6881) and keeps canonical `Edit(*)/Write(*)/Read(*)` on macOS
+  - `CLI_SUBCOMMANDS` narrowed from blanket `cli repo *` / `cli label *` patterns to explicit two-token verb entries (`view`, `list`, `clone`, `fork`, `create`, etc.) across `gh/glab/fj/tea` — destructive verbs (`delete`, `rename`, `edit`, `archive`) now fall through to prompting
+  - `fj` no longer has `label` permission patterns (corrects Phase 54 ALLOW-14 drift — the `fj` CLI has no `label` subcommand)
+  - `install.js` permission seeding split into independent `allow`/`deny`/`ask` section handlers (`deny`/`ask` infrastructure-ready for future template entries)
+  - `generate-allowlist --platform <linux|darwin>` accepts explicit platform flag; output is set-equal to `install.js --local` seeding per platform
+  - PERM-06 test strengthened to a two-sided contract (canonical forms present AND bare forms absent)
 - Phase 52 — AST safety hook with rule modernization, shared rule templates, install-time injection
 - Phase 47 — CLI output refactor and workflow bash simplification
 - Phase 46 — Discuss-phase gap detection and plan-checker coverage improvements
@@ -27,9 +35,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Branch protection rulesets for main and develop (squash-only, PR required), tag protection for `v*` and `gsd/*`
 
 ### Changed
+- `install.js` permission seeding now emits one log line per section (`Added N allow entries`, `Added N deny rules`, `Added N ask entries`) instead of a single combined `Seeded N permissions` line. The no-op path (`Permissions already up to date`) is unchanged. Any downstream tooling that screen-scrapes installer output will need to adapt.
+- Template `settings-sandbox.json` now ships canonical `Edit(*)/Write(*)/Read(*)` forms; `install.js` down-converts to bare `Edit/Write/Read` on Linux at install time via `getReadEditWriteAllowRules`. Existing user installs keep their previous forms until the Phase 57 `--clean` migration.
+- Windows (`win32`) currently ships canonical glob RW forms (same as macOS) pending Claude Code Windows permission-engine validation. If Windows users hit Linux-style permission warnings, this will be revisited.
 - Deduplicated AST safety rules into single template
 - Wired `defaults.cjs` into config, core, init, verify, workspace modules
 - Removed stale Windows references and guards
+
+### Removed
+- `install.js --config-dir` / `-c` CLI flag removed (quick task 260422-jai). Custom config directories are still supported via the `CLAUDE_CONFIG_DIR` / `COPILOT_CONFIG_DIR` environment variables. Users with `--config-dir` in install scripts must switch to the env-var form.
 
 ### Fixed
 - Debug session false positive and create-pr collision guard
