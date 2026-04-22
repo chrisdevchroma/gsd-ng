@@ -57,9 +57,9 @@
       "Bash(local *)",
       "Bash(export *)",
       "Agent(*)",
-      "Edit",
-      "Write",
-      "Read",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
       "Skill(gsd:*)",
       "WebFetch(*)",
       "WebSearch(*)"

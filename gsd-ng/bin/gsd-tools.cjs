@@ -1564,7 +1564,9 @@ async function main() {
     }
 
     case 'generate-allowlist': {
-      commands.cmdGenerateAllowlist(cwd);
+      const platformIdx = args.indexOf('--platform');
+      const platformFlag = platformIdx >= 0 ? args[platformIdx + 1] : undefined;
+      commands.cmdGenerateAllowlist(cwd, platformFlag || process.platform);
       break;
     }
 

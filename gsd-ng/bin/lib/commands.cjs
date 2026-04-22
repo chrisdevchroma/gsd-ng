@@ -9,7 +9,7 @@ const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, com
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES, EFFORT_PROFILES } = require('./model-profiles.cjs');
 const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
-const { getPlatformCliPatterns, PLATFORM_TO_CLI } = require('./allowlist.cjs');
+const { getPlatformCliPatterns, PLATFORM_TO_CLI, getReadEditWriteAllowRules, RW_FORMS } = require('./allowlist.cjs');
 
 function cmdGenerateSlug(text) {
   if (!text) {
@@ -3353,31 +3353,30 @@ function cmdBreakoutCheck(cwd, args) {
   output(detection, detection.status);
 }
 
-function cmdGenerateAllowlist(cwd) {
+function cmdGenerateAllowlist(cwd, platform = process.platform) {
   // 1. Load static template as baseline
   const templatePath = path.join(__dirname, '..', '..', 'templates', 'settings-sandbox.json');
   let template;
   try {
     template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
   } catch (e) {
-    // Fallback if template not found (installed copy might differ)
     template = {
       sandbox: { enabled: true, autoAllowBashIfSandboxed: true },
       permissions: { allow: [] }
     };
   }
 
-  const staticEntries = new Set(template.permissions?.allow || []);
+  // 2. Strip bare + canonical Read/Edit/Write from template — we append
+  //    the platform-appropriate form below, matching install.js behavior.
+  //    Uses RW_FORMS (frozen Set) from allowlist.cjs — single source of truth (ALLOW-19).
+  const baseStatic = (template.permissions?.allow || []).filter(e => !RW_FORMS.has(e));
+  const staticEntries = new Set(baseStatic);
 
-  // 2. Add config-derived entries
+  // 3. Add platform-aware Read/Edit/Write forms
+  for (const e of getReadEditWriteAllowRules(platform)) staticEntries.add(e);
+
+  // 4. Dynamic CLI entries (platform detection via which + config-derived)
   const dynamicEntries = new Set();
-
-  // SSH tools (needed by Phase 16 SSH pre-push check in execute-phase workflow)
-  dynamicEntries.add('Bash(ssh-add *)');
-  dynamicEntries.add('Bash(ssh-keygen *)');
-
-  // Platform CLI tools (from Phase 13 PR creation and import-issue workflows)
-  // These are optional — only add if the platform CLI is installed
   const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
   for (const cli of platformCLIs) {
     try {
@@ -3393,24 +3392,24 @@ function cmdGenerateAllowlist(cwd) {
   try {
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      // If a specific platform is configured, ensure its CLI is in the allowlist
-      const platform = config.git?.platform;
-      if (platform && PLATFORM_TO_CLI[platform]) {
-        for (const p of getPlatformCliPatterns(PLATFORM_TO_CLI[platform])) dynamicEntries.add(p);
+      const platformName = config.git?.platform;
+      if (platformName && PLATFORM_TO_CLI[platformName]) {
+        for (const p of getPlatformCliPatterns(PLATFORM_TO_CLI[platformName])) {
+          dynamicEntries.add(p);
+        }
       }
     }
   } catch {}
 
-  // 3. Merge static + dynamic, sort for consistency
+  // 5. Merge static + dynamic, sort for consistency
   const allEntries = [...new Set([...staticEntries, ...dynamicEntries])].sort();
 
-  // 4. Build output JSON
+  // 6. Build output JSON
   const result = {
     sandbox: template.sandbox || { enabled: true, autoAllowBashIfSandboxed: true },
     permissions: { allow: allEntries }
   };
 
-  // 5. Output
   output(result);
 }
 

@@ -17,7 +17,7 @@ const reset = '\x1b[0m';
 // Get version from package.json
 const pkg = require('../package.json');
 const { processTemplate, buildContext, injectAppendToFile, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
-const { getPlatformCliPatterns, PLATFORM_TO_CLI } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
+const { getPlatformCliPatterns, PLATFORM_TO_CLI, getReadEditWriteAllowRules, RW_FORMS } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 const { syncAgentEffortFrontmatter, formatRestartNotice } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'effort-sync.cjs'));
 
 // Parse args
@@ -107,18 +107,13 @@ function getConfigDirFromHome(rt, isGlobal) {
 /**
  * Get the global config directory
  * @param {string} rt - Runtime ('claude' or 'copilot')
- * @param {string|null} explicitDir - Explicit directory from --config-dir flag
  */
-function getGlobalDir(rt, explicitDir = null) {
+function getGlobalDir(rt) {
   if (rt === 'copilot') {
-    if (explicitDir) return expandTilde(explicitDir);
     if (process.env.COPILOT_CONFIG_DIR) return expandTilde(process.env.COPILOT_CONFIG_DIR);
     return path.join(os.homedir(), '.copilot');
   }
-  // Claude Code: --config-dir > CLAUDE_CONFIG_DIR > ~/.claude
-  if (explicitDir) {
-    return expandTilde(explicitDir);
-  }
+  // Claude Code: CLAUDE_CONFIG_DIR > ~/.claude
   if (process.env.CLAUDE_CONFIG_DIR) {
     return expandTilde(process.env.CLAUDE_CONFIG_DIR);
   }
@@ -145,31 +140,6 @@ function buildBanner(version) {
   '  development system for Claude Code.\n';
 }
 
-// Parse --config-dir argument
-function parseConfigDirArg() {
-  const configDirIndex = args.findIndex(arg => arg === '--config-dir' || arg === '-c');
-  if (configDirIndex !== -1) {
-    const nextArg = args[configDirIndex + 1];
-    // Error if --config-dir is provided without a value or next arg is another flag
-    if (!nextArg || nextArg.startsWith('-')) {
-      console.error(`  ${yellow}--config-dir requires a path argument${reset}`);
-      process.exit(1);
-    }
-    return nextArg;
-  }
-  // Also handle --config-dir=value format
-  const configDirArg = args.find(arg => arg.startsWith('--config-dir=') || arg.startsWith('-c='));
-  if (configDirArg) {
-    const value = configDirArg.split('=')[1];
-    if (!value) {
-      console.error(`  ${yellow}--config-dir requires a non-empty path${reset}`);
-      process.exit(1);
-    }
-    return value;
-  }
-  return null;
-}
-const explicitConfigDir = parseConfigDirArg();
 const hasHelp = args.includes('--help') || args.includes('-h');
 const forceStatusline = args.includes('--force-statusline');
 
@@ -233,7 +203,7 @@ if (hasUninstall) {
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-c, --config-dir <path>${reset}            Specify custom config directory\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx gsd-ng --runtime claude --global --config-dir ~/.claude-work\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over the CLAUDE_CONFIG_DIR environment variable.\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
   process.exit(0);
 }
 
@@ -292,7 +262,7 @@ function getCommitAttribution() {
   }
 
   // Claude Code: read attribution from settings.json
-  const settings = readSettings(path.join(getGlobalDir(runtime, explicitConfigDir), 'settings.json'));
+  const settings = readSettings(path.join(getGlobalDir(runtime), 'settings.json'));
   let result;
   if (!settings.attribution || settings.attribution.commit === undefined) {
     result = undefined;
@@ -382,7 +352,7 @@ function uninstall(isGlobal) {
 
   // Get the target directory based on install type
   const targetDir = isGlobal
-    ? getGlobalDir(runtime, explicitConfigDir)
+    ? getGlobalDir(runtime)
     : path.join(process.cwd(), dirName);
 
   const locationLabel = isGlobal
@@ -1099,7 +1069,7 @@ function install(isGlobal) {
 
   // Get the target directory based on install type
   const targetDir = isGlobal
-    ? getGlobalDir(runtime, explicitConfigDir)
+    ? getGlobalDir(runtime)
     : path.join(process.cwd(), dirName);
 
   const locationLabel = isGlobal
@@ -1467,14 +1437,21 @@ function install(isGlobal) {
       console.log(`  ${green}✓${reset} Configured bash command safety hook`);
     }
 
-    // Seed permissions.allow from settings-sandbox.json template
+    // Seed permissions.allow/deny/ask from settings-sandbox.json template (three-section sync)
     if (!noSeedPermissionsConfig) {
       const sandboxTemplatePath = path.join(src, 'gsd-ng', 'templates', 'settings-sandbox.json');
       try {
         const sandboxTemplate = JSON.parse(fs.readFileSync(sandboxTemplatePath, 'utf8'));
-        const templateEntries = sandboxTemplate.permissions?.allow ?? [];
 
-        // Detect platform CLIs dynamically
+        // Effective platform (override via GSD_TEST_FORCE_PLATFORM for test harnesses — test-only seam)
+        const seedPlatform = process.env.GSD_TEST_FORCE_PLATFORM || process.platform;
+
+        // -- Build templateAllow with platform-aware Read/Edit/Write forms --
+        const rawTemplateAllow = sandboxTemplate.permissions?.allow ?? [];
+        const baseTemplateAllow = rawTemplateAllow.filter(e => !RW_FORMS.has(e));
+        const platformRw = getReadEditWriteAllowRules(seedPlatform);
+
+        // Dynamic CLI entries (platform detection via which + .planning/config.json)
         const platformCLIs = ['gh', 'glab', 'fj', 'tea'];
         const dynamicEntries = [];
         for (const cli of platformCLIs) {
@@ -1485,16 +1462,13 @@ function install(isGlobal) {
             // CLI not installed — skip
           }
         }
-
-        // Also check .planning/config.json for configured platform
         const configPath = path.join(process.cwd(), '.planning', 'config.json');
         try {
           if (fs.existsSync(configPath)) {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
             const platform = config.git?.platform;
             if (platform && PLATFORM_TO_CLI[platform]) {
-              const cliPatterns = getPlatformCliPatterns(PLATFORM_TO_CLI[platform]);
-              for (const entry of cliPatterns) {
+              for (const entry of getPlatformCliPatterns(PLATFORM_TO_CLI[platform])) {
                 if (!dynamicEntries.includes(entry)) dynamicEntries.push(entry);
               }
             }
@@ -1503,17 +1477,38 @@ function install(isGlobal) {
           // config.json missing or unparseable — skip
         }
 
-        // Non-destructive merge: add missing entries, keep existing
-        const allNewEntries = [...templateEntries, ...dynamicEntries];
-        const existingAllow = settings.permissions?.allow ?? [];
-        const entriesToAdd = allNewEntries.filter(e => !existingAllow.includes(e));
+        const templateAllow = [...baseTemplateAllow, ...platformRw, ...dynamicEntries];
+        const templateDeny  = sandboxTemplate.permissions?.deny ?? [];
+        const templateAsk   = sandboxTemplate.permissions?.ask  ?? [];
 
-        if (entriesToAdd.length > 0) {
+        // -- Three-section union-only sync helper --
+        const syncSection = (existing, templateEntries) => {
+          const existingSet = new Set(existing);
+          const toAdd = templateEntries.filter(e => !existingSet.has(e));
+          return { merged: [...existing, ...toAdd], added: toAdd.length };
+        };
+
+        const existingAllow = settings.permissions?.allow ?? [];
+        const existingDeny  = settings.permissions?.deny  ?? [];
+        const existingAsk   = settings.permissions?.ask   ?? [];
+
+        const allowResult = syncSection(existingAllow, templateAllow);
+        const denyResult  = syncSection(existingDeny,  templateDeny);
+        const askResult   = syncSection(existingAsk,   templateAsk);
+
+        // -- Apply merged results --
+        if (allowResult.added > 0 || denyResult.added > 0 || askResult.added > 0) {
           if (!settings.permissions) settings.permissions = {};
-          if (!settings.permissions.allow) settings.permissions.allow = [];
-          settings.permissions.allow.push(...entriesToAdd);
-          console.log(`  ${green}✓${reset} Seeded ${entriesToAdd.length} permissions`);
-        } else {
+          if (allowResult.added > 0) settings.permissions.allow = allowResult.merged;
+          if (denyResult.added  > 0) settings.permissions.deny  = denyResult.merged;
+          if (askResult.added   > 0) settings.permissions.ask   = askResult.merged;
+        }
+
+        // -- Per-section logging --
+        if (allowResult.added > 0) console.log(`  ${green}✓${reset} Added ${allowResult.added} allow entries`);
+        if (denyResult.added  > 0) console.log(`  ${green}✓${reset} Added ${denyResult.added} deny rules`);
+        if (askResult.added   > 0) console.log(`  ${green}✓${reset} Added ${askResult.added} ask entries`);
+        if (allowResult.added === 0 && denyResult.added === 0 && askResult.added === 0) {
           console.log(`  ${green}✓${reset} Permissions already up to date`);
         }
       } catch {
@@ -1839,7 +1834,7 @@ function promptLocation(callback) {
     }
   });
 
-  const globalPath = getGlobalDir(runtime, explicitConfigDir).replace(os.homedir(), '~');
+  const globalPath = getGlobalDir(runtime).replace(os.homedir(), '~');
   const localPath = './' + getDirName(runtime);
 
   console.log(`  ${yellow}Where would you like to install?${reset}\n\n  ${cyan}1${reset}) Global ${dim}(${globalPath})${reset} - available in all projects\n  ${cyan}2${reset}) Local  ${dim}(${localPath})${reset} - this project only\n`);
@@ -1856,9 +1851,6 @@ function promptLocation(callback) {
 // Main logic
 if (hasGlobal && hasLocal) {
   console.error(`  ${yellow}Cannot specify both --global and --local${reset}`);
-  process.exit(1);
-} else if (explicitConfigDir && hasLocal) {
-  console.error(`  ${yellow}Cannot use --config-dir with --local${reset}`);
   process.exit(1);
 } else if (hasUninstall) {
   if (!hasGlobal && !hasLocal) {
