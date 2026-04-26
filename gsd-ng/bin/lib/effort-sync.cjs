@@ -46,7 +46,8 @@ function syncAgentEffortFrontmatter(cwd, agentsDir) {
 
     const content = fs.readFileSync(agentFile, 'utf-8');
     const fm = extractFrontmatter(content);
-    const existing = (fm.effort !== undefined && fm.effort !== null) ? fm.effort : null;
+    const existing =
+      fm.effort !== undefined && fm.effort !== null ? fm.effort : null;
     const resolved = resolveEffortInternal(cwd, agentType); // null means omit
 
     if (existing === resolved) continue; // idempotent short-circuit

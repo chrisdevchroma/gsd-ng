@@ -35,9 +35,12 @@
   },
   "devDependencies": {
     "c8": "^11.0.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "prettier": "3.8.3"
   },
   "scripts": {
+    "format": "prettier --write 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
+    "format:check": "prettier --check 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
     "build:hooks": "node scripts/build-hooks.js",
     "build:tarball": "npm run build:hooks && node scripts/build-tarball.js",
     "prepublishOnly": "npm run build:hooks",

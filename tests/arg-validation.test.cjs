@@ -228,8 +228,12 @@ describe('ARG_SCHEMAS coverage', () => {
       'version-bump', 'divergence', 'cleanup', 'update',
     ];
     for (const cmd of topLevelCommands) {
+      // Accept both quoted ('commit': ...) and unquoted (commit: ...) key forms.
+      // Prettier removes unnecessary quotes from valid JS identifiers, so both are valid.
+      const quotedForm = `'${cmd}'`;
+      const unquotedForm = new RegExp(`(?:^|[,{\\s])${cmd.replace(/-/g, '\\-')}\\s*:`);
       assert.ok(
-        schemasBlock.includes(`'${cmd}'`),
+        schemasBlock.includes(quotedForm) || unquotedForm.test(schemasBlock),
         `ARG_SCHEMAS should contain top-level command '${cmd}' with _self schema`
       );
     }

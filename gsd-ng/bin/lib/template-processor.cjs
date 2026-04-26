@@ -33,7 +33,10 @@ function processTemplate(content, context) {
 
   // 2. Resolve conditional blocks
   for (const rt of Object.keys(RUNTIMES)) {
-    const regex = new RegExp('<!-- ONLY:' + rt + ' -->([\\s\\S]*?)<!-- /ONLY:' + rt + ' -->', 'g');
+    const regex = new RegExp(
+      '<!-- ONLY:' + rt + ' -->([\\s\\S]*?)<!-- /ONLY:' + rt + ' -->',
+      'g',
+    );
     if (rt === context.runtime) {
       out = out.replace(regex, (_, inner) => inner);
     } else {
@@ -73,7 +76,15 @@ function validateMarkers(content) {
   const allKeys = new Set(Object.keys(opens).concat(Object.keys(closes)));
   for (const key of allKeys) {
     if ((opens[key] || 0) !== (closes[key] || 0)) {
-      throw new Error('Unbalanced ONLY:' + key + ' markers: ' + (opens[key] || 0) + ' opens, ' + (closes[key] || 0) + ' closes');
+      throw new Error(
+        'Unbalanced ONLY:' +
+          key +
+          ' markers: ' +
+          (opens[key] || 0) +
+          ' opens, ' +
+          (closes[key] || 0) +
+          ' closes',
+      );
     }
   }
 }
@@ -137,13 +148,21 @@ function fillBetweenMarkers(filePath, templatePath, startMarker, endMarker) {
   const template = fs.readFileSync(templatePath, 'utf8');
   const tStart = template.indexOf(startMarker);
   const tEnd = template.indexOf(endMarker);
-  const innerContent = (tStart !== -1 && tEnd !== -1)
-    ? template.slice(tStart + startMarker.length, tEnd)
-    : '\n' + template.trim() + '\n';
+  const innerContent =
+    tStart !== -1 && tEnd !== -1
+      ? template.slice(tStart + startMarker.length, tEnd)
+      : '\n' + template.trim() + '\n';
 
   const before = existing.slice(0, startIdx + startMarker.length);
   const after = existing.slice(endIdx);
   fs.writeFileSync(filePath, before + innerContent + after, 'utf8');
 }
 
-module.exports = { processTemplate, validateMarkers, buildContext, RUNTIMES, injectAppendToFile, fillBetweenMarkers };
+module.exports = {
+  processTemplate,
+  validateMarkers,
+  buildContext,
+  RUNTIMES,
+  injectAppendToFile,
+  fillBetweenMarkers,
+};

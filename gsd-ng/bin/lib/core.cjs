@@ -25,20 +25,20 @@ function planningPaths(cwd) {
   const root = path.join(cwd, '.planning');
   return {
     root,
-    phases:         path.join(root, 'phases'),
-    config:         path.join(root, 'config.json'),
-    state:          path.join(root, 'STATE.md'),
-    roadmap:        path.join(root, 'ROADMAP.md'),
-    requirements:   path.join(root, 'REQUIREMENTS.md'),
-    todos:          path.join(root, 'todos'),
-    todosPending:   path.join(root, 'todos', 'pending'),
+    phases: path.join(root, 'phases'),
+    config: path.join(root, 'config.json'),
+    state: path.join(root, 'STATE.md'),
+    roadmap: path.join(root, 'ROADMAP.md'),
+    requirements: path.join(root, 'REQUIREMENTS.md'),
+    todos: path.join(root, 'todos'),
+    todosPending: path.join(root, 'todos', 'pending'),
     todosCompleted: path.join(root, 'todos', 'completed'),
-    codebase:       path.join(root, 'codebase'),
-    divergence:     path.join(root, 'DIVERGENCE.md'),
-    milestones:     path.join(root, 'milestones'),
+    codebase: path.join(root, 'codebase'),
+    divergence: path.join(root, 'DIVERGENCE.md'),
+    milestones: path.join(root, 'milestones'),
     milestonesFile: path.join(root, 'MILESTONES.md'),
-    project:        path.join(root, 'PROJECT.md'),
-    archive:        path.join(root, 'archive'),
+    project: path.join(root, 'PROJECT.md'),
+    archive: path.join(root, 'archive'),
   };
 }
 
@@ -52,7 +52,10 @@ function planningPaths(cwd) {
  * @param {number} opts.maxAgeMs - max age in ms before removal (default: 5 min)
  * @param {boolean} opts.dirsOnly - if true, only remove directories (default: false)
  */
-function reapStaleTempFiles(prefix = 'gsd-', { maxAgeMs = 5 * 60 * 1000, dirsOnly = false } = {}) {
+function reapStaleTempFiles(
+  prefix = 'gsd-',
+  { maxAgeMs = 5 * 60 * 1000, dirsOnly = false } = {},
+) {
   try {
     const tmpDir = require('os').tmpdir();
     const now = Date.now();
@@ -82,12 +85,16 @@ function reapStaleTempFiles(prefix = 'gsd-', { maxAgeMs = 5 * 60 * 1000, dirsOnl
 // a temp file prefixed with @file:. Off by default -- inline is the standard path.
 // Activated via --file global flag in gsd-tools.cjs.
 let _fileOutput = false;
-function setFileOutput(val) { _fileOutput = val; }
+function setFileOutput(val) {
+  _fileOutput = val;
+}
 
 // Module-level JSON mode flag: when true, output() always emits JSON regardless
 // of displayValue. Activated via --json global flag or --pick in gsd-tools.cjs.
 let _jsonMode = false;
-function setJsonMode(val) { _jsonMode = val; }
+function setJsonMode(val) {
+  _jsonMode = val;
+}
 
 /**
  * Write JSON to a temp file and return the @file: prefixed path.
@@ -170,15 +177,25 @@ function loadConfig(cwd) {
 
     // Migrate deprecated "depth" key to "granularity" with value mapping
     if ('depth' in parsed && !('granularity' in parsed)) {
-      const depthToGranularity = { quick: 'coarse', standard: 'standard', comprehensive: 'fine' };
+      const depthToGranularity = {
+        quick: 'coarse',
+        standard: 'standard',
+        comprehensive: 'fine',
+      };
       parsed.granularity = depthToGranularity[parsed.depth] || parsed.depth;
       delete parsed.depth;
-      try { fs.writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf-8'); } catch {}
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf-8');
+      } catch {}
     }
 
     const get = (key, nested) => {
       if (parsed[key] !== undefined) return parsed[key];
-      if (nested && parsed[nested.section] && parsed[nested.section][nested.field] !== undefined) {
+      if (
+        nested &&
+        parsed[nested.section] &&
+        parsed[nested.section][nested.field] !== undefined
+      ) {
         return parsed[nested.section][nested.field];
       }
       return undefined;
@@ -187,14 +204,18 @@ function loadConfig(cwd) {
     const parallelization = (() => {
       const val = get('parallelization');
       if (typeof val === 'boolean') return val;
-      if (typeof val === 'object' && val !== null && 'enabled' in val) return val.enabled;
+      if (typeof val === 'object' && val !== null && 'enabled' in val)
+        return val.enabled;
       return defaults.parallelization;
     })();
 
     return {
       model_profile: get('model_profile') ?? defaults.model_profile,
       commit_docs: (() => {
-        const explicit = get('commit_docs', { section: 'planning', field: 'commit_docs' });
+        const explicit = get('commit_docs', {
+          section: 'planning',
+          field: 'commit_docs',
+        });
         // If explicitly set in config, respect the user's choice
         if (explicit !== undefined) return explicit;
         // Auto-detection: when no explicit value and .planning/ is gitignored,
@@ -202,23 +223,70 @@ function loadConfig(cwd) {
         if (isGitIgnored(cwd, '.planning/')) return false;
         return defaults.commit_docs;
       })(),
-      search_gitignored: get('search_gitignored', { section: 'planning', field: 'search_gitignored' }) ?? defaults.search_gitignored,
-      branching_strategy: get('branching_strategy', { section: 'git', field: 'branching_strategy' }) ?? defaults.branching_strategy,
-      phase_branch_template: get('phase_branch_template', { section: 'git', field: 'phase_branch_template' }) ?? defaults.phase_branch_template,
-      milestone_branch_template: get('milestone_branch_template', { section: 'git', field: 'milestone_branch_template' }) ?? defaults.milestone_branch_template,
-      target_branch: get('target_branch', { section: 'git', field: 'target_branch' }) ?? defaults.target_branch,
-      auto_push: get('auto_push', { section: 'git', field: 'auto_push' }) ?? defaults.auto_push,
-      remote: get('remote', { section: 'git', field: 'remote' }) ?? defaults.remote,
-      review_branch_template: get('review_branch_template', { section: 'git', field: 'review_branch_template' }) ?? defaults.review_branch_template,
-      pr_draft: get('pr_draft', { section: 'git', field: 'pr_draft' }) ?? defaults.pr_draft,
-      platform: get('platform', { section: 'git', field: 'platform' }) ?? defaults.platform,
-      commit_format: get('commit_format', { section: 'git', field: 'commit_format' }) ?? defaults.commit_format,
-      commit_template: get('commit_template', { section: 'git', field: 'commit_template' }) ?? defaults.commit_template,
-      versioning_scheme: get('versioning_scheme', { section: 'git', field: 'versioning_scheme' }) ?? defaults.versioning_scheme,
-      research: get('research', { section: 'workflow', field: 'research' }) ?? defaults.research,
-      plan_checker: get('plan_checker', { section: 'workflow', field: 'plan_check' }) ?? defaults.plan_checker,
-      verifier: get('verifier', { section: 'workflow', field: 'verifier' }) ?? defaults.verifier,
-      nyquist_validation: get('nyquist_validation', { section: 'workflow', field: 'nyquist_validation' }) ?? defaults.nyquist_validation,
+      search_gitignored:
+        get('search_gitignored', {
+          section: 'planning',
+          field: 'search_gitignored',
+        }) ?? defaults.search_gitignored,
+      branching_strategy:
+        get('branching_strategy', {
+          section: 'git',
+          field: 'branching_strategy',
+        }) ?? defaults.branching_strategy,
+      phase_branch_template:
+        get('phase_branch_template', {
+          section: 'git',
+          field: 'phase_branch_template',
+        }) ?? defaults.phase_branch_template,
+      milestone_branch_template:
+        get('milestone_branch_template', {
+          section: 'git',
+          field: 'milestone_branch_template',
+        }) ?? defaults.milestone_branch_template,
+      target_branch:
+        get('target_branch', { section: 'git', field: 'target_branch' }) ??
+        defaults.target_branch,
+      auto_push:
+        get('auto_push', { section: 'git', field: 'auto_push' }) ??
+        defaults.auto_push,
+      remote:
+        get('remote', { section: 'git', field: 'remote' }) ?? defaults.remote,
+      review_branch_template:
+        get('review_branch_template', {
+          section: 'git',
+          field: 'review_branch_template',
+        }) ?? defaults.review_branch_template,
+      pr_draft:
+        get('pr_draft', { section: 'git', field: 'pr_draft' }) ??
+        defaults.pr_draft,
+      platform:
+        get('platform', { section: 'git', field: 'platform' }) ??
+        defaults.platform,
+      commit_format:
+        get('commit_format', { section: 'git', field: 'commit_format' }) ??
+        defaults.commit_format,
+      commit_template:
+        get('commit_template', { section: 'git', field: 'commit_template' }) ??
+        defaults.commit_template,
+      versioning_scheme:
+        get('versioning_scheme', {
+          section: 'git',
+          field: 'versioning_scheme',
+        }) ?? defaults.versioning_scheme,
+      research:
+        get('research', { section: 'workflow', field: 'research' }) ??
+        defaults.research,
+      plan_checker:
+        get('plan_checker', { section: 'workflow', field: 'plan_check' }) ??
+        defaults.plan_checker,
+      verifier:
+        get('verifier', { section: 'workflow', field: 'verifier' }) ??
+        defaults.verifier,
+      nyquist_validation:
+        get('nyquist_validation', {
+          section: 'workflow',
+          field: 'nyquist_validation',
+        }) ?? defaults.nyquist_validation,
       parallelization,
       model_overrides: parsed.model_overrides || null,
       effort_overrides: parsed.effort_overrides || null,
@@ -238,10 +306,14 @@ function isGitIgnored(cwd, targetPath) {
     // .gitignore explicitly lists them — a common source of confusion when .planning/
     // was committed before being added to .gitignore.
     // Use execFileSync with array args to prevent command injection via path values.
-    execFileSync('git', ['check-ignore', '-q', '--no-index', '--', targetPath], {
-      cwd,
-      stdio: 'pipe',
-    });
+    execFileSync(
+      'git',
+      ['check-ignore', '-q', '--no-index', '--', targetPath],
+      {
+        cwd,
+        stdio: 'pipe',
+      },
+    );
     return true;
   } catch {
     return false;
@@ -291,8 +363,18 @@ function comparePhaseNum(a, b) {
     return la < lb ? -1 : 1;
   }
   // Segment-by-segment decimal comparison: 12A < 12A.1 < 12A.1.2 < 12A.2
-  const aDecParts = pa[3] ? pa[3].slice(1).split('.').map(p => parseInt(p, 10)) : [];
-  const bDecParts = pb[3] ? pb[3].slice(1).split('.').map(p => parseInt(p, 10)) : [];
+  const aDecParts = pa[3]
+    ? pa[3]
+        .slice(1)
+        .split('.')
+        .map((p) => parseInt(p, 10))
+    : [];
+  const bDecParts = pb[3]
+    ? pb[3]
+        .slice(1)
+        .split('.')
+        .map((p) => parseInt(p, 10))
+    : [];
   const maxLen = Math.max(aDecParts.length, bDecParts.length);
   if (aDecParts.length === 0 && bDecParts.length > 0) return -1;
   if (bDecParts.length === 0 && aDecParts.length > 0) return 1;
@@ -307,8 +389,11 @@ function comparePhaseNum(a, b) {
 function searchPhaseInDir(baseDir, relBase, normalized) {
   try {
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
-    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a, b) => comparePhaseNum(a, b));
-    const match = dirs.find(d => d.startsWith(normalized));
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort((a, b) => comparePhaseNum(a, b));
+    const match = dirs.find((d) => d.startsWith(normalized));
     if (!match) return null;
 
     const dirMatch = match.match(/^(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i);
@@ -317,18 +402,30 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
     const phaseDir = path.join(baseDir, match);
     const phaseFiles = fs.readdirSync(phaseDir);
 
-    const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').sort();
-    const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').sort();
-    const hasResearch = phaseFiles.some(f =>
-      (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) || f === 'RESEARCH.md'
+    const plans = phaseFiles
+      .filter((f) => f.endsWith('-PLAN.md') || f === 'PLAN.md')
+      .sort();
+    const summaries = phaseFiles
+      .filter((f) => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md')
+      .sort();
+    const hasResearch = phaseFiles.some(
+      (f) =>
+        (f.endsWith('-RESEARCH.md') && !f.endsWith('-GAP-RESEARCH.md')) ||
+        f === 'RESEARCH.md',
     );
-    const hasContext = phaseFiles.some(f => f.endsWith('-CONTEXT.md') || f === 'CONTEXT.md');
-    const hasVerification = phaseFiles.some(f => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md');
+    const hasContext = phaseFiles.some(
+      (f) => f.endsWith('-CONTEXT.md') || f === 'CONTEXT.md',
+    );
+    const hasVerification = phaseFiles.some(
+      (f) => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md',
+    );
 
     const completedPlanIds = new Set(
-      summaries.map(s => s.replace('-SUMMARY.md', '').replace('SUMMARY.md', ''))
+      summaries.map((s) =>
+        s.replace('-SUMMARY.md', '').replace('SUMMARY.md', ''),
+      ),
     );
-    const incompletePlans = plans.filter(p => {
+    const incompletePlans = plans.filter((p) => {
       const planId = p.replace('-PLAN.md', '').replace('PLAN.md', '');
       return !completedPlanIds.has(planId);
     });
@@ -338,7 +435,12 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
       directory: toPosixPath(path.join(relBase, match)),
       phase_number: phaseNumber,
       phase_name: phaseName,
-      phase_slug: phaseName ? phaseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : null,
+      phase_slug: phaseName
+        ? phaseName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+        : null,
       plans,
       summaries,
       incomplete_plans: incompletePlans,
@@ -365,10 +467,12 @@ function findPhaseInternal(cwd, phase) {
   if (!fs.existsSync(milestonesDir)) return null;
 
   try {
-    const milestoneEntries = fs.readdirSync(milestonesDir, { withFileTypes: true });
+    const milestoneEntries = fs.readdirSync(milestonesDir, {
+      withFileTypes: true,
+    });
     const archiveDirs = milestoneEntries
-      .filter(e => e.isDirectory() && /^v[\d.]+-phases$/.test(e.name))
-      .map(e => e.name)
+      .filter((e) => e.isDirectory() && /^v[\d.]+-phases$/.test(e.name))
+      .map((e) => e.name)
       .sort()
       .reverse();
 
@@ -394,11 +498,13 @@ function getArchivedPhaseDirs(cwd) {
   if (!fs.existsSync(milestonesDir)) return results;
 
   try {
-    const milestoneEntries = fs.readdirSync(milestonesDir, { withFileTypes: true });
+    const milestoneEntries = fs.readdirSync(milestonesDir, {
+      withFileTypes: true,
+    });
     // Find v*-phases directories, sort newest first
     const phaseDirs = milestoneEntries
-      .filter(e => e.isDirectory() && /^v[\d.]+-phases$/.test(e.name))
-      .map(e => e.name)
+      .filter((e) => e.isDirectory() && /^v[\d.]+-phases$/.test(e.name))
+      .map((e) => e.name)
       .sort()
       .reverse();
 
@@ -406,7 +512,10 @@ function getArchivedPhaseDirs(cwd) {
       const version = archiveName.match(/^(v[\d.]+)-phases$/)[1];
       const archivePath = path.join(milestonesDir, archiveName);
       const entries = fs.readdirSync(archivePath, { withFileTypes: true });
-      const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a, b) => comparePhaseNum(a, b));
+      const dirs = entries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort((a, b) => comparePhaseNum(a, b));
 
       for (const dir of dirs) {
         results.push({
@@ -457,20 +566,31 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
   if (!fs.existsSync(roadmapPath)) return null;
 
   try {
-    const content = extractCurrentMilestone(fs.readFileSync(roadmapPath, 'utf-8'));
+    const content = extractCurrentMilestone(
+      fs.readFileSync(roadmapPath, 'utf-8'),
+    );
     const escapedPhase = escapeRegex(phaseNum.toString());
-    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*([^\\n]+)`, 'i');
+    const phasePattern = new RegExp(
+      `#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*([^\\n]+)`,
+      'i',
+    );
     const headerMatch = content.match(phasePattern);
     if (!headerMatch) return null;
 
     const phaseName = headerMatch[1].trim();
     const headerIndex = headerMatch.index;
     const restOfContent = content.slice(headerIndex);
-    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i);
-    const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
+    const nextHeaderMatch = restOfContent.match(
+      /\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i,
+    );
+    const sectionEnd = nextHeaderMatch
+      ? headerIndex + nextHeaderMatch.index
+      : content.length;
     const section = content.slice(headerIndex, sectionEnd).trim();
 
-    const goalMatch = section.match(/\*\*Goal(?:\*\*:|\*?\*?:\*\*)\s*([^\n]+)/i);
+    const goalMatch = section.match(
+      /\*\*Goal(?:\*\*:|\*?\*?:\*\*)\s*([^\n]+)/i,
+    );
     const goal = goalMatch ? goalMatch[1].trim() : null;
 
     return {
@@ -513,7 +633,8 @@ function resolveEffortInternal(cwd, agentType) {
 
   // Resolve effort from override or profile (unchanged logic).
   const hasExplicitOverride = Object.prototype.hasOwnProperty.call(
-    config.effort_overrides || {}, agentType
+    config.effort_overrides || {},
+    agentType,
   );
   let effort;
   if (hasExplicitOverride) {
@@ -524,7 +645,8 @@ function resolveEffortInternal(cwd, agentType) {
     const agentEfforts = EFFORT_PROFILES[agentType];
     if (!agentEfforts) return null;
     const profileEffort = agentEfforts[profile];
-    effort = (!profileEffort || profileEffort === 'inherit') ? null : profileEffort;
+    effort =
+      !profileEffort || profileEffort === 'inherit' ? null : profileEffort;
   }
 
   // Model-tier compatibility: haiku does not support effort at all; xhigh and max
@@ -534,7 +656,9 @@ function resolveEffortInternal(cwd, agentType) {
   const resolvedModel = resolveModelInternal(cwd, agentType);
   const haikuSkip = resolvedModel === 'haiku';
   const opusOnlySkip =
-    resolvedModel && resolvedModel !== 'opus' && (effort === 'xhigh' || effort === 'max');
+    resolvedModel &&
+    resolvedModel !== 'opus' &&
+    (effort === 'xhigh' || effort === 'max');
   if (haikuSkip || opusOnlySkip) {
     if (hasExplicitOverride && effort !== null) {
       const overrideValue = config.effort_overrides[agentType];
@@ -543,7 +667,7 @@ function resolveEffortInternal(cwd, agentType) {
         : `${effort} requires opus (resolved model: ${resolvedModel})`;
       fs.writeSync(
         2,
-        `Warning: effort_overrides.${agentType}="${overrideValue}" ignored — ${reason}\n`
+        `Warning: effort_overrides.${agentType}="${overrideValue}" ignored — ${reason}\n`,
       );
     }
     return null;
@@ -555,7 +679,9 @@ function resolveEffortInternal(cwd, agentType) {
 // ─── Misc utilities ───────────────────────────────────────────────────────────
 
 function pathExistsInternal(cwd, targetPath) {
-  const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath);
+  const fullPath = path.isAbsolute(targetPath)
+    ? targetPath
+    : path.join(cwd, targetPath);
   try {
     fs.statSync(fullPath);
     return true;
@@ -566,7 +692,10 @@ function pathExistsInternal(cwd, targetPath) {
 
 function generateSlugInternal(text, maxLen = 50) {
   if (!text) return null;
-  let slug = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let slug = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   if (slug.length > maxLen) {
     slug = slug.slice(0, maxLen).replace(/-[^-]*$/, '');
   }
@@ -616,7 +745,9 @@ function getMilestoneInfo(cwd) {
 function getMilestonePhaseFilter(cwd) {
   const milestonePhaseNums = new Set();
   try {
-    const roadmap = extractCurrentMilestone(fs.readFileSync(planningPaths(cwd).roadmap, 'utf-8'));
+    const roadmap = extractCurrentMilestone(
+      fs.readFileSync(planningPaths(cwd).roadmap, 'utf-8'),
+    );
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmap)) !== null) {
@@ -631,7 +762,9 @@ function getMilestonePhaseFilter(cwd) {
   }
 
   const normalized = new Set(
-    [...milestonePhaseNums].map(n => (n.replace(/^0+/, '') || '0').toLowerCase())
+    [...milestonePhaseNums].map((n) =>
+      (n.replace(/^0+/, '') || '0').toLowerCase(),
+    ),
   );
 
   function isDirInMilestone(dirName) {
@@ -662,16 +795,26 @@ function getPhaseCompletionStatus(phaseDir) {
   } catch {
     return { isComplete: false, status: 'not_started' };
   }
-  const planCount = files.filter(f => f.match(/-PLAN\.md$/i) || f === 'PLAN.md').length;
-  const summaryCount = files.filter(f => f.match(/-SUMMARY\.md$/i) || f === 'SUMMARY.md').length;
+  const planCount = files.filter(
+    (f) => f.match(/-PLAN\.md$/i) || f === 'PLAN.md',
+  ).length;
+  const summaryCount = files.filter(
+    (f) => f.match(/-SUMMARY\.md$/i) || f === 'SUMMARY.md',
+  ).length;
   if (planCount === 0) return { isComplete: false, status: 'not_started' };
-  if (summaryCount < planCount) return { isComplete: false, status: 'in_progress' };
+  if (summaryCount < planCount)
+    return { isComplete: false, status: 'in_progress' };
   // summaries >= plans — phase is complete. Check verification status.
-  const verificationFile = files.find(f => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md');
+  const verificationFile = files.find(
+    (f) => f.endsWith('-VERIFICATION.md') || f === 'VERIFICATION.md',
+  );
   if (verificationFile) {
     try {
       const { extractFrontmatter } = require('./frontmatter.cjs');
-      const verContent = fs.readFileSync(path.join(phaseDir, verificationFile), 'utf-8');
+      const verContent = fs.readFileSync(
+        path.join(phaseDir, verificationFile),
+        'utf-8',
+      );
       const fm = extractFrontmatter(verContent);
       if (fm && fm.status === 'passed') {
         return { isComplete: true, status: 'complete (verified)' };

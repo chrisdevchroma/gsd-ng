@@ -26,25 +26,67 @@
  */
 const CLI_SUBCOMMANDS = {
   gh: [
-    'pr', 'issue', 'release', 'workflow', 'auth', 'search', 'run', 'status',
-    'repo view', 'repo list', 'repo clone', 'repo fork', 'repo create', 'repo sync', 'repo set-default',
-    'label list', 'label create', 'label clone',
+    'pr',
+    'issue',
+    'release',
+    'workflow',
+    'auth',
+    'search',
+    'run',
+    'status',
+    'repo view',
+    'repo list',
+    'repo clone',
+    'repo fork',
+    'repo create',
+    'repo sync',
+    'repo set-default',
+    'label list',
+    'label create',
+    'label clone',
   ],
   glab: [
-    'mr', 'issue', 'release', 'ci', 'auth',
-    'repo view', 'repo list', 'repo clone', 'repo fork', 'repo create',
-    'label list', 'label create',
+    'mr',
+    'issue',
+    'release',
+    'ci',
+    'auth',
+    'repo view',
+    'repo list',
+    'repo clone',
+    'repo fork',
+    'repo create',
+    'label list',
+    'label create',
   ],
   fj: [
-    'pr', 'issue', 'release', 'actions', 'auth',
-    'repo view', 'repo clone', 'repo fork', 'repo create',
+    'pr',
+    'issue',
+    'release',
+    'actions',
+    'auth',
+    'repo view',
+    'repo clone',
+    'repo fork',
+    'repo create',
     // NOTE: fj has no 'label' subcommand — intentionally empty (corrects Phase 54 ALLOW-14 drift)
   ],
   tea: [
-    'pr', 'pulls', 'issue', 'issues', 'release', 'releases', 'login', 'actions',
-    'repo list', 'repo create', 'repo fork',
-    'label list', 'label create',
-    'repos', 'labels',  // retained plural aliases (broad) — Phase 57 candidate to narrow
+    'pr',
+    'pulls',
+    'issue',
+    'issues',
+    'release',
+    'releases',
+    'login',
+    'actions',
+    'repo list',
+    'repo create',
+    'repo fork',
+    'label list',
+    'label create',
+    'repos',
+    'labels', // retained plural aliases (broad) — Phase 57 candidate to narrow
   ],
 };
 
@@ -83,7 +125,12 @@ function getAllPlatformCliPatterns() {
  * Platform name to CLI binary mapping.
  * Matches PLATFORM_CLI in commands.cjs.
  */
-const PLATFORM_TO_CLI = { github: 'gh', gitlab: 'glab', forgejo: 'fj', gitea: 'tea' };
+const PLATFORM_TO_CLI = {
+  github: 'gh',
+  gitlab: 'glab',
+  forgejo: 'fj',
+  gitea: 'tea',
+};
 
 /**
  * RW_FORMS — canonical Read/Edit/Write permission forms — both bare and glob.
@@ -91,10 +138,9 @@ const PLATFORM_TO_CLI = { github: 'gh', gitlab: 'glab', forgejo: 'fj', gitea: 't
  * from template entries before injecting the platform-appropriate form.
  * Single source of truth — see ALLOW-19.
  */
-const RW_FORMS = Object.freeze(new Set([
-  'Edit', 'Write', 'Read',
-  'Edit(*)', 'Write(*)', 'Read(*)',
-]));
+const RW_FORMS = Object.freeze(
+  new Set(['Edit', 'Write', 'Read', 'Edit(*)', 'Write(*)', 'Read(*)']),
+);
 
 /**
  * Return the Read/Edit/Write allow entries appropriate for the target platform.

@@ -1,0 +1,11 @@
+# git-blame-ignore-revs
+#
+# Commits listed here are skipped by `git blame` when the
+# `blame.ignoreRevsFile` config is set, AND by GitHub's blame UI
+# automatically.
+#
+# To opt in locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# One-shot Prettier format pass (Phase 56)
+1131dee62468eab8c50b24cb6f5867a8fcedb21d

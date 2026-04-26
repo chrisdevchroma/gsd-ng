@@ -4,7 +4,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, execGit, loadConfig, planningPaths } = require('./core.cjs');
+const {
+  output,
+  error,
+  execGit,
+  loadConfig,
+  planningPaths,
+} = require('./core.cjs');
 const { DEFAULTS } = require('./defaults.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { cmdDetectPlatform } = require('./commands.cjs');
@@ -46,12 +52,20 @@ function detectWorkspaceType(cwd) {
   // 1. Check for git submodules
   if (fs.existsSync(path.join(cwd, '.gitmodules'))) {
     const submodulePaths = parseSubmodulePaths(path.join(cwd, '.gitmodules'));
-    return { type: 'submodule', signal: '.gitmodules', submodule_paths: submodulePaths };
+    return {
+      type: 'submodule',
+      signal: '.gitmodules',
+      submodule_paths: submodulePaths,
+    };
   }
 
   // 2. Check for pnpm workspace
   if (fs.existsSync(path.join(cwd, 'pnpm-workspace.yaml'))) {
-    return { type: 'monorepo', signal: 'pnpm-workspace.yaml', submodule_paths: [] };
+    return {
+      type: 'monorepo',
+      signal: 'pnpm-workspace.yaml',
+      submodule_paths: [],
+    };
   }
 
   // 3. Check package.json for workspaces field
@@ -60,7 +74,11 @@ function detectWorkspaceType(cwd) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
       if (pkg.workspaces) {
-        return { type: 'monorepo', signal: 'package.json#workspaces', submodule_paths: [] };
+        return {
+          type: 'monorepo',
+          signal: 'package.json#workspaces',
+          submodule_paths: [],
+        };
       }
     } catch {
       // Malformed package.json — treat as standalone
@@ -91,8 +109,9 @@ function generateMemoriesSection(cwd) {
 
   let files;
   try {
-    files = fs.readdirSync(memoryDir)
-      .filter(f => f.endsWith('.md') && f !== 'MEMORY.md')
+    files = fs
+      .readdirSync(memoryDir)
+      .filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
       .sort();
   } catch {
     return '';
@@ -102,7 +121,7 @@ function generateMemoriesSection(cwd) {
     return '';
   }
 
-  const bullets = files.map(filename => {
+  const bullets = files.map((filename) => {
     const filePath = path.join(memoryDir, filename);
     let description = '(no description)';
     try {
@@ -146,8 +165,9 @@ function generateMemoryMd(cwd) {
 
   let files;
   try {
-    files = fs.readdirSync(memoryDir)
-      .filter(f => f.endsWith('.md') && f !== 'MEMORY.md')
+    files = fs
+      .readdirSync(memoryDir)
+      .filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
       .sort();
   } catch {
     return '';
@@ -250,12 +270,17 @@ function resolveGitContext(cwd) {
     const targetBranch = config.target_branch || 'main';
 
     const remoteResult = execGit(cwd, ['remote', 'get-url', remote]);
-    const remoteUrl = remoteResult.exitCode === 0 ? (remoteResult.stdout || null) : null;
+    const remoteUrl =
+      remoteResult.exitCode === 0 ? remoteResult.stdout || null : null;
 
     const branchResult = execGit(cwd, ['branch', '--show-current']);
-    const currentBranch = branchResult.exitCode === 0 ? (branchResult.stdout || null) : null;
+    const currentBranch =
+      branchResult.exitCode === 0 ? branchResult.stdout || null : null;
 
-    const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+    const sshUrl = Boolean(
+      remoteUrl &&
+      (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')),
+    );
 
     const platformInfo = cmdDetectPlatform(cwd, remote, true) || {};
 
@@ -284,12 +309,16 @@ function resolveGitContext(cwd) {
   const cachedDiff = execGit(cwd, ['diff', '--cached', '--name-only']);
 
   const changedFiles = [
-    ...(headDiff.exitCode === 0 && headDiff.stdout ? headDiff.stdout.split('\n').filter(Boolean) : []),
-    ...(cachedDiff.exitCode === 0 && cachedDiff.stdout ? cachedDiff.stdout.split('\n').filter(Boolean) : []),
+    ...(headDiff.exitCode === 0 && headDiff.stdout
+      ? headDiff.stdout.split('\n').filter(Boolean)
+      : []),
+    ...(cachedDiff.exitCode === 0 && cachedDiff.stdout
+      ? cachedDiff.stdout.split('\n').filter(Boolean)
+      : []),
   ];
 
-  const hitPaths = submodulePaths.filter(sp =>
-    changedFiles.some(f => f === sp || f.startsWith(sp + '/'))
+  const hitPaths = submodulePaths.filter((sp) =>
+    changedFiles.some((f) => f === sp || f.startsWith(sp + '/')),
   );
 
   // Ambiguous: multiple submodules have changes
@@ -342,9 +371,13 @@ function resolveGitContext(cwd) {
     const pp = planningPaths(cwd);
     const rawConfig = fs.readFileSync(pp.config, 'utf-8');
     const parsedConfig = JSON.parse(rawConfig);
-    const globalGit = (parsedConfig.git) || {};
+    const globalGit = parsedConfig.git || {};
     const submoduleName = activePath ? activePath.split('/').pop() : null;
-    const perSubmodule = (submoduleName && globalGit.submodules && globalGit.submodules[submoduleName]) || {};
+    const perSubmodule =
+      (submoduleName &&
+        globalGit.submodules &&
+        globalGit.submodules[submoduleName]) ||
+      {};
     // Merged: global git.* fields as base, per-submodule overrides on top
     configSubmodule = { ...globalGit, ...perSubmodule };
   } catch {
@@ -354,15 +387,20 @@ function resolveGitContext(cwd) {
   const remote = configSubmodule.remote || 'origin';
 
   const remoteResult = execGit(subCwd, ['remote', 'get-url', remote]);
-  const remoteUrl = remoteResult.exitCode === 0 ? (remoteResult.stdout || null) : null;
+  const remoteUrl =
+    remoteResult.exitCode === 0 ? remoteResult.stdout || null : null;
 
   const branchResult = execGit(subCwd, ['branch', '--show-current']);
-  const currentBranch = branchResult.exitCode === 0 ? (branchResult.stdout || null) : null;
+  const currentBranch =
+    branchResult.exitCode === 0 ? branchResult.stdout || null : null;
 
   // Resolve target branch: config override > git tracking > fallback 'main'
   let targetBranch = configSubmodule.target_branch || null;
   if (!targetBranch && currentBranch) {
-    const mergeResult = execGit(subCwd, ['config', `branch.${currentBranch}.merge`]);
+    const mergeResult = execGit(subCwd, [
+      'config',
+      `branch.${currentBranch}.merge`,
+    ]);
     if (mergeResult.exitCode === 0 && mergeResult.stdout) {
       targetBranch = mergeResult.stdout.replace(/^refs\/heads\//, '') || null;
     }
@@ -371,7 +409,10 @@ function resolveGitContext(cwd) {
     targetBranch = 'main';
   }
 
-  const sshUrl = Boolean(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+  const sshUrl = Boolean(
+    remoteUrl &&
+    (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')),
+  );
 
   const platformInfo = cmdDetectPlatform(subCwd, remote, true) || {};
 
@@ -391,11 +432,18 @@ function resolveGitContext(cwd) {
     cli_installed: platformInfo.cli_installed || false,
     cli_install_url: platformInfo.cli_install_url || null,
     branching_strategy: configSubmodule.branching_strategy || 'none',
-    auto_push: configSubmodule.auto_push !== undefined ? configSubmodule.auto_push : false,
-    phase_branch_template: configSubmodule.phase_branch_template || DEFAULTS.phase_branch_template,
-    milestone_branch_template: configSubmodule.milestone_branch_template || DEFAULTS.milestone_branch_template,
+    auto_push:
+      configSubmodule.auto_push !== undefined
+        ? configSubmodule.auto_push
+        : false,
+    phase_branch_template:
+      configSubmodule.phase_branch_template || DEFAULTS.phase_branch_template,
+    milestone_branch_template:
+      configSubmodule.milestone_branch_template ||
+      DEFAULTS.milestone_branch_template,
     review_branch_template: configSubmodule.review_branch_template || null,
-    pr_draft: configSubmodule.pr_draft !== undefined ? configSubmodule.pr_draft : true,
+    pr_draft:
+      configSubmodule.pr_draft !== undefined ? configSubmodule.pr_draft : true,
     pr_template: configSubmodule.pr_template || null,
     type_aliases: configSubmodule.type_aliases || null,
   };
@@ -435,10 +483,18 @@ function cmdGitContext(cwd, silent) {
  * @param {boolean} silent - If true, return result without output()/process.exit()
  */
 function cmdSshCheck(remoteUrl, silent) {
-  const sshRequired = !!(remoteUrl && (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://')));
+  const sshRequired = !!(
+    remoteUrl &&
+    (remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://'))
+  );
 
   if (!sshRequired) {
-    const result = { ssh_required: false, agent_running: false, status: 'not_required', message: 'Remote does not use SSH' };
+    const result = {
+      ssh_required: false,
+      agent_running: false,
+      status: 'not_required',
+      message: 'Remote does not use SSH',
+    };
     if (silent) return result;
     output(result);
     return;
@@ -450,7 +506,10 @@ function cmdSshCheck(remoteUrl, silent) {
 
   try {
     const { execSync } = require('child_process');
-    execSync('ssh-add -l', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    execSync('ssh-add -l', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     // Exit code 0: identities loaded
     agentRunning = true;
     status = 'ok';
@@ -460,13 +519,19 @@ function cmdSshCheck(remoteUrl, silent) {
       // Exit code 1: agent running but no identities
       agentRunning = true;
       status = 'no_identities';
-      message = 'SSH agent is running but no identities are loaded. Run: ssh-add';
+      message =
+        'SSH agent is running but no identities are loaded. Run: ssh-add';
     } else {
       // Exit code 2 or stderr contains agent socket error: agent not running
       const stderr = (err.stderr || '').toString();
-      if (err.status === 2 || stderr.includes('Could not open') || stderr.includes('not open')) {
+      if (
+        err.status === 2 ||
+        stderr.includes('Could not open') ||
+        stderr.includes('not open')
+      ) {
         status = 'agent_not_running';
-        message = 'SSH agent is not running. Run: eval "$(ssh-agent -s)" && ssh-add';
+        message =
+          'SSH agent is not running. Run: eval "$(ssh-agent -s)" && ssh-add';
       } else {
         status = 'agent_not_running';
         message = 'SSH agent check failed: ' + (stderr || err.message);
@@ -474,7 +539,12 @@ function cmdSshCheck(remoteUrl, silent) {
     }
   }
 
-  const result = { ssh_required: true, agent_running: agentRunning, status, message };
+  const result = {
+    ssh_required: true,
+    agent_running: agentRunning,
+    status,
+    message,
+  };
   if (silent) return result;
   output(result);
 }

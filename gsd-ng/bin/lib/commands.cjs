@@ -5,11 +5,41 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 const os = require('os');
-const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, resolveEffortInternal, extractCurrentMilestone, getPhaseCompletionStatus, toPosixPath, output, error, findPhaseInternal, planningPaths } = require('./core.cjs');
+const {
+  safeReadFile,
+  loadConfig,
+  isGitIgnored,
+  execGit,
+  normalizePhaseName,
+  comparePhaseNum,
+  getArchivedPhaseDirs,
+  generateSlugInternal,
+  getMilestoneInfo,
+  getMilestonePhaseFilter,
+  resolveModelInternal,
+  resolveEffortInternal,
+  extractCurrentMilestone,
+  getPhaseCompletionStatus,
+  toPosixPath,
+  output,
+  error,
+  findPhaseInternal,
+  planningPaths,
+} = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { MODEL_PROFILES, EFFORT_PROFILES } = require('./model-profiles.cjs');
-const { validatePath, scanForInjection, wrapUntrustedContent, logSecurityEvent } = require('./security.cjs');
-const { getPlatformCliPatterns, PLATFORM_TO_CLI, getReadEditWriteAllowRules, RW_FORMS } = require('./allowlist.cjs');
+const {
+  validatePath,
+  scanForInjection,
+  wrapUntrustedContent,
+  logSecurityEvent,
+} = require('./security.cjs');
+const {
+  getPlatformCliPatterns,
+  PLATFORM_TO_CLI,
+  getReadEditWriteAllowRules,
+  RW_FORMS,
+} = require('./allowlist.cjs');
 
 function cmdGenerateSlug(text) {
   if (!text) {
@@ -52,7 +82,7 @@ function cmdListTodos(cwd, area) {
   const todos = [];
 
   try {
-    const files = fs.readdirSync(pendingDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(pendingDir).filter((f) => f.endsWith('.md'));
 
     for (const file of files) {
       try {
@@ -96,11 +126,17 @@ function cmdVerifyPathExists(cwd, targetPath) {
     }
   }
 
-  const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath);
+  const fullPath = path.isAbsolute(targetPath)
+    ? targetPath
+    : path.join(cwd, targetPath);
 
   try {
     const stats = fs.statSync(fullPath);
-    const type = stats.isDirectory() ? 'directory' : stats.isFile() ? 'file' : 'other';
+    const type = stats.isDirectory()
+      ? 'directory'
+      : stats.isFile()
+        ? 'file'
+        : 'other';
     const result = { exists: true, type };
     output(result, 'true');
   } catch {
@@ -119,18 +155,27 @@ function cmdHistoryDigest(cwd) {
   // Add archived phases first (oldest milestones first)
   const archived = getArchivedPhaseDirs(cwd);
   for (const a of archived) {
-    allPhaseDirs.push({ name: a.name, fullPath: a.fullPath, milestone: a.milestone });
+    allPhaseDirs.push({
+      name: a.name,
+      fullPath: a.fullPath,
+      milestone: a.milestone,
+    });
   }
 
   // Add current phases
   if (fs.existsSync(phasesDir)) {
     try {
-      const currentDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-        .filter(e => e.isDirectory())
-        .map(e => e.name)
+      const currentDirs = fs
+        .readdirSync(phasesDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
         .sort();
       for (const dir of currentDirs) {
-        allPhaseDirs.push({ name: dir, fullPath: path.join(phasesDir, dir), milestone: null });
+        allPhaseDirs.push({
+          name: dir,
+          fullPath: path.join(phasesDir, dir),
+          milestone: null,
+        });
       }
     } catch {}
   }
@@ -143,7 +188,9 @@ function cmdHistoryDigest(cwd) {
 
   try {
     for (const { name: dir, fullPath: dirPath } of allPhaseDirs) {
-      const summaries = fs.readdirSync(dirPath).filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
+      const summaries = fs
+        .readdirSync(dirPath)
+        .filter((f) => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
 
       for (const summary of summaries) {
         try {
@@ -163,33 +210,40 @@ function cmdHistoryDigest(cwd) {
 
           // Merge provides
           if (fm['dependency-graph'] && fm['dependency-graph'].provides) {
-            fm['dependency-graph'].provides.forEach(p => digest.phases[phaseNum].provides.add(p));
+            fm['dependency-graph'].provides.forEach((p) =>
+              digest.phases[phaseNum].provides.add(p),
+            );
           } else if (fm.provides) {
-            fm.provides.forEach(p => digest.phases[phaseNum].provides.add(p));
+            fm.provides.forEach((p) => digest.phases[phaseNum].provides.add(p));
           }
 
           // Merge affects
           if (fm['dependency-graph'] && fm['dependency-graph'].affects) {
-            fm['dependency-graph'].affects.forEach(a => digest.phases[phaseNum].affects.add(a));
+            fm['dependency-graph'].affects.forEach((a) =>
+              digest.phases[phaseNum].affects.add(a),
+            );
           }
 
           // Merge patterns
           if (fm['patterns-established']) {
-            fm['patterns-established'].forEach(p => digest.phases[phaseNum].patterns.add(p));
+            fm['patterns-established'].forEach((p) =>
+              digest.phases[phaseNum].patterns.add(p),
+            );
           }
 
           // Merge decisions
           if (fm['key-decisions']) {
-            fm['key-decisions'].forEach(d => {
+            fm['key-decisions'].forEach((d) => {
               digest.decisions.push({ phase: phaseNum, decision: d });
             });
           }
 
           // Merge tech stack
           if (fm['tech-stack'] && fm['tech-stack'].added) {
-            fm['tech-stack'].added.forEach(t => digest.tech_stack.add(typeof t === 'string' ? t : t.name));
+            fm['tech-stack'].added.forEach((t) =>
+              digest.tech_stack.add(typeof t === 'string' ? t : t.name),
+            );
           }
-
         } catch (e) {
           // Skip malformed summaries
         }
@@ -197,7 +251,7 @@ function cmdHistoryDigest(cwd) {
     }
 
     // Convert Sets to Arrays for JSON output
-    Object.keys(digest.phases).forEach(p => {
+    Object.keys(digest.phases).forEach((p) => {
       digest.phases[p].provides = [...digest.phases[p].provides];
       digest.phases[p].affects = [...digest.phases[p].affects];
       digest.phases[p].patterns = [...digest.phases[p].patterns];
@@ -272,7 +326,7 @@ function applyCommitFormat(message, config, context) {
 
 function appendIssueTrailers(message, trailers) {
   if (!trailers || trailers.length === 0) return message;
-  const lines = trailers.map(t => `${t.action} #${t.number}`);
+  const lines = trailers.map((t) => `${t.action} #${t.number}`);
   return message + '\n\n' + lines.join('\n');
 }
 
@@ -285,14 +339,22 @@ function cmdCommit(cwd, message, files, amend) {
 
   // Check commit_docs config
   if (!config.commit_docs) {
-    const result = { committed: false, hash: null, reason: 'skipped_commit_docs_false' };
+    const result = {
+      committed: false,
+      hash: null,
+      reason: 'skipped_commit_docs_false',
+    };
     output(result, 'skipped');
     return;
   }
 
   // Check if .planning is gitignored
   if (isGitIgnored(cwd, '.planning')) {
-    const result = { committed: false, hash: null, reason: 'skipped_gitignored' };
+    const result = {
+      committed: false,
+      hash: null,
+      reason: 'skipped_gitignored',
+    };
     output(result, 'skipped');
     return;
   }
@@ -309,15 +371,29 @@ function cmdCommit(cwd, message, files, amend) {
   }
 
   // Commit
-  const commitArgs = amend ? ['commit', '--amend', '--no-edit'] : ['commit', '-m', message];
+  const commitArgs = amend
+    ? ['commit', '--amend', '--no-edit']
+    : ['commit', '-m', message];
   const commitResult = execGit(cwd, commitArgs);
   if (commitResult.exitCode !== 0) {
-    if (commitResult.stdout.includes('nothing to commit') || commitResult.stderr.includes('nothing to commit')) {
-      const result = { committed: false, hash: null, reason: 'nothing_to_commit' };
+    if (
+      commitResult.stdout.includes('nothing to commit') ||
+      commitResult.stderr.includes('nothing to commit')
+    ) {
+      const result = {
+        committed: false,
+        hash: null,
+        reason: 'nothing_to_commit',
+      };
       output(result, 'nothing');
       return;
     }
-    const result = { committed: false, hash: null, reason: 'nothing_to_commit', error: commitResult.stderr };
+    const result = {
+      committed: false,
+      hash: null,
+      reason: 'nothing_to_commit',
+      error: commitResult.stderr,
+    };
     output(result, 'nothing');
     return;
   }
@@ -337,7 +413,10 @@ function cmdSummaryExtract(cwd, summaryPath, fields, defaultValue) {
   const fullPath = path.join(cwd, summaryPath);
 
   if (!fs.existsSync(fullPath)) {
-    if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
+    if (defaultValue !== undefined) {
+      output(defaultValue, String(defaultValue));
+      return;
+    }
     output({ error: 'File not found', path: summaryPath });
     return;
   }
@@ -348,7 +427,7 @@ function cmdSummaryExtract(cwd, summaryPath, fields, defaultValue) {
   // Parse key-decisions into structured format
   const parseDecisions = (decisionsList) => {
     if (!decisionsList || !Array.isArray(decisionsList)) return [];
-    return decisionsList.map(d => {
+    return decisionsList.map((d) => {
       const colonIdx = d.indexOf(':');
       if (colonIdx > 0) {
         return {
@@ -413,7 +492,7 @@ async function cmdWebsearch(query, options) {
     count: String(options.limit || 10),
     country: 'us',
     search_lang: 'en',
-    text_decorations: 'false'
+    text_decorations: 'false',
   });
 
   if (options.freshness) {
@@ -425,10 +504,10 @@ async function cmdWebsearch(query, options) {
       `https://api.search.brave.com/res/v1/web/search?${params}`,
       {
         headers: {
-          'Accept': 'application/json',
-          'X-Subscription-Token': apiKey
-        }
-      }
+          Accept: 'application/json',
+          'X-Subscription-Token': apiKey,
+        },
+      },
     );
 
     if (!response.ok) {
@@ -438,19 +517,22 @@ async function cmdWebsearch(query, options) {
 
     const data = await response.json();
 
-    const results = (data.web?.results || []).map(r => ({
+    const results = (data.web?.results || []).map((r) => ({
       title: r.title,
       url: r.url,
       description: r.description,
-      age: r.age || null
+      age: r.age || null,
     }));
 
-    output({
-      available: true,
-      query,
-      count: results.length,
-      results
-    }, results.map(r => `${r.title}\n${r.url}\n${r.description}`).join('\n\n'));
+    output(
+      {
+        available: true,
+        query,
+        count: results.length,
+        results,
+      },
+      results.map((r) => `${r.title}\n${r.url}\n${r.description}`).join('\n\n'),
+    );
   } catch (err) {
     output({ available: false, error: err.message }, '');
   }
@@ -466,15 +548,22 @@ function cmdProgressRender(cwd, format) {
 
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
-    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a, b) => comparePhaseNum(a, b));
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort((a, b) => comparePhaseNum(a, b));
 
     for (const dir of dirs) {
       const dm = dir.match(/^(\d+(?:\.\d+)*)-?(.*)/);
       const phaseNum = dm ? dm[1] : dir;
       const phaseName = dm && dm[2] ? dm[2].replace(/-/g, ' ') : '';
       const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
-      const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').length;
-      const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').length;
+      const plans = phaseFiles.filter(
+        (f) => f.endsWith('-PLAN.md') || f === 'PLAN.md',
+      ).length;
+      const summaries = phaseFiles.filter(
+        (f) => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md',
+      ).length;
 
       totalPlans += plans;
       totalSummaries += summaries;
@@ -482,17 +571,30 @@ function cmdProgressRender(cwd, format) {
       let status;
       if (plans === 0) status = 'Pending';
       else {
-        const { isComplete, status: cs } = getPhaseCompletionStatus(path.join(phasesDir, dir));
-        if (isComplete) status = cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
+        const { isComplete, status: cs } = getPhaseCompletionStatus(
+          path.join(phasesDir, dir),
+        );
+        if (isComplete)
+          status =
+            cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
         else if (summaries > 0) status = 'In Progress';
         else status = 'Planned';
       }
 
-      phases.push({ number: phaseNum, name: phaseName, plans, summaries, status });
+      phases.push({
+        number: phaseNum,
+        name: phaseName,
+        plans,
+        summaries,
+        status,
+      });
     }
   } catch {}
 
-  const percent = totalPlans > 0 ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100)) : 0;
+  const percent =
+    totalPlans > 0
+      ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100))
+      : 0;
 
   if (format === 'table') {
     // Render markdown table
@@ -512,7 +614,10 @@ function cmdProgressRender(cwd, format) {
     const filled = Math.round((percent / 100) * barWidth);
     const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barWidth - filled);
     const text = `[${bar}] ${totalSummaries}/${totalPlans} plans (${percent}%)`;
-    output({ bar: text, percent, completed: totalSummaries, total: totalPlans }, text);
+    output(
+      { bar: text, percent, completed: totalSummaries, total: totalPlans },
+      text,
+    );
   } else {
     // JSON format
     output({
@@ -537,7 +642,12 @@ function parseDuration(interval) {
   const match = String(interval || '').match(/^(\d+)([dwmy])$/i);
   if (!match) return null;
   const [, n, unit] = match;
-  const multipliers = { d: 86400000, w: 604800000, m: 2592000000, y: 31536000000 };
+  const multipliers = {
+    d: 86400000,
+    w: 604800000,
+    m: 2592000000,
+    y: 31536000000,
+  };
   return parseInt(n, 10) * (multipliers[unit.toLowerCase()] || 0);
 }
 
@@ -553,8 +663,10 @@ function isRecurringDue(todoData) {
   if (!recurring || String(recurring) === 'false') return false;
   const intervalMs = parseDuration(todoData.interval);
   if (!intervalMs) return true; // No valid interval = always due
-  const lastCompleted = todoData.last_completed ? new Date(todoData.last_completed).getTime() : 0;
-  return (Date.now() - lastCompleted) >= intervalMs;
+  const lastCompleted = todoData.last_completed
+    ? new Date(todoData.last_completed).getTime()
+    : 0;
+  return Date.now() - lastCompleted >= intervalMs;
 }
 
 function cmdTodoComplete(cwd, filename) {
@@ -562,7 +674,8 @@ function cmdTodoComplete(cwd, filename) {
     error('filename required for todo complete');
   }
 
-  const { todosPending: pendingDir, todosCompleted: completedDir } = planningPaths(cwd);
+  const { todosPending: pendingDir, todosCompleted: completedDir } =
+    planningPaths(cwd);
   const sourcePath = path.join(pendingDir, filename);
 
   if (!fs.existsSync(sourcePath)) {
@@ -584,17 +697,26 @@ function cmdTodoComplete(cwd, filename) {
       // Replace existing last_completed value
       updatedContent = content.replace(
         /^last_completed:.*$/m,
-        `last_completed: ${today}`
+        `last_completed: ${today}`,
       );
     } else {
       // Add last_completed before closing ---
-      updatedContent = content.replace(/\n---/, `\nlast_completed: ${today}\n---`);
+      updatedContent = content.replace(
+        /\n---/,
+        `\nlast_completed: ${today}\n---`,
+      );
     }
 
     fs.writeFileSync(sourcePath, updatedContent, 'utf-8');
     output(
-      { completed: true, recurring: true, file: filename, date: todayDate, next_due: fm.interval || 'unknown' },
-      `recurring-reset: ${filename}`
+      {
+        completed: true,
+        recurring: true,
+        file: filename,
+        date: todayDate,
+        next_due: fm.interval || 'unknown',
+      },
+      `recurring-reset: ${filename}`,
     );
     return;
   }
@@ -606,7 +728,11 @@ function cmdTodoComplete(cwd, filename) {
   const today = new Date().toISOString().split('T')[0];
   const completedContent = `completed: ${today}\n` + content;
 
-  fs.writeFileSync(path.join(completedDir, filename), completedContent, 'utf-8');
+  fs.writeFileSync(
+    path.join(completedDir, filename),
+    completedContent,
+    'utf-8',
+  );
   fs.unlinkSync(sourcePath);
 
   // Inline issue-sync for non-recurring completions with external_ref
@@ -615,14 +741,25 @@ function cmdTodoComplete(cwd, filename) {
     // object and does not expose the raw issue_tracker section.
     let itConfig = {};
     try {
-      const rawConfig = JSON.parse(fs.readFileSync(planningPaths(cwd).config, 'utf-8'));
+      const rawConfig = JSON.parse(
+        fs.readFileSync(planningPaths(cwd).config, 'utf-8'),
+      );
       itConfig = rawConfig.issue_tracker || {};
-    } catch { /* no config.json, use empty defaults */ }
+    } catch {
+      /* no config.json, use empty defaults */
+    }
     if (itConfig.auto_sync !== false) {
       try {
         const commitHash = getLatestCommitHash(cwd);
-        const syncResults = syncSingleRef(fm.external_ref, { commitHash }, itConfig);
-        output({ completed: true, file: filename, date: today, synced: syncResults }, 'completed');
+        const syncResults = syncSingleRef(
+          fm.external_ref,
+          { commitHash },
+          itConfig,
+        );
+        output(
+          { completed: true, file: filename, date: today, synced: syncResults },
+          'completed',
+        );
         return;
       } catch (_e) {
         // Sync failure is non-fatal — fall through to normal completion output
@@ -644,7 +781,7 @@ function cmdTodoListByPhase(cwd, phase) {
   const { todosPending } = planningPaths(cwd);
   let files = [];
   try {
-    files = fs.readdirSync(todosPending).filter(f => f.endsWith('.md'));
+    files = fs.readdirSync(todosPending).filter((f) => f.endsWith('.md'));
   } catch (_e) {
     // Directory doesn't exist — return empty
     output([]);
@@ -683,7 +820,10 @@ function cmdTodoScanPhaseLinked(cwd, phase) {
     }
     const content = fs.readFileSync(roadmapPath, 'utf-8');
     const escapedPhase = String(phase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*[^\\n]+`, 'i');
+    const phasePattern = new RegExp(
+      `#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*[^\\n]+`,
+      'i',
+    );
     const headerMatch = content.match(phasePattern);
     if (!headerMatch) {
       output([]);
@@ -691,8 +831,12 @@ function cmdTodoScanPhaseLinked(cwd, phase) {
     }
     const sectionStart = headerMatch.index;
     const restOfContent = content.slice(sectionStart);
-    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i);
-    const sectionEnd = nextHeaderMatch ? sectionStart + nextHeaderMatch.index : content.length;
+    const nextHeaderMatch = restOfContent.match(
+      /\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i,
+    );
+    const sectionEnd = nextHeaderMatch
+      ? sectionStart + nextHeaderMatch.index
+      : content.length;
     const section = content.slice(sectionStart, sectionEnd);
     const sourceTodosMatch = section.match(/\*\*Source Todos\*\*:\s*([^\n]+)/i);
     if (sourceTodosMatch) sourceTodosStr = sourceTodosMatch[1].trim();
@@ -708,10 +852,13 @@ function cmdTodoScanPhaseLinked(cwd, phase) {
 
   // Parse source_todos string: backtick-wrapped, comma-separated
   const todoFiles = sourceTodosStr
-    .replace(/`/g, '').split(',').map(s => s.trim()).filter(Boolean);
+    .replace(/`/g, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   // Return only files that exist in pending dir
-  const existing = todoFiles.filter(f => {
+  const existing = todoFiles.filter((f) => {
     try {
       return fs.existsSync(path.join(todosPending, f));
     } catch (_e) {
@@ -731,7 +878,7 @@ function cmdRecurringDue(cwd) {
   const due = [];
 
   try {
-    const files = fs.readdirSync(pendingDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(pendingDir).filter((f) => f.endsWith('.md'));
     for (const file of files) {
       try {
         const content = fs.readFileSync(path.join(pendingDir, file), 'utf-8');
@@ -743,7 +890,9 @@ function cmdRecurringDue(cwd) {
               title: fm.title || 'Untitled',
               interval: fm.interval || 'unknown',
               last_completed: fm.last_completed || 'never',
-              path: toPosixPath(path.join('.planning', 'todos', 'pending', file)),
+              path: toPosixPath(
+                path.join('.planning', 'todos', 'pending', file),
+              ),
             });
           }
         }
@@ -757,7 +906,7 @@ function cmdRecurringDue(cwd) {
 
   output(
     { count: due.length, todos: due },
-    due.length > 0 ? due.map(d => d.file).join(', ') : 'none due'
+    due.length > 0 ? due.map((d) => d.file).join(', ') : 'none due',
   );
 }
 
@@ -802,15 +951,27 @@ function cmdScaffold(cwd, type, options) {
       fs.mkdirSync(phasesParent, { recursive: true });
       const dirPath = path.join(phasesParent, dirName);
       fs.mkdirSync(dirPath, { recursive: true });
-      output({ created: true, directory: `.planning/phases/${dirName}`, path: dirPath }, dirPath);
+      output(
+        {
+          created: true,
+          directory: `.planning/phases/${dirName}`,
+          path: dirPath,
+        },
+        dirPath,
+      );
       return;
     }
     default:
-      error(`Unknown scaffold type: ${type}. Available: context, uat, verification, phase-dir`);
+      error(
+        `Unknown scaffold type: ${type}. Available: context, uat, verification, phase-dir`,
+      );
   }
 
   if (fs.existsSync(filePath)) {
-    output({ created: false, reason: 'already_exists', path: filePath }, 'exists');
+    output(
+      { created: false, reason: 'already_exists', path: filePath },
+      'exists',
+    );
     return;
   }
 
@@ -820,7 +981,12 @@ function cmdScaffold(cwd, type, options) {
 }
 
 function cmdStats(cwd, format) {
-  const { phases: phasesDir, roadmap: roadmapPath, requirements: reqPath, state: statePath } = planningPaths(cwd);
+  const {
+    phases: phasesDir,
+    roadmap: roadmapPath,
+    requirements: reqPath,
+    state: statePath,
+  } = planningPaths(cwd);
   const milestone = getMilestoneInfo(cwd);
   const isDirInMilestone = getMilestonePhaseFilter(cwd);
 
@@ -830,8 +996,11 @@ function cmdStats(cwd, format) {
   let totalSummaries = 0;
 
   try {
-    const roadmapContent = extractCurrentMilestone(fs.readFileSync(roadmapPath, 'utf-8'));
-    const headingPattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+    const roadmapContent = extractCurrentMilestone(
+      fs.readFileSync(roadmapPath, 'utf-8'),
+    );
+    const headingPattern =
+      /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
     let match;
     while ((match = headingPattern.exec(roadmapContent)) !== null) {
       phasesByNumber.set(match[1], {
@@ -847,8 +1016,8 @@ function cmdStats(cwd, format) {
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries
-      .filter(e => e.isDirectory())
-      .map(e => e.name)
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
       .filter(isDirInMilestone)
       .sort((a, b) => comparePhaseNum(a, b));
 
@@ -857,8 +1026,12 @@ function cmdStats(cwd, format) {
       const phaseNum = dm ? dm[1] : dir;
       const phaseName = dm && dm[2] ? dm[2].replace(/-/g, ' ') : '';
       const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
-      const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').length;
-      const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').length;
+      const plans = phaseFiles.filter(
+        (f) => f.endsWith('-PLAN.md') || f === 'PLAN.md',
+      ).length;
+      const summaries = phaseFiles.filter(
+        (f) => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md',
+      ).length;
 
       totalPlans += plans;
       totalSummaries += summaries;
@@ -866,8 +1039,12 @@ function cmdStats(cwd, format) {
       let status;
       if (plans === 0) status = 'Not Started';
       else {
-        const { isComplete, status: cs } = getPhaseCompletionStatus(path.join(phasesDir, dir));
-        if (isComplete) status = cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
+        const { isComplete, status: cs } = getPhaseCompletionStatus(
+          path.join(phasesDir, dir),
+        );
+        if (isComplete)
+          status =
+            cs === 'complete (verified)' ? 'Complete (verified)' : 'Complete';
         else if (summaries > 0) status = 'In Progress';
         else status = 'Planned';
       }
@@ -883,10 +1060,20 @@ function cmdStats(cwd, format) {
     }
   } catch {}
 
-  const phases = [...phasesByNumber.values()].sort((a, b) => comparePhaseNum(a.number, b.number));
-  const completedPhases = phases.filter(p => p.status === 'Complete' || p.status === 'Complete (verified)').length;
-  const planPercent = totalPlans > 0 ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100)) : 0;
-  const percent = phases.length > 0 ? Math.min(100, Math.round((completedPhases / phases.length) * 100)) : 0;
+  const phases = [...phasesByNumber.values()].sort((a, b) =>
+    comparePhaseNum(a.number, b.number),
+  );
+  const completedPhases = phases.filter(
+    (p) => p.status === 'Complete' || p.status === 'Complete (verified)',
+  ).length;
+  const planPercent =
+    totalPlans > 0
+      ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100))
+      : 0;
+  const percent =
+    phases.length > 0
+      ? Math.min(100, Math.round((completedPhases / phases.length) * 100))
+      : 0;
 
   // Requirements stats
   let requirementsTotal = 0;
@@ -897,7 +1084,8 @@ function cmdStats(cwd, format) {
       const checked = reqContent.match(/^- \[x\] \*\*/gm);
       const unchecked = reqContent.match(/^- \[ \] \*\*/gm);
       requirementsComplete = checked ? checked.length : 0;
-      requirementsTotal = requirementsComplete + (unchecked ? unchecked.length : 0);
+      requirementsTotal =
+        requirementsComplete + (unchecked ? unchecked.length : 0);
     }
   } catch {}
 
@@ -906,10 +1094,11 @@ function cmdStats(cwd, format) {
   try {
     if (fs.existsSync(statePath)) {
       const stateContent = fs.readFileSync(statePath, 'utf-8');
-      const activityMatch = stateContent.match(/^last_activity:\s*(.+)$/im)
-        || stateContent.match(/\*\*Last Activity:\*\*\s*(.+)/i)
-        || stateContent.match(/^Last Activity:\s*(.+)$/im)
-        || stateContent.match(/^Last activity:\s*(.+)$/im);
+      const activityMatch =
+        stateContent.match(/^last_activity:\s*(.+)$/im) ||
+        stateContent.match(/\*\*Last Activity:\*\*\s*(.+)/i) ||
+        stateContent.match(/^Last Activity:\s*(.+)$/im) ||
+        stateContent.match(/^Last activity:\s*(.+)$/im);
       if (activityMatch) lastActivity = activityMatch[1].trim();
     }
   } catch {}
@@ -1005,7 +1194,12 @@ const PLATFORM_CLI_URLS = {
 const ISSUE_COMMANDS = {
   github: {
     list: (repo, opts) => {
-      const args = ['issue', 'list', '--json', 'number,title,body,labels,state'];
+      const args = [
+        'issue',
+        'list',
+        '--json',
+        'number,title,body,labels,state',
+      ];
       if (repo) args.push('--repo', repo);
       if (opts.label) args.push('--label', opts.label);
       if (opts.milestone) args.push('--milestone', opts.milestone);
@@ -1013,7 +1207,13 @@ const ISSUE_COMMANDS = {
       return { cli: 'gh', args };
     },
     view: (number, repo) => {
-      const args = ['issue', 'view', String(number), '--json', 'number,title,body,labels,state'];
+      const args = [
+        'issue',
+        'view',
+        String(number),
+        '--json',
+        'number,title,body,labels,state',
+      ];
       if (repo) args.push('--repo', repo);
       return { cli: 'gh', args };
     },
@@ -1146,13 +1346,26 @@ const ISSUE_COMMANDS = {
       return { cli: 'tea', args };
     },
     create: (repo, title, body, labels) => {
-      const args = ['issues', 'create', '--title', title, '--description', body];
+      const args = [
+        'issues',
+        'create',
+        '--title',
+        title,
+        '--description',
+        body,
+      ];
       if (repo) args.push('--repo', repo);
       if (labels && labels.length) args.push('--label', labels.join(','));
       return { cli: 'tea', args };
     },
     label: (number, repo, labelName) => {
-      const args = ['issues', 'edit', String(number), '--add-labels', labelName];
+      const args = [
+        'issues',
+        'edit',
+        String(number),
+        '--add-labels',
+        labelName,
+      ];
       if (repo) args.push('--repo', repo);
       return { cli: 'tea', args };
     },
@@ -1175,26 +1388,31 @@ const ISSUE_COMMANDS = {
  */
 function parseExternalRef(refStr, defaultRepo) {
   if (!refStr) return [];
-  const refs = refStr.split(',').map(r => r.trim()).filter(Boolean);
-  return refs.map(ref => {
-    const actionMatch = ref.match(/^([^:]+):(.+):(\w+)$/);
-    let action = null;
-    let remainder = ref;
-    if (actionMatch && ['close', 'comment'].includes(actionMatch[3])) {
-      remainder = `${actionMatch[1]}:${actionMatch[2]}`;
-      action = actionMatch[3];
-    }
-    const match = remainder.match(/^([^:]+):(?:([^#]+)?#)(\d+)$/);
-    if (!match) return null;
-    const [, platform, repo, number] = match;
-    return {
-      platform,
-      repo: repo || defaultRepo || null,
-      number: parseInt(number, 10),
-      action: action || null,
-      raw: ref,
-    };
-  }).filter(Boolean);
+  const refs = refStr
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
+  return refs
+    .map((ref) => {
+      const actionMatch = ref.match(/^([^:]+):(.+):(\w+)$/);
+      let action = null;
+      let remainder = ref;
+      if (actionMatch && ['close', 'comment'].includes(actionMatch[3])) {
+        remainder = `${actionMatch[1]}:${actionMatch[2]}`;
+        action = actionMatch[3];
+      }
+      const match = remainder.match(/^([^:]+):(?:([^#]+)?#)(\d+)$/);
+      if (!match) return null;
+      const [, platform, repo, number] = match;
+      return {
+        platform,
+        repo: repo || defaultRepo || null,
+        number: parseInt(number, 10),
+        action: action || null,
+        raw: ref,
+      };
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -1209,18 +1427,37 @@ function parseExternalRef(refStr, defaultRepo) {
 function invokeIssueCli(platform, operation, args) {
   const { spawnSync } = require('child_process');
   const platformCmds = ISSUE_COMMANDS[platform];
-  if (!platformCmds) return { success: false, error: `Unknown platform: ${platform}` };
-  if (!platformCmds[operation]) return { success: false, error: `Unknown operation: ${operation}` };
+  if (!platformCmds)
+    return { success: false, error: `Unknown platform: ${platform}` };
+  if (!platformCmds[operation])
+    return { success: false, error: `Unknown operation: ${operation}` };
   const cmdSpec = platformCmds[operation](...args);
   if (process.env.GSD_TEST_MODE) {
-    return { success: true, data: null, dry_run: true, cli: cmdSpec.cli, args: cmdSpec.args };
+    return {
+      success: true,
+      data: null,
+      dry_run: true,
+      cli: cmdSpec.cli,
+      args: cmdSpec.args,
+    };
   }
-  const result = spawnSync(cmdSpec.cli, cmdSpec.args, { stdio: 'pipe', encoding: 'utf-8' });
+  const result = spawnSync(cmdSpec.cli, cmdSpec.args, {
+    stdio: 'pipe',
+    encoding: 'utf-8',
+  });
   if (result.status !== 0) {
-    return { success: false, error: (result.stderr || result.stdout || '').trim(), exitCode: result.status };
+    return {
+      success: false,
+      error: (result.stderr || result.stdout || '').trim(),
+      exitCode: result.status,
+    };
   }
   let parsed = null;
-  try { parsed = JSON.parse(result.stdout); } catch { parsed = result.stdout.trim(); }
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    parsed = result.stdout.trim();
+  }
   return { success: true, data: parsed };
 }
 
@@ -1241,10 +1478,13 @@ function buildSyncComment(style, context) {
     if (ctx.prNumber) parts.push(`PR: #${ctx.prNumber}`);
     if (ctx.branchName) parts.push(`Branch: ${ctx.branchName}`);
     if (ctx.todoTitle) parts.push(`Todo: ${ctx.todoTitle}`);
-    return parts.length ? `Resolved via GSD. ${parts.join(', ')}.` : 'Resolved via GSD.';
+    return parts.length
+      ? `Resolved via GSD. ${parts.join(', ')}.`
+      : 'Resolved via GSD.';
   }
   if (ctx.prNumber) return `Resolved in PR #${ctx.prNumber}.`;
-  if (ctx.commitHash) return `Resolved in commit ${ctx.commitHash.slice(0, 7)}.`;
+  if (ctx.commitHash)
+    return `Resolved in commit ${ctx.commitHash.slice(0, 7)}.`;
   if (ctx.branchName) return `Resolved in branch ${ctx.branchName}.`;
   return 'Resolved.';
 }
@@ -1326,7 +1566,7 @@ function cmdDetectPlatform(cwd, remote, silent) {
     remote_url: remoteUrl,
     cli,
     cli_installed: cliInstalled,
-    cli_install_url: cli ? (PLATFORM_CLI_URLS[cli] || null) : null,
+    cli_install_url: cli ? PLATFORM_CLI_URLS[cli] || null : null,
   };
 
   // When called in silent mode (field extraction path), skip output/exit and return the result.
@@ -1341,9 +1581,10 @@ function cmdSquash(cwd, phase, options) {
   // Handle --list-backup-tags subcommand
   if (listTags) {
     const tagResult = execGit(cwd, ['tag', '--list', 'gsd/backup/*']);
-    const tags = tagResult.exitCode === 0 && tagResult.stdout
-      ? tagResult.stdout.split('\n').filter(Boolean)
-      : [];
+    const tags =
+      tagResult.exitCode === 0 && tagResult.stdout
+        ? tagResult.stdout.split('\n').filter(Boolean)
+        : [];
     output({ tags }, tags.join('\n'));
     return;
   }
@@ -1352,7 +1593,8 @@ function cmdSquash(cwd, phase, options) {
   if (!strategy) error('--strategy required: single, per-plan, or logical');
 
   const config = loadConfig(cwd);
-  const targetBranch = config.target_branch || (config.git && config.git.target_branch) || 'main';
+  const targetBranch =
+    config.target_branch || (config.git && config.git.target_branch) || 'main';
 
   // Get current branch name
   const branchResult = execGit(cwd, ['branch', '--show-current']);
@@ -1362,9 +1604,13 @@ function cmdSquash(cwd, phase, options) {
   const { phases: phasesDir } = planningPaths(cwd);
   let phaseDir = null;
   try {
-    const dirs = fs.readdirSync(phasesDir).filter(d =>
-      d.startsWith(String(phase).padStart(2, '0') + '-') || d.startsWith(String(phase) + '-')
-    );
+    const dirs = fs
+      .readdirSync(phasesDir)
+      .filter(
+        (d) =>
+          d.startsWith(String(phase).padStart(2, '0') + '-') ||
+          d.startsWith(String(phase) + '-'),
+      );
     if (dirs.length > 0) {
       phaseDir = path.join(phasesDir, dirs[0]);
     }
@@ -1374,14 +1620,19 @@ function cmdSquash(cwd, phase, options) {
   const summaries = [];
   if (phaseDir) {
     try {
-      const files = fs.readdirSync(phaseDir).filter(f => f.endsWith('-SUMMARY.md')).sort();
+      const files = fs
+        .readdirSync(phaseDir)
+        .filter((f) => f.endsWith('-SUMMARY.md'))
+        .sort();
       for (const file of files) {
         const content = fs.readFileSync(path.join(phaseDir, file), 'utf-8');
         // Extract bold one-liner from body (line starting with **)
         const oneLinerMatch = content.match(/^\*\*(.+)\*\*$/m);
         const oneLiner = oneLinerMatch ? oneLinerMatch[1] : null;
         const planMatch = file.match(/(\d+-\d+)/);
-        const planId = planMatch ? planMatch[1] : file.replace('-SUMMARY.md', '');
+        const planId = planMatch
+          ? planMatch[1]
+          : file.replace('-SUMMARY.md', '');
         summaries.push({ planId, oneLiner: oneLiner || `Plan ${planId}` });
       }
     } catch {}
@@ -1390,37 +1641,63 @@ function cmdSquash(cwd, phase, options) {
   // Build squash groups based on strategy
   let groups;
   if (strategy === 'single') {
-    const message = summaries.length > 0
-      ? summaries.map(s => `- ${s.planId}: ${s.oneLiner}`).join('\n')
-      : `Phase ${phase} squash`;
-    groups = [{ name: `Phase ${phase}`, commits: 'all', message: `feat: Phase ${phase}\n\n${message}` }];
+    const message =
+      summaries.length > 0
+        ? summaries.map((s) => `- ${s.planId}: ${s.oneLiner}`).join('\n')
+        : `Phase ${phase} squash`;
+    groups = [
+      {
+        name: `Phase ${phase}`,
+        commits: 'all',
+        message: `feat: Phase ${phase}\n\n${message}`,
+      },
+    ];
   } else if (strategy === 'per-plan') {
-    groups = summaries.map(s => ({
+    groups = summaries.map((s) => ({
       name: `Plan ${s.planId}`,
       commits: s.planId,
       message: `feat(${s.planId}): ${s.oneLiner}`,
     }));
     if (groups.length === 0) {
-      groups = [{ name: `Phase ${phase}`, commits: 'all', message: `feat: Phase ${phase}` }];
+      groups = [
+        {
+          name: `Phase ${phase}`,
+          commits: 'all',
+          message: `feat: Phase ${phase}`,
+        },
+      ];
     }
   } else if (strategy === 'logical') {
     // Logical = same as single for CLI; workflow presents interactive grouping
-    groups = [{ name: `Phase ${phase}`, commits: 'all', message: `feat: Phase ${phase}` }];
+    groups = [
+      {
+        name: `Phase ${phase}`,
+        commits: 'all',
+        message: `feat: Phase ${phase}`,
+      },
+    ];
   } else {
     error(`Unknown strategy: ${strategy}. Use: single, per-plan, logical`);
   }
 
   // Dry run: return plan without executing (safe even on stable branches)
   if (dryRun) {
-    output({ dry_run: true, strategy, phase, groups, executed: false },
-      `DRY RUN (${strategy}):\n` + groups.map(g => `  ${g.name}: ${g.message.split('\n')[0]}`).join('\n'));
+    output(
+      { dry_run: true, strategy, phase, groups, executed: false },
+      `DRY RUN (${strategy}):\n` +
+        groups
+          .map((g) => `  ${g.name}: ${g.message.split('\n')[0]}`)
+          .join('\n'),
+    );
     return;
   }
 
   // Safety: refuse to operate on stable branches without explicit flag (not applicable to dry-run)
   const stableBranches = ['main', 'master', 'develop'];
   if (stableBranches.includes(currentBranch) && !allowStable) {
-    error(`Refusing to squash on stable branch '${currentBranch}'. Use --allow-stable to override, or operate on a work/review branch.`);
+    error(
+      `Refusing to squash on stable branch '${currentBranch}'. Use --allow-stable to override, or operate on a work/review branch.`,
+    );
   }
 
   // Create backup tag BEFORE any rewrite
@@ -1455,7 +1732,9 @@ function cmdSquash(cwd, phase, options) {
     }
 
     if (!baseRef) {
-      error(`Cannot find squash base — neither merge-base with ${targetBranch} nor root commit found`);
+      error(
+        `Cannot find squash base — neither merge-base with ${targetBranch} nor root commit found`,
+      );
     }
 
     execGit(cwd, ['reset', '--soft', baseRef]);
@@ -1467,16 +1746,21 @@ function cmdSquash(cwd, phase, options) {
 
   // Verify backup tag exists
   const verifyTag = execGit(cwd, ['tag', '--list', 'gsd/backup/*']);
-  const backupTags = verifyTag.stdout ? verifyTag.stdout.split('\n').filter(Boolean) : [];
+  const backupTags = verifyTag.stdout
+    ? verifyTag.stdout.split('\n').filter(Boolean)
+    : [];
 
-  output({
-    squashed: true,
-    strategy,
-    phase,
-    groups: groups.length,
-    backup_tag: backupTags[backupTags.length - 1] || backupTag,
-    executed: true,
-  }, `Squashed (${strategy}): ${groups.length} group(s), backup: ${backupTag}`);
+  output(
+    {
+      squashed: true,
+      strategy,
+      phase,
+      groups: groups.length,
+      backup_tag: backupTags[backupTags.length - 1] || backupTag,
+      executed: true,
+    },
+    `Squashed (${strategy}): ${groups.length} group(s), backup: ${backupTag}`,
+  );
 }
 
 /**
@@ -1500,8 +1784,10 @@ function categorizeCommitType(oneLiner) {
  */
 function deriveVersionBump(summaries) {
   if (!summaries || summaries.length === 0) return 'patch';
-  if (summaries.some(s => s.oneLiner && /BREAKING CHANGE/i.test(s.oneLiner))) return 'major';
-  if (summaries.some(s => s.oneLiner && /^feat[\s(:]/i.test(s.oneLiner))) return 'minor';
+  if (summaries.some((s) => s.oneLiner && /BREAKING CHANGE/i.test(s.oneLiner)))
+    return 'major';
+  if (summaries.some((s) => s.oneLiner && /^feat[\s(:]/i.test(s.oneLiner)))
+    return 'minor';
   return 'patch';
 }
 
@@ -1575,7 +1861,10 @@ function generateChangelog(version, date, summaries) {
     const category = categorizeCommitType(s.oneLiner);
     // Strip type prefix for cleaner entry
     let description = s.oneLiner || `Plan ${s.planId}`;
-    description = description.replace(/^(feat|fix|refactor|perf|revert|chore|docs|test)\s*(\([^)]*\))?\s*:\s*/i, '');
+    description = description.replace(
+      /^(feat|fix|refactor|perf|revert|chore|docs|test)\s*(\([^)]*\))?\s*:\s*/i,
+      '',
+    );
     // Capitalize first letter
     description = description.charAt(0).toUpperCase() + description.slice(1);
     categories[category].push(`- ${description} [Plan ${s.planId}]`);
@@ -1623,13 +1912,19 @@ function cmdVersionBump(cwd, options, silent) {
     const { phases: phasesDir } = planningPaths(cwd);
     const summaries = [];
     try {
-      const dirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-        .filter(e => e.isDirectory()).map(e => e.name);
+      const dirs = fs
+        .readdirSync(phasesDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
       for (const dir of dirs) {
-        const files = fs.readdirSync(path.join(phasesDir, dir))
-          .filter(f => f.endsWith('-SUMMARY.md'));
+        const files = fs
+          .readdirSync(path.join(phasesDir, dir))
+          .filter((f) => f.endsWith('-SUMMARY.md'));
         for (const file of files) {
-          const content = fs.readFileSync(path.join(phasesDir, dir, file), 'utf-8');
+          const content = fs.readFileSync(
+            path.join(phasesDir, dir, file),
+            'utf-8',
+          );
           const oneLinerMatch = content.match(/^\*\*(.+)\*\*$/m);
           summaries.push({ oneLiner: oneLinerMatch ? oneLinerMatch[1] : null });
         }
@@ -1685,17 +1980,30 @@ function cmdGenerateChangelog(cwd, version, options) {
   const { phases: phasesDir } = planningPaths(cwd);
   const summaries = [];
   try {
-    const dirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-      .filter(e => e.isDirectory()).map(e => e.name).sort();
+    const dirs = fs
+      .readdirSync(phasesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
     for (const dir of dirs) {
-      const files = fs.readdirSync(path.join(phasesDir, dir))
-        .filter(f => f.endsWith('-SUMMARY.md')).sort();
+      const files = fs
+        .readdirSync(path.join(phasesDir, dir))
+        .filter((f) => f.endsWith('-SUMMARY.md'))
+        .sort();
       for (const file of files) {
-        const content = fs.readFileSync(path.join(phasesDir, dir, file), 'utf-8');
+        const content = fs.readFileSync(
+          path.join(phasesDir, dir, file),
+          'utf-8',
+        );
         const oneLinerMatch = content.match(/^\*\*(.+)\*\*$/m);
         const planMatch = file.match(/(\d+(?:\.\d+)?-\d+)/);
-        const planId = planMatch ? planMatch[1] : file.replace('-SUMMARY.md', '');
-        summaries.push({ planId, oneLiner: oneLinerMatch ? oneLinerMatch[1] : null });
+        const planId = planMatch
+          ? planMatch[1]
+          : file.replace('-SUMMARY.md', '');
+        summaries.push({
+          planId,
+          oneLiner: oneLinerMatch ? oneLinerMatch[1] : null,
+        });
       }
     }
   } catch {}
@@ -1715,9 +2023,17 @@ function cmdGenerateChangelog(cwd, version, options) {
     const unreleasedIdx = existingContent.indexOf('## [Unreleased]');
     if (unreleasedIdx >= 0) {
       // Find the next ## header after [Unreleased]
-      const afterUnreleased = existingContent.indexOf('\n## [', unreleasedIdx + 1);
+      const afterUnreleased = existingContent.indexOf(
+        '\n## [',
+        unreleasedIdx + 1,
+      );
       if (afterUnreleased >= 0) {
-        updatedContent = existingContent.slice(0, afterUnreleased) + '\n' + block + '\n' + existingContent.slice(afterUnreleased + 1);
+        updatedContent =
+          existingContent.slice(0, afterUnreleased) +
+          '\n' +
+          block +
+          '\n' +
+          existingContent.slice(afterUnreleased + 1);
       } else {
         // No version after Unreleased — append at end
         updatedContent = existingContent.trimEnd() + '\n\n' + block;
@@ -1726,7 +2042,12 @@ function cmdGenerateChangelog(cwd, version, options) {
       // No Unreleased section — insert after first blank line after heading
       const firstNewline = existingContent.indexOf('\n\n');
       if (firstNewline >= 0) {
-        updatedContent = existingContent.slice(0, firstNewline) + '\n\n' + block + '\n' + existingContent.slice(firstNewline + 2);
+        updatedContent =
+          existingContent.slice(0, firstNewline) +
+          '\n\n' +
+          block +
+          '\n' +
+          existingContent.slice(firstNewline + 2);
       } else {
         updatedContent = existingContent + '\n\n' + block;
       }
@@ -1744,18 +2065,24 @@ function cmdGenerateChangelog(cwd, version, options) {
   if (unreleasedStart >= 0) {
     const unreleasedEnd = finalContent.indexOf('\n## [', unreleasedStart + 15);
     if (unreleasedEnd >= 0) {
-      finalContent = finalContent.slice(0, unreleasedStart + '## [Unreleased]'.length) + '\n' + finalContent.slice(unreleasedEnd);
+      finalContent =
+        finalContent.slice(0, unreleasedStart + '## [Unreleased]'.length) +
+        '\n' +
+        finalContent.slice(unreleasedEnd);
       fs.writeFileSync(changelogPath, finalContent, 'utf-8');
     }
   }
 
-  output({
-    generated: true,
-    version,
-    date,
-    entries: summaries.length,
-    path: 'CHANGELOG.md',
-  }, `CHANGELOG.md updated with ${summaries.length} entries for v${version}`);
+  output(
+    {
+      generated: true,
+      version,
+      date,
+      entries: summaries.length,
+      path: 'CHANGELOG.md',
+    },
+    `CHANGELOG.md updated with ${summaries.length} entries for v${version}`,
+  );
 }
 
 /**
@@ -1792,9 +2119,13 @@ function cmdIssueImport(cwd, platform, number, repo) {
   // returns a flat structured object and does not expose the raw issue_tracker section.
   let itConfig = {};
   try {
-    const rawConfig = JSON.parse(fs.readFileSync(planningPaths(cwd).config, 'utf-8'));
+    const rawConfig = JSON.parse(
+      fs.readFileSync(planningPaths(cwd).config, 'utf-8'),
+    );
     itConfig = rawConfig.issue_tracker || {};
-  } catch { /* no config.json, use empty defaults */ }
+  } catch {
+    /* no config.json, use empty defaults */
+  }
   const commentStyle = itConfig.comment_style || 'external';
   const commentOnImport = commentStyle === 'verbose';
 
@@ -1805,13 +2136,15 @@ function cmdIssueImport(cwd, platform, number, repo) {
     const labels = process.env.GSD_TEST_LABELS
       ? JSON.parse(process.env.GSD_TEST_LABELS)
       : [];
-    const iid = process.env.GSD_TEST_IID ? parseInt(process.env.GSD_TEST_IID, 10) : null;
+    const iid = process.env.GSD_TEST_IID
+      ? parseInt(process.env.GSD_TEST_IID, 10)
+      : null;
     issueData = {
       number: iid || parseInt(String(number), 10),
       iid: iid || null,
       title: 'Test issue ' + number,
       body: process.env.GSD_TEST_BODY || 'Test body',
-      labels: labels.map(l => (typeof l === 'string' ? { name: l } : l)),
+      labels: labels.map((l) => (typeof l === 'string' ? { name: l } : l)),
       state: 'open',
     };
   } else {
@@ -1831,8 +2164,8 @@ function cmdIssueImport(cwd, platform, number, repo) {
   const title = issueData.title || `Issue #${issueNumber}`;
   const body = issueData.body || '';
   const rawLabels = issueData.labels || [];
-  const labelNames = rawLabels.map(l =>
-    typeof l === 'string' ? l.toLowerCase() : (l.name || '').toLowerCase()
+  const labelNames = rawLabels.map((l) =>
+    typeof l === 'string' ? l.toLowerCase() : (l.name || '').toLowerCase(),
   );
 
   // Map first matching label to area, or 'general'
@@ -1858,17 +2191,29 @@ function cmdIssueImport(cwd, platform, number, repo) {
 
   // Log all findings regardless of tier
   if (!titleScan.clean) {
-    logSecurityEvent(cwd, { source: `issue-import:${externalRef}:title`, tier: titleScan.tier, blocked: titleScan.blocked, findings: titleScan.findings });
+    logSecurityEvent(cwd, {
+      source: `issue-import:${externalRef}:title`,
+      tier: titleScan.tier,
+      blocked: titleScan.blocked,
+      findings: titleScan.findings,
+    });
   }
   if (!bodyScan.clean) {
-    logSecurityEvent(cwd, { source: `issue-import:${externalRef}:body`, tier: bodyScan.tier, blocked: bodyScan.blocked, findings: bodyScan.findings });
+    logSecurityEvent(cwd, {
+      source: `issue-import:${externalRef}:body`,
+      tier: bodyScan.tier,
+      blocked: bodyScan.blocked,
+      findings: bodyScan.findings,
+    });
   }
 
   // Block on high-confidence detection (unambiguous attack indicators in external content)
   const highTier = titleScan.tier === 'high' || bodyScan.tier === 'high';
   if (highTier) {
     const allBlocked = [...titleScan.blocked, ...bodyScan.blocked];
-    error(`[SECURITY] High-confidence injection detected in issue ${externalRef}. Detected: ${allBlocked.join('; ')}. Re-run with --force-unsafe to override.`);
+    error(
+      `[SECURITY] High-confidence injection detected in issue ${externalRef}. Detected: ${allBlocked.join('; ')}. Re-run with --force-unsafe to override.`,
+    );
   }
 
   // Wrap body in untrusted-content tags for all non-blocked writes
@@ -1919,7 +2264,9 @@ function cmdIssueImport(cwd, platform, number, repo) {
   let commented = false;
   if (commentOnImport) {
     try {
-      const importComment = buildImportComment(commentStyle, { todoFile: filename });
+      const importComment = buildImportComment(commentStyle, {
+        todoFile: filename,
+      });
       invokeIssueCli(platform, 'comment', [issueNumber, repo, importComment]);
       commented = true;
     } catch (_e) {
@@ -1963,17 +2310,24 @@ function parseRequirementsExternalRefs(content) {
       continue;
     }
 
-    const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+    const cells = line
+      .split('|')
+      .map((c) => c.trim())
+      .filter(Boolean);
 
     // Detect header row
     if (!inTable) {
-      const lowerCells = cells.map(c => c.toLowerCase());
-      const hasExternalRef = lowerCells.some(c => c.includes('external_ref') || c === 'external ref');
+      const lowerCells = cells.map((c) => c.toLowerCase());
+      const hasExternalRef = lowerCells.some(
+        (c) => c.includes('external_ref') || c === 'external ref',
+      );
       if (hasExternalRef) {
         inTable = true;
-        externalRefCol = lowerCells.findIndex(c => c.includes('external_ref') || c === 'external ref');
-        statusCol = lowerCells.findIndex(c => c === 'status');
-        idCol = lowerCells.findIndex(c => c === 'id');
+        externalRefCol = lowerCells.findIndex(
+          (c) => c.includes('external_ref') || c === 'external ref',
+        );
+        statusCol = lowerCells.findIndex((c) => c === 'status');
+        idCol = lowerCells.findIndex((c) => c === 'id');
         continue;
       }
     }
@@ -1981,7 +2335,7 @@ function parseRequirementsExternalRefs(content) {
     if (!inTable) continue;
 
     // Skip separator rows
-    if (cells.every(c => /^[-:]+$/.test(c))) continue;
+    if (cells.every((c) => /^[-:]+$/.test(c))) continue;
 
     if (externalRefCol >= 0 && externalRefCol < cells.length) {
       const extRef = cells[externalRefCol];
@@ -2024,13 +2378,16 @@ function applyVerifyLabel(platform, number, repo, verifyLabel) {
   let result = invokeIssueCli(platform, 'label', [number, repo, verifyLabel]);
   if (!result.success) {
     // Try to auto-create the label first, then retry
-    const createResult = invokeIssueCli(platform, 'label_create', [repo, verifyLabel]);
+    const createResult = invokeIssueCli(platform, 'label_create', [
+      repo,
+      verifyLabel,
+    ]);
     if (createResult.success) {
       result = invokeIssueCli(platform, 'label', [number, repo, verifyLabel]);
     }
     if (!result.success) {
       process.stderr.write(
-        `Warning: Could not apply verify label '${verifyLabel}' to ${platform}:#${number}. ${result.error || ''}. Continuing without label.\n`
+        `Warning: Could not apply verify label '${verifyLabel}' to ${platform}:#${number}. ${result.error || ''}. Continuing without label.\n`,
       );
     }
   }
@@ -2071,32 +2428,67 @@ function syncSingleRef(refStr, commentContext, itConfig) {
     let cliResult;
     if (action === 'close' && closeState === 'verify') {
       // Apply verify label only — leave issue open for manual sign-off
-      const labeled = applyVerifyLabel(ref.platform, ref.number, ref.repo, verifyLabel);
+      const labeled = applyVerifyLabel(
+        ref.platform,
+        ref.number,
+        ref.repo,
+        verifyLabel,
+      );
       cliResult = { success: labeled, action: 'verify' };
     } else if (action === 'close' && closeState === 'verify_then_close') {
       // Apply verify label, then close
       applyVerifyLabel(ref.platform, ref.number, ref.repo, verifyLabel);
-      const supportsInlineComment = ref.platform === 'github' || ref.platform === 'forgejo';
+      const supportsInlineComment =
+        ref.platform === 'github' || ref.platform === 'forgejo';
       if (supportsInlineComment) {
-        cliResult = invokeIssueCli(ref.platform, 'close', [ref.number, ref.repo, comment]);
+        cliResult = invokeIssueCli(ref.platform, 'close', [
+          ref.number,
+          ref.repo,
+          comment,
+        ]);
       } else {
-        invokeIssueCli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
-        cliResult = invokeIssueCli(ref.platform, 'close', [ref.number, ref.repo, null]);
+        invokeIssueCli(ref.platform, 'comment', [
+          ref.number,
+          ref.repo,
+          comment,
+        ]);
+        cliResult = invokeIssueCli(ref.platform, 'close', [
+          ref.number,
+          ref.repo,
+          null,
+        ]);
       }
     } else if (action === 'close') {
       // Default close behavior (close_state=close or no config)
       // GitHub and Forgejo support inline comments on close; GitLab and
       // Gitea ignore the comment parameter. Post a separate comment first
       // for platforms that would lose the reference, then close.
-      const supportsInlineComment = ref.platform === 'github' || ref.platform === 'forgejo';
+      const supportsInlineComment =
+        ref.platform === 'github' || ref.platform === 'forgejo';
       if (supportsInlineComment) {
-        cliResult = invokeIssueCli(ref.platform, 'close', [ref.number, ref.repo, comment]);
+        cliResult = invokeIssueCli(ref.platform, 'close', [
+          ref.number,
+          ref.repo,
+          comment,
+        ]);
       } else {
-        invokeIssueCli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
-        cliResult = invokeIssueCli(ref.platform, 'close', [ref.number, ref.repo, null]);
+        invokeIssueCli(ref.platform, 'comment', [
+          ref.number,
+          ref.repo,
+          comment,
+        ]);
+        cliResult = invokeIssueCli(ref.platform, 'close', [
+          ref.number,
+          ref.repo,
+          null,
+        ]);
       }
     } else {
-      cliResult = invokeIssueCli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
+      cliResult = invokeIssueCli(ref.platform, 'comment', [
+        ref.number,
+        ref.repo,
+        comment,
+      ]);
     }
 
     results.push({
@@ -2119,7 +2511,9 @@ function cmdIssueSync(cwd, phase, options) {
   try {
     const rawConfig = JSON.parse(fs.readFileSync(paths.config, 'utf-8'));
     itConfig = rawConfig.issue_tracker || {};
-  } catch { /* no config.json, use empty defaults */ }
+  } catch {
+    /* no config.json, use empty defaults */
+  }
 
   const synced = [];
   const conflicts = [];
@@ -2136,7 +2530,11 @@ function cmdIssueSync(cwd, phase, options) {
     const rows = parseRequirementsExternalRefs(reqContent);
     for (const row of rows) {
       if (row.status === 'Complete') {
-        const refResults = syncSingleRef(row.externalRef, commentContext, itConfig);
+        const refResults = syncSingleRef(
+          row.externalRef,
+          commentContext,
+          itConfig,
+        );
         synced.push(...refResults);
       } else if (row.externalRef && row.externalRef !== '-') {
         skipped++;
@@ -2148,7 +2546,9 @@ function cmdIssueSync(cwd, phase, options) {
   const doneTodosDir = paths.todosCompleted;
   let doneTodoFiles = [];
   try {
-    doneTodoFiles = fs.readdirSync(doneTodosDir).filter(f => f.endsWith('.md'));
+    doneTodoFiles = fs
+      .readdirSync(doneTodosDir)
+      .filter((f) => f.endsWith('.md'));
   } catch (_e) {
     // Directory may not exist
   }
@@ -2163,11 +2563,18 @@ function cmdIssueSync(cwd, phase, options) {
         // Security: scan todo content for injection before processing (external data was written on import)
         const scanResult = scanForInjection(content, { external: true });
         if (!scanResult.clean) {
-          logSecurityEvent(cwd, { source: `issue-sync:${refStr}`, tier: scanResult.tier, blocked: scanResult.blocked, findings: scanResult.findings });
+          logSecurityEvent(cwd, {
+            source: `issue-sync:${refStr}`,
+            tier: scanResult.tier,
+            blocked: scanResult.blocked,
+            findings: scanResult.findings,
+          });
         }
         if (scanResult.tier === 'high') {
           // Log warning but don't block sync (batch operation — log and continue)
-          process.stderr.write(`[security] High-confidence injection detected in sync for ${refStr}. Logged to security-events.log.\n`);
+          process.stderr.write(
+            `[security] High-confidence injection detected in sync for ${refStr}. Logged to security-events.log.\n`,
+          );
         }
 
         const refResults = syncSingleRef(refStr, commentContext, itConfig);
@@ -2186,8 +2593,9 @@ function cmdIssueSync(cwd, phase, options) {
   }
 
   const result = { synced, conflicts, skipped };
-  output(result, 
-    `Synced ${synced.length} ref(s), ${conflicts.length} conflict(s), ${skipped} skipped`
+  output(
+    result,
+    `Synced ${synced.length} ref(s), ${conflicts.length} conflict(s), ${skipped} skipped`,
   );
   return result;
 }
@@ -2211,14 +2619,21 @@ function cmdIssueListRefs(cwd) {
   }
 
   // 1. Scan REQUIREMENTS.md
-  const { requirements: reqPath, todosPending, todosCompleted } = planningPaths(cwd);
+  const {
+    requirements: reqPath,
+    todosPending,
+    todosCompleted,
+  } = planningPaths(cwd);
   const reqContent = safeReadFile(reqPath);
   if (reqContent) {
     const rows = parseRequirementsExternalRefs(reqContent);
     for (const row of rows) {
       if (row.externalRef) {
         // externalRef may be comma-separated
-        const parts = row.externalRef.split(',').map(r => r.trim()).filter(Boolean);
+        const parts = row.externalRef
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean);
         for (const part of parts) {
           addRef('requirements', part);
         }
@@ -2227,10 +2642,13 @@ function cmdIssueListRefs(cwd) {
   }
 
   // 2. Scan todos/pending and todos/completed
-  for (const [subDir, dir] of [['pending', todosPending], ['completed', todosCompleted]]) {
+  for (const [subDir, dir] of [
+    ['pending', todosPending],
+    ['completed', todosCompleted],
+  ]) {
     let files = [];
     try {
-      files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+      files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
     } catch (_e) {
       continue;
     }
@@ -2239,7 +2657,10 @@ function cmdIssueListRefs(cwd) {
         const content = fs.readFileSync(path.join(dir, file), 'utf-8');
         const fm = extractFrontmatter(content);
         if (fm && fm.external_ref) {
-          const parts = fm.external_ref.split(',').map(r => r.trim()).filter(Boolean);
+          const parts = fm.external_ref
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean);
           for (const part of parts) {
             addRef(`todos/${subDir}/${file}`, part);
           }
@@ -2266,7 +2687,7 @@ function cmdStalenessCheck(cwd, countOnly = false) {
     return;
   }
 
-  const docs = fs.readdirSync(codebaseDir).filter(f => f.endsWith('.md'));
+  const docs = fs.readdirSync(codebaseDir).filter((f) => f.endsWith('.md'));
   const stale = [];
 
   for (const doc of docs) {
@@ -2285,10 +2706,12 @@ function cmdStalenessCheck(cwd, countOnly = false) {
       }
       const hash = hashMatch[1];
       try {
-        const changed = execSync(
-          `git diff --name-only ${hash}..HEAD`,
-          { encoding: 'utf8', cwd, timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] }
-        ).trim();
+        const changed = execSync(`git diff --name-only ${hash}..HEAD`, {
+          encoding: 'utf8',
+          cwd,
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'ignore'],
+        }).trim();
         if (changed) {
           stale.push({
             doc,
@@ -2311,7 +2734,7 @@ function cmdStalenessCheck(cwd, countOnly = false) {
   const allStale = stale.length === docs.length;
   output(
     { stale, all_stale: allStale, total_docs: docs.length },
-    stale.length > 0 ? stale.map(s => s.doc).join(', ') : 'none'
+    stale.length > 0 ? stale.map((s) => s.doc).join(', ') : 'none',
   );
 }
 
@@ -2320,16 +2743,16 @@ function cmdHelp(cwd, args) {
   let commands = [];
 
   try {
-    const files = fs.readdirSync(commandsDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(commandsDir).filter((f) => f.endsWith('.md'));
 
     for (const file of files) {
       try {
         const content = fs.readFileSync(path.join(commandsDir, file), 'utf-8');
         const fm = extractFrontmatter(content);
         commands.push({
-          name: (fm && fm.name) ? fm.name : 'gsd:' + path.basename(file, '.md'),
-          description: (fm && fm.description) ? fm.description : '',
-          argument_hint: (fm && fm['argument-hint']) ? fm['argument-hint'] : '',
+          name: fm && fm.name ? fm.name : 'gsd:' + path.basename(file, '.md'),
+          description: fm && fm.description ? fm.description : '',
+          argument_hint: fm && fm['argument-hint'] ? fm['argument-hint'] : '',
         });
       } catch {}
     }
@@ -2364,7 +2787,15 @@ function cmdHelp(cwd, args) {
  * Valid triage status values for divergence tracking.
  * Includes upstream states plus branch-tracking states needs-adaptation and already-covered.
  */
-const VALID_TRIAGE_STATES = ['picked', 'skipped', 'deferred', 'pending', 'needs-adaptation', 'already-covered', 'adapted'];
+const VALID_TRIAGE_STATES = [
+  'picked',
+  'skipped',
+  'deferred',
+  'pending',
+  'needs-adaptation',
+  'already-covered',
+  'adapted',
+];
 
 /**
  * Classify a commit subject by conventional commit prefix.
@@ -2375,9 +2806,11 @@ const VALID_TRIAGE_STATES = ['picked', 'skipped', 'deferred', 'pending', 'needs-
  */
 function classifyCommit(subject) {
   if (/^BREAKING[\s_]CHANGE/i.test(subject)) return 'fix';
-  if (/^(fix|security|hotfix|bugfix|revert)[\(!:\s]/i.test(subject)) return 'fix';
+  if (/^(fix|security|hotfix|bugfix|revert)[\(!:\s]/i.test(subject))
+    return 'fix';
   if (/^feat[\(!:\s]/i.test(subject)) return 'feat';
-  if (/^(docs|chore|test|refactor|style|ci|build|perf)[\(!:\s]/i.test(subject)) return 'other';
+  if (/^(docs|chore|test|refactor|style|ci|build|perf)[\(!:\s]/i.test(subject))
+    return 'other';
   return 'unknown';
 }
 
@@ -2414,7 +2847,10 @@ function extractPrNumber(subject) {
 function normalizeForMatch(subject) {
   return subject
     .replace(/#\d+/g, '')
-    .replace(/^(fix|feat|docs|chore|refactor|test|style|ci|build|perf|revert|security|hotfix|bugfix)(\([^)]*\))?[!:]?\s*/i, '')
+    .replace(
+      /^(fix|feat|docs|chore|refactor|test|style|ci|build|perf|revert|security|hotfix|bugfix)(\([^)]*\))?[!:]?\s*/i,
+      '',
+    )
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -2433,7 +2869,11 @@ function parseDivergenceBranchSection(filePath, sectionKey) {
   if (!fs.existsSync(filePath)) return result;
 
   let content;
-  try { content = fs.readFileSync(filePath, 'utf-8'); } catch { return result; }
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return result;
+  }
 
   const sectionHeader = `## Branch Tracking: ${sectionKey}`;
   const sectionIdx = content.indexOf(sectionHeader);
@@ -2442,9 +2882,10 @@ function parseDivergenceBranchSection(filePath, sectionKey) {
   // Find the next ## heading or end of file
   const afterHeader = content.substring(sectionIdx + sectionHeader.length);
   const nextSectionIdx = afterHeader.indexOf('\n## ');
-  const sectionContent = nextSectionIdx !== -1
-    ? afterHeader.substring(0, nextSectionIdx)
-    : afterHeader;
+  const sectionContent =
+    nextSectionIdx !== -1
+      ? afterHeader.substring(0, nextSectionIdx)
+      : afterHeader;
 
   const lines = sectionContent.split('\n');
   let inTable = false;
@@ -2457,9 +2898,12 @@ function parseDivergenceBranchSection(filePath, sectionKey) {
       if (inTable) break;
       continue;
     }
-    const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+    const cells = trimmed
+      .split('|')
+      .map((c) => c.trim())
+      .filter(Boolean);
     if (!headerSeen) {
-      const lowerCells = cells.map(c => c.toLowerCase());
+      const lowerCells = cells.map((c) => c.toLowerCase());
       if (lowerCells.includes('hash')) {
         headerSeen = true;
         inTable = true;
@@ -2468,7 +2912,7 @@ function parseDivergenceBranchSection(filePath, sectionKey) {
       }
     }
     if (!inTable) continue;
-    if (cells.every(c => /^[-:]+$/.test(c))) continue;
+    if (cells.every((c) => /^[-:]+$/.test(c))) continue;
     if (hasClassificationCol ? cells.length >= 5 : cells.length >= 4) {
       // Branch table: hash | date | subject | classification | status | reason
       // Legacy table: hash | date | subject | status | reason
@@ -2503,9 +2947,12 @@ function parseDivergenceBranchSection(filePath, sectionKey) {
 function writeDivergenceBranchSection(filePath, sectionKey, commits) {
   const today = new Date().toISOString().split('T')[0];
   const sectionHeader = `## Branch Tracking: ${sectionKey}`;
-  const rows = commits.map(c =>
-    `| ${c.hash} | ${c.date} | ${c.subject} | ${c.classification || ''} | ${c.status} | ${c.reason} |`
-  ).join('\n');
+  const rows = commits
+    .map(
+      (c) =>
+        `| ${c.hash} | ${c.date} | ${c.subject} | ${c.classification || ''} | ${c.status} | ${c.reason} |`,
+    )
+    .join('\n');
 
   const newSection = [
     '',
@@ -2520,7 +2967,9 @@ function writeDivergenceBranchSection(filePath, sectionKey, commits) {
   ].join('\n');
 
   let content = '';
-  try { content = fs.readFileSync(filePath, 'utf-8'); } catch {}
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch {}
 
   if (!content) {
     // Create minimal DIVERGENCE.md with just this section
@@ -2534,7 +2983,8 @@ function writeDivergenceBranchSection(filePath, sectionKey, commits) {
     const afterHeader = content.substring(existingSectionIdx);
     const nextSectionIdx = afterHeader.indexOf('\n## ', sectionHeader.length);
     const beforeSection = content.substring(0, existingSectionIdx);
-    const afterSection = nextSectionIdx !== -1 ? afterHeader.substring(nextSectionIdx) : '';
+    const afterSection =
+      nextSectionIdx !== -1 ? afterHeader.substring(nextSectionIdx) : '';
     content = beforeSection.trimEnd() + newSection + afterSection;
   } else {
     // Append new section
@@ -2573,11 +3023,14 @@ function parseDivergenceFile(filePath) {
       continue;
     }
 
-    const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+    const cells = trimmed
+      .split('|')
+      .map((c) => c.trim())
+      .filter(Boolean);
 
     // Detect header row (first table row with text cells)
     if (!headerSeen) {
-      const lowerCells = cells.map(c => c.toLowerCase());
+      const lowerCells = cells.map((c) => c.toLowerCase());
       if (lowerCells[0] === 'hash' || lowerCells.includes('hash')) {
         headerSeen = true;
         inTable = true;
@@ -2588,7 +3041,7 @@ function parseDivergenceFile(filePath) {
     if (!inTable) continue;
 
     // Skip separator rows
-    if (cells.every(c => /^[-:]+$/.test(c))) continue;
+    if (cells.every((c) => /^[-:]+$/.test(c))) continue;
 
     // Data row: | hash | date | subject | status | reason |
     if (cells.length >= 4) {
@@ -2613,11 +3066,19 @@ function parseDivergenceFile(filePath) {
  * @param {string} upstreamUrl - URL of upstream remote
  * @param {Array<{hash, date, subject, status, reason}>} commits
  */
-function writeDivergenceFile(filePath, upstreamUrl, commits, remoteName = 'upstream') {
+function writeDivergenceFile(
+  filePath,
+  upstreamUrl,
+  commits,
+  remoteName = 'upstream',
+) {
   const today = new Date().toISOString().split('T')[0];
-  const rows = commits.map(c =>
-    `| ${c.hash} | ${c.date} | ${c.subject} | ${c.status} | ${c.reason} |`
-  ).join('\n');
+  const rows = commits
+    .map(
+      (c) =>
+        `| ${c.hash} | ${c.date} | ${c.subject} | ${c.status} | ${c.reason} |`,
+    )
+    .join('\n');
 
   const content = [
     '# Divergence Tracking',
@@ -2651,23 +3112,39 @@ function rewriteDivergenceTable(filePath, triageState) {
   } catch {
     // File doesn't exist — create from scratch
     const commits = [...triageState.entries()].map(([hash, e]) => ({
-      hash, date: e.date || '', subject: e.subject || '', status: e.status || 'pending', reason: e.reason || '',
+      hash,
+      date: e.date || '',
+      subject: e.subject || '',
+      status: e.status || 'pending',
+      reason: e.reason || '',
     }));
     writeDivergenceFile(filePath, 'unknown', commits);
     return;
   }
 
   // Update "Last checked" date
-  content = content.replace(/\*\*Last checked:\*\*\s*.+/, `**Last checked:** ${today}`);
+  content = content.replace(
+    /\*\*Last checked:\*\*\s*.+/,
+    `**Last checked:** ${today}`,
+  );
 
   // Find the table section and replace it
-  const tableHeaderIdx = content.indexOf('| Hash | Date | Subject | Status | Reason |');
+  const tableHeaderIdx = content.indexOf(
+    '| Hash | Date | Subject | Status | Reason |',
+  );
   if (tableHeaderIdx === -1) {
     // No existing table — append it
-    const rows = [...triageState.entries()].map(([hash, e]) =>
-      `| ${hash} | ${e.date || ''} | ${e.subject || ''} | ${e.status || 'pending'} | ${e.reason || ''} |`
-    ).join('\n');
-    content = content.trimEnd() + '\n\n## Commit Triage\n\n| Hash | Date | Subject | Status | Reason |\n|------|------|---------|--------|--------|\n' + rows + '\n';
+    const rows = [...triageState.entries()]
+      .map(
+        ([hash, e]) =>
+          `| ${hash} | ${e.date || ''} | ${e.subject || ''} | ${e.status || 'pending'} | ${e.reason || ''} |`,
+      )
+      .join('\n');
+    content =
+      content.trimEnd() +
+      '\n\n## Commit Triage\n\n| Hash | Date | Subject | Status | Reason |\n|------|------|---------|--------|--------|\n' +
+      rows +
+      '\n';
     fs.writeFileSync(filePath, content, 'utf-8');
     return;
   }
@@ -2675,11 +3152,17 @@ function rewriteDivergenceTable(filePath, triageState) {
   // Find the end of the separator row and rebuild from there
   const sepRow = '|------|------|---------|--------|--------|';
   const sepIdx = content.indexOf(sepRow, tableHeaderIdx);
-  const afterSep = sepIdx !== -1 ? sepIdx + sepRow.length : tableHeaderIdx + '| Hash | Date | Subject | Status | Reason |'.length;
+  const afterSep =
+    sepIdx !== -1
+      ? sepIdx + sepRow.length
+      : tableHeaderIdx + '| Hash | Date | Subject | Status | Reason |'.length;
 
-  const rows = [...triageState.entries()].map(([hash, e]) =>
-    `| ${hash} | ${e.date || ''} | ${e.subject || ''} | ${e.status || 'pending'} | ${e.reason || ''} |`
-  ).join('\n');
+  const rows = [...triageState.entries()]
+    .map(
+      ([hash, e]) =>
+        `| ${hash} | ${e.date || ''} | ${e.subject || ''} | ${e.status || 'pending'} | ${e.reason || ''} |`,
+    )
+    .join('\n');
 
   const beforeTable = content.slice(0, afterSep);
   content = beforeTable + '\n' + rows + '\n';
@@ -2724,13 +3207,16 @@ function cmdDivergence(cwd, opts) {
       try {
         const log = execSync(
           `git log ${sectionKey} --format="%H|%ad|%s" --date=short`,
-          { cwd, encoding: 'utf8', stdio: 'pipe' }
+          { cwd, encoding: 'utf8', stdio: 'pipe' },
         ).trim();
         if (log) {
           // Load existing section to detect already-triaged commits
-          const existingTriage = parseDivergenceBranchSection(divergencePath, sectionKey);
+          const existingTriage = parseDivergenceBranchSection(
+            divergencePath,
+            sectionKey,
+          );
 
-          allCommits = log.split('\n').map(line => {
+          allCommits = log.split('\n').map((line) => {
             const [hash, date, ...subjectParts] = line.split('|');
             const subject = subjectParts.join('|').substring(0, 80);
             const shortHash = hash.substring(0, 7);
@@ -2740,7 +3226,14 @@ function cmdDivergence(cwd, opts) {
             // Check if already triaged
             const existing = existingTriage.get(shortHash);
             if (existing) {
-              return { hash: shortHash, date, subject, classification, status: existing.status, reason: existing.reason };
+              return {
+                hash: shortHash,
+                date,
+                subject,
+                classification,
+                status: existing.status,
+                reason: existing.reason,
+              };
             }
 
             // Check for PR number or message match against existing triaged items
@@ -2748,7 +3241,10 @@ function cmdDivergence(cwd, opts) {
             let matchReason = '';
             if (prNumber) {
               for (const [triHash, triEntry] of existingTriage) {
-                if (extractPrNumber(triEntry.subject) === prNumber && triEntry.status !== 'pending') {
+                if (
+                  extractPrNumber(triEntry.subject) === prNumber &&
+                  triEntry.status !== 'pending'
+                ) {
                   matchStatus = 'already-covered';
                   matchReason = `Matches PR #${prNumber} (${triHash})`;
                   break;
@@ -2758,7 +3254,10 @@ function cmdDivergence(cwd, opts) {
             if (matchStatus === 'pending') {
               const normalized = normalizeForMatch(subject);
               for (const [triHash, triEntry] of existingTriage) {
-                if (normalizeForMatch(triEntry.subject) === normalized && triEntry.status !== 'pending') {
+                if (
+                  normalizeForMatch(triEntry.subject) === normalized &&
+                  triEntry.status !== 'pending'
+                ) {
                   matchStatus = 'already-covered';
                   matchReason = `Message matches ${triHash}`;
                   break;
@@ -2766,17 +3265,33 @@ function cmdDivergence(cwd, opts) {
               }
             }
 
-            return { hash: shortHash, date, subject, classification, status: matchStatus, reason: matchReason };
+            return {
+              hash: shortHash,
+              date,
+              subject,
+              classification,
+              status: matchStatus,
+              reason: matchReason,
+            };
           });
 
           // Sort by priority: fix > feat > other > unknown
-          allCommits.sort((a, b) => priorityOrder(a.classification) - priorityOrder(b.classification));
+          allCommits.sort(
+            (a, b) =>
+              priorityOrder(a.classification) - priorityOrder(b.classification),
+          );
         }
       } catch {}
 
       writeDivergenceBranchSection(divergencePath, sectionKey, allCommits);
-      output({ status: 'initialized', section: sectionKey, commits: allCommits.length },
-        `Initialized branch section '${sectionKey}' with ${allCommits.length} commits`);
+      output(
+        {
+          status: 'initialized',
+          section: sectionKey,
+          commits: allCommits.length,
+        },
+        `Initialized branch section '${sectionKey}' with ${allCommits.length} commits`,
+      );
       return;
     }
 
@@ -2787,21 +3302,39 @@ function cmdDivergence(cwd, opts) {
       const reason = opts.reason || '';
 
       if (!VALID_TRIAGE_STATES.includes(status)) {
-        error(`Invalid status: ${status}. Must be one of: ${VALID_TRIAGE_STATES.join(', ')}`);
+        error(
+          `Invalid status: ${status}. Must be one of: ${VALID_TRIAGE_STATES.join(', ')}`,
+        );
         return;
       }
-      if (['skipped', 'deferred', 'needs-adaptation', 'adapted'].includes(status) && !reason) {
-        error(`Reason required for ${status} status. Use --reason "your rationale"`);
+      if (
+        ['skipped', 'deferred', 'needs-adaptation', 'adapted'].includes(
+          status,
+        ) &&
+        !reason
+      ) {
+        error(
+          `Reason required for ${status} status. Use --reason "your rationale"`,
+        );
         return;
       }
 
-      const triageState = parseDivergenceBranchSection(divergencePath, sectionKey);
+      const triageState = parseDivergenceBranchSection(
+        divergencePath,
+        sectionKey,
+      );
       let entry = triageState.get(hash);
       if (!entry) {
         try {
-          const info = execSync(`git log --format="%ad|%s" --date=short -1 ${hash}`, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+          const info = execSync(
+            `git log --format="%ad|%s" --date=short -1 ${hash}`,
+            { cwd, encoding: 'utf8', stdio: 'pipe' },
+          ).trim();
           const [date, ...subjectParts] = info.split('|');
-          entry = { date: date || '', subject: subjectParts.join('|').substring(0, 80) };
+          entry = {
+            date: date || '',
+            subject: subjectParts.join('|').substring(0, 80),
+          };
         } catch {
           entry = { date: '', subject: '' };
         }
@@ -2810,62 +3343,80 @@ function cmdDivergence(cwd, opts) {
       triageState.set(hash, { ...entry, status, reason });
       // Rewrite section
       const commits = [...triageState.entries()].map(([h, e]) => ({
-        hash: h, date: e.date || '', subject: e.subject || '',
+        hash: h,
+        date: e.date || '',
+        subject: e.subject || '',
         classification: classifyCommit(e.subject || ''),
-        status: e.status || 'pending', reason: e.reason || '',
+        status: e.status || 'pending',
+        reason: e.reason || '',
       }));
       writeDivergenceBranchSection(divergencePath, sectionKey, commits);
-      output({ status: 'updated', hash, new_status: status, section: sectionKey },
-        `Updated ${hash} in ${sectionKey}: ${status}${reason ? ' — ' + reason : ''}`);
+      output(
+        { status: 'updated', hash, new_status: status, section: sectionKey },
+        `Updated ${hash} in ${sectionKey}: ${status}${reason ? ' — ' + reason : ''}`,
+      );
       return;
     }
 
     // ── Branch show mode (default) ──
-    const triageState = parseDivergenceBranchSection(divergencePath, sectionKey);
+    const triageState = parseDivergenceBranchSection(
+      divergencePath,
+      sectionKey,
+    );
     let commits = [];
     try {
       const log = execSync(
         `git log ${sectionKey} --format="%H|%ad|%s" --date=short`,
-        { cwd, encoding: 'utf8', stdio: 'pipe' }
+        { cwd, encoding: 'utf8', stdio: 'pipe' },
       ).trim();
       if (log) {
-        commits = log.split('\n').map(line => {
+        commits = log.split('\n').map((line) => {
           const [hash, date, ...subjectParts] = line.split('|');
           const subject = subjectParts.join('|').substring(0, 80);
           const shortHash = hash.substring(0, 7);
           const existing = triageState.get(shortHash);
           const classification = classifyCommit(subject);
           return {
-            hash: shortHash, full_hash: hash, date: date || '', subject,
+            hash: shortHash,
+            full_hash: hash,
+            date: date || '',
+            subject,
             classification,
             status: existing ? existing.status : 'pending',
             reason: existing ? existing.reason : '',
           };
         });
         // Sort by priority
-        commits.sort((a, b) => priorityOrder(a.classification) - priorityOrder(b.classification));
+        commits.sort(
+          (a, b) =>
+            priorityOrder(a.classification) - priorityOrder(b.classification),
+        );
       }
     } catch {}
 
-    const pending = commits.filter(c => c.status === 'pending').length;
+    const pending = commits.filter((c) => c.status === 'pending').length;
     const summaryText = `Branch divergence (${sectionKey}): ${pending} pending of ${commits.length} total`;
-    output({
-      status: 'ok',
-      section: sectionKey,
-      base,
-      branch: opts.branch,
-      commits,
-      summary: {
-        pending,
-        total: commits.length,
-        by_classification: {
-          fix: commits.filter(c => c.classification === 'fix').length,
-          feat: commits.filter(c => c.classification === 'feat').length,
-          other: commits.filter(c => c.classification === 'other').length,
-          unknown: commits.filter(c => c.classification === 'unknown').length,
+    output(
+      {
+        status: 'ok',
+        section: sectionKey,
+        base,
+        branch: opts.branch,
+        commits,
+        summary: {
+          pending,
+          total: commits.length,
+          by_classification: {
+            fix: commits.filter((c) => c.classification === 'fix').length,
+            feat: commits.filter((c) => c.classification === 'feat').length,
+            other: commits.filter((c) => c.classification === 'other').length,
+            unknown: commits.filter((c) => c.classification === 'unknown')
+              .length,
+          },
         },
       },
-    }, summaryText);
+      summaryText,
+    );
     return;
   }
 
@@ -2874,18 +3425,29 @@ function cmdDivergence(cwd, opts) {
   const trackingRef = `${remoteName}/${opts.remoteBranch || 'main'}`;
   let upstreamUrl = null;
   try {
-    upstreamUrl = execSync(`git remote get-url ${remoteName}`, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+    upstreamUrl = execSync(`git remote get-url ${remoteName}`, {
+      cwd,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }).trim();
   } catch {}
 
   if (!upstreamUrl) {
-    output({ status: 'no_upstream', commits: [] }, `No '${remoteName}' remote found. Add one with: git remote add ${remoteName} <url>`);
+    output(
+      { status: 'no_upstream', commits: [] },
+      `No '${remoteName}' remote found. Add one with: git remote add ${remoteName} <url>`,
+    );
     return;
   }
 
   // Optionally fetch from upstream
   if (opts.refresh) {
     try {
-      execSync(`git fetch ${remoteName}`, { cwd, stdio: 'pipe', timeout: 30000 });
+      execSync(`git fetch ${remoteName}`, {
+        cwd,
+        stdio: 'pipe',
+        timeout: 30000,
+      });
     } catch {
       // Fetch failed (network? auth?) — continue with cached refs
     }
@@ -2895,7 +3457,11 @@ function cmdDivergence(cwd, opts) {
   if (opts.init) {
     let mergeBase = '';
     try {
-      mergeBase = execSync(`git merge-base HEAD ${trackingRef}`, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      mergeBase = execSync(`git merge-base HEAD ${trackingRef}`, {
+        cwd,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      }).trim();
     } catch {}
 
     const range = mergeBase ? `${mergeBase}..${trackingRef}` : trackingRef;
@@ -2903,10 +3469,10 @@ function cmdDivergence(cwd, opts) {
     try {
       const log = execSync(
         `git log ${range} --format="%H|%ad|%s" --date=short`,
-        { cwd, encoding: 'utf8', stdio: 'pipe' }
+        { cwd, encoding: 'utf8', stdio: 'pipe' },
       ).trim();
       if (log) {
-        allCommits = log.split('\n').map(line => {
+        allCommits = log.split('\n').map((line) => {
           const [hash, date, ...subjectParts] = line.split('|');
           return {
             hash: hash.substring(0, 7),
@@ -2920,7 +3486,10 @@ function cmdDivergence(cwd, opts) {
     } catch {}
 
     writeDivergenceFile(divergencePath, upstreamUrl, allCommits, remoteName);
-    output({ status: 'initialized', commits: allCommits.length }, `Initialized DIVERGENCE.md with ${allCommits.length} upstream commits`);
+    output(
+      { status: 'initialized', commits: allCommits.length },
+      `Initialized DIVERGENCE.md with ${allCommits.length} upstream commits`,
+    );
     return;
   }
 
@@ -2931,11 +3500,15 @@ function cmdDivergence(cwd, opts) {
     const reason = opts.reason || '';
 
     if (!VALID_TRIAGE_STATES.includes(status)) {
-      error(`Invalid status: ${status}. Must be one of: ${VALID_TRIAGE_STATES.join(', ')}`);
+      error(
+        `Invalid status: ${status}. Must be one of: ${VALID_TRIAGE_STATES.join(', ')}`,
+      );
       return;
     }
     if (['skipped', 'deferred', 'adapted'].includes(status) && !reason) {
-      error(`Reason required for ${status} status. Use --reason "your rationale"`);
+      error(
+        `Reason required for ${status} status. Use --reason "your rationale"`,
+      );
       return;
     }
 
@@ -2945,9 +3518,15 @@ function cmdDivergence(cwd, opts) {
     let entry = triageState.get(hash);
     if (!entry) {
       try {
-        const info = execSync(`git log --format="%ad|%s" --date=short -1 ${hash}`, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+        const info = execSync(
+          `git log --format="%ad|%s" --date=short -1 ${hash}`,
+          { cwd, encoding: 'utf8', stdio: 'pipe' },
+        ).trim();
         const [date, ...subjectParts] = info.split('|');
-        entry = { date: date || '', subject: subjectParts.join('|').substring(0, 80) };
+        entry = {
+          date: date || '',
+          subject: subjectParts.join('|').substring(0, 80),
+        };
       } catch {
         entry = { date: '', subject: '' };
       }
@@ -2955,7 +3534,10 @@ function cmdDivergence(cwd, opts) {
 
     triageState.set(hash, { ...entry, status, reason });
     rewriteDivergenceTable(divergencePath, triageState);
-    output({ status: 'updated', hash, new_status: status }, `Updated ${hash}: ${status}${reason ? ' — ' + reason : ''}`);
+    output(
+      { status: 'updated', hash, new_status: status },
+      `Updated ${hash}: ${status}${reason ? ' — ' + reason : ''}`,
+    );
     return;
   }
 
@@ -2966,10 +3548,10 @@ function cmdDivergence(cwd, opts) {
   try {
     const log = execSync(
       `git log HEAD..${trackingRef} --format="%H|%ad|%s" --date=short`,
-      { cwd, encoding: 'utf8', stdio: 'pipe' }
+      { cwd, encoding: 'utf8', stdio: 'pipe' },
     ).trim();
     if (log) {
-      commits = log.split('\n').map(line => {
+      commits = log.split('\n').map((line) => {
         const [hash, date, ...subjectParts] = line.split('|');
         const subject = subjectParts.join('|').substring(0, 80);
         const shortHash = hash.substring(0, 7);
@@ -2987,7 +3569,7 @@ function cmdDivergence(cwd, opts) {
   } catch {}
 
   // Include triage entries for commits already picked (no longer in HEAD..upstream/main)
-  const logHashes = new Set(commits.map(c => c.hash));
+  const logHashes = new Set(commits.map((c) => c.hash));
   for (const [hash, entry] of triageState) {
     if (!logHashes.has(hash) && entry.status !== 'pending') {
       commits.push({
@@ -3001,18 +3583,21 @@ function cmdDivergence(cwd, opts) {
     }
   }
 
-  const pending = commits.filter(c => c.status === 'pending').length;
-  const picked = commits.filter(c => c.status === 'picked').length;
-  const skipped = commits.filter(c => c.status === 'skipped').length;
-  const deferred = commits.filter(c => c.status === 'deferred').length;
+  const pending = commits.filter((c) => c.status === 'pending').length;
+  const picked = commits.filter((c) => c.status === 'picked').length;
+  const skipped = commits.filter((c) => c.status === 'skipped').length;
+  const deferred = commits.filter((c) => c.status === 'deferred').length;
 
   const summaryText = `Upstream divergence: ${pending} pending, ${picked} picked, ${skipped} skipped, ${deferred} deferred (${commits.length} total)`;
-  output({
-    status: 'ok',
-    upstream: upstreamUrl,
-    commits,
-    summary: { pending, picked, skipped, deferred, total: commits.length },
-  }, summaryText);
+  output(
+    {
+      status: 'ok',
+      upstream: upstreamUrl,
+      commits,
+      summary: { pending, picked, skipped, deferred, total: commits.length },
+    },
+    summaryText,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3113,7 +3698,9 @@ function detectOscillation(commits) {
       if (!fileHistory.has(file)) {
         fileHistory.set(file, []);
       }
-      fileHistory.get(file).push({ author: commit.author, hash: commit.hash, index: i });
+      fileHistory
+        .get(file)
+        .push({ author: commit.author, hash: commit.hash, index: i });
     }
   }
 
@@ -3134,11 +3721,11 @@ function detectOscillation(commits) {
 
     if (alternations >= 1) {
       // Check that there are at least 2 distinct authors involved
-      const uniqueAuthors = new Set(history.map(h => h.author));
+      const uniqueAuthors = new Set(history.map((h) => h.author));
       if (uniqueAuthors.size >= 2) {
         oscillatingFiles.push(file);
         agentSequenceEntries.push(
-          `${file}: [${history.map(h => h.author).join(' → ')}]`
+          `${file}: [${history.map((h) => h.author).join(' → ')}]`,
         );
         if (alternations > maxAlternations) {
           maxAlternations = alternations;
@@ -3159,9 +3746,10 @@ function detectOscillation(commits) {
   // A-B = 1 alternation = warning
   // A-B-A = 2 alternations = halt
   const status = maxAlternations >= 2 ? 'halt' : 'warning';
-  const reason = status === 'halt'
-    ? `Oscillation halted: ${oscillatingFiles.length} file(s) modified 3+ times by alternating agents`
-    : `Oscillation warning: ${oscillatingFiles.length} file(s) modified by alternating agents`;
+  const reason =
+    status === 'halt'
+      ? `Oscillation halted: ${oscillatingFiles.length} file(s) modified 3+ times by alternating agents`
+      : `Oscillation warning: ${oscillatingFiles.length} file(s) modified by alternating agents`;
 
   return {
     status,
@@ -3181,12 +3769,24 @@ function detectOscillation(commits) {
  */
 function cmdPingpongCheck(cwd, args) {
   const windowIdx = args.indexOf('--window');
-  const window = windowIdx !== -1 ? parseInt(args[windowIdx + 1], 10) || 20 : 20;
+  const window =
+    windowIdx !== -1 ? parseInt(args[windowIdx + 1], 10) || 20 : 20;
 
-  const result = execGit(cwd, ['log', `--format=%H|%ae|%s`, '--name-only', `-${window}`, '--', '.']);
+  const result = execGit(cwd, [
+    'log',
+    `--format=%H|%ae|%s`,
+    '--name-only',
+    `-${window}`,
+    '--',
+    '.',
+  ]);
 
   if (result.exitCode !== 0 || !result.stdout || !result.stdout.trim()) {
-    const response = { status: 'ok', reason: 'no git history', details: { oscillating_files: [], agent_sequence: [] } };
+    const response = {
+      status: 'ok',
+      reason: 'no git history',
+      details: { oscillating_files: [], agent_sequence: [] },
+    };
     output(response, 'ok');
     return;
   }
@@ -3214,10 +3814,18 @@ function cmdPingpongCheck(cwd, args) {
  */
 function detectBreakout(commits, declaredFiles) {
   if (!declaredFiles || declaredFiles.length === 0) {
-    return { status: 'ok', reason: 'No declared files to check', details: { unexpected_files: [] } };
+    return {
+      status: 'ok',
+      reason: 'No declared files to check',
+      details: { unexpected_files: [] },
+    };
   }
   if (!commits || commits.length === 0) {
-    return { status: 'ok', reason: 'No commits to analyze', details: { unexpected_files: [] } };
+    return {
+      status: 'ok',
+      reason: 'No commits to analyze',
+      details: { unexpected_files: [] },
+    };
   }
 
   // Normalize: strip leading ./ and use path.normalize
@@ -3225,7 +3833,12 @@ function detectBreakout(commits, declaredFiles) {
   const declared = new Set(declaredFiles.map(normalize));
 
   // Always-allowed path prefixes (GSD internal artifacts)
-  const alwaysAllowedPrefixes = ['.planning' + path.sep, '.claude' + path.sep, '.planning/', '.claude/'];
+  const alwaysAllowedPrefixes = [
+    '.planning' + path.sep,
+    '.claude' + path.sep,
+    '.planning/',
+    '.claude/',
+  ];
   // Always-allowed exact files
   const alwaysAllowedFiles = new Set(['package-lock.json']);
 
@@ -3276,7 +3889,7 @@ function detectBreakout(commits, declaredFiles) {
       seen.add(key);
 
       // Skip always-allowed paths
-      if (alwaysAllowedPrefixes.some(p => file.startsWith(p))) continue;
+      if (alwaysAllowedPrefixes.some((p) => file.startsWith(p))) continue;
       if (alwaysAllowedFiles.has(file)) continue;
 
       // Skip declared files
@@ -3284,23 +3897,35 @@ function detectBreakout(commits, declaredFiles) {
 
       // Check same-directory proximity and test pairing
       const fileDir = path.dirname(file);
-      const inDeclaredDir = [...declared].some(d => path.dirname(d) === fileDir);
+      const inDeclaredDir = [...declared].some(
+        (d) => path.dirname(d) === fileDir,
+      );
       const paired = isTestPair(file);
 
-      const tier = (inDeclaredDir || paired || isSiblingDir(file)) ? 'info' : 'warning';
+      const tier =
+        inDeclaredDir || paired || isSiblingDir(file) ? 'info' : 'warning';
       unexpected.push({ file, commit: commit.hash, tier });
     }
   }
 
-  const warnings = unexpected.filter(u => u.tier === 'warning');
+  const warnings = unexpected.filter((u) => u.tier === 'warning');
 
   if (unexpected.length === 0) {
-    return { status: 'ok', reason: 'All committed files within declared scope', details: { unexpected_files: [] } };
+    return {
+      status: 'ok',
+      reason: 'All committed files within declared scope',
+      details: { unexpected_files: [] },
+    };
   }
 
   if (warnings.length === 0) {
     // Only informational tier — no output needed
-    return { status: 'ok', reason: 'Unexpected files only in same directory as declared files (informational)', details: { unexpected_files: unexpected } };
+    return {
+      status: 'ok',
+      reason:
+        'Unexpected files only in same directory as declared files (informational)',
+      details: { unexpected_files: unexpected },
+    };
   }
 
   if (warnings.length >= 4) {
@@ -3331,18 +3956,40 @@ function cmdBreakoutCheck(cwd, args) {
   const filesArg = filesIdx !== -1 ? args[filesIdx + 1] : '';
 
   if (!planId) {
-    const response = { status: 'ok', reason: 'No --plan specified', details: { unexpected_files: [] } };
+    const response = {
+      status: 'ok',
+      reason: 'No --plan specified',
+      details: { unexpected_files: [] },
+    };
     output(response, 'ok');
     return;
   }
 
-  const declaredFiles = filesArg ? filesArg.split(',').map(f => f.trim()).filter(Boolean) : [];
+  const declaredFiles = filesArg
+    ? filesArg
+        .split(',')
+        .map((f) => f.trim())
+        .filter(Boolean)
+    : [];
 
   // Query git log for commits matching this plan
-  const result = execGit(cwd, ['log', '--format=%H|%ae|%s', '--name-only', '--grep', planId, '-30', '--', '.']);
+  const result = execGit(cwd, [
+    'log',
+    '--format=%H|%ae|%s',
+    '--name-only',
+    '--grep',
+    planId,
+    '-30',
+    '--',
+    '.',
+  ]);
 
   if (result.exitCode !== 0 || !result.stdout || !result.stdout.trim()) {
-    const response = { status: 'ok', reason: 'No matching commits found', details: { unexpected_files: [] } };
+    const response = {
+      status: 'ok',
+      reason: 'No matching commits found',
+      details: { unexpected_files: [] },
+    };
     output(response, 'ok');
     return;
   }
@@ -3355,21 +4002,29 @@ function cmdBreakoutCheck(cwd, args) {
 
 function cmdGenerateAllowlist(cwd, platform = process.platform) {
   // 1. Load static template as baseline
-  const templatePath = path.join(__dirname, '..', '..', 'templates', 'settings-sandbox.json');
+  const templatePath = path.join(
+    __dirname,
+    '..',
+    '..',
+    'templates',
+    'settings-sandbox.json',
+  );
   let template;
   try {
     template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
   } catch (e) {
     template = {
       sandbox: { enabled: true, autoAllowBashIfSandboxed: true },
-      permissions: { allow: [] }
+      permissions: { allow: [] },
     };
   }
 
   // 2. Strip bare + canonical Read/Edit/Write from template — we append
   //    the platform-appropriate form below, matching install.js behavior.
   //    Uses RW_FORMS (frozen Set) from allowlist.cjs — single source of truth (ALLOW-19).
-  const baseStatic = (template.permissions?.allow || []).filter(e => !RW_FORMS.has(e));
+  const baseStatic = (template.permissions?.allow || []).filter(
+    (e) => !RW_FORMS.has(e),
+  );
   const staticEntries = new Set(baseStatic);
 
   // 3. Add platform-aware Read/Edit/Write forms
@@ -3406,8 +4061,11 @@ function cmdGenerateAllowlist(cwd, platform = process.platform) {
 
   // 6. Build output JSON
   const result = {
-    sandbox: template.sandbox || { enabled: true, autoAllowBashIfSandboxed: true },
-    permissions: { allow: allEntries }
+    sandbox: template.sandbox || {
+      enabled: true,
+      autoAllowBashIfSandboxed: true,
+    },
+    permissions: { allow: allEntries },
   };
 
   output(result);
@@ -3426,11 +4084,18 @@ function detectSingleDir(dir) {
   const pkgPath = path.join(dir, 'package.json');
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-    if (pkg.scripts && pkg.scripts.test && !pkg.scripts.test.includes('no test specified')) {
+    if (
+      pkg.scripts &&
+      pkg.scripts.test &&
+      !pkg.scripts.test.includes('no test specified')
+    ) {
       return 'npm test';
     }
   } catch {}
-  if (fs.existsSync(path.join(dir, 'pytest.ini')) || fs.existsSync(path.join(dir, 'pyproject.toml'))) {
+  if (
+    fs.existsSync(path.join(dir, 'pytest.ini')) ||
+    fs.existsSync(path.join(dir, 'pyproject.toml'))
+  ) {
     return 'python -m pytest';
   }
   if (fs.existsSync(path.join(dir, 'Cargo.toml'))) {
@@ -3472,10 +4137,16 @@ function resolveWorkspacePaths(cwd, signal) {
   let patterns = [];
   if (signal === 'pnpm-workspace.yaml') {
     try {
-      const content = fs.readFileSync(path.join(cwd, 'pnpm-workspace.yaml'), 'utf-8');
+      const content = fs.readFileSync(
+        path.join(cwd, 'pnpm-workspace.yaml'),
+        'utf-8',
+      );
       let inPackages = false;
       for (const line of content.split('\n')) {
-        if (/^packages\s*:/.test(line)) { inPackages = true; continue; }
+        if (/^packages\s*:/.test(line)) {
+          inPackages = true;
+          continue;
+        }
         if (inPackages) {
           const m = line.match(/^\s+-\s+['"]?([^'"#\s]+)['"]?/);
           if (m) patterns.push(m[1]);
@@ -3485,9 +4156,11 @@ function resolveWorkspacePaths(cwd, signal) {
     } catch {}
   } else if (signal === 'package.json#workspaces') {
     try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'),
+      );
       const ws = pkg.workspaces;
-      patterns = Array.isArray(ws) ? ws : (ws && ws.packages ? ws.packages : []);
+      patterns = Array.isArray(ws) ? ws : ws && ws.packages ? ws.packages : [];
     } catch {}
   }
 
@@ -3549,15 +4222,15 @@ function discoverTestCommand(cwd) {
 
   if (ws.type === 'submodule') {
     return ws.submodule_paths
-      .map(p => ({ dir: p, command: detectSingleDir(path.join(cwd, p)) }))
-      .filter(entry => entry.command !== null);
+      .map((p) => ({ dir: p, command: detectSingleDir(path.join(cwd, p)) }))
+      .filter((entry) => entry.command !== null);
   }
 
   if (ws.type === 'monorepo') {
     const pkgDirs = resolveWorkspacePaths(cwd, ws.signal);
     return pkgDirs
-      .map(p => ({ dir: p, command: detectSingleDir(path.join(cwd, p)) }))
-      .filter(entry => entry.command !== null);
+      .map((p) => ({ dir: p, command: detectSingleDir(path.join(cwd, p)) }))
+      .filter((entry) => entry.command !== null);
   }
 
   return [];
@@ -3575,27 +4248,35 @@ function discoverTestCommand(cwd) {
  */
 function cmdCleanup(cwd, options) {
   const { dryRun } = options || {};
-  const { milestonesFile: milestonesFilePath, milestones: milestonesDir, phases: phasesDir } = planningPaths(cwd);
+  const {
+    milestonesFile: milestonesFilePath,
+    milestones: milestonesDir,
+    phases: phasesDir,
+  } = planningPaths(cwd);
 
   // Read MILESTONES.md
   let milestonesContent;
   try {
     milestonesContent = fs.readFileSync(milestonesFilePath, 'utf-8');
   } catch {
-    const result = { milestones: [], nothing_to_do: true, error: 'MILESTONES.md not found' };
+    const result = {
+      milestones: [],
+      nothing_to_do: true,
+      error: 'MILESTONES.md not found',
+    };
     output(result, 'MILESTONES.md not found. Nothing to clean up.');
     return;
   }
 
   // Extract completed milestone versions: - [x] **vX.Y ... or table format | vX.Y | ... | Complete |
   const completedVersions = [];
-  const listPattern = /^-\s*\[x\]\s*\*\*(v[\d.]+)[^*]*/gmi;
+  const listPattern = /^-\s*\[x\]\s*\*\*(v[\d.]+)[^*]*/gim;
   let m;
   while ((m = listPattern.exec(milestonesContent)) !== null) {
     completedVersions.push(m[1]);
   }
   // Table format fallback: | vX.Y | ... | Complete |
-  const tablePattern = /^\|\s*(v[\d.]+)\s*\|[^|]+\|\s*Complete\s*\|/gmi;
+  const tablePattern = /^\|\s*(v[\d.]+)\s*\|[^|]+\|\s*Complete\s*\|/gim;
   while ((m = tablePattern.exec(milestonesContent)) !== null) {
     if (!completedVersions.includes(m[1])) completedVersions.push(m[1]);
   }
@@ -3633,7 +4314,11 @@ function cmdCleanup(cwd, options) {
 
     const roadmapSnapshot = path.join(milestonesDir, `${version}-ROADMAP.md`);
     if (!fs.existsSync(roadmapSnapshot)) {
-      milestoneResults.push({ version, skipped: true, reason: 'ROADMAP snapshot not found' });
+      milestoneResults.push({
+        version,
+        skipped: true,
+        reason: 'ROADMAP snapshot not found',
+      });
       continue;
     }
 
@@ -3642,7 +4327,11 @@ function cmdCleanup(cwd, options) {
     try {
       snapshotContent = fs.readFileSync(roadmapSnapshot, 'utf-8');
     } catch {
-      milestoneResults.push({ version, skipped: true, reason: 'Could not read ROADMAP snapshot' });
+      milestoneResults.push({
+        version,
+        skipped: true,
+        reason: 'Could not read ROADMAP snapshot',
+      });
       continue;
     }
 
@@ -3656,7 +4345,7 @@ function cmdCleanup(cwd, options) {
     // Normalize phase numbers for comparison: "01" == "1", "1.1" == "1.1"
     // Build a set of normalized phase numbers from the ROADMAP snapshot
     const normalizedPhaseNums = new Set(
-      [...phaseNums].map(n => n.replace(/^0+(\d)/, '$1'))
+      [...phaseNums].map((n) => n.replace(/^0+(\d)/, '$1')),
     );
 
     // Match phase numbers to actual directories that still exist
@@ -3671,11 +4360,24 @@ function cmdCleanup(cwd, options) {
       }
     }
 
-    const destination = path.join('.planning', 'milestones', `${version}-phases`);
-    const nameLine = milestonesContent.match(new RegExp(`\\*\\*${version.replace('.', '\\.')}\\s*[—–-]?\\s*([^*]+)\\*\\*`));
+    const destination = path.join(
+      '.planning',
+      'milestones',
+      `${version}-phases`,
+    );
+    const nameLine = milestonesContent.match(
+      new RegExp(
+        `\\*\\*${version.replace('.', '\\.')}\\s*[—–-]?\\s*([^*]+)\\*\\*`,
+      ),
+    );
     const name = nameLine ? nameLine[1].trim() : version;
 
-    milestoneResults.push({ version, name, destination, phases_to_archive: phasesToArchive });
+    milestoneResults.push({
+      version,
+      name,
+      destination,
+      phases_to_archive: phasesToArchive,
+    });
 
     // If executing (not dry-run), do the move
     if (!dryRun && phasesToArchive.length > 0) {
@@ -3688,9 +4390,12 @@ function cmdCleanup(cwd, options) {
     }
   }
 
-  const nonSkipped = milestoneResults.filter(m => !m.skipped);
-  const hasWork = nonSkipped.some(m => m.phases_to_archive && m.phases_to_archive.length > 0);
-  const nothingToDo = milestoneResults.length === 0 || (!hasWork && nonSkipped.length === 0);
+  const nonSkipped = milestoneResults.filter((m) => !m.skipped);
+  const hasWork = nonSkipped.some(
+    (m) => m.phases_to_archive && m.phases_to_archive.length > 0,
+  );
+  const nothingToDo =
+    milestoneResults.length === 0 || (!hasWork && nonSkipped.length === 0);
 
   const result = { milestones: milestoneResults, nothing_to_do: nothingToDo };
 
@@ -3711,9 +4416,21 @@ function cmdCleanup(cwd, options) {
     }
     output(result, text);
   } else {
-    const total = milestoneResults.filter(m => !m.skipped).reduce((sum, m) => sum + (m.phases_to_archive ? m.phases_to_archive.length : 0), 0);
-    const mCount = milestoneResults.filter(m => !m.skipped && m.phases_to_archive && m.phases_to_archive.length > 0).length;
-    output(result, `Archived ${total} phase directories from ${mCount} milestones.`);
+    const total = milestoneResults
+      .filter((m) => !m.skipped)
+      .reduce(
+        (sum, m) =>
+          sum + (m.phases_to_archive ? m.phases_to_archive.length : 0),
+        0,
+      );
+    const mCount = milestoneResults.filter(
+      (m) =>
+        !m.skipped && m.phases_to_archive && m.phases_to_archive.length > 0,
+    ).length;
+    output(
+      result,
+      `Archived ${total} phase directories from ${mCount} milestones.`,
+    );
   }
 }
 
@@ -3756,7 +4473,11 @@ function detectInstallLocation(cwd) {
         const localDir = path.dirname(localPath);
         const globalDir = path.dirname(globalPath);
         if (localDir !== globalDir) {
-          return { isLocal: true, installPath: localDir, installedVersion: localVersion.match(/^\d+\.\d+\.\d+/)[0] };
+          return {
+            isLocal: true,
+            installPath: localDir,
+            installedVersion: localVersion.match(/^\d+\.\d+\.\d+/)[0],
+          };
         }
       }
     } catch {}
@@ -3767,7 +4488,11 @@ function detectInstallLocation(cwd) {
     try {
       const globalVersion = fs.readFileSync(globalPath, 'utf-8').trim();
       if (/^\d+\.\d+\.\d+/.test(globalVersion)) {
-        return { isLocal: false, installPath: path.dirname(globalPath), installedVersion: globalVersion.match(/^\d+\.\d+\.\d+/)[0] };
+        return {
+          isLocal: false,
+          installPath: path.dirname(globalPath),
+          installedVersion: globalVersion.match(/^\d+\.\d+\.\d+/)[0],
+        };
       }
     } catch {}
   }
@@ -3973,36 +4698,54 @@ function cmdUpdate(cwd, options, _testOverrides) {
           if (err) { process.stderr.write('Download failed: ' + err.message + '\\n'); process.exit(1); }
         });
       `;
-      const dlResult = spawnSync('node', ['-e', downloadScript, tarballUrl, tarballPath], {
-        timeout: 60000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      const dlResult = spawnSync(
+        'node',
+        ['-e', downloadScript, tarballUrl, tarballPath],
+        {
+          timeout: 60000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
       if (dlResult.status !== 0) throw new Error('Download failed');
 
       // Extract tarball
-      const tarResult = spawnSync('tar', ['xzf', tarballPath, '-C', extractDir], { stdio: 'pipe' });
+      const tarResult = spawnSync(
+        'tar',
+        ['xzf', tarballPath, '-C', extractDir],
+        { stdio: 'pipe' },
+      );
       if (tarResult.status !== 0) throw new Error('Extract failed');
 
       // Run install.js
-      const installResult = spawnSync('node', [path.join(extractDir, 'bin', 'install.js'), installFlag], {
-        stdio: 'inherit',
-        timeout: 120000,
-      });
+      const installResult = spawnSync(
+        'node',
+        [path.join(extractDir, 'bin', 'install.js'), installFlag],
+        {
+          stdio: 'inherit',
+          timeout: 120000,
+        },
+      );
       if (installResult.status !== 0) throw new Error('Install failed');
     } catch (e) {
-      try { fs.rmSync(tmpExtractDir, { recursive: true, force: true }); } catch {}
+      try {
+        fs.rmSync(tmpExtractDir, { recursive: true, force: true });
+      } catch {}
       return output({
         status: 'error',
         message: 'Update failed: ' + (e.message || 'unknown error'),
       });
     }
-    try { fs.rmSync(tmpExtractDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(tmpExtractDir, { recursive: true, force: true });
+    } catch {}
   }
 
   // 6. Clear update cache
   for (const cacheBase of [cwd, homeDir]) {
     try {
-      fs.unlinkSync(path.join(cacheBase, '.claude', 'cache', 'gsd-update-check.json'));
+      fs.unlinkSync(
+        path.join(cacheBase, '.claude', 'cache', 'gsd-update-check.json'),
+      );
     } catch {}
   }
 

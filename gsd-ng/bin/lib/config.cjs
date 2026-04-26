@@ -14,20 +14,42 @@ const {
   formatAgentToModelMapAsTable,
   formatAgentToEffortMapAsTable,
 } = require('./model-profiles.cjs');
-const { syncAgentEffortFrontmatter, formatRestartNotice } = require('./effort-sync.cjs');
+const {
+  syncAgentEffortFrontmatter,
+  formatRestartNotice,
+} = require('./effort-sync.cjs');
 
 const VALID_CONFIG_KEYS = new Set([
-  'mode', 'granularity', 'parallelization', 'commit_docs', 'model_profile',
+  'mode',
+  'granularity',
+  'parallelization',
+  'commit_docs',
+  'model_profile',
   'search_gitignored',
-  'workflow.research', 'workflow.plan_check', 'workflow.verifier',
-  'workflow.nyquist_validation', 'workflow.ui_phase', 'workflow.ui_safety_gate',
-  'workflow._auto_chain_active', 'workflow.guardrail_enabled',
-  'git.branching_strategy', 'git.phase_branch_template', 'git.milestone_branch_template',
-  'git.target_branch', 'git.auto_push', 'git.remote',
-  'git.review_branch_template', 'git.type_aliases',
-  'git.pr_template', 'git.pr_draft', 'git.platform',
-  'git.commit_format', 'git.commit_template', 'git.versioning_scheme',
-  'planning.commit_docs', 'planning.search_gitignored',
+  'workflow.research',
+  'workflow.plan_check',
+  'workflow.verifier',
+  'workflow.nyquist_validation',
+  'workflow.ui_phase',
+  'workflow.ui_safety_gate',
+  'workflow._auto_chain_active',
+  'workflow.guardrail_enabled',
+  'git.branching_strategy',
+  'git.phase_branch_template',
+  'git.milestone_branch_template',
+  'git.target_branch',
+  'git.auto_push',
+  'git.remote',
+  'git.review_branch_template',
+  'git.type_aliases',
+  'git.pr_template',
+  'git.pr_draft',
+  'git.platform',
+  'git.commit_format',
+  'git.commit_template',
+  'git.versioning_scheme',
+  'planning.commit_docs',
+  'planning.search_gitignored',
   'issue_tracker.auto_sync',
   'issue_tracker.default_action',
   'issue_tracker.comment_style',
@@ -41,7 +63,8 @@ const VALID_CONFIG_KEYS = new Set([
   'git.ssh_check',
 ]);
 
-const SUBMODULE_KEY_PATTERN = /^git\.submodules\.[^.]+\.(target_branch|branching_strategy|phase_branch_template|milestone_branch_template|review_branch_template|remote|auto_push|platform|pr_template|pr_draft|commit_format|commit_template|versioning_scheme|type_aliases|ssh_check)$/;
+const SUBMODULE_KEY_PATTERN =
+  /^git\.submodules\.[^.]+\.(target_branch|branching_strategy|phase_branch_template|milestone_branch_template|review_branch_template|remote|auto_push|platform|pr_template|pr_draft|commit_format|commit_template|versioning_scheme|type_aliases|ssh_check)$/;
 
 const EFFORT_OVERRIDE_KEY_PATTERN = /^effort_overrides\.[a-z][\w-]+$/;
 
@@ -49,7 +72,8 @@ const EFFORT_OVERRIDE_KEY_PATTERN = /^effort_overrides\.[a-z][\w-]+$/;
 // cmdConfigGet hides these from Copilot consumers — even if a hand-edited
 // copilot config.json contains them — so the read-side strip is robust
 // against future key additions.
-const PROFILE_EFFORT_KEY_PATTERN = /^(model_profile|model_overrides(\..+)?|effort_overrides(\..+)?)$/;
+const PROFILE_EFFORT_KEY_PATTERN =
+  /^(model_profile|model_overrides(\..+)?|effort_overrides(\..+)?)$/;
 
 const CONFIG_KEY_SUGGESTIONS = {
   'workflow.nyquist_validation_enabled': 'workflow.nyquist_validation',
@@ -96,11 +120,20 @@ function ensureConfigFile(cwd) {
       userDefaults = JSON.parse(fs.readFileSync(globalDefaultsPath, 'utf-8'));
       // Migrate deprecated "depth" key to "granularity"
       if ('depth' in userDefaults && !('granularity' in userDefaults)) {
-        const depthToGranularity = { quick: 'coarse', standard: 'standard', comprehensive: 'fine' };
-        userDefaults.granularity = depthToGranularity[userDefaults.depth] || userDefaults.depth;
+        const depthToGranularity = {
+          quick: 'coarse',
+          standard: 'standard',
+          comprehensive: 'fine',
+        };
+        userDefaults.granularity =
+          depthToGranularity[userDefaults.depth] || userDefaults.depth;
         delete userDefaults.depth;
         try {
-          fs.writeFileSync(globalDefaultsPath, JSON.stringify(userDefaults, null, 2), 'utf-8');
+          fs.writeFileSync(
+            globalDefaultsPath,
+            JSON.stringify(userDefaults, null, 2),
+            'utf-8',
+          );
         } catch {}
       }
     }
@@ -205,7 +238,9 @@ function cmdConfigSet(cwd, keyPath, value) {
   validateKnownConfigKeyPath(keyPath);
 
   if (keyPath === 'git.submodule.workspace_branch') {
-    error('git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.');
+    error(
+      'git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.',
+    );
   }
 
   // model_profile is a domain-level setting, not a flat key/value.
@@ -214,19 +249,28 @@ function cmdConfigSet(cwd, keyPath, value) {
   if (keyPath === 'model_profile') {
     error(
       "'model_profile' must be set via 'config-set-model-profile <profile>'. " +
-      "Setting it through 'config-set' skips agent effort sync, profile validation, and the restart notice."
+        "Setting it through 'config-set' skips agent effort sync, profile validation, and the restart notice.",
     );
   }
 
-  if (!VALID_CONFIG_KEYS.has(keyPath) && !SUBMODULE_KEY_PATTERN.test(keyPath) && !EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)) {
-    error(`Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`);
+  if (
+    !VALID_CONFIG_KEYS.has(keyPath) &&
+    !SUBMODULE_KEY_PATTERN.test(keyPath) &&
+    !EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath)
+  ) {
+    error(
+      `Unknown config key: "${keyPath}". Valid keys: ${[...VALID_CONFIG_KEYS].sort().join(', ')}`,
+    );
   }
 
   // Value-validation for effort_overrides.* keys: reject values outside the valid set.
-  if (EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath) && !VALID_EFFORT_VALUES.includes(value)) {
+  if (
+    EFFORT_OVERRIDE_KEY_PATTERN.test(keyPath) &&
+    !VALID_EFFORT_VALUES.includes(value)
+  ) {
     error(
       `Invalid effort value "${value}" for ${keyPath}. ` +
-      `Valid values: ${VALID_EFFORT_VALUES.join(', ')}.`
+        `Valid values: ${VALID_EFFORT_VALUES.join(', ')}.`,
     );
   }
 
@@ -261,7 +305,9 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
   }
 
   if (keyPath === 'git.submodule.workspace_branch') {
-    process.stderr.write('Warning: git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.\n');
+    process.stderr.write(
+      'Warning: git.submodule.workspace_branch is deprecated — the workspace stays on git.target_branch when branching_strategy is none.\n',
+    );
   }
 
   // Phase 55 Area 1 lock: profile/effort keys are Claude-only.
@@ -303,7 +349,11 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
   const keys = keyPath.split('.');
   let current = config;
   for (const key of keys) {
-    if (current === undefined || current === null || typeof current !== 'object') {
+    if (
+      current === undefined ||
+      current === null ||
+      typeof current !== 'object'
+    ) {
       if (defaultValue !== undefined) {
         output(defaultValue, String(defaultValue));
         return;
@@ -336,14 +386,20 @@ function cmdConfigSetModelProfile(cwd, profile) {
 
   const normalizedProfile = profile.toLowerCase().trim();
   if (!VALID_PROFILES.includes(normalizedProfile)) {
-    error(`Invalid profile '${profile}'. Valid profiles: ${VALID_PROFILES.join(', ')}`);
+    error(
+      `Invalid profile '${profile}'. Valid profiles: ${VALID_PROFILES.join(', ')}`,
+    );
   }
 
   // Ensure config exists (create if needed)
   ensureConfigFile(cwd);
 
   // Set the model profile in the config
-  const { previousValue } = setConfigValue(cwd, 'model_profile', normalizedProfile);
+  const { previousValue } = setConfigValue(
+    cwd,
+    'model_profile',
+    normalizedProfile,
+  );
   const previousProfile = previousValue || 'balanced';
 
   // Build result value / message and return
@@ -371,7 +427,7 @@ function cmdConfigSetModelProfile(cwd, profile) {
     normalizedProfile,
     previousProfile,
     agentToModelMap,
-    agentToEffortMap
+    agentToEffortMap,
   );
   output(result, rawValue);
 }
@@ -384,24 +440,30 @@ function getCmdConfigSetModelProfileResultMessage(
   normalizedProfile,
   previousProfile,
   agentToModelMap,
-  agentToEffortMap
+  agentToEffortMap,
 ) {
   const agentToModelTable = formatAgentToModelMapAsTable(agentToModelMap);
-  const agentToEffortTable = agentToEffortMap ? formatAgentToEffortMapAsTable(agentToEffortMap) : null;
+  const agentToEffortTable = agentToEffortMap
+    ? formatAgentToEffortMapAsTable(agentToEffortMap)
+    : null;
   const didChange = previousProfile !== normalizedProfile;
   const paragraphs = didChange
     ? [
         `\u2713 Model profile set to: ${normalizedProfile} (was: ${previousProfile})`,
         'Model assignments:',
         agentToModelTable,
-        ...(agentToEffortTable ? ['Effort assignments:', agentToEffortTable] : []),
+        ...(agentToEffortTable
+          ? ['Effort assignments:', agentToEffortTable]
+          : []),
         'Next spawned agents will use the new profile.',
       ]
     : [
         `\u2713 Model profile is already set to: ${normalizedProfile}`,
         'Model assignments:',
         agentToModelTable,
-        ...(agentToEffortTable ? ['Effort assignments:', agentToEffortTable] : []),
+        ...(agentToEffortTable
+          ? ['Effort assignments:', agentToEffortTable]
+          : []),
       ];
   return paragraphs.join('\n\n');
 }
