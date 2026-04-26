@@ -39,6 +39,8 @@
     "prettier": "3.8.3"
   },
   "scripts": {
+    "format": "prettier --write 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
+    "format:check": "prettier --check 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
     "build:hooks": "node scripts/build-hooks.js",
     "build:tarball": "npm run build:hooks && node scripts/build-tarball.js",
     "prepublishOnly": "npm run build:hooks",
