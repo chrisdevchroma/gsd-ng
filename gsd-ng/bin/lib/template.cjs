@@ -4,7 +4,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const { normalizePhaseName, findPhaseInternal, generateSlugInternal, toPosixPath, output, error } = require('./core.cjs');
+const {
+  normalizePhaseName,
+  findPhaseInternal,
+  generateSlugInternal,
+  toPosixPath,
+  output,
+  error,
+} = require('./core.cjs');
 const { reconstructFrontmatter } = require('./frontmatter.cjs');
 
 function cmdTemplateSelect(cwd, planPath) {
@@ -49,16 +56,30 @@ function cmdTemplateSelect(cwd, planPath) {
     output(result, template);
   } catch (e) {
     // Fallback to standard
-    output({ template: 'templates/summary-standard.md', type: 'standard', error: e.message }, 'templates/summary-standard.md');
+    output(
+      {
+        template: 'templates/summary-standard.md',
+        type: 'standard',
+        error: e.message,
+      },
+      'templates/summary-standard.md',
+    );
   }
 }
 
 function cmdTemplateFill(cwd, templateType, options) {
-  if (!templateType) { error('template type required: summary, plan, or verification'); }
-  if (!options.phase) { error('--phase required'); }
+  if (!templateType) {
+    error('template type required: summary, plan, or verification');
+  }
+  if (!options.phase) {
+    error('--phase required');
+  }
 
   const phaseInfo = findPhaseInternal(cwd, options.phase);
-  if (!phaseInfo || !phaseInfo.found) { output({ error: 'Phase not found', phase: options.phase }); return; }
+  if (!phaseInfo || !phaseInfo.found) {
+    output({ error: 'Phase not found', phase: options.phase });
+    return;
+  }
 
   const padded = normalizePhaseName(options.phase);
   const today = new Date().toISOString().split('T')[0];
@@ -111,7 +132,7 @@ function cmdTemplateFill(cwd, templateType, options) {
         '[Key decisions or "None - followed plan as specified"]',
         '',
         '## Next Phase Readiness',
-        '[What\'s ready for next phase]',
+        "[What's ready for next phase]",
       ].join('\n');
       fileName = `${padded}-${planNum}-SUMMARY.md`;
       break;
@@ -202,7 +223,9 @@ function cmdTemplateFill(cwd, templateType, options) {
       break;
     }
     default:
-      error(`Unknown template type: ${templateType}. Available: summary, plan, verification`);
+      error(
+        `Unknown template type: ${templateType}. Available: summary, plan, verification`,
+      );
       return;
   }
 
@@ -210,7 +233,10 @@ function cmdTemplateFill(cwd, templateType, options) {
   const outPath = path.join(cwd, phaseInfo.directory, fileName);
 
   if (fs.existsSync(outPath)) {
-    output({ error: 'File already exists', path: toPosixPath(path.relative(cwd, outPath)) });
+    output({
+      error: 'File already exists',
+      path: toPosixPath(path.relative(cwd, outPath)),
+    });
     return;
   }
 

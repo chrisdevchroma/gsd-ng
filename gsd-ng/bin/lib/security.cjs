@@ -68,12 +68,12 @@ const INJECTION_PATTERNS = [
   /override\s+(system|previous)\s+(prompt|instructions)/i,
   // Role/identity manipulation
   /you\s+are\s+now\s+(?:a|an|the)\s+/i,
-  /act\s+as\s+(?:a|an|the)\s+(?!plan|phase|wave)/i,  // allow "act as a plan/phase/wave"
+  /act\s+as\s+(?:a|an|the)\s+(?!plan|phase|wave)/i, // allow "act as a plan/phase/wave"
   /pretend\s+(?:you(?:'re| are)\s+|to\s+be\s+)/i,
   // System prompt extraction
   /(?:print|output|reveal|show|display|repeat)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions)/i,
   // Hidden instruction markers
-  /<\/?(?:system|assistant|human)>/i,  // Note: <instructions> excluded — GSD uses it
+  /<\/?(?:system|assistant|human)>/i, // Note: <instructions> excluded — GSD uses it
   /\[SYSTEM\]/i,
   /<<\s*SYS\s*>>/i,
   // Exfiltration
@@ -111,9 +111,17 @@ const INJECTION_PATTERNS_TIERED = [
   // ── HIGH confidence — unambiguous attack indicators ─────────────────────────
   // Direct instruction override — the canonical prompt injection attack
   // Covers: "ignore all previous instructions", "ignore the above directions", etc.
-  { pattern: /ignore\s+(?:all\s+)?(?:the\s+)?(?:previous|above|prior)\s+(?:instructions?|directions?|rules?)/i, confidence: 'high' },
+  {
+    pattern:
+      /ignore\s+(?:all\s+)?(?:the\s+)?(?:previous|above|prior)\s+(?:instructions?|directions?|rules?)/i,
+    confidence: 'high',
+  },
   // System/previous override — "override system prompt", "SYSTEM OVERRIDE: new instructions"
-  { pattern: /(?:override|OVERRIDE)\s+(?:system|previous)\s+(?:prompt|instructions)|SYSTEM\s+OVERRIDE\s*:/i, confidence: 'high' },
+  {
+    pattern:
+      /(?:override|OVERRIDE)\s+(?:system|previous)\s+(?:prompt|instructions)|SYSTEM\s+OVERRIDE\s*:/i,
+    confidence: 'high',
+  },
   // Hidden instruction markers — <system>, <assistant>, <human> tags
   { pattern: /<\/?(?:system|assistant|human)>/i, confidence: 'high' },
   // [SYSTEM] marker
@@ -122,11 +130,18 @@ const INJECTION_PATTERNS_TIERED = [
   { pattern: /<<\s*SYS\s*>>/i, confidence: 'high' },
   // Markdown image exfiltration: ![x](https://evil.com/steal?data=secret)
   // Detects image links with suspicious query params (data, token, key, secret, content)
-  { pattern: /!\[.*?\]\(https?:\/\/[^)]*\?[^)]*(?:data|token|key|secret|content)[^)]*\)/i, confidence: 'high' },
+  {
+    pattern:
+      /!\[.*?\]\(https?:\/\/[^)]*\?[^)]*(?:data|token|key|secret|content)[^)]*\)/i,
+    confidence: 'high',
+  },
   // ADMIN OVERRIDE: authority claim variant (case-insensitive)
   { pattern: /ADMIN\s+OVERRIDE\s*:/i, confidence: 'high' },
   // DAN jailbreak family: "DAN:", "DAN mode", "Do Anything Now" (case-insensitive)
-  { pattern: /\bDAN\s*(?::|mode\b)|Do\s+Anything\s+Now\b/i, confidence: 'high' },
+  {
+    pattern: /\bDAN\s*(?::|mode\b)|Do\s+Anything\s+Now\b/i,
+    confidence: 'high',
+  },
   // JAILBREAK prefix: explicit jailbreak label (case-insensitive)
   { pattern: /\bJAILBREAK\s*(?::|mode\b)|\bJAILBREAK\b/i, confidence: 'high' },
 
@@ -134,24 +149,51 @@ const INJECTION_PATTERNS_TIERED = [
   // Role/identity manipulation
   { pattern: /you\s+are\s+now\s+(?:a|an|the)\s+/i, confidence: 'medium' },
   // act as [role] — with GSD allow-list: "act as a plan/phase/wave" excluded
-  { pattern: /act\s+as\s+(?:a|an|the)\s+(?!plan|phase|wave)/i, confidence: 'medium' },
+  {
+    pattern: /act\s+as\s+(?:a|an|the)\s+(?!plan|phase|wave)/i,
+    confidence: 'medium',
+  },
   // Pretend to be / pretend you're
-  { pattern: /pretend\s+(?:you(?:'re| are)\s+|to\s+be\s+)/i, confidence: 'medium' },
+  {
+    pattern: /pretend\s+(?:you(?:'re| are)\s+|to\s+be\s+)/i,
+    confidence: 'medium',
+  },
   // System prompt extraction
-  { pattern: /(?:print|output|reveal|show|display|repeat)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions)/i, confidence: 'medium' },
+  {
+    pattern:
+      /(?:print|output|reveal|show|display|repeat)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions)/i,
+    confidence: 'medium',
+  },
   // Network exfiltration (could appear in legitimate code examples)
-  { pattern: /(?:send|post|fetch|curl|wget)\s+(?:to|from)\s+https?:\/\//i, confidence: 'medium' },
+  {
+    pattern: /(?:send|post|fetch|curl|wget)\s+(?:to|from)\s+https?:\/\//i,
+    confidence: 'medium',
+  },
   // Tool manipulation (could appear in shell scripting docs)
-  { pattern: /(?:run|execute|call|invoke)\s+(?:the\s+)?(?:bash|shell|exec|spawn)\s+(?:tool|command)/i, confidence: 'medium' },
+  {
+    pattern:
+      /(?:run|execute|call|invoke)\s+(?:the\s+)?(?:bash|shell|exec|spawn)\s+(?:tool|command)/i,
+    confidence: 'medium',
+  },
   // HTML comment injection: <!-- ignore all previous instructions -->
   // Attackers hide instructions in HTML comments to bypass text-level scanning
-  { pattern: /<!--.*?(?:ignore|override|system|instructions|execute).*?-->/is, confidence: 'medium' },
+  {
+    pattern: /<!--.*?(?:ignore|override|system|instructions|execute).*?-->/is,
+    confidence: 'medium',
+  },
   // Base64 + execute combination: "decode and execute base64payload"
   // Attackers encode malicious payloads to bypass pattern detection
-  { pattern: /(?:decode|base64)[^.]{0,30}(?:execute|follow|apply|run)/i, confidence: 'medium' },
+  {
+    pattern: /(?:decode|base64)[^.]{0,30}(?:execute|follow|apply|run)/i,
+    confidence: 'medium',
+  },
   // Tool output / search result indirect injection
   // Attacker plants instructions in tool output that agent will process
-  { pattern: /(?:tool(?:\s+output)?|search\s+result|webpage\s+content|external\s+data)[^.]{0,40}(?:ignore|override|forget|disregard)\s+(?:previous|prior|above|all)/i, confidence: 'medium' },
+  {
+    pattern:
+      /(?:tool(?:\s+output)?|search\s+result|webpage\s+content|external\s+data)[^.]{0,40}(?:ignore|override|forget|disregard)\s+(?:previous|prior|above|all)/i,
+    confidence: 'medium',
+  },
 ];
 
 // ─── validatePath ─────────────────────────────────────────────────────────────
@@ -212,7 +254,11 @@ function validatePath(filePath, baseDir, opts = {}) {
   if (safe) {
     return { safe: true, resolved: resolvedTarget };
   } else {
-    return { safe: false, resolved: resolvedTarget, error: 'Path escapes allowed directory' };
+    return {
+      safe: false,
+      resolved: resolvedTarget,
+      error: 'Path escapes allowed directory',
+    };
   }
 }
 
@@ -263,7 +309,9 @@ function shannonEntropy(segment) {
  * @returns {string}
  */
 function stripFencedCodeBlocks(content) {
-  return content.replace(/```[\s\S]*?```/g, (match) => ' '.repeat(match.length));
+  return content.replace(/```[\s\S]*?```/g, (match) =>
+    ' '.repeat(match.length),
+  );
 }
 
 /**
@@ -363,8 +411,8 @@ function scanForInjection(content, opts = {}) {
   // Entropy scanning (Phase 40.1) — statistical detection for obfuscated payloads
   // Activated by: opts.entropy=true OR (opts.external=true AND opts.entropy!==false)
   // Deactivated by: opts.entropy=false OR global config workflow.entropy_scanning=false
-  const entropyEnabled = opts.entropy === true ||
-    (opts.external === true && opts.entropy !== false);
+  const entropyEnabled =
+    opts.entropy === true || (opts.external === true && opts.entropy !== false);
   const globalEnabled = opts.cwd ? isEntropyGloballyEnabled(opts.cwd) : true;
 
   if (entropyEnabled && globalEnabled) {
@@ -387,9 +435,13 @@ function scanForInjection(content, opts = {}) {
       }
 
       // Handle tail segment: remaining chars after last full window
-      const lastFullWindowStart = Math.floor((scannable.length - WINDOW) / STEP) * STEP;
+      const lastFullWindowStart =
+        Math.floor((scannable.length - WINDOW) / STEP) * STEP;
       const tailStart = lastFullWindowStart + STEP;
-      if (tailStart < scannable.length && (scannable.length - tailStart) >= MIN_SEGMENT) {
+      if (
+        tailStart < scannable.length &&
+        scannable.length - tailStart >= MIN_SEGMENT
+      ) {
         const segment = scannable.slice(tailStart);
         const H = shannonEntropy(segment);
         if (H > THRESHOLD) {
@@ -400,12 +452,15 @@ function scanForInjection(content, opts = {}) {
       // Merge overlapping/adjacent flagged regions (due to 50% window overlap)
       const merged = mergeRegions(flaggedRegions);
       for (const { start, end, H } of merged) {
-        findings.push(`[entropy] High entropy segment (H=${H.toFixed(2)}, offset ${start}-${end})`);
+        findings.push(
+          `[entropy] High entropy segment (H=${H.toFixed(2)}, offset ${start}-${end})`,
+        );
       }
     }
   }
 
-  const tier = blocked.length > 0 ? 'high' : (findings.length > 0 ? 'medium' : 'clean');
+  const tier =
+    blocked.length > 0 ? 'high' : findings.length > 0 ? 'medium' : 'clean';
   return {
     clean: blocked.length === 0 && findings.length === 0,
     findings,
@@ -467,7 +522,10 @@ function wrapUntrustedContent(content, source) {
  * @returns {string} Content with wrapper tags removed, inner content preserved
  */
 function stripUntrustedWrappers(content) {
-  return content.replace(/<untrusted-content[^>]*>([\s\S]*?)<\/untrusted-content>/g, '$1');
+  return content.replace(
+    /<untrusted-content[^>]*>([\s\S]*?)<\/untrusted-content>/g,
+    '$1',
+  );
 }
 
 // ─── logSecurityEvent ────────────────────────────────────────────────────────
@@ -495,7 +553,8 @@ function logSecurityEvent(cwd, eventData) {
     if (process.env.GSD_SECURITY_LOG_DIR) {
       logDir = process.env.GSD_SECURITY_LOG_DIR;
     } else {
-      const runtimeDir = process.env.GSD_RUNTIME === 'copilot' ? '.github' : '.claude';
+      const runtimeDir =
+        process.env.GSD_RUNTIME === 'copilot' ? '.github' : '.claude';
       logDir = path.join(cwd, runtimeDir, 'logs');
     }
     fs.mkdirSync(logDir, { recursive: true });
@@ -575,12 +634,18 @@ function validateFieldName(field) {
   }
 
   if (trimmed.length > 100) {
-    return { valid: false, error: `Field name exceeds 100 character limit (${trimmed.length} chars)` };
+    return {
+      valid: false,
+      error: `Field name exceeds 100 character limit (${trimmed.length} chars)`,
+    };
   }
 
   // YAML key separator — would create nested key injection
   if (trimmed.includes(':')) {
-    return { valid: false, error: 'Field name contains YAML key separator ":"' };
+    return {
+      valid: false,
+      error: 'Field name contains YAML key separator ":"',
+    };
   }
 
   // Newlines — would inject YAML content on next line
@@ -594,18 +659,32 @@ function validateFieldName(field) {
   }
 
   // YAML flow indicators — could break inline mappings/sequences
-  if (trimmed.includes('{') || trimmed.includes('}') || trimmed.includes('[') || trimmed.includes(']')) {
-    return { valid: false, error: 'Field name contains YAML flow indicators ({ } [ ])' };
+  if (
+    trimmed.includes('{') ||
+    trimmed.includes('}') ||
+    trimmed.includes('[') ||
+    trimmed.includes(']')
+  ) {
+    return {
+      valid: false,
+      error: 'Field name contains YAML flow indicators ({ } [ ])',
+    };
   }
 
   // YAML comment character at start
   if (trimmed.startsWith('#')) {
-    return { valid: false, error: 'Field name starts with YAML comment character "#"' };
+    return {
+      valid: false,
+      error: 'Field name starts with YAML comment character "#"',
+    };
   }
 
   // YAML directive at start
   if (trimmed.startsWith('%')) {
-    return { valid: false, error: 'Field name starts with YAML directive character "%"' };
+    return {
+      valid: false,
+      error: 'Field name starts with YAML directive character "%"',
+    };
   }
 
   return { valid: true, normalized: trimmed };
@@ -623,6 +702,6 @@ module.exports = {
   wrapUntrustedContent,
   stripUntrustedWrappers,
   logSecurityEvent,
-  INJECTION_PATTERNS,          // backward compat — 11-element array unchanged
-  INJECTION_PATTERNS_TIERED,   // Phase 40 — tiered patterns with confidence classification
+  INJECTION_PATTERNS, // backward compat — 11-element array unchanged
+  INJECTION_PATTERNS_TIERED, // Phase 40 — tiered patterns with confidence classification
 };

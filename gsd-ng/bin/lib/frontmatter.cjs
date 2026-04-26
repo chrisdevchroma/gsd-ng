@@ -51,7 +51,11 @@ function extractFrontmatter(content) {
         stack.push({ obj: current.obj[key], key: null, indent });
       } else if (value.startsWith('[') && value.endsWith(']')) {
         // Inline array: key: [a, b, c]
-        current.obj[key] = value.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+        current.obj[key] = value
+          .slice(1, -1)
+          .split(',')
+          .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+          .filter(Boolean);
         current.key = null;
       } else {
         // Simple key: value
@@ -60,10 +64,17 @@ function extractFrontmatter(content) {
       }
     } else if (line.trim().startsWith('- ')) {
       // Array item
-      const itemValue = line.trim().slice(2).replace(/^["']|["']$/g, '');
+      const itemValue = line
+        .trim()
+        .slice(2)
+        .replace(/^["']|["']$/g, '');
 
       // If current context is an empty object, convert to array
-      if (typeof current.obj === 'object' && !Array.isArray(current.obj) && Object.keys(current.obj).length === 0) {
+      if (
+        typeof current.obj === 'object' &&
+        !Array.isArray(current.obj) &&
+        Object.keys(current.obj).length === 0
+      ) {
         // Find the key in parent that points to this object and convert it
         const parent = stack.length > 1 ? stack[stack.length - 2] : null;
         if (parent) {
@@ -91,12 +102,18 @@ function reconstructFrontmatter(obj) {
     if (Array.isArray(value)) {
       if (value.length === 0) {
         lines.push(`${key}: []`);
-      } else if (value.every(v => typeof v === 'string') && value.length <= 3 && value.join(', ').length < 60) {
+      } else if (
+        value.every((v) => typeof v === 'string') &&
+        value.length <= 3 &&
+        value.join(', ').length < 60
+      ) {
         lines.push(`${key}: [${value.join(', ')}]`);
       } else {
         lines.push(`${key}:`);
         for (const item of value) {
-          lines.push(`  - ${typeof item === 'string' && (item.includes(':') || item.includes('#')) ? `"${item}"` : item}`);
+          lines.push(
+            `  - ${typeof item === 'string' && (item.includes(':') || item.includes('#')) ? `"${item}"` : item}`,
+          );
         }
       }
     } else if (typeof value === 'object') {
@@ -106,12 +123,18 @@ function reconstructFrontmatter(obj) {
         if (Array.isArray(subval)) {
           if (subval.length === 0) {
             lines.push(`  ${subkey}: []`);
-          } else if (subval.every(v => typeof v === 'string') && subval.length <= 3 && subval.join(', ').length < 60) {
+          } else if (
+            subval.every((v) => typeof v === 'string') &&
+            subval.length <= 3 &&
+            subval.join(', ').length < 60
+          ) {
             lines.push(`  ${subkey}: [${subval.join(', ')}]`);
           } else {
             lines.push(`  ${subkey}:`);
             for (const item of subval) {
-              lines.push(`    - ${typeof item === 'string' && (item.includes(':') || item.includes('#')) ? `"${item}"` : item}`);
+              lines.push(
+                `    - ${typeof item === 'string' && (item.includes(':') || item.includes('#')) ? `"${item}"` : item}`,
+              );
             }
           }
         } else if (typeof subval === 'object') {
@@ -133,12 +156,22 @@ function reconstructFrontmatter(obj) {
           }
         } else {
           const sv = String(subval);
-          lines.push(`  ${subkey}: ${sv.includes(':') || sv.includes('#') || sv.includes(' \u2014 ') || sv.includes('(') || sv.includes(')') ? `"${sv}"` : sv}`);
+          lines.push(
+            `  ${subkey}: ${sv.includes(':') || sv.includes('#') || sv.includes(' \u2014 ') || sv.includes('(') || sv.includes(')') ? `"${sv}"` : sv}`,
+          );
         }
       }
     } else {
       const sv = String(value);
-      if (sv.includes(':') || sv.includes('#') || sv.startsWith('[') || sv.startsWith('{') || sv.includes(' \u2014 ') || sv.includes('(') || sv.includes(')')) {
+      if (
+        sv.includes(':') ||
+        sv.includes('#') ||
+        sv.startsWith('[') ||
+        sv.startsWith('{') ||
+        sv.includes(' \u2014 ') ||
+        sv.includes('(') ||
+        sv.includes(')')
+      ) {
         lines.push(`${key}: "${sv}"`);
       } else {
         lines.push(`${key}: ${sv}`);
@@ -226,29 +259,57 @@ function parseMustHavesBlock(content, blockName) {
 // ─── Frontmatter CRUD commands ────────────────────────────────────────────────
 
 const FRONTMATTER_SCHEMAS = {
-  plan: { required: ['phase', 'plan', 'type', 'wave', 'depends_on', 'files_modified', 'autonomous', 'must_haves'] },
-  summary: { required: ['phase', 'plan', 'subsystem', 'tags', 'duration', 'completed'] },
+  plan: {
+    required: [
+      'phase',
+      'plan',
+      'type',
+      'wave',
+      'depends_on',
+      'files_modified',
+      'autonomous',
+      'must_haves',
+    ],
+  },
+  summary: {
+    required: ['phase', 'plan', 'subsystem', 'tags', 'duration', 'completed'],
+  },
   verification: { required: ['phase', 'verified', 'status', 'score'] },
 };
 
 function cmdFrontmatterGet(cwd, filePath, field, format, defaultValue) {
-  if (!filePath) { error('file path required'); }
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
+  if (!filePath) {
+    error('file path required');
+  }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
   if (!content) {
-    if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
-    output({ error: 'File not found', path: filePath }); return;
+    if (defaultValue !== undefined) {
+      output(defaultValue, String(defaultValue));
+      return;
+    }
+    output({ error: 'File not found', path: filePath });
+    return;
   }
   const fm = extractFrontmatter(content);
   if (field) {
     const value = fm[field];
     if (value === undefined) {
-      if (defaultValue !== undefined) { output(defaultValue, String(defaultValue)); return; }
-      output({ error: 'Field not found', field }); return;
+      if (defaultValue !== undefined) {
+        output(defaultValue, String(defaultValue));
+        return;
+      }
+      output({ error: 'Field not found', field });
+      return;
     }
-    const rawString = (format === 'newline' && Array.isArray(value))
-      ? value.join('\n')
-      : (Array.isArray(value) ? value.join(', ') : String(value));
+    const rawString =
+      format === 'newline' && Array.isArray(value)
+        ? value.join('\n')
+        : Array.isArray(value)
+          ? value.join(', ')
+          : String(value);
     output({ [field]: value }, rawString);
   } else {
     output(fm);
@@ -256,7 +317,9 @@ function cmdFrontmatterGet(cwd, filePath, field, format, defaultValue) {
 }
 
 function cmdFrontmatterSet(cwd, filePath, field, value) {
-  if (!filePath || !field || value === undefined) { error('file, field, and value required'); }
+  if (!filePath || !field || value === undefined) {
+    error('file, field, and value required');
+  }
   const fieldCheck = validateFieldName(field);
   if (!fieldCheck.valid) {
     error(`Invalid field name: ${fieldCheck.error}`);
@@ -267,12 +330,21 @@ function cmdFrontmatterSet(cwd, filePath, field, value) {
       error(`Invalid file path: ${pathCheck.error}`);
     }
   }
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }); return; }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
+  if (!fs.existsSync(fullPath)) {
+    output({ error: 'File not found', path: filePath });
+    return;
+  }
   const content = fs.readFileSync(fullPath, 'utf-8');
   const fm = extractFrontmatter(content);
   let parsedValue;
-  try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    parsedValue = value;
+  }
   fm[field] = parsedValue;
   const newContent = spliceFrontmatter(content, fm);
   fs.writeFileSync(fullPath, newContent, 'utf-8');
@@ -280,19 +352,31 @@ function cmdFrontmatterSet(cwd, filePath, field, value) {
 }
 
 function cmdFrontmatterMerge(cwd, filePath, data) {
-  if (!filePath || !data) { error('file and data required'); }
+  if (!filePath || !data) {
+    error('file and data required');
+  }
   if (!path.isAbsolute(filePath)) {
     const pathCheck = validatePath(filePath, cwd);
     if (!pathCheck.safe) {
       error(`Invalid file path: ${pathCheck.error}`);
     }
   }
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-  if (!fs.existsSync(fullPath)) { output({ error: 'File not found', path: filePath }); return; }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
+  if (!fs.existsSync(fullPath)) {
+    output({ error: 'File not found', path: filePath });
+    return;
+  }
   const content = fs.readFileSync(fullPath, 'utf-8');
   const fm = extractFrontmatter(content);
   let mergeData;
-  try { mergeData = JSON.parse(data); } catch { error('Invalid JSON for --data'); return; }
+  try {
+    mergeData = JSON.parse(data);
+  } catch {
+    error('Invalid JSON for --data');
+    return;
+  }
   Object.assign(fm, mergeData);
   const newContent = spliceFrontmatter(content, fm);
   fs.writeFileSync(fullPath, newContent, 'utf-8');
@@ -300,16 +384,30 @@ function cmdFrontmatterMerge(cwd, filePath, data) {
 }
 
 function cmdFrontmatterValidate(cwd, filePath, schemaName) {
-  if (!filePath || !schemaName) { error('file and schema required'); }
+  if (!filePath || !schemaName) {
+    error('file and schema required');
+  }
   const schema = FRONTMATTER_SCHEMAS[schemaName];
-  if (!schema) { error(`Unknown schema: ${schemaName}. Available: ${Object.keys(FRONTMATTER_SCHEMAS).join(', ')}`); }
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
+  if (!schema) {
+    error(
+      `Unknown schema: ${schemaName}. Available: ${Object.keys(FRONTMATTER_SCHEMAS).join(', ')}`,
+    );
+  }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: filePath }); return; }
+  if (!content) {
+    output({ error: 'File not found', path: filePath });
+    return;
+  }
   const fm = extractFrontmatter(content);
-  const missing = schema.required.filter(f => fm[f] === undefined);
-  const present = schema.required.filter(f => fm[f] !== undefined);
-  output({ valid: missing.length === 0, missing, present, schema: schemaName }, missing.length === 0 ? 'valid' : 'invalid');
+  const missing = schema.required.filter((f) => fm[f] === undefined);
+  const present = schema.required.filter((f) => fm[f] !== undefined);
+  output(
+    { valid: missing.length === 0, missing, present, schema: schemaName },
+    missing.length === 0 ? 'valid' : 'invalid',
+  );
 }
 
 module.exports = {

@@ -40,12 +40,16 @@ function cmdGuardSyncChain(cwd, argumentsStr) {
  */
 function cmdGuardInitValid(jsonStr) {
   if (!jsonStr || !jsonStr.trim()) {
-    error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
+    error(
+      'guard init-valid: $INIT is empty or malformed — did the init command fail?',
+    );
   }
   try {
     JSON.parse(jsonStr);
   } catch {
-    error('guard init-valid: $INIT is empty or malformed — did the init command fail?');
+    error(
+      'guard init-valid: $INIT is empty or malformed — did the init command fail?',
+    );
   }
   output({ valid: true });
 }

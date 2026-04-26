@@ -164,7 +164,12 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { error, output: coreOutput, setFileOutput, setJsonMode } = require('./lib/core.cjs');
+const {
+  error,
+  output: coreOutput,
+  setFileOutput,
+  setJsonMode,
+} = require('./lib/core.cjs');
 const state = require('./lib/state.cjs');
 const phase = require('./lib/phase.cjs');
 const roadmap = require('./lib/roadmap.cjs');
@@ -183,27 +188,94 @@ const effortSync = require('./lib/effort-sync.cjs');
 // ─── Command Registry (for typo detection) ────────────────────────────────────
 
 const ALL_COMMANDS = [
-  'state', 'resolve-model', 'resolve-effort', 'sync-agents', 'find-phase', 'commit', 'verify-summary',
-  'template', 'frontmatter', 'verify', 'generate-slug', 'current-timestamp',
-  'list-todos', 'recurring-due', 'staleness-check', 'verify-path-exists',
-  'config-ensure-section', 'config-set', 'config-set-model-profile',
-  'config-get', 'init-get', 'history-digest', 'phases', 'roadmap', 'requirements',
-  'phase', 'milestone', 'validate', 'progress', 'stats', 'todo', 'update',
-  'scaffold', 'init', 'phase-plan-index', 'state-snapshot', 'summary-extract',
-  'detect-platform', 'detect-workspace', 'discover-test-command', 'websearch',
-  'squash', 'version-bump', 'generate-changelog', 'generate-allowlist',
-  'resolve-type-alias', 'issue-import', 'issue-sync', 'issue-list-refs',
-  'divergence', 'pingpong-check', 'breakout-check', 'cleanup', 'help', 'guard',
+  'state',
+  'resolve-model',
+  'resolve-effort',
+  'sync-agents',
+  'find-phase',
+  'commit',
+  'verify-summary',
+  'template',
+  'frontmatter',
+  'verify',
+  'generate-slug',
+  'current-timestamp',
+  'list-todos',
+  'recurring-due',
+  'staleness-check',
+  'verify-path-exists',
+  'config-ensure-section',
+  'config-set',
+  'config-set-model-profile',
+  'config-get',
+  'init-get',
+  'history-digest',
+  'phases',
+  'roadmap',
+  'requirements',
+  'phase',
+  'milestone',
+  'validate',
+  'progress',
+  'stats',
+  'todo',
+  'update',
+  'scaffold',
+  'init',
+  'phase-plan-index',
+  'state-snapshot',
+  'summary-extract',
+  'detect-platform',
+  'detect-workspace',
+  'discover-test-command',
+  'websearch',
+  'squash',
+  'version-bump',
+  'generate-changelog',
+  'generate-allowlist',
+  'resolve-type-alias',
+  'issue-import',
+  'issue-sync',
+  'issue-list-refs',
+  'divergence',
+  'pingpong-check',
+  'breakout-check',
+  'cleanup',
+  'help',
+  'guard',
   'test',
 ];
 
 // ─── Subcommand Registry (for fuzzy subcommand matching) ─────────────────────
 
 const SUBCOMMANDS = {
-  state: ['load', 'json', 'update', 'get', 'patch', 'advance-plan', 'record-metric', 'update-progress', 'add-decision', 'add-blocker', 'resolve-blocker', 'record-session', 'begin-phase', 'adjust-quick-table', 'rebuild-frontmatter'],
+  state: [
+    'load',
+    'json',
+    'update',
+    'get',
+    'patch',
+    'advance-plan',
+    'record-metric',
+    'update-progress',
+    'add-decision',
+    'add-blocker',
+    'resolve-blocker',
+    'record-session',
+    'begin-phase',
+    'adjust-quick-table',
+    'rebuild-frontmatter',
+  ],
   template: ['select', 'fill'],
   frontmatter: ['get', 'set', 'merge', 'validate'],
-  verify: ['plan-structure', 'phase-completeness', 'references', 'commits', 'artifacts', 'key-links'],
+  verify: [
+    'plan-structure',
+    'phase-completeness',
+    'references',
+    'commits',
+    'artifacts',
+    'key-links',
+  ],
   phases: ['list'],
   roadmap: ['get-phase', 'analyze', 'update-plan-progress', 'add-phase'],
   requirements: ['mark-complete'],
@@ -211,7 +283,20 @@ const SUBCOMMANDS = {
   milestone: ['complete'],
   validate: ['consistency', 'health'],
   todo: ['complete', 'list-by-phase', 'scan-phase-linked'],
-  init: ['execute-phase', 'plan-phase', 'new-project', 'new-milestone', 'quick', 'resume', 'verify-work', 'phase-op', 'todos', 'milestone-op', 'map-codebase', 'progress'],
+  init: [
+    'execute-phase',
+    'plan-phase',
+    'new-project',
+    'new-milestone',
+    'quick',
+    'resume',
+    'verify-work',
+    'phase-op',
+    'todos',
+    'milestone-op',
+    'map-codebase',
+    'progress',
+  ],
   guard: ['sync-chain', 'init-valid'],
   test: ['capture-baseline', 'compare-baseline'],
 };
@@ -231,88 +316,121 @@ const SUBCOMMANDS = {
  */
 const ARG_SCHEMAS = {
   state: {
-    'load':             { positional: { min: 0, max: 0 }, flags: [] },
-    'json':             { positional: { min: 0, max: 0 }, flags: [] },
-    'update':           { positional: { min: 2, max: 2 }, flags: [] },
-    'get':              { positional: { min: 0, max: 1 }, flags: [] },
+    load: { positional: { min: 0, max: 0 }, flags: [] },
+    json: { positional: { min: 0, max: 0 }, flags: [] },
+    update: { positional: { min: 2, max: 2 }, flags: [] },
+    get: { positional: { min: 0, max: 1 }, flags: [] },
     // 'patch' omitted: takes dynamic --key value pairs, any flag is valid
-    'advance-plan':     { positional: { min: 0, max: 0 }, flags: [] },
-    'record-metric':    { positional: { min: 0, max: 0 }, flags: ['--phase', '--plan', '--duration', '--tasks', '--files'] },
-    'update-progress':  { positional: { min: 0, max: 0 }, flags: [] },
-    'add-decision':     { positional: { min: 0, max: 0 }, flags: ['--phase', '--summary', '--summary-file', '--rationale', '--rationale-file'] },
-    'add-blocker':      { positional: { min: 0, max: 0 }, flags: ['--text', '--text-file'] },
-    'resolve-blocker':  { positional: { min: 0, max: 0 }, flags: ['--text'] },
-    'record-session':   { positional: { min: 0, max: 0 }, flags: ['--stopped-at', '--resume-file'] },
-    'begin-phase':      { positional: { min: 0, max: 0 }, flags: ['--phase', '--name', '--plans'] },
+    'advance-plan': { positional: { min: 0, max: 0 }, flags: [] },
+    'record-metric': {
+      positional: { min: 0, max: 0 },
+      flags: ['--phase', '--plan', '--duration', '--tasks', '--files'],
+    },
+    'update-progress': { positional: { min: 0, max: 0 }, flags: [] },
+    'add-decision': {
+      positional: { min: 0, max: 0 },
+      flags: [
+        '--phase',
+        '--summary',
+        '--summary-file',
+        '--rationale',
+        '--rationale-file',
+      ],
+    },
+    'add-blocker': {
+      positional: { min: 0, max: 0 },
+      flags: ['--text', '--text-file'],
+    },
+    'resolve-blocker': { positional: { min: 0, max: 0 }, flags: ['--text'] },
+    'record-session': {
+      positional: { min: 0, max: 0 },
+      flags: ['--stopped-at', '--resume-file'],
+    },
+    'begin-phase': {
+      positional: { min: 0, max: 0 },
+      flags: ['--phase', '--name', '--plans'],
+    },
     'adjust-quick-table': { positional: { min: 0, max: 0 }, flags: [] },
   },
   template: {
-    'select': { positional: { min: 0, max: 1 }, flags: [] },
-    'fill':   { positional: { min: 1, max: 1 }, flags: ['--phase', '--plan', '--name', '--type', '--wave', '--fields'] },
+    select: { positional: { min: 0, max: 1 }, flags: [] },
+    fill: {
+      positional: { min: 1, max: 1 },
+      flags: ['--phase', '--plan', '--name', '--type', '--wave', '--fields'],
+    },
   },
   frontmatter: {
-    'get':      { positional: { min: 1, max: 1 }, flags: ['--field', '--format', '--default'] },
-    'set':      { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
-    'merge':    { positional: { min: 1, max: 1 }, flags: ['--data'] },
-    'validate': { positional: { min: 1, max: 1 }, flags: ['--schema'] },
+    get: {
+      positional: { min: 1, max: 1 },
+      flags: ['--field', '--format', '--default'],
+    },
+    set: { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
+    merge: { positional: { min: 1, max: 1 }, flags: ['--data'] },
+    validate: { positional: { min: 1, max: 1 }, flags: ['--schema'] },
   },
   verify: {
-    'plan-structure':     { positional: { min: 1, max: 1 }, flags: [] },
+    'plan-structure': { positional: { min: 1, max: 1 }, flags: [] },
     'phase-completeness': { positional: { min: 0, max: 1 }, flags: [] },
-    'references':         { positional: { min: 0, max: 1 }, flags: [] },
-    'commits':            { positional: { min: 0, max: null }, flags: [] },
-    'artifacts':          { positional: { min: 1, max: 1 }, flags: [] },
-    'key-links':          { positional: { min: 1, max: 1 }, flags: [] },
+    references: { positional: { min: 0, max: 1 }, flags: [] },
+    commits: { positional: { min: 0, max: null }, flags: [] },
+    artifacts: { positional: { min: 1, max: 1 }, flags: [] },
+    'key-links': { positional: { min: 1, max: 1 }, flags: [] },
   },
   phases: {
-    'list': { positional: { min: 0, max: 0 }, flags: ['--type', '--phase', '--include-archived'] },
+    list: {
+      positional: { min: 0, max: 0 },
+      flags: ['--type', '--phase', '--include-archived'],
+    },
   },
   roadmap: {
-    'get-phase':            { positional: { min: 1, max: 1 }, flags: ['--default'] },
-    'analyze':              { positional: { min: 0, max: 0 }, flags: ['--current'] },
+    'get-phase': { positional: { min: 1, max: 1 }, flags: ['--default'] },
+    analyze: { positional: { min: 0, max: 0 }, flags: ['--current'] },
     'update-plan-progress': { positional: { min: 1, max: 1 }, flags: [] },
-    'add-phase':            { positional: { min: 0, max: null }, flags: [] },
+    'add-phase': { positional: { min: 0, max: null }, flags: [] },
   },
   requirements: {
     'mark-complete': { positional: { min: 1, max: null }, flags: [] },
   },
   phase: {
     'next-decimal': { positional: { min: 1, max: 1 }, flags: [] },
-    'add':          { positional: { min: 0, max: null }, flags: [] },
-    'insert':       { positional: { min: 1, max: null }, flags: [] },
-    'remove':       { positional: { min: 1, max: 1 }, flags: ['--force'] },
-    'complete':     { positional: { min: 0, max: 1 }, flags: [] },
+    add: { positional: { min: 0, max: null }, flags: [] },
+    insert: { positional: { min: 1, max: null }, flags: [] },
+    remove: { positional: { min: 1, max: 1 }, flags: ['--force'] },
+    complete: { positional: { min: 0, max: 1 }, flags: [] },
   },
   milestone: {
     // max: null because --name can be followed by multi-word values (e.g. --name MVP Foundation)
-    'complete': { positional: { min: 0, max: null }, flags: ['--name', '--archive-phases'] },
+    complete: {
+      positional: { min: 0, max: null },
+      flags: ['--name', '--archive-phases'],
+    },
   },
   validate: {
-    'consistency': { positional: { min: 0, max: 0 }, flags: [] },
-    'health':      { positional: { min: 0, max: 0 }, flags: ['--repair'] },
+    consistency: { positional: { min: 0, max: 0 }, flags: [] },
+    health: { positional: { min: 0, max: 0 }, flags: ['--repair'] },
   },
   todo: {
-    'complete':          { positional: { min: 1, max: 1 }, flags: [] },
-    'list-by-phase':     { positional: { min: 1, max: 1 }, flags: [] },
+    complete: { positional: { min: 1, max: 1 }, flags: [] },
+    'list-by-phase': { positional: { min: 1, max: 1 }, flags: [] },
     'scan-phase-linked': { positional: { min: 1, max: 1 }, flags: [] },
   },
   init: {
     'execute-phase': { positional: { min: 1, max: 1 }, flags: [] },
-    'plan-phase':    { positional: { min: 1, max: 1 }, flags: [] },
-    'new-project':   { positional: { min: 0, max: 0 }, flags: [] },
+    'plan-phase': { positional: { min: 1, max: 1 }, flags: [] },
+    'new-project': { positional: { min: 0, max: 0 }, flags: [] },
     'new-milestone': { positional: { min: 0, max: 0 }, flags: [] },
-    'quick':         { positional: { min: 0, max: null }, flags: ['--verify'] },
-    'resume':        { positional: { min: 0, max: 0 }, flags: [] },
-    'verify-work':   { positional: { min: 1, max: 1 }, flags: [] },
-    'phase-op':      { positional: { min: 1, max: 1 }, flags: [] },
-    'todos':         { positional: { min: 0, max: 1 }, flags: [] },
-    'milestone-op':  { positional: { min: 0, max: 0 }, flags: [] },
-    'map-codebase':  { positional: { min: 0, max: 0 }, flags: [] },
-    'progress':      { positional: { min: 0, max: 0 }, flags: [] },
+    quick: { positional: { min: 0, max: null }, flags: ['--verify'] },
+    resume: { positional: { min: 0, max: 0 }, flags: [] },
+    'verify-work': { positional: { min: 1, max: 1 }, flags: [] },
+    'phase-op': { positional: { min: 1, max: 1 }, flags: [] },
+    todos: { positional: { min: 0, max: 1 }, flags: [] },
+    'milestone-op': { positional: { min: 0, max: 0 }, flags: [] },
+    'map-codebase': { positional: { min: 0, max: 0 }, flags: [] },
+    progress: { positional: { min: 0, max: 0 }, flags: [] },
   },
   guard: {
     // sync-chain omitted: takes a raw freeform arguments string, not discrete flags
-    'init-valid':  { positional: { min: 1, max: 1 }, flags: [] },
+    'init-valid': { positional: { min: 1, max: 1 }, flags: [] },
   },
   test: {
     'capture-baseline': { positional: { min: 2, max: 2 }, flags: [] },
@@ -321,29 +439,106 @@ const ARG_SCHEMAS = {
   // ─── Top-level commands with flags (_self schema convention) ─────────────
   // Only command-specific flags; global flags (--json, --file, --pick, --cwd)
   // are already stripped before dispatch.
-  'commit':             { _self: { positional: { min: 0, max: null }, flags: ['--amend', '--files'] } },
-  'verify-summary':     { _self: { positional: { min: 1, max: 1 }, flags: ['--check-count'] } },
-  'staleness-check':    { _self: { positional: { min: 0, max: 0 }, flags: ['--count'] } },
-  'sync-agents':        { _self: { positional: { min: 0, max: 0 }, flags: ['--agents-dir'] } },
-  'config-get':         { _self: { positional: { min: 1, max: 1 }, flags: ['--default'] } },
-  'update':             { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run', '--local', '--global'] } },
-  'scaffold':           { _self: { positional: { min: 1, max: null }, flags: ['--phase', '--name'] } },
-  'state-snapshot':     { _self: { positional: { min: 0, max: 0 }, flags: ['--current'] } },
-  'summary-extract':    { _self: { positional: { min: 1, max: 1 }, flags: ['--fields', '--default'] } },
-  'detect-platform':    { _self: { positional: { min: 0, max: 1 }, flags: ['--field'] } },
-  'detect-workspace':   { _self: { positional: { min: 0, max: 0 }, flags: ['--field'] } },
-  'git-context':        { _self: { positional: { min: 0, max: 0 }, flags: ['--field'] } },
-  'ssh-check':          { _self: { positional: { min: 0, max: 1 }, flags: ['--field'] } },
-  'websearch':          { _self: { positional: { min: 1, max: null }, flags: ['--limit', '--freshness'] } },
-  'squash':             { _self: { positional: { min: 0, max: 1 }, flags: ['--list-backup-tags', '--dry-run', '--allow-stable', '--strategy'] } },
-  'version-bump':       { _self: { positional: { min: 0, max: 0 }, flags: ['--level', '--scheme', '--snapshot', '--field'] } },
-  'generate-changelog': { _self: { positional: { min: 1, max: 1 }, flags: ['--date'] } },
-  'issue-import':       { _self: { positional: { min: 2, max: 2 }, flags: ['--repo'] } },
-  'issue-sync':         { _self: { positional: { min: 0, max: 1 }, flags: ['--auto'] } },
-  'divergence':         { _self: { positional: { min: 0, max: 0 }, flags: ['--refresh', '--init', '--triage', '--status', '--reason', '--branch', '--base', '--remote', '--remote-branch'] } },
-  'pingpong-check':     { _self: { positional: { min: 0, max: 0 }, flags: ['--window'] } },
-  'breakout-check':     { _self: { positional: { min: 0, max: 0 }, flags: ['--plan', '--declared-files'] } },
-  'cleanup':            { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run'] } },
+  commit: {
+    _self: { positional: { min: 0, max: null }, flags: ['--amend', '--files'] },
+  },
+  'verify-summary': {
+    _self: { positional: { min: 1, max: 1 }, flags: ['--check-count'] },
+  },
+  'staleness-check': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--count'] },
+  },
+  'sync-agents': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--agents-dir'] },
+  },
+  'config-get': {
+    _self: { positional: { min: 1, max: 1 }, flags: ['--default'] },
+  },
+  update: {
+    _self: {
+      positional: { min: 0, max: 0 },
+      flags: ['--dry-run', '--local', '--global'],
+    },
+  },
+  scaffold: {
+    _self: { positional: { min: 1, max: null }, flags: ['--phase', '--name'] },
+  },
+  'state-snapshot': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--current'] },
+  },
+  'summary-extract': {
+    _self: { positional: { min: 1, max: 1 }, flags: ['--fields', '--default'] },
+  },
+  'detect-platform': {
+    _self: { positional: { min: 0, max: 1 }, flags: ['--field'] },
+  },
+  'detect-workspace': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--field'] },
+  },
+  'git-context': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--field'] },
+  },
+  'ssh-check': {
+    _self: { positional: { min: 0, max: 1 }, flags: ['--field'] },
+  },
+  websearch: {
+    _self: {
+      positional: { min: 1, max: null },
+      flags: ['--limit', '--freshness'],
+    },
+  },
+  squash: {
+    _self: {
+      positional: { min: 0, max: 1 },
+      flags: [
+        '--list-backup-tags',
+        '--dry-run',
+        '--allow-stable',
+        '--strategy',
+      ],
+    },
+  },
+  'version-bump': {
+    _self: {
+      positional: { min: 0, max: 0 },
+      flags: ['--level', '--scheme', '--snapshot', '--field'],
+    },
+  },
+  'generate-changelog': {
+    _self: { positional: { min: 1, max: 1 }, flags: ['--date'] },
+  },
+  'issue-import': {
+    _self: { positional: { min: 2, max: 2 }, flags: ['--repo'] },
+  },
+  'issue-sync': {
+    _self: { positional: { min: 0, max: 1 }, flags: ['--auto'] },
+  },
+  divergence: {
+    _self: {
+      positional: { min: 0, max: 0 },
+      flags: [
+        '--refresh',
+        '--init',
+        '--triage',
+        '--status',
+        '--reason',
+        '--branch',
+        '--base',
+        '--remote',
+        '--remote-branch',
+      ],
+    },
+  },
+  'pingpong-check': {
+    _self: { positional: { min: 0, max: 0 }, flags: ['--window'] },
+  },
+  'breakout-check': {
+    _self: {
+      positional: { min: 0, max: 0 },
+      flags: ['--plan', '--declared-files'],
+    },
+  },
+  cleanup: { _self: { positional: { min: 0, max: 0 }, flags: ['--dry-run'] } },
 };
 
 /**
@@ -369,7 +564,7 @@ function validateArgs(command, subcommand, remainingArgs) {
     if (arg && !arg.startsWith('--') && /^[a-zA-Z][\w-]*=/.test(arg)) {
       error(
         `'${arg}' looks like a key=value assignment — positional args don't use '=' syntax.\n` +
-        `${usageHint}`
+          `${usageHint}`,
       );
     }
   }
@@ -389,7 +584,9 @@ function validateArgs(command, subcommand, remainingArgs) {
       }
     }
   }
-  const actualPositionals = remainingArgs.filter((a, i) => a && !a.startsWith('--') && !flagValueConsumed.has(i));
+  const actualPositionals = remainingArgs.filter(
+    (a, i) => a && !a.startsWith('--') && !flagValueConsumed.has(i),
+  );
 
   // 3. Flag handling: distinguish "flag where positional expected" vs "unknown flag"
   //    - If positional requirements are NOT met and schema accepts no flags:
@@ -398,35 +595,43 @@ function validateArgs(command, subcommand, remainingArgs) {
   //      an unrecognized --flag gets "Unknown flag"
   for (const arg of remainingArgs) {
     if (arg && arg.startsWith('--') && !schema.flags.includes(arg)) {
-      const positionalsSatisfied = actualPositionals.length >= schema.positional.min;
+      const positionalsSatisfied =
+        actualPositionals.length >= schema.positional.min;
       if (!positionalsSatisfied && schema.flags.length === 0) {
         // User passed a flag where a positional was required and no flags are valid
         error(
           `Positional argument expected, got '${arg}'.\n` +
-          `${usageHint}\n` +
-          `Example: ${cmdLabel}${schema.positional.min > 0 ? ' 40' : ''}`
+            `${usageHint}\n` +
+            `Example: ${cmdLabel}${schema.positional.min > 0 ? ' 40' : ''}`,
         );
       } else {
         // Unknown flag (positionals satisfied, or schema has some known flags)
-        const suggestion = schema.flags.length > 0
-          ? (() => {
-              // Simple closest-match by character overlap (good enough for small flag sets)
-              let best = null;
-              let bestScore = -1;
-              for (const f of schema.flags) {
-                const shorter = arg.length < f.length ? arg : f;
-                const longer = arg.length >= f.length ? arg : f;
-                let score = 0;
-                for (let i = 0; i < shorter.length; i++) {
-                  if (longer.includes(shorter[i])) score++;
+        const suggestion =
+          schema.flags.length > 0
+            ? (() => {
+                // Simple closest-match by character overlap (good enough for small flag sets)
+                let best = null;
+                let bestScore = -1;
+                for (const f of schema.flags) {
+                  const shorter = arg.length < f.length ? arg : f;
+                  const longer = arg.length >= f.length ? arg : f;
+                  let score = 0;
+                  for (let i = 0; i < shorter.length; i++) {
+                    if (longer.includes(shorter[i])) score++;
+                  }
+                  if (score > bestScore) {
+                    bestScore = score;
+                    best = f;
+                  }
                 }
-                if (score > bestScore) { bestScore = score; best = f; }
-              }
-              return bestScore > 2 ? ` Did you mean '${best}'?` : '';
-            })()
-          : '';
-        const knownList = schema.flags.length > 0 ? schema.flags.join(', ') : 'none';
-        error(`Unknown flag '${arg}' for '${cmdLabel}'.${suggestion} Known flags: ${knownList}`);
+                return bestScore > 2 ? ` Did you mean '${best}'?` : '';
+              })()
+            : '';
+        const knownList =
+          schema.flags.length > 0 ? schema.flags.join(', ') : 'none';
+        error(
+          `Unknown flag '${arg}' for '${cmdLabel}'.${suggestion} Known flags: ${knownList}`,
+        );
       }
     }
   }
@@ -435,13 +640,16 @@ function validateArgs(command, subcommand, remainingArgs) {
   if (actualPositionals.length < schema.positional.min) {
     error(
       `Too few arguments for '${cmdLabel}': expected at least ${schema.positional.min}, got ${actualPositionals.length}.\n` +
-      `${usageHint}`
+        `${usageHint}`,
     );
   }
-  if (schema.positional.max !== null && actualPositionals.length > schema.positional.max) {
+  if (
+    schema.positional.max !== null &&
+    actualPositionals.length > schema.positional.max
+  ) {
     error(
       `Too many arguments for '${cmdLabel}': expected at most ${schema.positional.max}, got ${actualPositionals.length}.\n` +
-      `${usageHint}`
+        `${usageHint}`,
     );
   }
 }
@@ -449,14 +657,17 @@ function validateArgs(command, subcommand, remainingArgs) {
 // ─── Levenshtein Distance (for typo detection) ────────────────────────────────
 
 function levenshtein(a, b) {
-  const m = a.length, n = b.length;
+  const m = a.length,
+    n = b.length;
   const dp = Array.from({ length: m + 1 }, (_, i) => Array(n + 1).fill(0));
   for (let i = 0; i <= m; i++) dp[i][0] = i;
   for (let j = 0; j <= n; j++) dp[0][j] = j;
   for (let i = 1; i <= m; i++)
     for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
   return dp[m][n];
 }
 
@@ -482,7 +693,8 @@ function suggestSubcommand(input, currentCommand) {
   const sameResults = [];
   const crossResults = [];
 
-  const distThreshold = (sub) => sub.dist <= 2 && sub.dist < Math.ceil(sub.sub.length / 2);
+  const distThreshold = (sub) =>
+    sub.dist <= 2 && sub.dist < Math.ceil(sub.sub.length / 2);
 
   // 1. Same-namespace matching
   const sameSubcmds = SUBCOMMANDS[currentCommand] || [];
@@ -502,14 +714,22 @@ function suggestSubcommand(input, currentCommand) {
       const suggestion = `${ns} ${sub}`;
       // Direct levenshtein match against the subcommand alone
       const dist = levenshtein(input, sub);
-      if (dist <= 2 && dist < Math.ceil(sub.length / 2) && !crossSeen.has(suggestion)) {
+      if (
+        dist <= 2 &&
+        dist < Math.ceil(sub.length / 2) &&
+        !crossSeen.has(suggestion)
+      ) {
         crossResults.push({ suggestion, dist });
         crossSeen.add(suggestion);
       }
       // Also try matching against the full "ns subcommand" compound form (e.g., "phase complete" vs "complete-phase")
       const fullForm = `${ns}-${sub}`;
       const fullDist = levenshtein(input, fullForm);
-      if (fullDist <= 3 && fullDist < Math.ceil(fullForm.length / 2) && !crossSeen.has(suggestion)) {
+      if (
+        fullDist <= 3 &&
+        fullDist < Math.ceil(fullForm.length / 2) &&
+        !crossSeen.has(suggestion)
+      ) {
         crossResults.push({ suggestion, dist: fullDist });
         crossSeen.add(suggestion);
       }
@@ -560,8 +780,8 @@ function suggestSubcommand(input, currentCommand) {
   crossResults.sort((a, b) => a.dist - b.dist);
 
   return {
-    sameNamespace: sameResults.map(r => r.sub),
-    crossNamespace: crossResults.map(r => r.suggestion),
+    sameNamespace: sameResults.map((r) => r.sub),
+    crossNamespace: crossResults.map((r) => r.suggestion),
   };
 }
 
@@ -571,8 +791,14 @@ function printHelp({ exitCode = 0 } = {}) {
   const src = fs.readFileSync(__filename, 'utf8');
   const match = src.match(/\/\*\*([\s\S]*?)\*\//);
   const out = exitCode !== 0 ? process.stderr : process.stdout;
-  if (!match) { out.write('No help available.\n'); process.exit(exitCode); }
-  const lines = match[1].split('\n').map(l => l.replace(/^\s*\*\s?/, '')).filter((_, i, arr) => i > 0 || arr[i].trim());
+  if (!match) {
+    out.write('No help available.\n');
+    process.exit(exitCode);
+  }
+  const lines = match[1]
+    .split('\n')
+    .map((l) => l.replace(/^\s*\*\s?/, ''))
+    .filter((_, i, arr) => i > 0 || arr[i].trim());
   out.write(lines.join('\n').trim() + '\n');
   process.exit(exitCode);
 }
@@ -591,7 +817,7 @@ async function main() {
 
   // Optional cwd override for sandboxed subagents running outside project root.
   let cwd = process.cwd();
-  const cwdEqArg = args.find(arg => arg.startsWith('--cwd='));
+  const cwdEqArg = args.find((arg) => arg.startsWith('--cwd='));
   const cwdIdx = args.indexOf('--cwd');
   if (cwdEqArg) {
     const value = cwdEqArg.slice('--cwd='.length).trim();
@@ -646,7 +872,8 @@ async function main() {
   let pickField = null;
   if (pickIdx !== -1) {
     pickField = args[pickIdx + 1];
-    if (!pickField || pickField.startsWith('--')) error('Missing value for --pick');
+    if (!pickField || pickField.startsWith('--'))
+      error('Missing value for --pick');
     args.splice(pickIdx, 2);
   }
 
@@ -661,7 +888,7 @@ async function main() {
   // so we intercept at the fs layer; also intercept process.stdout.write for any
   // non-output() paths (printHelp, etc.).
   if (pickField) {
-    setJsonMode(true);  // --pick needs JSON to extract fields
+    setJsonMode(true); // --pick needs JSON to extract fields
     _origFsWriteSync = fs.writeSync.bind(fs);
     _origStdoutWrite = process.stdout.write.bind(process.stdout);
 
@@ -688,14 +915,21 @@ async function main() {
         const captured = _pickStdoutChunks.join('');
         let jsonStr = captured;
         if (jsonStr.startsWith('@file:')) {
-          try { jsonStr = fs.readFileSync(jsonStr.slice(6), 'utf-8'); } catch { jsonStr = captured; }
+          try {
+            jsonStr = fs.readFileSync(jsonStr.slice(6), 'utf-8');
+          } catch {
+            jsonStr = captured;
+          }
         }
         try {
           const obj = JSON.parse(jsonStr);
           const value = extractField(obj, pickField);
-          const result = value === null || value === undefined ? '' : String(value);
+          const result =
+            value === null || value === undefined ? '' : String(value);
           _origFsWriteSync(1, result);
-        } catch { _origFsWriteSync(1, captured); }
+        } catch {
+          _origFsWriteSync(1, captured);
+        }
       }
       origExit(code);
     };
@@ -703,10 +937,18 @@ async function main() {
 
   // Flag-style argument support: --phase 36.3 -> phase 36.3
   // Allows callers to use --command style (common mistake). Emits info hint to stderr.
-  if (command && command.startsWith('--') && command !== '--help' && command !== '-h') {
+  if (
+    command &&
+    command.startsWith('--') &&
+    command !== '--help' &&
+    command !== '-h'
+  ) {
     const flagName = command.slice(2); // strip --
     if (ALL_COMMANDS.includes(flagName)) {
-      fs.writeSync(2, `[info] Interpreted --${flagName} as command '${flagName}'. Canonical usage: gsd-tools ${flagName} ${args.slice(1).join(' ')}\n`);
+      fs.writeSync(
+        2,
+        `[info] Interpreted --${flagName} as command '${flagName}'. Canonical usage: gsd-tools ${flagName} ${args.slice(1).join(' ')}\n`,
+      );
       args[0] = flagName;
       command = flagName;
     }
@@ -730,20 +972,35 @@ async function main() {
         if (fieldIdx !== -1 || valueIdx !== -1) {
           // Named flag mode: --field NAME --value VALUE
           if (fieldIdx === -1 || valueIdx === -1) {
-            process.stderr.write(JSON.stringify({ error: '--field and --value must be used together. Usage: state patch --field <name> --value <val>' }) + '\n');
+            process.stderr.write(
+              JSON.stringify({
+                error:
+                  '--field and --value must be used together. Usage: state patch --field <name> --value <val>',
+              }) + '\n',
+            );
             process.exit(1);
           }
           const key = args[fieldIdx + 1];
           const val = args[valueIdx + 1];
           if (!key || key.startsWith('--') || !val) {
-            process.stderr.write(JSON.stringify({ error: '--field and --value require arguments. Usage: state patch --field <name> --value <val>' }) + '\n');
+            process.stderr.write(
+              JSON.stringify({
+                error:
+                  '--field and --value require arguments. Usage: state patch --field <name> --value <val>',
+              }) + '\n',
+            );
             process.exit(1);
           }
           patches[key] = val;
         } else {
           // Legacy positional mode: --key value pairs (strip -- prefix)
           if (args.length < 4) {
-            process.stderr.write(JSON.stringify({ error: 'state patch requires at least one field-value pair. Usage: state patch --<field> <value> OR state patch --field <name> --value <val>' }) + '\n');
+            process.stderr.write(
+              JSON.stringify({
+                error:
+                  'state patch requires at least one field-value pair. Usage: state patch --<field> <value> OR state patch --field <name> --value <val>',
+              }) + '\n',
+            );
             process.exit(1);
           }
           for (let i = 2; i < args.length; i += 2) {
@@ -755,7 +1012,10 @@ async function main() {
           }
         }
         if (Object.keys(patches).length === 0) {
-          process.stderr.write(JSON.stringify({ error: 'No valid field-value pairs provided' }) + '\n');
+          process.stderr.write(
+            JSON.stringify({ error: 'No valid field-value pairs provided' }) +
+              '\n',
+          );
           process.exit(1);
         }
         state.cmdStatePatch(cwd, patches);
@@ -787,7 +1047,8 @@ async function main() {
           summary: summaryIdx !== -1 ? args[summaryIdx + 1] : null,
           summary_file: summaryFileIdx !== -1 ? args[summaryFileIdx + 1] : null,
           rationale: rationaleIdx !== -1 ? args[rationaleIdx + 1] : '',
-          rationale_file: rationaleFileIdx !== -1 ? args[rationaleFileIdx + 1] : null,
+          rationale_file:
+            rationaleFileIdx !== -1 ? args[rationaleFileIdx + 1] : null,
         });
       } else if (subcommand === 'add-blocker') {
         const textIdx = args.indexOf('--text');
@@ -798,7 +1059,10 @@ async function main() {
         });
       } else if (subcommand === 'resolve-blocker') {
         const textIdx = args.indexOf('--text');
-        state.cmdStateResolveBlocker(cwd, textIdx !== -1 ? args[textIdx + 1] : null);
+        state.cmdStateResolveBlocker(
+          cwd,
+          textIdx !== -1 ? args[textIdx + 1] : null,
+        );
       } else if (subcommand === 'record-session') {
         const stoppedIdx = args.indexOf('--stopped-at');
         const resumeIdx = args.indexOf('--resume-file');
@@ -814,7 +1078,7 @@ async function main() {
           cwd,
           phaseIdx !== -1 ? args[phaseIdx + 1] : null,
           nameIdx !== -1 ? args[nameIdx + 1] : null,
-          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null
+          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null,
         );
       } else if (subcommand === 'adjust-quick-table') {
         state.cmdStateAdjustQuickTable(cwd);
@@ -824,13 +1088,22 @@ async function main() {
         state.cmdStateLoad(cwd);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'state');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`state ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown state subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.state.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`state ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown state subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.state.join(', ')}`,
+          );
         } else {
-          error(`Unknown state subcommand '${subcommand}'. Available: ${SUBCOMMANDS.state.join(', ')}`);
+          error(
+            `Unknown state subcommand '${subcommand}'. Available: ${SUBCOMMANDS.state.join(', ')}`,
+          );
         }
       }
       break;
@@ -850,15 +1123,21 @@ async function main() {
       validateArgs('sync-agents', null, args.slice(1));
       // Optional --agents-dir override (default: <cwd>/.claude/agents).
       const agentsDirIdx = args.indexOf('--agents-dir');
-      const customAgentsDir = agentsDirIdx !== -1 ? args[agentsDirIdx + 1] : null;
+      const customAgentsDir =
+        agentsDirIdx !== -1 ? args[agentsDirIdx + 1] : null;
       const agentsDir = customAgentsDir
         ? path.resolve(customAgentsDir)
         : path.join(cwd, '.claude', 'agents');
 
       if (!fs.existsSync(agentsDir)) {
         coreOutput(
-          { skipped: true, reason: 'agents-dir-missing', agentsDir, changes: [] },
-          `No agents directory found at ${agentsDir} — run the installer first.`
+          {
+            skipped: true,
+            reason: 'agents-dir-missing',
+            agentsDir,
+            changes: [],
+          },
+          `No agents directory found at ${agentsDir} — run the installer first.`,
         );
         break;
       }
@@ -871,21 +1150,20 @@ async function main() {
       // get a clean payload on stdout and the notice doesn't pollute pipelines.
       const syncSummary = syncResult.skipped
         ? 'Skipped — non-Claude runtime.'
-        : (changeCount === 0
+        : changeCount === 0
           ? 'Agents already in sync.'
-          : `Synced ${changeCount} agent${changeCount === 1 ? '' : 's'}.`);
+          : `Synced ${changeCount} agent${changeCount === 1 ? '' : 's'}.`;
 
       // Emit the restart notice via stderr ONLY when the helper reports real changes.
       // Same emission shape as Plan 04 (install.js) and Plan 05 (config.cjs) — one voice.
-      const restartNotice = effortSync.formatRestartNotice(syncResult.changes || []);
+      const restartNotice = effortSync.formatRestartNotice(
+        syncResult.changes || [],
+      );
       if (restartNotice) {
         process.stderr.write(restartNotice + '\n');
       }
 
-      coreOutput(
-        { ...syncResult, restartNotice },
-        syncSummary
-      );
+      coreOutput({ ...syncResult, restartNotice }, syncSummary);
       break;
     }
 
@@ -902,9 +1180,14 @@ async function main() {
       // then join them — handles both quoted ("multi word msg") and
       // unquoted (multi word msg) invocations from different shells
       const endIndex = filesIndex !== -1 ? filesIndex : args.length;
-      const messageArgs = args.slice(1, endIndex).filter(a => !a.startsWith('--'));
+      const messageArgs = args
+        .slice(1, endIndex)
+        .filter((a) => !a.startsWith('--'));
       const message = messageArgs.join(' ') || undefined;
-      const files = filesIndex !== -1 ? args.slice(filesIndex + 1).filter(a => !a.startsWith('--')) : [];
+      const files =
+        filesIndex !== -1
+          ? args.slice(filesIndex + 1).filter((a) => !a.startsWith('--'))
+          : [];
       commands.cmdCommit(cwd, message, files, amend);
       break;
     }
@@ -913,7 +1196,8 @@ async function main() {
       validateArgs('verify-summary', null, args.slice(1));
       const summaryPath = args[1];
       const countIndex = args.indexOf('--check-count');
-      const checkCount = countIndex !== -1 ? parseInt(args[countIndex + 1], 10) : 2;
+      const checkCount =
+        countIndex !== -1 ? parseInt(args[countIndex + 1], 10) : 2;
       verify.cmdVerifySummary(cwd, summaryPath, checkCount);
       break;
     }
@@ -941,13 +1225,22 @@ async function main() {
         });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'template');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`template ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown template subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.template.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`template ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown template subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.template.join(', ')}`,
+          );
         } else {
-          error(`Unknown template subcommand '${subcommand}'. Available: ${SUBCOMMANDS.template.join(', ')}`);
+          error(
+            `Unknown template subcommand '${subcommand}'. Available: ${SUBCOMMANDS.template.join(', ')}`,
+          );
         }
       }
       break;
@@ -961,27 +1254,56 @@ async function main() {
         const fieldIdx = args.indexOf('--field');
         const formatIdx = args.indexOf('--format');
         const defaultIdx = args.indexOf('--default');
-        const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
-        frontmatter.cmdFrontmatterGet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, formatIdx !== -1 ? args[formatIdx + 1] : null, defaultValue);
+        const defaultValue =
+          defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+        frontmatter.cmdFrontmatterGet(
+          cwd,
+          file,
+          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
+          formatIdx !== -1 ? args[formatIdx + 1] : null,
+          defaultValue,
+        );
       } else if (subcommand === 'set') {
         const fieldIdx = args.indexOf('--field');
         const valueIdx = args.indexOf('--value');
-        frontmatter.cmdFrontmatterSet(cwd, file, fieldIdx !== -1 ? args[fieldIdx + 1] : null, valueIdx !== -1 ? args[valueIdx + 1] : undefined);
+        frontmatter.cmdFrontmatterSet(
+          cwd,
+          file,
+          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
+          valueIdx !== -1 ? args[valueIdx + 1] : undefined,
+        );
       } else if (subcommand === 'merge') {
         const dataIdx = args.indexOf('--data');
-        frontmatter.cmdFrontmatterMerge(cwd, file, dataIdx !== -1 ? args[dataIdx + 1] : null);
+        frontmatter.cmdFrontmatterMerge(
+          cwd,
+          file,
+          dataIdx !== -1 ? args[dataIdx + 1] : null,
+        );
       } else if (subcommand === 'validate') {
         const schemaIdx = args.indexOf('--schema');
-        frontmatter.cmdFrontmatterValidate(cwd, file, schemaIdx !== -1 ? args[schemaIdx + 1] : null);
+        frontmatter.cmdFrontmatterValidate(
+          cwd,
+          file,
+          schemaIdx !== -1 ? args[schemaIdx + 1] : null,
+        );
       } else {
         const suggestions = suggestSubcommand(subcommand, 'frontmatter');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`frontmatter ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown frontmatter subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.frontmatter.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`frontmatter ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown frontmatter subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.frontmatter.join(', ')}`,
+          );
         } else {
-          error(`Unknown frontmatter subcommand '${subcommand}'. Available: ${SUBCOMMANDS.frontmatter.join(', ')}`);
+          error(
+            `Unknown frontmatter subcommand '${subcommand}'. Available: ${SUBCOMMANDS.frontmatter.join(', ')}`,
+          );
         }
       }
       break;
@@ -1004,13 +1326,22 @@ async function main() {
         verify.cmdVerifyKeyLinks(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'verify');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`verify ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown verify subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.verify.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`verify ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown verify subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.verify.join(', ')}`,
+          );
         } else {
-          error(`Unknown verify subcommand '${subcommand}'. Available: ${SUBCOMMANDS.verify.join(', ')}`);
+          error(
+            `Unknown verify subcommand '${subcommand}'. Available: ${SUBCOMMANDS.verify.join(', ')}`,
+          );
         }
       }
       break;
@@ -1059,7 +1390,7 @@ async function main() {
       break;
     }
 
-    case "config-set-model-profile": {
+    case 'config-set-model-profile': {
       config.cmdConfigSetModelProfile(cwd, args[1]);
       break;
     }
@@ -1096,13 +1427,22 @@ async function main() {
         phase.cmdPhasesList(cwd, options);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'phases');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`phases ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown phases subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phases.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`phases ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown phases subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phases.join(', ')}`,
+          );
         } else {
-          error(`Unknown phases subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phases.join(', ')}`);
+          error(
+            `Unknown phases subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phases.join(', ')}`,
+          );
         }
       }
       break;
@@ -1113,7 +1453,8 @@ async function main() {
       validateArgs('roadmap', subcommand, args.slice(2));
       if (subcommand === 'get-phase') {
         const defaultIdx = args.indexOf('--default');
-        const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+        const defaultValue =
+          defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
         roadmap.cmdRoadmapGetPhase(cwd, args[2], defaultValue);
       } else if (subcommand === 'analyze') {
         const analyzeCurrentFilter = args.slice(2).includes('--current');
@@ -1125,7 +1466,8 @@ async function main() {
             const fmMatch = stateContent.match(/^---\n([\s\S]*?)\n---/);
             if (fmMatch) {
               const cpMatch = fmMatch[1].match(/^current_phase:\s*(.+)$/m);
-              if (cpMatch) analyzePhaseFilter = cpMatch[1].trim().replace(/['"]/g, '');
+              if (cpMatch)
+                analyzePhaseFilter = cpMatch[1].trim().replace(/['"]/g, '');
             }
           } catch {}
         }
@@ -1137,13 +1479,22 @@ async function main() {
         phase.cmdPhaseAdd(cwd, args.slice(2).join(' '));
       } else {
         const suggestions = suggestSubcommand(subcommand, 'roadmap');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`roadmap ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown roadmap subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.roadmap.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`roadmap ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown roadmap subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.roadmap.join(', ')}`,
+          );
         } else {
-          error(`Unknown roadmap subcommand '${subcommand}'. Available: ${SUBCOMMANDS.roadmap.join(', ')}`);
+          error(
+            `Unknown roadmap subcommand '${subcommand}'. Available: ${SUBCOMMANDS.roadmap.join(', ')}`,
+          );
         }
       }
       break;
@@ -1156,13 +1507,22 @@ async function main() {
         milestone.cmdRequirementsMarkComplete(cwd, args.slice(2));
       } else {
         const suggestions = suggestSubcommand(subcommand, 'requirements');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`requirements ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown requirements subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.requirements.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`requirements ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown requirements subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.requirements.join(', ')}`,
+          );
         } else {
-          error(`Unknown requirements subcommand '${subcommand}'. Available: ${SUBCOMMANDS.requirements.join(', ')}`);
+          error(
+            `Unknown requirements subcommand '${subcommand}'. Available: ${SUBCOMMANDS.requirements.join(', ')}`,
+          );
         }
       }
       break;
@@ -1177,13 +1537,22 @@ async function main() {
         testBaseline.compareBaseline(args[2], args[3]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'test');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`test ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown test subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.test.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`test ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown test subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.test.join(', ')}`,
+          );
         } else {
-          error(`Unknown test subcommand '${subcommand}'. Available: ${SUBCOMMANDS.test.join(', ')}`);
+          error(
+            `Unknown test subcommand '${subcommand}'. Available: ${SUBCOMMANDS.test.join(', ')}`,
+          );
         }
       }
       break;
@@ -1205,13 +1574,22 @@ async function main() {
         phase.cmdPhaseComplete(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'phase');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`phase ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown phase subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phase.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`phase ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown phase subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.phase.join(', ')}`,
+          );
         } else {
-          error(`Unknown phase subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phase.join(', ')}`);
+          error(
+            `Unknown phase subcommand '${subcommand}'. Available: ${SUBCOMMANDS.phase.join(', ')}`,
+          );
         }
       }
       break;
@@ -1233,16 +1611,28 @@ async function main() {
           }
           milestoneName = nameArgs.join(' ') || null;
         }
-        milestone.cmdMilestoneComplete(cwd, args[2], { name: milestoneName, archivePhases });
+        milestone.cmdMilestoneComplete(cwd, args[2], {
+          name: milestoneName,
+          archivePhases,
+        });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'milestone');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`milestone ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown milestone subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.milestone.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`milestone ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown milestone subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.milestone.join(', ')}`,
+          );
         } else {
-          error(`Unknown milestone subcommand '${subcommand}'. Available: ${SUBCOMMANDS.milestone.join(', ')}`);
+          error(
+            `Unknown milestone subcommand '${subcommand}'. Available: ${SUBCOMMANDS.milestone.join(', ')}`,
+          );
         }
       }
       break;
@@ -1258,13 +1648,22 @@ async function main() {
         verify.cmdValidateHealth(cwd, { repair: repairFlag });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'validate');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`validate ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown validate subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.validate.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`validate ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown validate subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.validate.join(', ')}`,
+          );
         } else {
-          error(`Unknown validate subcommand '${subcommand}'. Available: ${SUBCOMMANDS.validate.join(', ')}`);
+          error(
+            `Unknown validate subcommand '${subcommand}'. Available: ${SUBCOMMANDS.validate.join(', ')}`,
+          );
         }
       }
       break;
@@ -1293,13 +1692,22 @@ async function main() {
         commands.cmdTodoScanPhaseLinked(cwd, args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'todo');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`todo ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown todo subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.todo.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`todo ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown todo subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.todo.join(', ')}`,
+          );
         } else {
-          error(`Unknown todo subcommand '${subcommand}'. Available: ${SUBCOMMANDS.todo.join(', ')}`);
+          error(
+            `Unknown todo subcommand '${subcommand}'. Available: ${SUBCOMMANDS.todo.join(', ')}`,
+          );
         }
       }
       break;
@@ -1310,7 +1718,11 @@ async function main() {
       const dryRun = args.includes('--dry-run');
       const localInstall = args.includes('--local');
       const globalInstall = args.includes('--global');
-      commands.cmdUpdate(cwd, { dryRun, local: localInstall, global: globalInstall });
+      commands.cmdUpdate(cwd, {
+        dryRun,
+        local: localInstall,
+        global: globalInstall,
+      });
       break;
     }
 
@@ -1347,7 +1759,9 @@ async function main() {
           const verifyFlagIdx = args.indexOf('--verify');
           const verifyMode = verifyFlagIdx !== -1;
           // Remove --verify from args before joining as description
-          const descArgs = args.slice(2).filter((_, i) => i + 2 !== verifyFlagIdx);
+          const descArgs = args
+            .slice(2)
+            .filter((_, i) => i + 2 !== verifyFlagIdx);
           init.cmdInitQuick(cwd, descArgs.join(' '), verifyMode);
           break;
         }
@@ -1372,18 +1786,28 @@ async function main() {
         case 'progress':
           init.cmdInitProgress(cwd);
           break;
-        default:
-          {
-            const suggestions = workflow ? suggestSubcommand(workflow, 'init') : { sameNamespace: [], crossNamespace: [] };
-            if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
-              const parts = [];
-              if (suggestions.sameNamespace.length > 0) parts.push(`init ${suggestions.sameNamespace[0]}`);
-              if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-              error(`Unknown init workflow '${workflow}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.init.join(', ')}`);
-            } else {
-              error(`Unknown init workflow '${workflow}'. Available: ${SUBCOMMANDS.init.join(', ')}`);
-            }
+        default: {
+          const suggestions = workflow
+            ? suggestSubcommand(workflow, 'init')
+            : { sameNamespace: [], crossNamespace: [] };
+          if (
+            suggestions.sameNamespace.length > 0 ||
+            suggestions.crossNamespace.length > 0
+          ) {
+            const parts = [];
+            if (suggestions.sameNamespace.length > 0)
+              parts.push(`init ${suggestions.sameNamespace[0]}`);
+            if (suggestions.crossNamespace.length > 0)
+              parts.push(...suggestions.crossNamespace.slice(0, 2));
+            error(
+              `Unknown init workflow '${workflow}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.init.join(', ')}`,
+            );
+          } else {
+            error(
+              `Unknown init workflow '${workflow}'. Available: ${SUBCOMMANDS.init.join(', ')}`,
+            );
           }
+        }
       }
       break;
     }
@@ -1404,7 +1828,8 @@ async function main() {
           const fmMatch = stateContent.match(/^---\n([\s\S]*?)\n---/);
           if (fmMatch) {
             const cpMatch = fmMatch[1].match(/^current_phase:\s*(.+)$/m);
-            if (cpMatch) phaseForFilter = cpMatch[1].trim().replace(/['"]/g, '');
+            if (cpMatch)
+              phaseForFilter = cpMatch[1].trim().replace(/['"]/g, '');
           }
         } catch {}
       }
@@ -1416,9 +1841,11 @@ async function main() {
       validateArgs('summary-extract', null, args.slice(1));
       const summaryPath = args[1];
       const fieldsIndex = args.indexOf('--fields');
-      const fields = fieldsIndex !== -1 ? args[fieldsIndex + 1].split(',') : null;
+      const fields =
+        fieldsIndex !== -1 ? args[fieldsIndex + 1].split(',') : null;
       const seDefaultIdx = args.indexOf('--default');
-      const seDefaultValue = seDefaultIdx !== -1 ? args[seDefaultIdx + 1] : undefined;
+      const seDefaultValue =
+        seDefaultIdx !== -1 ? args[seDefaultIdx + 1] : undefined;
       commands.cmdSummaryExtract(cwd, summaryPath, fields, seDefaultValue);
       break;
     }
@@ -1535,11 +1962,15 @@ async function main() {
       const vbField = vbFieldIdx !== -1 ? args[vbFieldIdx + 1] : null;
       if (vbField) {
         // silent=true: returns result without calling output()/process.exit()
-        const vbResult = commands.cmdVersionBump(cwd, {
-          level: levelIdx >= 0 ? args[levelIdx + 1] : null,
-          scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
-          snapshot,
-        }, true);
+        const vbResult = commands.cmdVersionBump(
+          cwd,
+          {
+            level: levelIdx >= 0 ? args[levelIdx + 1] : null,
+            scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
+            snapshot,
+          },
+          true,
+        );
         if (vbResult && vbResult[vbField] !== undefined) {
           coreOutput(vbResult[vbField]);
         }
@@ -1577,14 +2008,20 @@ async function main() {
       // git.type_aliases is nested in config.json under the git section.
       // loadConfig() returns a flat object so we read the raw config file directly.
       const rtaConfigPath = path.join(cwd, '.planning', 'config.json');
-      let rtaAliases = { feat: 'feature', fix: 'bugfix', chore: 'chore', refactor: 'refactor' };
+      let rtaAliases = {
+        feat: 'feature',
+        fix: 'bugfix',
+        chore: 'chore',
+        refactor: 'refactor',
+      };
       try {
         const rtaCfg = JSON.parse(fs.readFileSync(rtaConfigPath, 'utf-8'));
         if (rtaCfg.git && rtaCfg.git.type_aliases) {
           rtaAliases = rtaCfg.git.type_aliases;
         }
       } catch {}
-      const resolvedAlias = rtaAliases[typeArg] !== undefined ? rtaAliases[typeArg] : typeArg;
+      const resolvedAlias =
+        rtaAliases[typeArg] !== undefined ? rtaAliases[typeArg] : typeArg;
       coreOutput({ type: typeArg, alias: resolvedAlias }, resolvedAlias);
       break;
     }
@@ -1641,7 +2078,10 @@ async function main() {
     case 'pingpong-check': {
       validateArgs('pingpong-check', null, args.slice(1));
       const windowIdx = args.indexOf('--window');
-      commands.cmdPingpongCheck(cwd, windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : []);
+      commands.cmdPingpongCheck(
+        cwd,
+        windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : [],
+      );
       break;
     }
 
@@ -1650,8 +2090,12 @@ async function main() {
       const planIdx = args.indexOf('--plan');
       const filesIdx = args.indexOf('--declared-files');
       const checkArgs = [];
-      if (planIdx !== -1) { checkArgs.push('--plan', args[planIdx + 1]); }
-      if (filesIdx !== -1) { checkArgs.push('--declared-files', args[filesIdx + 1]); }
+      if (planIdx !== -1) {
+        checkArgs.push('--plan', args[planIdx + 1]);
+      }
+      if (filesIdx !== -1) {
+        checkArgs.push('--declared-files', args[filesIdx + 1]);
+      }
       commands.cmdBreakoutCheck(cwd, checkArgs);
       break;
     }
@@ -1681,13 +2125,22 @@ async function main() {
         guard.cmdGuardInitValid(args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'guard');
-        if (suggestions.sameNamespace.length > 0 || suggestions.crossNamespace.length > 0) {
+        if (
+          suggestions.sameNamespace.length > 0 ||
+          suggestions.crossNamespace.length > 0
+        ) {
           const parts = [];
-          if (suggestions.sameNamespace.length > 0) parts.push(`guard ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0) parts.push(...suggestions.crossNamespace.slice(0, 2));
-          error(`Unknown guard subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.guard.join(', ')}`);
+          if (suggestions.sameNamespace.length > 0)
+            parts.push(`guard ${suggestions.sameNamespace[0]}`);
+          if (suggestions.crossNamespace.length > 0)
+            parts.push(...suggestions.crossNamespace.slice(0, 2));
+          error(
+            `Unknown guard subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.guard.join(', ')}`,
+          );
         } else {
-          error(`Unknown guard subcommand '${subcommand}'. Available: ${SUBCOMMANDS.guard.join(', ')}`);
+          error(
+            `Unknown guard subcommand '${subcommand}'. Available: ${SUBCOMMANDS.guard.join(', ')}`,
+          );
         }
       }
       break;
@@ -1695,16 +2148,20 @@ async function main() {
 
     default: {
       // Typo detection: suggest close matches using Levenshtein distance
-      const candidates = ALL_COMMANDS
-        .map(cmd => ({ cmd, dist: levenshtein(command, cmd) }))
-        .filter(c => c.dist <= 2 && c.dist < Math.ceil(c.cmd.length / 2))
+      const candidates = ALL_COMMANDS.map((cmd) => ({
+        cmd,
+        dist: levenshtein(command, cmd),
+      }))
+        .filter((c) => c.dist <= 2 && c.dist < Math.ceil(c.cmd.length / 2))
         .sort((a, b) => a.dist - b.dist);
 
       if (candidates.length > 0) {
-        const suggestions = candidates.map(c => c.cmd).join(', ');
+        const suggestions = candidates.map((c) => c.cmd).join(', ');
         error(`Unknown command '${command}'. Did you mean: ${suggestions}?`);
       } else {
-        error(`Unknown command '${command}'. Available commands: ${ALL_COMMANDS.join(', ')}`);
+        error(
+          `Unknown command '${command}'. Available commands: ${ALL_COMMANDS.join(', ')}`,
+        );
       }
     }
   }
@@ -1741,27 +2198,34 @@ const _pickFieldForPostRun = (() => {
   return i !== -1 ? process.argv[i + 1] : null;
 })();
 
-main().then(() => {
-  if (_pickFieldForPostRun && _pickStdoutChunks.length > 0) {
-    // Normal success path: output() wrote via fs.writeSync interception; process.exit not called.
-    // Restore originals first, then extract and write the requested field to real stdout.
-    if (_origFsWriteSync) fs.writeSync = _origFsWriteSync;
-    if (_origStdoutWrite) process.stdout.write = _origStdoutWrite;
+main()
+  .then(() => {
+    if (_pickFieldForPostRun && _pickStdoutChunks.length > 0) {
+      // Normal success path: output() wrote via fs.writeSync interception; process.exit not called.
+      // Restore originals first, then extract and write the requested field to real stdout.
+      if (_origFsWriteSync) fs.writeSync = _origFsWriteSync;
+      if (_origStdoutWrite) process.stdout.write = _origStdoutWrite;
 
-    let captured = _pickStdoutChunks.join('');
-    if (captured.startsWith('@file:')) {
-      try { captured = fs.readFileSync(captured.slice(6), 'utf-8'); } catch { /* keep as-is */ }
+      let captured = _pickStdoutChunks.join('');
+      if (captured.startsWith('@file:')) {
+        try {
+          captured = fs.readFileSync(captured.slice(6), 'utf-8');
+        } catch {
+          /* keep as-is */
+        }
+      }
+      try {
+        const obj = JSON.parse(captured);
+        const value = extractField(obj, _pickFieldForPostRun);
+        const result =
+          value === null || value === undefined ? '' : String(value);
+        process.stdout.write(result);
+      } catch {
+        process.stdout.write(captured);
+      }
     }
-    try {
-      const obj = JSON.parse(captured);
-      const value = extractField(obj, _pickFieldForPostRun);
-      const result = value === null || value === undefined ? '' : String(value);
-      process.stdout.write(result);
-    } catch {
-      process.stdout.write(captured);
-    }
-  }
-}).catch((err) => {
-  process.stderr.write((err && err.message) || String(err));
-  process.exit(1);
-});
+  })
+  .catch((err) => {
+    process.stderr.write((err && err.message) || String(err));
+    process.exit(1);
+  });
