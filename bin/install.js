@@ -827,6 +827,7 @@ function migrateV1ToV2(configDir, _manifest) {
 }
 
 // Each entry: { from: schema_version (null = missing/v1), to: schema_version, run: fn }
+// Entries MUST be ordered ascending by `from` so chained migrations apply in a single pass.
 const MIGRATIONS = [
   // schema_version: 2 — post-#41 post-substitution hashes (Phase 57+)
   { from: null, to: 2, run: migrateV1ToV2 },
@@ -848,21 +849,20 @@ function applyMigrations(configDir) {
   } catch {
     return { ran: false, notices: [] };
   }
-  const currentVersion = manifest.schema_version ?? null;
+  let currentVersion = manifest.schema_version ?? null;
   let ran = false;
   const notices = [];
   for (const m of MIGRATIONS) {
-    const matchesNull = m.from === null && currentVersion === null;
-    const matchesUpgrade =
-      currentVersion !== null && m.from !== null && currentVersion < m.to;
-    if (matchesNull || matchesUpgrade) {
-      const result = m.run(configDir, manifest) || {};
-      ran = true;
-      notices.push('  ' + yellow + 'i' + reset + '  Migrated manifest to v' + m.to + ' — files refreshed from source');
-      if (result.backedUp && result.backedUp.length > 0 && result.patchesDisplayPath) {
-        notices.push('  ' + yellow + 'i' + reset + '  Your modifications were backed up to ' + result.patchesDisplayPath);
-      }
+    // Exact source-version match. `null` represents v1/missing schema_version.
+    if (m.from !== currentVersion) continue;
+    const result = m.run(configDir, manifest) || {};
+    ran = true;
+    notices.push('  ' + yellow + 'i' + reset + '  Migrated manifest to v' + m.to + ' — files refreshed from source');
+    if (result.backedUp && result.backedUp.length > 0 && result.patchesDisplayPath) {
+      notices.push('  ' + yellow + 'i' + reset + '  Your modifications were backed up to ' + result.patchesDisplayPath);
     }
+    // Advance so chained migrations (e.g. v1→v2 then v2→v3) apply in one pass.
+    currentVersion = m.to;
   }
   return { ran, notices };
 }
