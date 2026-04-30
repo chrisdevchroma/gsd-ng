@@ -28,6 +28,7 @@ const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 const noSeedPermissionsConfig = args.includes('--no-seed-permissions-config');
 let noSeedSandboxConfig = args.includes('--no-seed-sandbox-config');
 const hasSnapshot = args.includes('--snapshot');
+const hasClean = args.includes('--clean');
 const runtimeArgIdx = args.findIndex(a => a === '--runtime');
 const runtimeArgVal = runtimeArgIdx !== -1 ? args[runtimeArgIdx + 1] : null;
 // Runtime is ONLY set via --runtime flag. No implicit default.
@@ -203,7 +204,7 @@ if (hasUninstall) {
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--clean${reset}                            Wipe the GSD-managed tree before install (debugging / fresh-state reset)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
   process.exit(0);
 }
 
@@ -372,56 +373,34 @@ function uninstall(isGlobal) {
   let removedCount = 0;
 
   if (isClaudeCode) {
-    // 1. Remove GSD commands
+    // Count what exists before removal for accurate log output.
     const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
-    if (fs.existsSync(gsdCommandsDir)) {
-      fs.rmSync(gsdCommandsDir, { recursive: true });
-      removedCount++;
-      console.log(`  ${green}✓${reset} Removed commands/gsd/`);
-    }
-
-    // 2. Remove gsd-ng directory
     const gsdDir = path.join(targetDir, 'gsd-ng');
-    if (fs.existsSync(gsdDir)) {
-      fs.rmSync(gsdDir, { recursive: true });
-      removedCount++;
-      console.log(`  ${green}✓${reset} Removed gsd-ng/`);
-    }
-
-    // 3. Remove GSD agents (gsd-*.md files only)
     const agentsDir = path.join(targetDir, 'agents');
+    const hooksDir = path.join(targetDir, 'hooks');
+
+    const hadCommands = fs.existsSync(gsdCommandsDir);
+    const hadGsdDir = fs.existsSync(gsdDir);
+
+    let agentCount = 0;
     if (fs.existsSync(agentsDir)) {
-      const files = fs.readdirSync(agentsDir);
-      let agentCount = 0;
-      for (const file of files) {
-        if (file.startsWith('gsd-') && file.endsWith('.md')) {
-          fs.unlinkSync(path.join(agentsDir, file));
-          agentCount++;
-        }
-      }
-      if (agentCount > 0) {
-        removedCount++;
-        console.log(`  ${green}✓${reset} Removed ${agentCount} GSD agents`);
-      }
+      agentCount = fs.readdirSync(agentsDir).filter(f => f.startsWith('gsd-') && f.endsWith('.md')).length;
     }
 
-    // 4. Remove GSD hooks
-    const hooksDir = path.join(targetDir, 'hooks');
+    const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'gsd-sandbox-detect.js', 'gsd-guardrail.js'];
+    let hookCount = 0;
     if (fs.existsSync(hooksDir)) {
-      const gsdHooks = ['gsd-statusline.js', 'gsd-check-update.js', 'gsd-check-update.sh', 'gsd-context-monitor.js', 'gsd-sandbox-detect.js', 'gsd-guardrail.js'];
-      let hookCount = 0;
-      for (const hook of gsdHooks) {
-        const hookPath = path.join(hooksDir, hook);
-        if (fs.existsSync(hookPath)) {
-          fs.unlinkSync(hookPath);
-          hookCount++;
-        }
-      }
-      if (hookCount > 0) {
-        removedCount++;
-        console.log(`  ${green}✓${reset} Removed ${hookCount} GSD hooks`);
-      }
+      hookCount = gsdHooks.filter(h => fs.existsSync(path.join(hooksDir, h))).length;
     }
+
+    // 1-4. Delegate all GSD file removal to shared helper.
+    removeGsdFiles(targetDir, runtime);
+
+    // Log results for steps 1-4.
+    if (hadCommands) { removedCount++; console.log(`  ${green}✓${reset} Removed commands/gsd/`); }
+    if (hadGsdDir) { removedCount++; console.log(`  ${green}✓${reset} Removed gsd-ng/`); }
+    if (agentCount > 0) { removedCount++; console.log(`  ${green}✓${reset} Removed ${agentCount} GSD agents`); }
+    if (hookCount > 0) { removedCount++; console.log(`  ${green}✓${reset} Removed ${hookCount} GSD hooks`); }
 
     // 5. Remove GSD package.json (CommonJS mode marker)
     const pkgJsonPath = path.join(targetDir, 'package.json');
@@ -582,46 +561,37 @@ function uninstall(isGlobal) {
   Your other files and settings have been preserved.
 `);
   } else {
-    // Copilot uninstall path
-    // 1. Remove GSD skills (skills/gsd-* directories)
+    // Non-Claude runtime uninstall path
+
+    // Count what exists before removal for accurate log output.
     const skillsDir = path.join(targetDir, 'skills');
-    if (fs.existsSync(skillsDir)) {
-      let skillCount = 0;
-      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-        if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
-          fs.rmSync(path.join(skillsDir, entry.name), { recursive: true });
-          skillCount++;
-        }
-      }
-      if (skillCount > 0) {
-        removedCount++;
-        console.log(`  ${green}✓${reset} Removed ${skillCount} Copilot skills`);
-      }
-    }
-
-    // 2. Remove gsd-ng engine directory
     const gsdDir = path.join(targetDir, 'gsd-ng');
-    if (fs.existsSync(gsdDir)) {
-      fs.rmSync(gsdDir, { recursive: true });
-      removedCount++;
-      console.log(`  ${green}✓${reset} Removed gsd-ng/`);
+    const agentsDir = path.join(targetDir, 'agents');
+
+    let skillCount = 0;
+    if (fs.existsSync(skillsDir)) {
+      skillCount = fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && e.name.startsWith('gsd-')).length;
     }
 
-    // 3. Remove GSD agents (gsd-*.agent.md)
-    const agentsDir = path.join(targetDir, 'agents');
+    const hadGsdDir = fs.existsSync(gsdDir);
+
+    let agentCount = 0;
     if (fs.existsSync(agentsDir)) {
-      let agentCount = 0;
-      for (const file of fs.readdirSync(agentsDir)) {
-        if (file.startsWith('gsd-') && file.endsWith('.agent.md')) {
-          fs.unlinkSync(path.join(agentsDir, file));
-          agentCount++;
-        }
-      }
-      if (agentCount > 0) {
-        removedCount++;
-        console.log(`  ${green}✓${reset} Removed ${agentCount} Copilot agents`);
-      }
+      agentCount = fs.readdirSync(agentsDir).filter(f => f.startsWith('gsd-') && f.endsWith('.agent.md')).length;
     }
+
+    const gsdHooksPath = path.join(targetDir, 'hooks', 'gsd-hooks.json');
+    const hadGsdHooks = fs.existsSync(gsdHooksPath);
+
+    // 1-3 + gsd-hooks.json. Delegate GSD file removal to shared helper.
+    removeGsdFiles(targetDir, runtime);
+
+    // Log results for steps 1-3 and gsd-hooks.json.
+    if (skillCount > 0) { removedCount++; console.log(`  ${green}✓${reset} Removed ${skillCount} GSD skills`); }
+    if (hadGsdDir) { removedCount++; console.log(`  ${green}✓${reset} Removed gsd-ng/`); }
+    if (agentCount > 0) { removedCount++; console.log(`  ${green}✓${reset} Removed ${agentCount} GSD agents`); }
+    if (hadGsdHooks) { removedCount++; console.log(`  ${green}✓${reset} Removed hooks/gsd-hooks.json`); }
 
     // 4. Clean GSD section from copilot-instructions.md
     const instructionsPath = path.join(targetDir, 'copilot-instructions.md');
@@ -637,14 +607,6 @@ function uninstall(isGlobal) {
         removedCount++;
         console.log(`  ${green}✓${reset} Cleaned GSD section from copilot-instructions.md`);
       }
-    }
-
-    // 5. Remove gsd-hooks.json
-    const gsdHooksPath = path.join(targetDir, 'hooks', 'gsd-hooks.json');
-    if (fs.existsSync(gsdHooksPath)) {
-      fs.unlinkSync(gsdHooksPath);
-      removedCount++;
-      console.log(`  ${green}✓${reset} Removed hooks/gsd-hooks.json`);
     }
 
     // Print summary and return (no settings.json cleanup for Copilot)
@@ -735,7 +697,7 @@ function writeManifest(configDir, version) {
   const gsdDir = path.join(configDir, 'gsd-ng');
   const commandsDir = path.join(configDir, 'commands', 'gsd');
   const agentsDir = path.join(configDir, 'agents');
-  const manifest = { version: version || pkg.version, timestamp: new Date().toISOString(), files: {} };
+  const manifest = { version: version || pkg.version, timestamp: new Date().toISOString(), schema_version: 2, files: {} };
 
   const gsdHashes = generateManifest(gsdDir);
   for (const [rel, hash] of Object.entries(gsdHashes)) {
@@ -760,19 +722,17 @@ function writeManifest(configDir, version) {
 }
 
 /**
- * Detect user-modified GSD files by comparing against install manifest.
- * Backs up modified files to gsd-local-patches/ for reapply after update.
+ * Compare manifest to current files and copy mismatches to gsd-local-patches/.
+ * Pure backup — no console output. Returns { modified: string[], patchesDisplayPath: string|null }.
+ * patchesDisplayPath is null when nothing was modified (caller can skip notices).
  */
-function saveLocalPatches(configDir) {
+function _backupModifiedFilesQuiet(configDir) {
   const manifestPath = path.join(configDir, MANIFEST_NAME);
-  if (!fs.existsSync(manifestPath)) return [];
-
+  if (!fs.existsSync(manifestPath)) return { modified: [], patchesDisplayPath: null };
   let manifest;
-  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return []; }
-
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return { modified: [], patchesDisplayPath: null }; }
   const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
   const modified = [];
-
   for (const [relPath, originalHash] of Object.entries(manifest.files || {})) {
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
@@ -784,17 +744,35 @@ function saveLocalPatches(configDir) {
       modified.push(relPath);
     }
   }
-
   if (modified.length > 0) {
     const meta = {
       backed_up_at: new Date().toISOString(),
       from_version: manifest.version,
-      files: modified
+      files: modified,
     };
     fs.writeFileSync(path.join(patchesDir, 'backup-meta.json'), JSON.stringify(meta, null, 2));
-    const _isUnderCwd = configDir.startsWith(process.cwd() + path.sep) || configDir === process.cwd();
-    const patchesDisplayPath = (_isUnderCwd ? configDir.replace(process.cwd(), '.') : configDir.replace(os.homedir(), '~')) + '/' + PATCHES_DIR_NAME + '/';
-    console.log('  ' + yellow + 'i' + reset + '  Found ' + modified.length + ' locally modified GSD file(s) — backed up to ' + patchesDisplayPath);
+  }
+  const _isUnderCwd = configDir.startsWith(process.cwd() + path.sep) || configDir === process.cwd();
+  const patchesDisplayPath =
+    (_isUnderCwd
+      ? configDir.replace(process.cwd(), '.')
+      : configDir.replace(os.homedir(), '~')) +
+    '/' +
+    PATCHES_DIR_NAME +
+    '/';
+  return { modified, patchesDisplayPath: modified.length > 0 ? patchesDisplayPath : null };
+}
+
+/**
+ * Detect user-modified GSD files by comparing against install manifest.
+ * Backs up modified files to gsd-local-patches/ for reapply after update.
+ */
+function saveLocalPatches(configDir) {
+  const { modified, patchesDisplayPath } = _backupModifiedFilesQuiet(configDir);
+  if (modified.length > 0) {
+    console.log(
+      '  ' + yellow + 'i' + reset + '  Found ' + modified.length + ' locally modified GSD file(s) — backed up to ' + patchesDisplayPath
+    );
     for (const f of modified) {
       console.log('     ' + dim + f + reset);
     }
@@ -829,6 +807,167 @@ function reportLocalPatches(configDir) {
     console.log('');
   }
   return meta.files || [];
+}
+
+// ─── Manifest schema migrations ──────────────────────────────────────────────
+// Table-driven migrations between manifest schema versions. Each entry runs
+// when the on-disk manifest's schema_version matches `from` (null = missing).
+// Future schema bumps append rows here; existing code does not change.
+
+/**
+ * Migrate a v1 manifest (no schema_version) to v2.
+ * Silently backs up any real user-modified files, then lets the caller's
+ * normal install flow overwrite managed files and call writeManifest().
+ * Returns { backedUp: string[], patchesDisplayPath: string|null } so the
+ * caller can compose the migration notice.
+ */
+function migrateV1ToV2(configDir, _manifest) {
+  const { modified, patchesDisplayPath } = _backupModifiedFilesQuiet(configDir);
+  return { backedUp: modified, patchesDisplayPath };
+}
+
+// Each entry: { from: schema_version (null = missing/v1), to: schema_version, run: fn }
+// Entries MUST be ordered ascending by `from` so chained migrations apply in a single pass.
+const MIGRATIONS = [
+  // schema_version: 2 — post-#41 post-substitution hashes (Phase 57+)
+  { from: null, to: 2, run: migrateV1ToV2 },
+];
+
+/**
+ * Walk applicable migrations against the on-disk manifest. Returns:
+ *   { ran: boolean, notices: string[] }
+ * `notices` is the list of stdout lines the caller should print AFTER the
+ * normal install flow finishes (so file refresh happens between detection
+ * and the user-visible message).
+ */
+function applyMigrations(configDir) {
+  const manifestPath = path.join(configDir, MANIFEST_NAME);
+  if (!fs.existsSync(manifestPath)) return { ran: false, notices: [] };
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch {
+    return { ran: false, notices: [] };
+  }
+  let currentVersion = manifest.schema_version ?? null;
+  let ran = false;
+  const notices = [];
+  for (const m of MIGRATIONS) {
+    // Exact source-version match. `null` represents v1/missing schema_version.
+    if (m.from !== currentVersion) continue;
+    const result = m.run(configDir, manifest) || {};
+    ran = true;
+    notices.push('  ' + yellow + 'i' + reset + '  Migrated manifest to v' + m.to + ' — files refreshed from source');
+    if (result.backedUp && result.backedUp.length > 0 && result.patchesDisplayPath) {
+      notices.push('  ' + yellow + 'i' + reset + '  Your modifications were backed up to ' + result.patchesDisplayPath);
+    }
+    // Advance so chained migrations (e.g. v1→v2 then v2→v3) apply in one pass.
+    currentVersion = m.to;
+  }
+  return { ran, notices };
+}
+
+/**
+ * Remove GSD-owned files under targetDir for the given runtime.
+ * Pure fs operations — no console output, no settings cleanup.
+ * Called by both wipeManagedTree (--clean) and uninstall().
+ */
+function removeGsdFiles(targetDir, runtime) {
+  const isClaude = runtime === 'claude';
+
+  if (isClaude) {
+    // 1. Remove GSD commands
+    const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
+    if (fs.existsSync(gsdCommandsDir)) {
+      fs.rmSync(gsdCommandsDir, { recursive: true });
+    }
+
+    // 2. Remove gsd-ng directory
+    const gsdDir = path.join(targetDir, 'gsd-ng');
+    if (fs.existsSync(gsdDir)) {
+      fs.rmSync(gsdDir, { recursive: true });
+    }
+
+    // 3. Remove GSD agents (gsd-*.md files only, preserve user agents)
+    const agentsDir = path.join(targetDir, 'agents');
+    if (fs.existsSync(agentsDir)) {
+      for (const file of fs.readdirSync(agentsDir)) {
+        if (file.startsWith('gsd-') && file.endsWith('.md')) {
+          fs.unlinkSync(path.join(agentsDir, file));
+        }
+      }
+    }
+
+    // 4. Remove named GSD hook files only (preserve user hooks)
+    const hooksDir = path.join(targetDir, 'hooks');
+    if (fs.existsSync(hooksDir)) {
+      const gsdHooks = [
+        'gsd-statusline.js',
+        'gsd-check-update.js',
+        'gsd-check-update.sh',
+        'gsd-context-monitor.js',
+        'gsd-sandbox-detect.js',
+        'gsd-guardrail.js',
+      ];
+      for (const hook of gsdHooks) {
+        const hookPath = path.join(hooksDir, hook);
+        if (fs.existsSync(hookPath)) {
+          fs.unlinkSync(hookPath);
+        }
+      }
+    }
+  } else {
+    // Non-Claude runtime: remove skills/gsd-* dirs (preserve user skills)
+    const skillsDir = path.join(targetDir, 'skills');
+    if (fs.existsSync(skillsDir)) {
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
+          fs.rmSync(path.join(skillsDir, entry.name), { recursive: true, force: true });
+        }
+      }
+    }
+
+    // Non-Claude runtime: remove gsd-ng directory
+    const gsdDir = path.join(targetDir, 'gsd-ng');
+    if (fs.existsSync(gsdDir)) {
+      fs.rmSync(gsdDir, { recursive: true });
+    }
+
+    // Non-Claude runtime: remove only gsd-*.agent.md files (preserve user agents)
+    const agentsDir = path.join(targetDir, 'agents');
+    if (fs.existsSync(agentsDir)) {
+      for (const file of fs.readdirSync(agentsDir)) {
+        if (file.startsWith('gsd-') && file.endsWith('.agent.md')) {
+          fs.unlinkSync(path.join(agentsDir, file));
+        }
+      }
+    }
+
+    // Non-Claude runtime: remove only gsd-hooks.json (preserve user hooks)
+    const gsdHooksJson = path.join(targetDir, 'hooks', 'gsd-hooks.json');
+    if (fs.existsSync(gsdHooksJson)) {
+      fs.unlinkSync(gsdHooksJson);
+    }
+  }
+}
+
+/**
+ * Remove the GSD-managed subtree under targetDir for the given runtime.
+ * Used by --clean to force a fresh-state install. NEVER wipes
+ * gsd-local-patches/ — backed-up user modifications are preserved across
+ * resets so the user can inspect them.
+ */
+function wipeManagedTree(targetDir, runtime) {
+  // Remove all GSD-owned files without touching user content.
+  removeGsdFiles(targetDir, runtime);
+
+  // Always wipe the manifest file (both runtimes — manifest path is the same).
+  const manifestPath = path.join(targetDir, MANIFEST_NAME);
+  if (fs.existsSync(manifestPath)) {
+    fs.unlinkSync(manifestPath);
+  }
+
+  // Explicitly DO NOT wipe gsd-local-patches/ — preserved per CONTEXT.md decision.
 }
 
 // ─── Content Conversion Engine (Claude → Copilot) ────────────────────────────
@@ -1091,8 +1230,24 @@ function install(isGlobal) {
   const failures = [];
 
   if (isClaudeCode) {
-    // Save any locally modified GSD files before they get wiped
-    saveLocalPatches(targetDir);
+    // --clean: wipe managed tree, skip migration AND patch detection. Wins silently
+    // over a v1 manifest — no migration, no notices, fresh install only.
+    let migrationResult;
+    if (hasClean) {
+      wipeManagedTree(targetDir, runtime);
+      console.log(`  ${green}✓${reset} Wiped managed tree (--clean)`);
+      migrationResult = { ran: false, notices: [] };
+    } else {
+      // Detect and apply manifest schema migrations BEFORE patch detection.
+      // If a migration runs (e.g. v1 manifest), it silently backs up modified
+      // files and we skip the normal saveLocalPatches/reportLocalPatches path
+      // for this install — a single migration notice replaces both messages.
+      migrationResult = applyMigrations(targetDir);
+      if (!migrationResult.ran) {
+        // Save any locally modified GSD files before they get wiped
+        saveLocalPatches(targetDir);
+      }
+    }
 
     // Claude Code: nested structure in commands/ directory
     const commandsDir = path.join(targetDir, 'commands');
@@ -1288,8 +1443,15 @@ function install(isGlobal) {
     writeManifest(targetDir, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
-    // Report any backed-up local patches
-    reportLocalPatches(targetDir);
+    // Report any backed-up local patches — but skip when a migration ran this
+    // install (the migration notice already covered the user's modifications).
+    if (migrationResult.ran) {
+      for (const line of migrationResult.notices) {
+        console.log(line);
+      }
+    } else {
+      reportLocalPatches(targetDir);
+    }
 
     // Configure statusline and hooks in settings.json
     const postToolEvent = 'PostToolUse';
@@ -1551,6 +1713,11 @@ function install(isGlobal) {
   } else {
     // Copilot: skills (from commands), agents, gsd-ng engine, copilot-instructions.md
     // NO settings.json, NO hooks, NO statusline, NO sandbox seeding
+
+    if (hasClean) {
+      wipeManagedTree(targetDir, runtime);
+      console.log(`  ${green}✓${reset} Wiped managed tree (--clean)`);
+    }
 
     // 1. Copy gsd-ng skill engine (same as Claude Code)
     const skillSrc = path.join(src, 'gsd-ng');

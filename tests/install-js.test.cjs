@@ -17,7 +17,7 @@ const BASE_TMPDIR = resolveTmpDir();
 // ── TILDE-01: global install uses tilde paths, not absolute home dir ──────────
 
 test('TILDE-01: install.js global install uses tilde paths in workflow files (no PII leak)', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-tilde-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-tilde-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -26,18 +26,22 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude'),
+        }),
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --global must exit 0 (TILDE-01)\nstderr: ' + (result.stderr || '')
+      'install.js --global must exit 0 (TILDE-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
-    const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
     assert.ok(files.length > 0, 'workflows dir must contain .md files');
 
     // Global install must not bake absolute home dir paths (containing username) into files
@@ -54,8 +58,11 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
     assert.ok(
       badFiles.length === 0,
       'install.js global install must not produce absolute home dir paths in workflow files (TILDE-01).\n' +
-      'Offending files: ' + badFiles.join(', ') + '\n' +
-      'Home dir: ' + homeDir
+        'Offending files: ' +
+        badFiles.join(', ') +
+        '\n' +
+        'Home dir: ' +
+        homeDir,
     );
   } finally {
     cleanup(tmpDir);
@@ -65,7 +72,7 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
 // ── UNINSTALL-01: banner shows Mode: Uninstall in uninstall mode ──────────────
 
 test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in output', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-uninstall-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-uninstall-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -74,8 +81,11 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude'),
+        }),
+      },
     );
 
     // Uninstall may exit 0 even if directory doesn't exist
@@ -83,7 +93,8 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
     assert.ok(
       output.includes('Mode: Uninstall'),
       'install.js --uninstall must show "Mode: Uninstall" in output (UNINSTALL-01).\n' +
-      'Actual stdout: ' + output.slice(0, 500)
+        'Actual stdout: ' +
+        output.slice(0, 500),
     );
   } finally {
     cleanup(tmpDir);
@@ -93,7 +104,7 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
 // ── PATH-03: local install produces $CLAUDE_PROJECT_DIR paths, not $HOME ──────
 
 test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bash blocks', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-path-local-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-path-local-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -103,18 +114,19 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     // Non-interactive: exit 0 expected
     assert.strictEqual(
       result.status,
       0,
-      'install.js --local must exit 0 (PATH-03)\nstderr: ' + (result.stderr || '')
+      'install.js --local must exit 0 (PATH-03)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
-    const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
     assert.ok(files.length > 0, 'workflows dir must contain .md files');
 
     let badPathFound = false;
@@ -123,7 +135,10 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
     for (const fname of files) {
       const content = fs.readFileSync(path.join(workflowsDir, fname), 'utf8');
       // Must NOT contain raw $HOME/.claude/ or ~/.claude/ in installed files
-      if (content.includes('$HOME/.claude/') || content.includes('~/.claude/')) {
+      if (
+        content.includes('$HOME/.claude/') ||
+        content.includes('~/.claude/')
+      ) {
         badPathFound = true;
         badFiles.push(fname);
       }
@@ -137,11 +152,12 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
     assert.ok(
       !badPathFound,
       'install.js local install must not produce $HOME/.claude/ or ~/.claude/ in workflow files (PATH-03).\n' +
-      'Offending files: ' + badFiles.join(', ')
+        'Offending files: ' +
+        badFiles.join(', '),
     );
     assert.ok(
       goodPathFound,
-      'install.js local install must produce fallback chain ${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)'
+      'install.js local install must produce fallback chain ${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)',
     );
   } finally {
     cleanup(tmpDir);
@@ -151,7 +167,7 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
 // ── PATH-04: local install must not produce ./.claude/ relative paths ─────────
 
 test('PATH-04: install.js local install must not produce ./.claude/ paths in bash code blocks', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-no-rel-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-no-rel-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -161,12 +177,12 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(result.status, 0, 'install.js --local must exit 0');
 
     const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
-    const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
 
     // Look specifically for ./.claude/ in bash code blocks (the regression pattern)
     // The pattern node "./.claude/ is what broke before the fix
@@ -182,7 +198,8 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
     assert.ok(
       badFiles.length === 0,
       'install.js local install must not produce node "./.claude/ references in workflow files (PATH-04).\n' +
-      'Offending files: ' + badFiles.join(', ')
+        'Offending files: ' +
+        badFiles.join(', '),
     );
   } finally {
     cleanup(tmpDir);
@@ -197,27 +214,64 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
 //            See 54-CONTEXT.md "Template allow canonicalisation" decision.
 
 test('PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(*)/Write(*)/Read(*), excludes bare Edit/Write/Read, no deny rules, subshell builtins', () => {
-  const templatePath = path.resolve(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json');
+  const templatePath = path.resolve(
+    __dirname,
+    '..',
+    'gsd-ng',
+    'templates',
+    'settings-sandbox.json',
+  );
   const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
   const allow = template.permissions.allow;
   assert.ok(allow.includes('Agent(*)'), 'template must include Agent(*)');
   // Template ships canonical macOS form; install.js down-converts to bare on Linux.
-  assert.ok(allow.includes('Edit(*)'), 'template must include canonical Edit(*) (down-converted to bare Edit on Linux at install time)');
-  assert.ok(allow.includes('Write(*)'), 'template must include canonical Write(*) (down-converted to bare Write on Linux at install time)');
-  assert.ok(allow.includes('Read(*)'), 'template must include canonical Read(*) (down-converted to bare Read on Linux at install time)');
+  assert.ok(
+    allow.includes('Edit(*)'),
+    'template must include canonical Edit(*) (down-converted to bare Edit on Linux at install time)',
+  );
+  assert.ok(
+    allow.includes('Write(*)'),
+    'template must include canonical Write(*) (down-converted to bare Write on Linux at install time)',
+  );
+  assert.ok(
+    allow.includes('Read(*)'),
+    'template must include canonical Read(*) (down-converted to bare Read on Linux at install time)',
+  );
   // Two-sided contract: bare forms must NOT be present (ALLOW-17)
-  assert.ok(!allow.includes('Edit'), 'template must NOT include bare Edit — use Edit(*)');
-  assert.ok(!allow.includes('Write'), 'template must NOT include bare Write — use Write(*)');
-  assert.ok(!allow.includes('Read'), 'template must NOT include bare Read — use Read(*)');
+  assert.ok(
+    !allow.includes('Edit'),
+    'template must NOT include bare Edit — use Edit(*)',
+  );
+  assert.ok(
+    !allow.includes('Write'),
+    'template must NOT include bare Write — use Write(*)',
+  );
+  assert.ok(
+    !allow.includes('Read'),
+    'template must NOT include bare Read — use Read(*)',
+  );
   // Deny rules dropped per Phase 52 -- GSD-NG ships allow rules only
-  assert.strictEqual(template.permissions.deny, undefined, 'template must NOT have permissions.deny section (deny rules dropped in Phase 52)');
+  assert.strictEqual(
+    template.permissions.deny,
+    undefined,
+    'template must NOT have permissions.deny section (deny rules dropped in Phase 52)',
+  );
 
   // Verify new subshell builtins were added (Bug 9 fix)
-  assert.ok(allow.includes('Bash(basename *)'), 'template must include Bash(basename *)');
-  assert.ok(allow.includes('Bash(dirname *)'), 'template must include Bash(dirname *)');
+  assert.ok(
+    allow.includes('Bash(basename *)'),
+    'template must include Bash(basename *)',
+  );
+  assert.ok(
+    allow.includes('Bash(dirname *)'),
+    'template must include Bash(dirname *)',
+  );
   assert.ok(allow.includes('Bash(cut *)'), 'template must include Bash(cut *)');
   assert.ok(allow.includes('Bash(tee *)'), 'template must include Bash(tee *)');
-  assert.ok(allow.includes('Bash(uniq *)'), 'template must include Bash(uniq *)');
+  assert.ok(
+    allow.includes('Bash(uniq *)'),
+    'template must include Bash(uniq *)',
+  );
   assert.ok(allow.includes('Bash(seq *)'), 'template must include Bash(seq *)');
 });
 
@@ -234,9 +288,13 @@ test('PERM-07: local install seeds granular gh subcommand patterns (not blanket 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install must exit 0 (PERM-07)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (PERM-07)\nstderr: ' + (result.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -245,17 +303,41 @@ test('PERM-07: local install seeds granular gh subcommand patterns (not blanket 
     // gh is typically installed in CI/dev environments
     // If gh is installed, we should see granular patterns
     try {
-      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      require('child_process').execSync('which gh', {
+        stdio: 'ignore',
+        timeout: 2000,
+      });
       // gh is installed -- verify granular patterns
-      assert.ok(allow.includes('Bash(gh pr *)'), 'must include Bash(gh pr *) when gh is installed (PERM-07)');
-      assert.ok(allow.includes('Bash(gh pr)'), 'must include Bash(gh pr) when gh is installed (PERM-07)');
-      assert.ok(allow.includes('Bash(gh issue *)'), 'must include Bash(gh issue *) when gh is installed (PERM-07)');
-      assert.ok(!allow.includes('Bash(gh *)'), 'must NOT include blanket Bash(gh *) (PERM-07)');
-      assert.ok(!allow.includes('Bash(gh api *)'), 'must NOT include Bash(gh api *) (PERM-07)');
-      assert.ok(!allow.includes('Bash(gh extension *)'), 'must NOT include Bash(gh extension *) (PERM-07)');
+      assert.ok(
+        allow.includes('Bash(gh pr *)'),
+        'must include Bash(gh pr *) when gh is installed (PERM-07)',
+      );
+      assert.ok(
+        allow.includes('Bash(gh pr)'),
+        'must include Bash(gh pr) when gh is installed (PERM-07)',
+      );
+      assert.ok(
+        allow.includes('Bash(gh issue *)'),
+        'must include Bash(gh issue *) when gh is installed (PERM-07)',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh *)'),
+        'must NOT include blanket Bash(gh *) (PERM-07)',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh api *)'),
+        'must NOT include Bash(gh api *) (PERM-07)',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh extension *)'),
+        'must NOT include Bash(gh extension *) (PERM-07)',
+      );
     } catch {
       // gh not installed -- just verify no blanket pattern leaked
-      assert.ok(!allow.includes('Bash(gh *)'), 'must NOT include blanket Bash(gh *) even without gh installed (PERM-07)');
+      assert.ok(
+        !allow.includes('Bash(gh *)'),
+        'must NOT include blanket Bash(gh *) even without gh installed (PERM-07)',
+      );
     }
   } finally {
     cleanup(tmpDir);
@@ -265,7 +347,7 @@ test('PERM-07: local install seeds granular gh subcommand patterns (not blanket 
 // ── PERM-01: local install seeds permissions.allow with template entries ──────
 
 test('PERM-01: local install seeds permissions.allow with template entries (Bash(node *) and Agent(*))', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-perm01-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm01-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -275,18 +357,40 @@ test('PERM-01: local install seeds permissions.allow with template entries (Bash
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install.js --local must exit 0 (PERM-01)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local must exit 0 (PERM-01)\nstderr: ' +
+        (result.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    assert.ok(Array.isArray(settings.permissions.allow), 'settings.permissions.allow must be an array (PERM-01)');
-    assert.ok(settings.permissions.allow.includes('Bash(node *)'), 'permissions.allow must include Bash(node *) (PERM-01)');
-    assert.ok(settings.permissions.allow.includes('Agent(*)'), 'permissions.allow must include Agent(*) (PERM-01)');
+    assert.ok(
+      Array.isArray(settings.permissions.allow),
+      'settings.permissions.allow must be an array (PERM-01)',
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Bash(node *)'),
+      'permissions.allow must include Bash(node *) (PERM-01)',
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Agent(*)'),
+      'permissions.allow must include Agent(*) (PERM-01)',
+    );
     // Sandbox is default-on: verify sandbox settings are seeded by default (PERM-01 default-on check)
-    assert.strictEqual(settings.sandbox && settings.sandbox.enabled, true, 'sandbox.enabled must be true by default (PERM-01)');
-    assert.strictEqual(settings.sandbox && settings.sandbox.autoAllowBashIfSandboxed, true, 'sandbox.autoAllowBashIfSandboxed must be true by default (PERM-01)');
+    assert.strictEqual(
+      settings.sandbox && settings.sandbox.enabled,
+      true,
+      'sandbox.enabled must be true by default (PERM-01)',
+    );
+    assert.strictEqual(
+      settings.sandbox && settings.sandbox.autoAllowBashIfSandboxed,
+      true,
+      'sandbox.autoAllowBashIfSandboxed must be true by default (PERM-01)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -295,34 +399,51 @@ test('PERM-01: local install seeds permissions.allow with template entries (Bash
 // ── PERM-02: running --local install twice produces no duplicate entries ──────
 
 test('PERM-02: running --local install twice produces no duplicate entries in permissions.allow', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-perm02-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm02-'));
   try {
-    const runInstall = () => spawnSync(
-      process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local'],
-      {
-        encoding: 'utf8',
-        timeout: 15000,
-        cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
-    );
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
     const r1 = runInstall();
-    assert.strictEqual(r1.status, 0, 'first install must exit 0 (PERM-02)\nstderr: ' + (r1.stderr || ''));
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0 (PERM-02)\nstderr: ' + (r1.stderr || ''),
+    );
     const r2 = runInstall();
-    assert.strictEqual(r2.status, 0, 'second install must exit 0 (PERM-02)\nstderr: ' + (r2.stderr || ''));
+    assert.strictEqual(
+      r2.status,
+      0,
+      'second install must exit 0 (PERM-02)\nstderr: ' + (r2.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const allow = settings.permissions.allow;
 
-    const agentCount = allow.filter(e => e === 'Agent(*)').length;
-    assert.strictEqual(agentCount, 1, 'Agent(*) must appear exactly once after two installs (PERM-02)');
+    const agentCount = allow.filter((e) => e === 'Agent(*)').length;
+    assert.strictEqual(
+      agentCount,
+      1,
+      'Agent(*) must appear exactly once after two installs (PERM-02)',
+    );
 
     // Verify idempotency: no duplicate entries after two installs
     // (length may exceed template length when platform CLIs like gh are installed)
     const uniqueEntries = new Set(allow);
-    assert.strictEqual(uniqueEntries.size, allow.length, 'permissions.allow must have no duplicate entries after two installs (PERM-02)');
+    assert.strictEqual(
+      uniqueEntries.size,
+      allow.length,
+      'permissions.allow must have no duplicate entries after two installs (PERM-02)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -331,24 +452,40 @@ test('PERM-02: running --local install twice produces no duplicate entries in pe
 // ── PERM-03: --no-seed-permissions-config does NOT create permissions.allow ───
 
 test('PERM-03: --local --no-seed-permissions-config does not create permissions.allow in settings.json', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-perm03-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm03-'));
   try {
     const result = spawnSync(
       process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local', '--no-seed-permissions-config'],
+      [
+        INSTALLER,
+        '--runtime',
+        'claude',
+        '--local',
+        '--no-seed-permissions-config',
+      ],
       {
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install.js --local --no-seed-permissions-config must exit 0 (PERM-03)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local --no-seed-permissions-config must exit 0 (PERM-03)\nstderr: ' +
+        (result.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    const hasAllow = settings.permissions !== undefined && settings.permissions.allow !== undefined;
-    assert.ok(!hasAllow, 'permissions.allow must not exist when --no-seed-permissions-config is used (PERM-03)');
+    const hasAllow =
+      settings.permissions !== undefined &&
+      settings.permissions.allow !== undefined;
+    assert.ok(
+      !hasAllow,
+      'permissions.allow must not exist when --no-seed-permissions-config is used (PERM-03)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -357,7 +494,7 @@ test('PERM-03: --local --no-seed-permissions-config does not create permissions.
 // ── PERM-04: --no-seed-sandbox-config suppresses sandbox settings seeding ────
 
 test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seeding', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-perm04-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm04-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -367,15 +504,24 @@ test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seed
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install.js --local --no-seed-sandbox-config must exit 0 (PERM-04)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local --no-seed-sandbox-config must exit 0 (PERM-04)\nstderr: ' +
+        (result.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     // Sandbox seeding should be suppressed when --no-seed-sandbox-config is used
-    const sandboxEnabled = settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
-    assert.ok(!sandboxEnabled, 'sandbox.enabled must not be set when --no-seed-sandbox-config is used (PERM-04)');
+    const sandboxEnabled =
+      settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
+    assert.ok(
+      !sandboxEnabled,
+      'sandbox.enabled must not be set when --no-seed-sandbox-config is used (PERM-04)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -384,7 +530,7 @@ test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seed
 // ── PERM-05: uninstall removes template entries but preserves custom entries ──
 
 test('PERM-05: uninstall removes template-sourced entries from permissions.allow but preserves custom user entries', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-perm05-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm05-'));
   try {
     // First install
     const installResult = spawnSync(
@@ -395,9 +541,14 @@ test('PERM-05: uninstall removes template-sourced entries from permissions.allow
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(installResult.status, 0, 'initial install must exit 0 (PERM-05)\nstderr: ' + (installResult.stderr || ''));
+    assert.strictEqual(
+      installResult.status,
+      0,
+      'initial install must exit 0 (PERM-05)\nstderr: ' +
+        (installResult.stderr || ''),
+    );
 
     // Add a custom entry
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
@@ -414,16 +565,30 @@ test('PERM-05: uninstall removes template-sourced entries from permissions.allow
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(uninstallResult.status, 0, 'uninstall must exit 0 (PERM-05)\nstderr: ' + (uninstallResult.stderr || ''));
+    assert.strictEqual(
+      uninstallResult.status,
+      0,
+      'uninstall must exit 0 (PERM-05)\nstderr: ' +
+        (uninstallResult.stderr || ''),
+    );
 
     // Check settings after uninstall
     const settingsAfter = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const allowAfter = settingsAfter.permissions.allow;
-    assert.ok(allowAfter.includes('Bash(my-custom-tool *)'), 'custom entry must be preserved after uninstall (PERM-05)');
-    assert.ok(!allowAfter.includes('Agent(*)'), 'Agent(*) must be removed after uninstall (PERM-05)');
-    assert.ok(!allowAfter.includes('Bash(node *)'), 'Bash(node *) must be removed after uninstall (PERM-05)');
+    assert.ok(
+      allowAfter.includes('Bash(my-custom-tool *)'),
+      'custom entry must be preserved after uninstall (PERM-05)',
+    );
+    assert.ok(
+      !allowAfter.includes('Agent(*)'),
+      'Agent(*) must be removed after uninstall (PERM-05)',
+    );
+    assert.ok(
+      !allowAfter.includes('Bash(node *)'),
+      'Bash(node *) must be removed after uninstall (PERM-05)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -432,7 +597,7 @@ test('PERM-05: uninstall removes template-sourced entries from permissions.allow
 // ── SAND-01: --no-seed-sandbox-config still seeds permissions.allow ───────────
 
 test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-sand01-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-sand01-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -442,21 +607,39 @@ test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install.js --local --no-seed-sandbox-config must exit 0 (SAND-01)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local --no-seed-sandbox-config must exit 0 (SAND-01)\nstderr: ' +
+        (result.stderr || ''),
+    );
 
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 
     // Permissions should still be seeded even when sandbox config is suppressed
-    assert.ok(Array.isArray(settings.permissions && settings.permissions.allow), 'permissions.allow must be seeded even when --no-seed-sandbox-config is used (SAND-01)');
-    assert.ok(settings.permissions.allow.includes('Bash(node *)'), 'permissions.allow must include Bash(node *) (SAND-01)');
-    assert.ok(settings.permissions.allow.includes('Agent(*)'), 'permissions.allow must include Agent(*) (SAND-01)');
+    assert.ok(
+      Array.isArray(settings.permissions && settings.permissions.allow),
+      'permissions.allow must be seeded even when --no-seed-sandbox-config is used (SAND-01)',
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Bash(node *)'),
+      'permissions.allow must include Bash(node *) (SAND-01)',
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Agent(*)'),
+      'permissions.allow must include Agent(*) (SAND-01)',
+    );
 
     // Sandbox settings must NOT be seeded
-    const sandboxEnabled = settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
-    assert.ok(!sandboxEnabled, 'sandbox.enabled must not be set when --no-seed-sandbox-config is used (SAND-01)');
+    const sandboxEnabled =
+      settings.sandbox !== undefined && settings.sandbox.enabled !== undefined;
+    assert.ok(
+      !sandboxEnabled,
+      'sandbox.enabled must not be set when --no-seed-sandbox-config is used (SAND-01)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -465,23 +648,24 @@ test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', 
 // ── RUNTIME-01: --local without --runtime exits non-zero ──────────────────────
 
 test('RUNTIME-01: --local without --runtime exits non-zero with helpful error', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-rt01-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt01-'));
   try {
-    const result = spawnSync(
-      process.execPath,
-      [INSTALLER, '--local'],
-      {
-        encoding: 'utf8',
-        timeout: 15000,
-        cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+    const result = spawnSync(process.execPath, [INSTALLER, '--local'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      cwd: tmpDir,
+      env: Object.assign({}, process.env, { HOME: os.homedir() }),
+    });
+    assert.notStrictEqual(
+      result.status,
+      0,
+      '--local without --runtime must exit non-zero (RUNTIME-01)',
     );
-    assert.notStrictEqual(result.status, 0, '--local without --runtime must exit non-zero (RUNTIME-01)');
     const output = (result.stderr || '') + (result.stdout || '');
     assert.ok(
       output.includes('Error: --runtime required'),
-      'must show "Error: --runtime required" message (RUNTIME-01)\nActual output: ' + output.slice(0, 500)
+      'must show "Error: --runtime required" message (RUNTIME-01)\nActual output: ' +
+        output.slice(0, 500),
     );
   } finally {
     cleanup(tmpDir);
@@ -491,23 +675,27 @@ test('RUNTIME-01: --local without --runtime exits non-zero with helpful error', 
 // ── RUNTIME-02: --global without --runtime exits non-zero ─────────────────────
 
 test('RUNTIME-02: --global without --runtime exits non-zero with helpful error', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-rt02-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt02-'));
   try {
-    const result = spawnSync(
-      process.execPath,
-      [INSTALLER, '--global'],
-      {
-        encoding: 'utf8',
-        timeout: 15000,
-        cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude') }),
-      }
+    const result = spawnSync(process.execPath, [INSTALLER, '--global'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      cwd: tmpDir,
+      env: Object.assign({}, process.env, {
+        HOME: os.homedir(),
+        CLAUDE_CONFIG_DIR: path.join(tmpDir, '.claude'),
+      }),
+    });
+    assert.notStrictEqual(
+      result.status,
+      0,
+      '--global without --runtime must exit non-zero (RUNTIME-02)',
     );
-    assert.notStrictEqual(result.status, 0, '--global without --runtime must exit non-zero (RUNTIME-02)');
     const output = (result.stderr || '') + (result.stdout || '');
     assert.ok(
       output.includes('Error: --runtime required'),
-      'must show "Error: --runtime required" message (RUNTIME-02)\nActual output: ' + output.slice(0, 500)
+      'must show "Error: --runtime required" message (RUNTIME-02)\nActual output: ' +
+        output.slice(0, 500),
     );
   } finally {
     cleanup(tmpDir);
@@ -517,7 +705,7 @@ test('RUNTIME-02: --global without --runtime exits non-zero with helpful error',
 // ── RUNTIME-03: --uninstall without --runtime exits non-zero ──────────────────
 
 test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-rt03-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt03-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -527,13 +715,18 @@ test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.notStrictEqual(result.status, 0, '--uninstall without --runtime must exit non-zero (RUNTIME-03)');
+    assert.notStrictEqual(
+      result.status,
+      0,
+      '--uninstall without --runtime must exit non-zero (RUNTIME-03)',
+    );
     const output = (result.stderr || '') + (result.stdout || '');
     assert.ok(
       output.includes('Error: --runtime required'),
-      'must show "Error: --runtime required" message (RUNTIME-03)\nActual output: ' + output.slice(0, 500)
+      'must show "Error: --runtime required" message (RUNTIME-03)\nActual output: ' +
+        output.slice(0, 500),
     );
   } finally {
     cleanup(tmpDir);
@@ -543,7 +736,7 @@ test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
 // ── COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md ──────────────
 
 test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -553,27 +746,35 @@ test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands'
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-01)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const skillsDir = path.join(tmpDir, '.github', 'skills');
-    assert.ok(fs.existsSync(skillsDir), '.github/skills/ directory must exist (COPILOT-01)');
+    assert.ok(
+      fs.existsSync(skillsDir),
+      '.github/skills/ directory must exist (COPILOT-01)',
+    );
 
-    const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
-    assert.ok(skillDirs.length > 0, 'at least one gsd-* subdirectory must exist under skills/ (COPILOT-01)');
+    const skillDirs = fs
+      .readdirSync(skillsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(
+      skillDirs.length > 0,
+      'at least one gsd-* subdirectory must exist under skills/ (COPILOT-01)',
+    );
 
     for (const skillDir of skillDirs) {
       const skillMd = path.join(skillsDir, skillDir.name, 'SKILL.md');
       assert.ok(
         fs.existsSync(skillMd),
-        `skills/${skillDir.name}/SKILL.md must exist (COPILOT-01)`
+        `skills/${skillDir.name}/SKILL.md must exist (COPILOT-01)`,
       );
     }
   } finally {
@@ -584,7 +785,7 @@ test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands'
 // ── COPILOT-02: --local --copilot creates agents/gsd-*.agent.md ──────────────
 
 test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -594,21 +795,29 @@ test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-02)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-02)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const agentsDir = path.join(tmpDir, '.github', 'agents');
-    assert.ok(fs.existsSync(agentsDir), '.github/agents/ directory must exist (COPILOT-02)');
+    assert.ok(
+      fs.existsSync(agentsDir),
+      '.github/agents/ directory must exist (COPILOT-02)',
+    );
 
-    const agentFiles = fs.readdirSync(agentsDir)
-      .filter(f => f.startsWith('gsd-') && f.endsWith('.agent.md'));
-    assert.ok(agentFiles.length > 0, 'at least one gsd-*.agent.md file must exist (COPILOT-02)');
+    const agentFiles = fs
+      .readdirSync(agentsDir)
+      .filter((f) => f.startsWith('gsd-') && f.endsWith('.agent.md'));
+    assert.ok(
+      agentFiles.length > 0,
+      'at least one gsd-*.agent.md file must exist (COPILOT-02)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -617,7 +826,7 @@ test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => 
 // ── COPILOT-03: --local --copilot generates copilot-instructions.md ───────────
 
 test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD markers', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -627,26 +836,34 @@ test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD m
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-03)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-03)\nstderr: ' +
+        (result.stderr || ''),
     );
 
-    const instructionsPath = path.join(tmpDir, '.github', 'copilot-instructions.md');
-    assert.ok(fs.existsSync(instructionsPath), '.github/copilot-instructions.md must exist (COPILOT-03)');
+    const instructionsPath = path.join(
+      tmpDir,
+      '.github',
+      'copilot-instructions.md',
+    );
+    assert.ok(
+      fs.existsSync(instructionsPath),
+      '.github/copilot-instructions.md must exist (COPILOT-03)',
+    );
 
     const content = fs.readFileSync(instructionsPath, 'utf8');
     assert.ok(
       content.includes('<!-- GSD Configuration'),
-      'copilot-instructions.md must contain GSD open marker (COPILOT-03)'
+      'copilot-instructions.md must contain GSD open marker (COPILOT-03)',
     );
     assert.ok(
       content.includes('<!-- /GSD Configuration -->'),
-      'copilot-instructions.md must contain GSD close marker (COPILOT-03)'
+      'copilot-instructions.md must contain GSD close marker (COPILOT-03)',
     );
   } finally {
     cleanup(tmpDir);
@@ -656,7 +873,7 @@ test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD m
 // ── COPILOT-04: --local --copilot does NOT create settings.json ───────────────
 
 test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -666,19 +883,20 @@ test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-04)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-04)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const settingsPath = path.join(tmpDir, '.github', 'settings.json');
     assert.ok(
       !fs.existsSync(settingsPath),
-      '.github/settings.json must NOT exist for Copilot install (COPILOT-04)'
+      '.github/settings.json must NOT exist for Copilot install (COPILOT-04)',
     );
   } finally {
     cleanup(tmpDir);
@@ -688,7 +906,7 @@ test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
 // ── COPILOT-05: --local --copilot does NOT seed permissions or sandbox ────────
 
 test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox settings', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -698,13 +916,14 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-05)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-05)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const githubDir = path.join(tmpDir, '.github');
@@ -713,7 +932,7 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
     const settingsPath = path.join(githubDir, 'settings.json');
     assert.ok(
       !fs.existsSync(settingsPath),
-      'No settings.json must exist in .github/ for Copilot install (COPILOT-05)'
+      'No settings.json must exist in .github/ for Copilot install (COPILOT-05)',
     );
 
     // Walk .github/ recursively — no file should contain "permissions" key
@@ -737,7 +956,7 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
         const data = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
         assert.ok(
           data.permissions === undefined,
-          `${jsonFile} must not contain "permissions" key in Copilot install (COPILOT-05)`
+          `${jsonFile} must not contain "permissions" key in Copilot install (COPILOT-05)`,
         );
       } catch {
         // JSON parse error — skip
@@ -751,7 +970,7 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
 // ── COPILOT-06: --local --copilot --uninstall removes GSD artifacts ───────────
 
 test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and cleans copilot-instructions.md', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     // First: install
     const installResult = spawnSync(
@@ -762,12 +981,13 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       installResult.status,
       0,
-      'install must exit 0 (COPILOT-06)\nstderr: ' + (installResult.stderr || '')
+      'install must exit 0 (COPILOT-06)\nstderr: ' +
+        (installResult.stderr || ''),
     );
 
     // Then: uninstall
@@ -779,12 +999,13 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       uninstallResult.status,
       0,
-      'uninstall must exit 0 (COPILOT-06)\nstderr: ' + (uninstallResult.stderr || '')
+      'uninstall must exit 0 (COPILOT-06)\nstderr: ' +
+        (uninstallResult.stderr || ''),
     );
 
     const githubDir = path.join(tmpDir, '.github');
@@ -792,17 +1013,27 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
     // No gsd-* directories under skills/
     const skillsDir = path.join(githubDir, 'skills');
     if (fs.existsSync(skillsDir)) {
-      const remainingSkills = fs.readdirSync(skillsDir, { withFileTypes: true })
-        .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
-      assert.strictEqual(remainingSkills.length, 0, 'no gsd-* skill directories should remain after uninstall (COPILOT-06)');
+      const remainingSkills = fs
+        .readdirSync(skillsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name.startsWith('gsd-'));
+      assert.strictEqual(
+        remainingSkills.length,
+        0,
+        'no gsd-* skill directories should remain after uninstall (COPILOT-06)',
+      );
     }
 
     // No gsd-*.agent.md files under agents/
     const agentsDir = path.join(githubDir, 'agents');
     if (fs.existsSync(agentsDir)) {
-      const remainingAgents = fs.readdirSync(agentsDir)
-        .filter(f => f.startsWith('gsd-') && f.endsWith('.agent.md'));
-      assert.strictEqual(remainingAgents.length, 0, 'no gsd-*.agent.md files should remain after uninstall (COPILOT-06)');
+      const remainingAgents = fs
+        .readdirSync(agentsDir)
+        .filter((f) => f.startsWith('gsd-') && f.endsWith('.agent.md'));
+      assert.strictEqual(
+        remainingAgents.length,
+        0,
+        'no gsd-*.agent.md files should remain after uninstall (COPILOT-06)',
+      );
     }
 
     // copilot-instructions.md either deleted or stripped of GSD markers
@@ -811,13 +1042,16 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
       const content = fs.readFileSync(instructionsPath, 'utf8');
       assert.ok(
         !content.includes('<!-- GSD Configuration'),
-        'copilot-instructions.md must not contain GSD markers after uninstall (COPILOT-06)'
+        'copilot-instructions.md must not contain GSD markers after uninstall (COPILOT-06)',
       );
     }
 
     // gsd-ng/ directory removed
     const gsdNgDir = path.join(githubDir, 'gsd-ng');
-    assert.ok(!fs.existsSync(gsdNgDir), 'gsd-ng/ directory must be removed after uninstall (COPILOT-06)');
+    assert.ok(
+      !fs.existsSync(gsdNgDir),
+      'gsd-ng/ directory must be removed after uninstall (COPILOT-06)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -826,7 +1060,7 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
 // ── COPILOT-07: no leaked ~/.claude/ paths in Copilot installed content ───────
 
 test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .claude/ path references', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -836,13 +1070,14 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (COPILOT-07)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (COPILOT-07)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     // Walk all .md files recursively under .github/
@@ -862,13 +1097,20 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
 
     const githubDir = path.join(tmpDir, '.github');
     const mdFiles = walkMdFiles(githubDir);
-    assert.ok(mdFiles.length > 0, 'must have installed .md files to check (COPILOT-07)');
+    assert.ok(
+      mdFiles.length > 0,
+      'must have installed .md files to check (COPILOT-07)',
+    );
 
     const badFiles = [];
     for (const mdFile of mdFiles) {
       const content = fs.readFileSync(mdFile, 'utf8');
       // Check for raw ~/.claude/ paths (not .github/ or .copilot/ which are correct)
-      if (content.includes('~/.claude/') || content.includes('$HOME/.claude/') || content.includes('./.claude/')) {
+      if (
+        content.includes('~/.claude/') ||
+        content.includes('$HOME/.claude/') ||
+        content.includes('./.claude/')
+      ) {
         badFiles.push(path.relative(tmpDir, mdFile));
       }
     }
@@ -876,7 +1118,8 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
     assert.ok(
       badFiles.length === 0,
       'installed Copilot files must not contain ~/.claude/ or .claude/ paths (COPILOT-07).\n' +
-      'Offending files: ' + badFiles.join(', ')
+        'Offending files: ' +
+        badFiles.join(', '),
     );
   } finally {
     cleanup(tmpDir);
@@ -886,7 +1129,7 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
 // ── COPILOT-08: --runtime copilot flag works for non-interactive install ──────
 
 test('COPILOT-08: --local --runtime copilot selects Copilot runtime', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-copilot-'));
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
   try {
     const result = spawnSync(
       process.execPath,
@@ -896,26 +1139,36 @@ test('COPILOT-08: --local --runtime copilot selects Copilot runtime', () => {
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --local --runtime copilot must exit 0 (COPILOT-08)\nstderr: ' + (result.stderr || '')
+      'install.js --local --runtime copilot must exit 0 (COPILOT-08)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     // .github/ directory must exist (Copilot runtime selected)
     const githubDir = path.join(tmpDir, '.github');
-    assert.ok(fs.existsSync(githubDir), '.github/ directory must exist when --runtime copilot is used (COPILOT-08)');
+    assert.ok(
+      fs.existsSync(githubDir),
+      '.github/ directory must exist when --runtime copilot is used (COPILOT-08)',
+    );
 
     // skills/ directory must exist under .github/
     const skillsDir = path.join(githubDir, 'skills');
-    assert.ok(fs.existsSync(skillsDir), '.github/skills/ directory must exist (COPILOT-08)');
+    assert.ok(
+      fs.existsSync(skillsDir),
+      '.github/skills/ directory must exist (COPILOT-08)',
+    );
 
     // .claude/ directory must NOT exist (wrong runtime)
     const claudeDir = path.join(tmpDir, '.claude');
-    assert.ok(!fs.existsSync(claudeDir), '.claude/ directory must NOT exist when --runtime copilot is used (COPILOT-08)');
+    assert.ok(
+      !fs.existsSync(claudeDir),
+      '.claude/ directory must NOT exist when --runtime copilot is used (COPILOT-08)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -934,20 +1187,37 @@ test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with ses
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install must exit 0 (COPILOT-09)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (COPILOT-09)\nstderr: ' + (result.stderr || ''),
+    );
 
     const hooksFile = path.join(tmpDir, '.github', 'hooks', 'gsd-hooks.json');
-    assert.ok(fs.existsSync(hooksFile), '.github/hooks/gsd-hooks.json must exist after Copilot install (COPILOT-09)');
+    assert.ok(
+      fs.existsSync(hooksFile),
+      '.github/hooks/gsd-hooks.json must exist after Copilot install (COPILOT-09)',
+    );
 
     const content = JSON.parse(fs.readFileSync(hooksFile, 'utf8'));
-    assert.strictEqual(content.version, 1, 'hooks file must have version: 1 (COPILOT-09)');
-    assert.ok(Array.isArray(content.hooks.sessionStart), 'hooks.sessionStart must be an array (COPILOT-09)');
-    assert.ok(content.hooks.sessionStart.length > 0, 'sessionStart must have at least one hook entry (COPILOT-09)');
+    assert.strictEqual(
+      content.version,
+      1,
+      'hooks file must have version: 1 (COPILOT-09)',
+    );
+    assert.ok(
+      Array.isArray(content.hooks.sessionStart),
+      'hooks.sessionStart must be an array (COPILOT-09)',
+    );
+    assert.ok(
+      content.hooks.sessionStart.length > 0,
+      'sessionStart must have at least one hook entry (COPILOT-09)',
+    );
     assert.ok(
       content.hooks.sessionStart[0].bash.includes('gsd-check-update'),
-      'sessionStart hook bash command must reference gsd-check-update (COPILOT-09)'
+      'sessionStart hook bash command must reference gsd-check-update (COPILOT-09)',
     );
   } finally {
     cleanup(tmpDir);
@@ -962,17 +1232,34 @@ test('BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks d
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'claude', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
     );
-    assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (BASH-HOOK-01)\nstderr: ' + (result.stderr || ''));
-    const hookPath = path.join(tmpDir, '.claude', 'hooks', 'bash-safety-hook.cjs');
-    assert.ok(fs.existsSync(hookPath),
-      'hooks/bash-safety-hook.cjs must exist after claude local install (BASH-HOOK-01)');
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-01)\nstderr: ' +
+        (result.stderr || ''),
+    );
+    const hookPath = path.join(
+      tmpDir,
+      '.claude',
+      'hooks',
+      'bash-safety-hook.cjs',
+    );
+    assert.ok(
+      fs.existsSync(hookPath),
+      'hooks/bash-safety-hook.cjs must exist after claude local install (BASH-HOOK-01)',
+    );
     const content = fs.readFileSync(hookPath, 'utf8');
-    assert.ok(content.startsWith('#!/usr/bin/env node'),
-      'bash-safety-hook.cjs must start with #!/usr/bin/env node shebang (BASH-HOOK-01)');
+    assert.ok(
+      content.startsWith('#!/usr/bin/env node'),
+      'bash-safety-hook.cjs must start with #!/usr/bin/env node shebang (BASH-HOOK-01)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -986,25 +1273,46 @@ test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.js
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'claude', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
     );
-    assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (BASH-HOOK-02)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-02)\nstderr: ' +
+        (result.stderr || ''),
+    );
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
-    assert.ok(fs.existsSync(settingsPath),
-      'settings.json must exist after claude local install (BASH-HOOK-02)');
+    assert.ok(
+      fs.existsSync(settingsPath),
+      'settings.json must exist after claude local install (BASH-HOOK-02)',
+    );
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const preToolUse = settings.hooks && settings.hooks.PreToolUse;
-    assert.ok(Array.isArray(preToolUse),
-      'settings.json must have hooks.PreToolUse array (BASH-HOOK-02)');
-    const bashSafetyEntry = preToolUse.find(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    assert.ok(
+      Array.isArray(preToolUse),
+      'settings.json must have hooks.PreToolUse array (BASH-HOOK-02)',
     );
-    assert.ok(bashSafetyEntry !== undefined,
-      'settings.json PreToolUse must contain an entry with bash-safety-hook.cjs (BASH-HOOK-02)');
-    assert.strictEqual(bashSafetyEntry.matcher, 'Bash',
-      'bash-safety-hook entry must have matcher: "Bash" (BASH-HOOK-02)');
+    const bashSafetyEntry = preToolUse.find(
+      (entry) =>
+        entry.hooks &&
+        entry.hooks.some(
+          (h) => h.command && h.command.includes('bash-safety-hook.cjs'),
+        ),
+    );
+    assert.ok(
+      bashSafetyEntry !== undefined,
+      'settings.json PreToolUse must contain an entry with bash-safety-hook.cjs (BASH-HOOK-02)',
+    );
+    assert.strictEqual(
+      bashSafetyEntry.matcher,
+      'Bash',
+      'bash-safety-hook entry must have matcher: "Bash" (BASH-HOOK-02)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1015,25 +1323,47 @@ test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.js
 test('BASH-HOOK-03: idempotent — re-running install does not duplicate bash-safety-hook in PreToolUse', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-03-'));
   try {
-    const runInstall = () => spawnSync(
-      process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
-    );
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
     const r1 = runInstall();
-    assert.strictEqual(r1.status, 0, 'First install must exit 0 (BASH-HOOK-03)');
+    assert.strictEqual(
+      r1.status,
+      0,
+      'First install must exit 0 (BASH-HOOK-03)',
+    );
     const r2 = runInstall();
-    assert.strictEqual(r2.status, 0, 'Second install must exit 0 (BASH-HOOK-03)');
+    assert.strictEqual(
+      r2.status,
+      0,
+      'Second install must exit 0 (BASH-HOOK-03)',
+    );
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const preToolUse = settings.hooks && settings.hooks.PreToolUse;
-    const bashSafetyEntries = (preToolUse || []).filter(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+    const bashSafetyEntries = (preToolUse || []).filter(
+      (entry) =>
+        entry.hooks &&
+        entry.hooks.some(
+          (h) => h.command && h.command.includes('bash-safety-hook.cjs'),
+        ),
     );
-    assert.strictEqual(bashSafetyEntries.length, 1,
+    assert.strictEqual(
+      bashSafetyEntries.length,
+      1,
       'bash-safety-hook.cjs must appear exactly once in PreToolUse after two installs (BASH-HOOK-03). ' +
-      'Found: ' + bashSafetyEntries.length + ' entries');
+        'Found: ' +
+        bashSafetyEntries.length +
+        ' entries',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1047,25 +1377,46 @@ test('BASH-HOOK-04: copilot local install does NOT wire bash-safety-hook into se
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'copilot', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
     );
-    assert.strictEqual(result.status, 0,
-      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-04)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-04)\nstderr: ' +
+        (result.stderr || ''),
+    );
     const settingsPath = path.join(tmpDir, '.github', 'settings.json');
     if (fs.existsSync(settingsPath)) {
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
       const preToolUse = (settings.hooks && settings.hooks.PreToolUse) || [];
-      const hasBashSafety = preToolUse.some(entry =>
-        entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
+      const hasBashSafety = preToolUse.some(
+        (entry) =>
+          entry.hooks &&
+          entry.hooks.some(
+            (h) => h.command && h.command.includes('bash-safety-hook.cjs'),
+          ),
       );
-      assert.ok(!hasBashSafety,
-        'copilot settings.json must NOT contain bash-safety-hook.cjs in PreToolUse (BASH-HOOK-04)');
+      assert.ok(
+        !hasBashSafety,
+        'copilot settings.json must NOT contain bash-safety-hook.cjs in PreToolUse (BASH-HOOK-04)',
+      );
     }
     // Guardrail: hook file must not exist in Copilot target (future runtime safety)
-    const hookFilePath = path.join(tmpDir, '.github', 'hooks', 'bash-safety-hook.cjs');
-    assert.ok(!fs.existsSync(hookFilePath),
-      'bash-safety-hook.cjs must NOT exist in Copilot hooks dir (BASH-HOOK-04)');
+    const hookFilePath = path.join(
+      tmpDir,
+      '.github',
+      'hooks',
+      'bash-safety-hook.cjs',
+    );
+    assert.ok(
+      !fs.existsSync(hookFilePath),
+      'bash-safety-hook.cjs must NOT exist in Copilot hooks dir (BASH-HOOK-04)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1079,19 +1430,39 @@ test('BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md 
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'claude', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
     );
-    assert.strictEqual(result.status, 0,
-      'install.js --runtime claude --local must exit 0 (BASH-HOOK-05)\nstderr: ' + (result.stderr || ''));
-    const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
-    assert.ok(fs.existsSync(agentCtxPath),
-      'agent-shared-context.md must exist after claude local install (BASH-HOOK-05)');
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (BASH-HOOK-05)\nstderr: ' +
+        (result.stderr || ''),
+    );
+    const agentCtxPath = path.join(
+      tmpDir,
+      '.claude',
+      'gsd-ng',
+      'references',
+      'agent-shared-context.md',
+    );
+    assert.ok(
+      fs.existsSync(agentCtxPath),
+      'agent-shared-context.md must exist after claude local install (BASH-HOOK-05)',
+    );
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    assert.ok(content.includes('ALWAYS use the Write tool'),
-      'agent-shared-context.md must contain anti-heredoc instruction (BASH-HOOK-05)');
-    assert.ok(!content.includes('GSD — AST Safety Rules'),
-      'agent-shared-context.md must NOT contain AST Safety Rules markers (BASH-HOOK-05)');
+    assert.ok(
+      content.includes('ALWAYS use the Write tool'),
+      'agent-shared-context.md must contain anti-heredoc instruction (BASH-HOOK-05)',
+    );
+    assert.ok(
+      !content.includes('GSD — AST Safety Rules'),
+      'agent-shared-context.md must NOT contain AST Safety Rules markers (BASH-HOOK-05)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1105,17 +1476,35 @@ test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in a
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'copilot', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
     );
-    assert.strictEqual(result.status, 0,
-      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-06)\nstderr: ' + (result.stderr || ''));
-    const agentCtxPath = path.join(tmpDir, '.github', 'gsd-ng', 'references', 'agent-shared-context.md');
-    assert.ok(fs.existsSync(agentCtxPath),
-      'agent-shared-context.md must exist after copilot local install (BASH-HOOK-06)');
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime copilot --local must exit 0 (BASH-HOOK-06)\nstderr: ' +
+        (result.stderr || ''),
+    );
+    const agentCtxPath = path.join(
+      tmpDir,
+      '.github',
+      'gsd-ng',
+      'references',
+      'agent-shared-context.md',
+    );
+    assert.ok(
+      fs.existsSync(agentCtxPath),
+      'agent-shared-context.md must exist after copilot local install (BASH-HOOK-06)',
+    );
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    assert.ok(content.includes('ALWAYS use the Write tool'),
-      'agent-shared-context.md must contain anti-heredoc instruction for copilot runtime too (BASH-HOOK-06)');
+    assert.ok(
+      content.includes('ALWAYS use the Write tool'),
+      'agent-shared-context.md must contain anti-heredoc instruction for copilot runtime too (BASH-HOOK-06)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1126,19 +1515,43 @@ test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in a
 test('BASH-HOOK-07: anti-heredoc not duplicated on re-install of claude local', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-07-'));
   try {
-    const runInstall = () => spawnSync(
-      process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local'],
-      { encoding: 'utf8', timeout: 15000, cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }) }
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+    assert.strictEqual(
+      runInstall().status,
+      0,
+      'First install must exit 0 (BASH-HOOK-07)',
     );
-    assert.strictEqual(runInstall().status, 0, 'First install must exit 0 (BASH-HOOK-07)');
-    assert.strictEqual(runInstall().status, 0, 'Second install must exit 0 (BASH-HOOK-07)');
-    const agentCtxPath = path.join(tmpDir, '.claude', 'gsd-ng', 'references', 'agent-shared-context.md');
+    assert.strictEqual(
+      runInstall().status,
+      0,
+      'Second install must exit 0 (BASH-HOOK-07)',
+    );
+    const agentCtxPath = path.join(
+      tmpDir,
+      '.claude',
+      'gsd-ng',
+      'references',
+      'agent-shared-context.md',
+    );
     const content = fs.readFileSync(agentCtxPath, 'utf8');
-    const occurrences = (content.match(/ALWAYS use the Write tool/g) || []).length;
-    assert.strictEqual(occurrences, 1,
-      '"ALWAYS use the Write tool" must appear exactly once after two installs (BASH-HOOK-07). Found: ' + occurrences);
+    const occurrences = (content.match(/ALWAYS use the Write tool/g) || [])
+      .length;
+    assert.strictEqual(
+      occurrences,
+      1,
+      '"ALWAYS use the Write tool" must appear exactly once after two installs (BASH-HOOK-07). Found: ' +
+        occurrences,
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1157,16 +1570,27 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
-    assert.strictEqual(result.status, 0, 'install must exit 0 (COPILOT-10)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (COPILOT-10)\nstderr: ' + (result.stderr || ''),
+    );
 
     const skillsDir = path.join(tmpDir, '.github', 'skills');
-    assert.ok(fs.existsSync(skillsDir), '.github/skills/ must exist (COPILOT-10)');
+    assert.ok(
+      fs.existsSync(skillsDir),
+      '.github/skills/ must exist (COPILOT-10)',
+    );
 
-    const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
-    assert.ok(skillDirs.length > 0, 'at least one gsd-* skill dir must exist (COPILOT-10)');
+    const skillDirs = fs
+      .readdirSync(skillsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(
+      skillDirs.length > 0,
+      'at least one gsd-* skill dir must exist (COPILOT-10)',
+    );
 
     const offending = [];
     for (const skillDir of skillDirs) {
@@ -1176,7 +1600,9 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
       // Extract name: line from frontmatter
       const nameMatch = content.match(/^name:\s*(.+)$/m);
       if (nameMatch && nameMatch[1].includes(':')) {
-        offending.push(`${skillDir.name}/SKILL.md → name: ${nameMatch[1].trim()}`);
+        offending.push(
+          `${skillDir.name}/SKILL.md → name: ${nameMatch[1].trim()}`,
+        );
       }
     }
 
@@ -1184,7 +1610,8 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
       offending.length,
       0,
       'SKILL.md name: fields must not contain colons (COPILOT-10).\n' +
-      'Offending files:\n' + offending.map(s => '  ' + s).join('\n')
+        'Offending files:\n' +
+        offending.map((s) => '  ' + s).join('\n'),
     );
   } finally {
     cleanup(tmpDir);
@@ -1204,24 +1631,33 @@ test('SVN-01: --runtime copilot --local writes .github/gsd-ng/VERSION with resol
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime copilot --local must exit 0 (SVN-01)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime copilot --local must exit 0 (SVN-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const versionPath = path.join(tmpDir, '.github', 'gsd-ng', 'VERSION');
-    assert.ok(fs.existsSync(versionPath), '.github/gsd-ng/VERSION must exist after copilot install (SVN-01)');
+    assert.ok(
+      fs.existsSync(versionPath),
+      '.github/gsd-ng/VERSION must exist after copilot install (SVN-01)',
+    );
 
     const versionContent = fs.readFileSync(versionPath, 'utf8').trim();
     const pkg = require('../package.json');
     // Accept both clean version (tagged release) and snapshot version+hash (dev checkout).
-    const snapshotRegex = new RegExp('^' + pkg.version.replace(/[.+]/g, '\\$&') + '(\\+[0-9a-f]{7,})?$');
+    const snapshotRegex = new RegExp(
+      '^' + pkg.version.replace(/[.+]/g, '\\$&') + '(\\+[0-9a-f]{7,})?$',
+    );
     assert.ok(
       snapshotRegex.test(versionContent),
-      'copilot VERSION must match ' + snapshotRegex + ' (SVN-01). Got: ' + JSON.stringify(versionContent)
+      'copilot VERSION must match ' +
+        snapshotRegex +
+        ' (SVN-01). Got: ' +
+        JSON.stringify(versionContent),
     );
   } finally {
     cleanup(tmpDir);
@@ -1241,16 +1677,20 @@ test('SVN-02: --runtime claude --local banner prints resolved version matching V
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime claude --local must exit 0 (SVN-02)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime claude --local must exit 0 (SVN-02)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const versionPath = path.join(tmpDir, '.claude', 'gsd-ng', 'VERSION');
-    assert.ok(fs.existsSync(versionPath), '.claude/gsd-ng/VERSION must exist (SVN-02)');
+    assert.ok(
+      fs.existsSync(versionPath),
+      '.claude/gsd-ng/VERSION must exist (SVN-02)',
+    );
     const versionContent = fs.readFileSync(versionPath, 'utf8').trim();
 
     // Banner line format: "  gsd-ng \x1b[2mv<version>\x1b[0m\n"
@@ -1261,8 +1701,11 @@ test('SVN-02: --runtime claude --local banner prints resolved version matching V
     const expectedBannerFragment = 'gsd-ng v' + versionContent;
     assert.ok(
       clean.includes(expectedBannerFragment),
-      'Banner must contain "' + expectedBannerFragment + '" matching VERSION file (SVN-02).\n' +
-      'Stdout (ANSI-stripped, first 500 chars): ' + clean.slice(0, 500)
+      'Banner must contain "' +
+        expectedBannerFragment +
+        '" matching VERSION file (SVN-02).\n' +
+        'Stdout (ANSI-stripped, first 500 chars): ' +
+        clean.slice(0, 500),
     );
   } finally {
     cleanup(tmpDir);
@@ -1282,18 +1725,22 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install.js --runtime claude --local must exit 0 (SVN-03)\nstderr: ' + (result.stderr || '')
+      'install.js --runtime claude --local must exit 0 (SVN-03)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const versionPath = path.join(tmpDir, '.claude', 'gsd-ng', 'VERSION');
     const manifestPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
     assert.ok(fs.existsSync(versionPath), 'VERSION must exist (SVN-03)');
-    assert.ok(fs.existsSync(manifestPath), 'gsd-file-manifest.json must exist (SVN-03)');
+    assert.ok(
+      fs.existsSync(manifestPath),
+      'gsd-file-manifest.json must exist (SVN-03)',
+    );
 
     const versionContent = fs.readFileSync(versionPath, 'utf8');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -1302,8 +1749,10 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
       manifest.version,
       versionContent,
       'manifest.version must equal VERSION file contents (SVN-03). ' +
-      'manifest.version=' + JSON.stringify(manifest.version) +
-      ' VERSION=' + JSON.stringify(versionContent)
+        'manifest.version=' +
+        JSON.stringify(manifest.version) +
+        ' VERSION=' +
+        JSON.stringify(versionContent),
     );
   } finally {
     cleanup(tmpDir);
@@ -1313,7 +1762,9 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
 // ── RUNTIME-01: install.js writes runtime field to .planning/config.json ─────
 
 test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .planning/config.json', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-claude-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-js-runtime-claude-'),
+  );
   try {
     const result = spawnSync(
       process.execPath,
@@ -1323,23 +1774,27 @@ test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .plan
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --local --runtime claude must exit 0 (RUNTIME-01)\nstderr: ' + (result.stderr || '')
+      'install.js --local --runtime claude must exit 0 (RUNTIME-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const configPath = path.join(tmpDir, '.planning', 'config.json');
-    assert.ok(fs.existsSync(configPath), '.planning/config.json must exist after install (RUNTIME-01)');
+    assert.ok(
+      fs.existsSync(configPath),
+      '.planning/config.json must exist after install (RUNTIME-01)',
+    );
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     assert.strictEqual(
       config.runtime,
       'claude',
-      'config.json must contain "runtime":"claude" after claude install (RUNTIME-01)'
+      'config.json must contain "runtime":"claude" after claude install (RUNTIME-01)',
     );
   } finally {
     cleanup(tmpDir);
@@ -1347,7 +1802,9 @@ test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .plan
 });
 
 test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .planning/config.json', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-copilot-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-js-runtime-copilot-'),
+  );
   try {
     const result = spawnSync(
       process.execPath,
@@ -1357,23 +1814,27 @@ test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .pl
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js --local --runtime copilot must exit 0 (RUNTIME-02)\nstderr: ' + (result.stderr || '')
+      'install.js --local --runtime copilot must exit 0 (RUNTIME-02)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const configPath = path.join(tmpDir, '.planning', 'config.json');
-    assert.ok(fs.existsSync(configPath), '.planning/config.json must exist after copilot install (RUNTIME-02)');
+    assert.ok(
+      fs.existsSync(configPath),
+      '.planning/config.json must exist after copilot install (RUNTIME-02)',
+    );
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     assert.strictEqual(
       config.runtime,
       'copilot',
-      'config.json must contain "runtime":"copilot" after copilot install (RUNTIME-02)'
+      'config.json must contain "runtime":"copilot" after copilot install (RUNTIME-02)',
     );
   } finally {
     cleanup(tmpDir);
@@ -1387,11 +1848,11 @@ test('ALLOW-18: install.js seeding block uses GSD_TEST_FORCE_PLATFORM (not GSD_F
   const src = fs.readFileSync(INSTALLER, 'utf8');
   assert.ok(
     !src.includes('GSD_FORCE_PLATFORM'),
-    'install.js must not reference GSD_FORCE_PLATFORM (old name) — use GSD_TEST_FORCE_PLATFORM (ALLOW-18)'
+    'install.js must not reference GSD_FORCE_PLATFORM (old name) — use GSD_TEST_FORCE_PLATFORM (ALLOW-18)',
   );
   assert.ok(
     src.includes('GSD_TEST_FORCE_PLATFORM'),
-    'install.js must reference GSD_TEST_FORCE_PLATFORM at least once (ALLOW-18)'
+    'install.js must reference GSD_TEST_FORCE_PLATFORM at least once (ALLOW-18)',
   );
 });
 
@@ -1402,12 +1863,12 @@ test('ALLOW-19: install.js imports RW_FORMS from allowlist.cjs and uses no inlin
   // Must import RW_FORMS in the destructure
   assert.ok(
     src.includes('RW_FORMS'),
-    'install.js must import and reference RW_FORMS from allowlist.cjs (ALLOW-19)'
+    'install.js must import and reference RW_FORMS from allowlist.cjs (ALLOW-19)',
   );
   // Must not define an inline Set containing these canonical forms
   assert.ok(
     !src.includes("new Set(['Edit', 'Write', 'Read'"),
-    'install.js must not define an inline rwForms Set literal — use imported RW_FORMS (ALLOW-19)'
+    'install.js must not define an inline rwForms Set literal — use imported RW_FORMS (ALLOW-19)',
   );
 });
 
@@ -1428,20 +1889,24 @@ test('ALLOW-19: GSD_TEST_FORCE_PLATFORM env var controls platform detection in s
           HOME: os.homedir(),
           GSD_TEST_FORCE_PLATFORM: 'linux',
         }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install.js must exit 0 when GSD_TEST_FORCE_PLATFORM=linux is set (ALLOW-19)\nstderr: ' + (result.stderr || '')
+      'install.js must exit 0 when GSD_TEST_FORCE_PLATFORM=linux is set (ALLOW-19)\nstderr: ' +
+        (result.stderr || ''),
     );
     // settings.json must have been seeded (permissions block present)
     const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
-    assert.ok(fs.existsSync(settingsPath), 'settings.json must exist (ALLOW-19)');
+    assert.ok(
+      fs.existsSync(settingsPath),
+      'settings.json must exist (ALLOW-19)',
+    );
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     assert.ok(
       Array.isArray(settings.permissions && settings.permissions.allow),
-      'permissions.allow must be seeded when GSD_TEST_FORCE_PLATFORM is used (ALLOW-19)'
+      'permissions.allow must be seeded when GSD_TEST_FORCE_PLATFORM is used (ALLOW-19)',
     );
   } finally {
     cleanup(tmpDir);
@@ -1455,29 +1920,31 @@ test('ALLOW-20: install.js syncSection uses Set.has() — not Array.includes() �
   // New implementation: must use Set.has()
   assert.ok(
     src.includes('existingSet.has(e)'),
-    'syncSection must use existingSet.has(e) for membership check (ALLOW-20)'
+    'syncSection must use existingSet.has(e) for membership check (ALLOW-20)',
   );
   // Old implementation: must not use Array.includes()
   assert.ok(
     !src.includes('existing.includes(e)'),
-    'syncSection must not use existing.includes(e) — replaced by Set.has() (ALLOW-20)'
+    'syncSection must not use existing.includes(e) — replaced by Set.has() (ALLOW-20)',
   );
   // Return shape: merged and added fields must still be present
   assert.ok(
     src.includes('merged: [...existing, ...toAdd]'),
-    'syncSection must keep merged: [...existing, ...toAdd] return shape (ALLOW-20)'
+    'syncSection must keep merged: [...existing, ...toAdd] return shape (ALLOW-20)',
   );
 });
 
 test('RUNTIME-03: install.js preserves existing config.json values when writing runtime field', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-preserve-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-js-runtime-preserve-'),
+  );
   try {
     // Create .planning dir and pre-existing config.json with some values
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ model_profile: 'quality', commit_docs: false }, null, 2),
-      'utf-8'
+      'utf-8',
     );
 
     const result = spawnSync(
@@ -1488,32 +1955,45 @@ test('RUNTIME-03: install.js preserves existing config.json values when writing 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
     assert.strictEqual(
       result.status,
       0,
-      'install.js must exit 0 even when config.json already exists (RUNTIME-03)\nstderr: ' + (result.stderr || '')
+      'install.js must exit 0 even when config.json already exists (RUNTIME-03)\nstderr: ' +
+        (result.stderr || ''),
     );
 
-    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
-    assert.strictEqual(config.runtime, 'claude', 'runtime field must be added (RUNTIME-03)');
-    assert.strictEqual(config.model_profile, 'quality', 'existing model_profile must be preserved (RUNTIME-03)');
+    const config = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'),
+    );
+    assert.strictEqual(
+      config.runtime,
+      'claude',
+      'runtime field must be added (RUNTIME-03)',
+    );
+    assert.strictEqual(
+      config.model_profile,
+      'quality',
+      'existing model_profile must be preserved (RUNTIME-03)',
+    );
   } finally {
     cleanup(tmpDir);
   }
 });
 
 test('RUNTIME-04: install.js updates existing runtime field in config.json', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR,'gsd-js-runtime-update-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-js-runtime-update-'),
+  );
   try {
     // Pre-create config.json with runtime: copilot
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ runtime: 'copilot' }, null, 2),
-      'utf-8'
+      'utf-8',
     );
 
     // Install with claude runtime — should update to claude
@@ -1525,13 +2005,23 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
 
-    assert.strictEqual(result.status, 0, 'install.js must exit 0 (RUNTIME-04)\nstderr: ' + (result.stderr || ''));
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js must exit 0 (RUNTIME-04)\nstderr: ' + (result.stderr || ''),
+    );
 
-    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
-    assert.strictEqual(config.runtime, 'claude', 'runtime must be updated from copilot to claude (RUNTIME-04)');
+    const config = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'),
+    );
+    assert.strictEqual(
+      config.runtime,
+      'claude',
+      'runtime must be updated from copilot to claude (RUNTIME-04)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1542,36 +2032,51 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
 test('MANIFEST-STAB-01: running --local claude install twice produces no "Found N locally modified" output and no populated gsd-local-patches/', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-stab-'));
   try {
-    const runInstall = () => spawnSync(
-      process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local'],
-      {
-        encoding: 'utf8',
-        timeout: 15000,
-        cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
-    );
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
     const r1 = runInstall();
-    assert.strictEqual(r1.status, 0, 'first install must exit 0 (MANIFEST-STAB-01)\nstderr: ' + (r1.stderr || ''));
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0 (MANIFEST-STAB-01)\nstderr: ' +
+        (r1.stderr || ''),
+    );
     const r2 = runInstall();
-    assert.strictEqual(r2.status, 0, 'second install must exit 0 (MANIFEST-STAB-01)\nstderr: ' + (r2.stderr || ''));
+    assert.strictEqual(
+      r2.status,
+      0,
+      'second install must exit 0 (MANIFEST-STAB-01)\nstderr: ' +
+        (r2.stderr || ''),
+    );
 
     const r2Stdout = r2.stdout || '';
     assert.ok(
       !/Found \d+ locally modified GSD file/.test(r2Stdout),
       'second install must NOT report locally modified GSD files (MANIFEST-STAB-01).\n' +
-      'stdout: ' + r2Stdout.slice(0, 2000)
+        'stdout: ' +
+        r2Stdout.slice(0, 2000),
     );
 
     // gsd-local-patches either does not exist, or contains only meta/placeholder entries.
     const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
     if (fs.existsSync(patchesDir)) {
-      const entries = fs.readdirSync(patchesDir).filter(e => e !== '.gitkeep');
+      const entries = fs
+        .readdirSync(patchesDir)
+        .filter((e) => e !== '.gitkeep');
       assert.strictEqual(
         entries.length,
         0,
-        'gsd-local-patches/ must be empty after double install (MANIFEST-STAB-01). Entries: ' + entries.join(', ')
+        'gsd-local-patches/ must be empty after double install (MANIFEST-STAB-01). Entries: ' +
+          entries.join(', '),
       );
     }
   } finally {
@@ -1592,12 +2097,13 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install must exit 0 (TEMPLATE-RESOLVE-01)\nstderr: ' + (result.stderr || '')
+      'install must exit 0 (TEMPLATE-RESOLVE-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const roots = [
@@ -1617,7 +2123,10 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
 
     const mdFiles = [];
     for (const root of roots) walk(root, mdFiles);
-    assert.ok(mdFiles.length > 0, 'expected deployed .md files to exist under commands/gsd/ and gsd-ng/ (TEMPLATE-RESOLVE-01)');
+    assert.ok(
+      mdFiles.length > 0,
+      'expected deployed .md files to exist under commands/gsd/ and gsd-ng/ (TEMPLATE-RESOLVE-01)',
+    );
 
     const offenders = [];
     for (const f of mdFiles) {
@@ -1632,7 +2141,8 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
     assert.strictEqual(
       offenders.length,
       0,
-      'unresolved template tokens found in deployed .md files (TEMPLATE-RESOLVE-01):\n' + offenders.slice(0, 20).join('\n')
+      'unresolved template tokens found in deployed .md files (TEMPLATE-RESOLVE-01):\n' +
+        offenders.slice(0, 20).join('\n'),
     );
   } finally {
     cleanup(tmpDir);
@@ -1652,20 +2162,27 @@ test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.j
         timeout: 15000,
         cwd: tmpDir,
         env: Object.assign({}, process.env, { HOME: os.homedir() }),
-      }
+      },
     );
     assert.strictEqual(
       result.status,
       0,
-      'install must exit 0 (MANIFEST-DISK-01)\nstderr: ' + (result.stderr || '')
+      'install must exit 0 (MANIFEST-DISK-01)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const configDir = path.join(tmpDir, '.claude');
     const manifestPath = path.join(configDir, 'gsd-file-manifest.json');
-    assert.ok(fs.existsSync(manifestPath), 'gsd-file-manifest.json must exist (MANIFEST-DISK-01)');
+    assert.ok(
+      fs.existsSync(manifestPath),
+      'gsd-file-manifest.json must exist (MANIFEST-DISK-01)',
+    );
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    assert.ok(manifest.files && typeof manifest.files === 'object', 'manifest.files must be an object');
+    assert.ok(
+      manifest.files && typeof manifest.files === 'object',
+      'manifest.files must be an object',
+    );
     const entries = Object.entries(manifest.files);
     assert.ok(entries.length > 0, 'manifest.files must be non-empty');
 
@@ -1676,15 +2193,420 @@ test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.j
         mismatches.push(relPath + ' :: MISSING_FILE');
         continue;
       }
-      const actual = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+      const actual = crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(full))
+        .digest('hex');
       if (actual !== storedHash) {
-        mismatches.push(relPath + ' :: manifest=' + storedHash.slice(0, 12) + ' disk=' + actual.slice(0, 12));
+        mismatches.push(
+          relPath +
+            ' :: manifest=' +
+            storedHash.slice(0, 12) +
+            ' disk=' +
+            actual.slice(0, 12),
+        );
       }
     }
     assert.strictEqual(
       mismatches.length,
       0,
-      'manifest hashes must match on-disk SHA256 (MANIFEST-DISK-01):\n' + mismatches.slice(0, 20).join('\n')
+      'manifest hashes must match on-disk SHA256 (MANIFEST-DISK-01):\n' +
+        mismatches.slice(0, 20).join('\n'),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-V2-01: writeManifest writes schema_version: 2 ──────────────────
+
+test('MANIFEST-V2-01: writeManifest writes schema_version: 2 in fresh manifest', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-01-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (MANIFEST-V2-01)\nstderr: ' + (result.stderr || ''),
+    );
+    const manifestPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    assert.ok(
+      fs.existsSync(manifestPath),
+      'gsd-file-manifest.json must exist (MANIFEST-V2-01)',
+    );
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.strictEqual(
+      manifest.schema_version,
+      2,
+      'manifest.schema_version must be integer 2 (MANIFEST-V2-01)',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-V2-02: v1 manifest triggers migration notice and refreshes files ─
+
+test('MANIFEST-V2-02: v1 manifest (missing schema_version) triggers migration notice and refreshes files', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-02-'));
+  try {
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+
+    // First install — establishes v2 manifest
+    const r1 = runInstall();
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0 (MANIFEST-V2-02)\nstderr: ' +
+        (r1.stderr || ''),
+    );
+
+    // Strip schema_version to simulate a v1 manifest
+    const mPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    delete m.schema_version;
+
+    // Pick the first managed file from the manifest to mutate
+    const managedFiles = Object.keys(m.files || {});
+    assert.ok(
+      managedFiles.length > 0,
+      'manifest must have at least one managed file (MANIFEST-V2-02)',
+    );
+    const targetRelPath = managedFiles[0];
+    const targetAbsPath = path.join(tmpDir, '.claude', targetRelPath);
+
+    fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+    fs.appendFileSync(targetAbsPath, '\n<!-- LOCAL EDIT MARKER -->\n');
+
+    // Second install — should detect v1 manifest and run migration
+    const r2 = runInstall();
+    assert.strictEqual(
+      r2.status,
+      0,
+      'second install must exit 0 (MANIFEST-V2-02)\nstderr: ' +
+        (r2.stderr || ''),
+    );
+
+    const r2Stdout = r2.stdout || '';
+    assert.match(
+      r2Stdout,
+      /Migrated manifest to v2 — files refreshed from source/,
+      'migration notice must appear in stdout (MANIFEST-V2-02)',
+    );
+    assert.match(
+      r2Stdout,
+      /Your modifications were backed up to/,
+      'backup notice must appear because file was mutated (MANIFEST-V2-02)',
+    );
+
+    // Patches dir must exist and contain the mutated file
+    const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
+    assert.ok(
+      fs.existsSync(patchesDir),
+      'gsd-local-patches/ must exist after migration (MANIFEST-V2-02)',
+    );
+
+    // Fresh v2 manifest must have been written
+    const m2 = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    assert.strictEqual(
+      m2.schema_version,
+      2,
+      'manifest must be re-written as v2 after migration (MANIFEST-V2-02)',
+    );
+
+    // reportLocalPatches must be suppressed — no "Local patches detected" prompt
+    assert.ok(
+      !r2Stdout.includes('Local patches detected'),
+      'stdout must NOT contain "Local patches detected" after migration (MANIFEST-V2-02).\nstdout: ' +
+        r2Stdout.slice(0, 2000),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-V2-03: migration does not run when schema_version: 2 already present ─
+
+test('MANIFEST-V2-03: migration does not run when schema_version: 2 already present', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-03-'));
+  try {
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+
+    // First install — writes v2 manifest
+    const r1 = runInstall();
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0 (MANIFEST-V2-03)\nstderr: ' +
+        (r1.stderr || ''),
+    );
+    assert.ok(
+      (r1.stdout || '').includes('Wrote file manifest'),
+      'first install stdout must confirm manifest write (MANIFEST-V2-03)',
+    );
+
+    // Second install — manifest already at v2, no migration should run
+    const r2 = runInstall();
+    assert.strictEqual(
+      r2.status,
+      0,
+      'second install must exit 0 (MANIFEST-V2-03)\nstderr: ' +
+        (r2.stderr || ''),
+    );
+    assert.ok(
+      !(r2.stdout || '').includes('Migrated manifest to v2'),
+      'second install must NOT emit migration notice when schema_version: 2 is already present (MANIFEST-V2-03).\nstdout: ' +
+        (r2.stdout || '').slice(0, 2000),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── MANIFEST-V2-04: reportLocalPatches skipped after migration run ───────────
+
+test('MANIFEST-V2-04: reportLocalPatches skipped after migration run', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-04-'));
+  try {
+    const runInstall = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+
+    // First install
+    const r1 = runInstall();
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0 (MANIFEST-V2-04)\nstderr: ' +
+        (r1.stderr || ''),
+    );
+
+    // Simulate v1 manifest and mutate a managed file
+    const mPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    delete m.schema_version;
+    const managedFiles = Object.keys(m.files || {});
+    assert.ok(
+      managedFiles.length > 0,
+      'manifest must have managed files (MANIFEST-V2-04)',
+    );
+    const targetAbsPath = path.join(tmpDir, '.claude', managedFiles[0]);
+    fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+    fs.appendFileSync(targetAbsPath, '\n<!-- LOCAL EDIT MARKER -->\n');
+
+    // Second install — migration runs
+    const r2 = runInstall();
+    assert.strictEqual(
+      r2.status,
+      0,
+      'second install must exit 0 (MANIFEST-V2-04)\nstderr: ' +
+        (r2.stderr || ''),
+    );
+
+    // reportLocalPatches output must be suppressed
+    assert.ok(
+      !(r2.stdout || '').includes('Local patches detected'),
+      '"Local patches detected" must NOT appear when migration ran (MANIFEST-V2-04).\nstdout: ' +
+        (r2.stdout || '').slice(0, 2000),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── CLEAN-01: --clean flag wipes managed dirs before install and produces fresh v2 manifest ──
+
+test('CLEAN-01: --clean flag wipes managed dirs before install and produces fresh v2 manifest', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-01-'));
+  try {
+    const runInstall = (extraArgs = []) =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local', ...extraArgs],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+    const r1 = runInstall();
+    assert.strictEqual(
+      r1.status,
+      0,
+      'first install must exit 0\nstderr: ' + (r1.stderr || ''),
+    );
+    // Corrupt the manifest
+    const mPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    fs.writeFileSync(mPath, '{"corrupted":true}');
+    const r2 = runInstall(['--clean']);
+    assert.strictEqual(
+      r2.status,
+      0,
+      '--clean install must exit 0\nstderr: ' + (r2.stderr || ''),
+    );
+    const manifest = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    assert.strictEqual(
+      manifest.schema_version,
+      2,
+      'manifest must have schema_version: 2 after --clean install',
+    );
+    assert.ok(
+      manifest.files && Object.keys(manifest.files).length > 0,
+      'manifest.files must be non-empty after --clean install',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── CLEAN-02: --clean leaves gsd-local-patches/ intact ──────────────────────
+
+test('CLEAN-02: --clean leaves gsd-local-patches/ intact', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-02-'));
+  try {
+    const runInstall = (extraArgs = []) =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local', ...extraArgs],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+    assert.strictEqual(runInstall().status, 0);
+    const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
+    fs.mkdirSync(patchesDir, { recursive: true });
+    const sentinelPath = path.join(patchesDir, 'sentinel.txt');
+    fs.writeFileSync(sentinelPath, 'sentinel');
+    const r = runInstall(['--clean']);
+    assert.strictEqual(
+      r.status,
+      0,
+      '--clean must exit 0\nstderr: ' + (r.stderr || ''),
+    );
+    assert.ok(fs.existsSync(sentinelPath), 'sentinel.txt must survive --clean');
+    assert.strictEqual(fs.readFileSync(sentinelPath, 'utf8'), 'sentinel');
+    assert.ok(
+      fs.existsSync(path.join(tmpDir, '.claude', 'commands', 'gsd')),
+      'commands/gsd/ must be re-installed after --clean wipe',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── CLEAN-03: --clean skips migration even when manifest is v1 ───────────────
+
+test('CLEAN-03: --clean skips migration even when manifest is v1 (missing schema_version)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-03-'));
+  try {
+    const runInstall = (extraArgs = []) =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local', ...extraArgs],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+    assert.strictEqual(runInstall().status, 0);
+    // Strip schema_version to simulate v1 manifest
+    const mPath = path.join(tmpDir, '.claude', 'gsd-file-manifest.json');
+    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    delete m.schema_version;
+    fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+    const r = runInstall(['--clean']);
+    assert.strictEqual(
+      r.status,
+      0,
+      '--clean must exit 0\nstderr: ' + (r.stderr || ''),
+    );
+    assert.ok(
+      !/Migrated manifest to v2/.test(r.stdout || ''),
+      '--clean must NOT trigger migration notice. stdout:\n' +
+        (r.stdout || '').slice(0, 1500),
+    );
+    const finalManifest = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+    assert.strictEqual(
+      finalManifest.schema_version,
+      2,
+      'manifest must be v2 after --clean install',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── CLEAN-04: --help output documents --clean ────────────────────────────────
+
+test('CLEAN-04: --help output documents --clean', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-04-'));
+  try {
+    const r = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--help'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      r.status,
+      0,
+      '--help must exit 0\nstderr: ' + (r.stderr || ''),
+    );
+    assert.ok(
+      /--clean/.test(r.stdout || ''),
+      '--help must mention --clean. stdout:\n' + (r.stdout || ''),
+    );
+    assert.ok(
+      /Wipe/.test(r.stdout || ''),
+      '--help must include descriptive copy for --clean (containing "Wipe"). stdout:\n' +
+        (r.stdout || ''),
     );
   } finally {
     cleanup(tmpDir);
@@ -1695,55 +2617,99 @@ test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.j
 
 describe('install.js - Phase 55 effort frontmatter sync', () => {
   let tmpDir;
-  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+  afterEach(() => {
+    if (tmpDir) cleanup(tmpDir);
+  });
 
   test('EFFSYNC-INSTALL-01: Claude local install writes effort: max to gsd-planner.md when profile=quality', () => {
     tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-install-'));
     // Pre-seed config so resolveEffortInternal reads a known profile during install
     const configDir = path.join(tmpDir, '.planning');
     fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({
-      runtime: 'claude', model_profile: 'quality',
-    }));
-    const result = spawnSync(process.execPath, [
-      INSTALLER, '--runtime', 'claude', '--local',
-      '--no-seed-permissions-config', '--no-seed-sandbox-config',
-    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    fs.writeFileSync(
+      path.join(configDir, 'config.json'),
+      JSON.stringify({
+        runtime: 'claude',
+        model_profile: 'quality',
+      }),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        INSTALLER,
+        '--runtime',
+        'claude',
+        '--local',
+        '--no-seed-permissions-config',
+        '--no-seed-sandbox-config',
+      ],
+      { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 },
+    );
     assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
-    const plannerPath = path.join(tmpDir, '.claude', 'agents', 'gsd-planner.md');
+    const plannerPath = path.join(
+      tmpDir,
+      '.claude',
+      'agents',
+      'gsd-planner.md',
+    );
     assert.ok(fs.existsSync(plannerPath), 'gsd-planner.md must be installed');
     const planner = fs.readFileSync(plannerPath, 'utf-8');
-    assert.match(planner, /^effort: max$/m, 'effort: max must be in frontmatter');
+    assert.match(
+      planner,
+      /^effort: max$/m,
+      'effort: max must be in frontmatter',
+    );
     // Plan 04 emits the restart notice on stderr when changes occur
     assert.ok(
       result.stderr.includes('Restart Claude Code to apply effort changes.'),
-      `restart notice missing from stderr: ${result.stderr}`
+      `restart notice missing from stderr: ${result.stderr}`,
     );
   });
 
   test('EFFSYNC-INSTALL-02: Copilot local install does NOT write effort: to any agent file', () => {
     tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-copilot-'));
-    const result = spawnSync(process.execPath, [
-      INSTALLER, '--runtime', 'copilot', '--local',
-    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 },
+    );
     assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
     const agentsDir = path.join(tmpDir, '.github', 'agents');
     assert.ok(fs.existsSync(agentsDir), 'Copilot agents directory must exist');
-    const files = fs.readdirSync(agentsDir).filter(f => f.endsWith('.agent.md'));
+    const files = fs
+      .readdirSync(agentsDir)
+      .filter((f) => f.endsWith('.agent.md'));
     for (const file of files) {
       const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-      assert.doesNotMatch(content, /^effort:/m, `${file} must not contain effort:`);
+      assert.doesNotMatch(
+        content,
+        /^effort:/m,
+        `${file} must not contain effort:`,
+      );
     }
   });
 
   test('EFFSYNC-INSTALL-03: Copilot local install does NOT deploy gsd-set-profile skill', () => {
-    tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-effsync-copilot-skill-'));
-    const result = spawnSync(process.execPath, [
-      INSTALLER, '--runtime', 'copilot', '--local',
-    ], { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 });
+    tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, 'gsd-effsync-copilot-skill-'),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'copilot', '--local'],
+      { cwd: tmpDir, encoding: 'utf-8', timeout: 30000 },
+    );
     assert.strictEqual(result.status, 0, `install failed: ${result.stderr}`);
-    const setProfileSkill = path.join(tmpDir, '.github', 'skills', 'gsd-set-profile', 'SKILL.md');
-    assert.ok(!fs.existsSync(setProfileSkill), 'gsd-set-profile/SKILL.md must NOT exist for Copilot install');
+    const setProfileSkill = path.join(
+      tmpDir,
+      '.github',
+      'skills',
+      'gsd-set-profile',
+      'SKILL.md',
+    );
+    assert.ok(
+      !fs.existsSync(setProfileSkill),
+      'gsd-set-profile/SKILL.md must NOT exist for Copilot install',
+    );
   });
 });
 
@@ -1761,8 +2727,11 @@ test('ALLOW-07: install.js --local on Linux writes bare Edit/Write/Read forms', 
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'linux' }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'linux',
+        }),
+      },
     );
     assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
 
@@ -1773,9 +2742,18 @@ test('ALLOW-07: install.js --local on Linux writes bare Edit/Write/Read forms', 
     assert.ok(allow.includes('Edit'), 'Linux must include bare Edit');
     assert.ok(allow.includes('Write'), 'Linux must include bare Write');
     assert.ok(allow.includes('Read'), 'Linux must include bare Read');
-    assert.ok(!allow.includes('Edit(*)'), 'Linux must NOT include glob Edit(*)');
-    assert.ok(!allow.includes('Write(*)'), 'Linux must NOT include glob Write(*)');
-    assert.ok(!allow.includes('Read(*)'), 'Linux must NOT include glob Read(*)');
+    assert.ok(
+      !allow.includes('Edit(*)'),
+      'Linux must NOT include glob Edit(*)',
+    );
+    assert.ok(
+      !allow.includes('Write(*)'),
+      'Linux must NOT include glob Write(*)',
+    );
+    assert.ok(
+      !allow.includes('Read(*)'),
+      'Linux must NOT include glob Read(*)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1793,12 +2771,17 @@ test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => 
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'darwin',
+        }),
+      },
     );
     assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
 
-    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'));
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'),
+    );
     const allow = settings.permissions?.allow ?? [];
     assert.ok(allow.includes('Edit(*)'));
     assert.ok(allow.includes('Write(*)'));
@@ -1806,12 +2789,29 @@ test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => 
     assert.ok(!allow.includes('Edit'), 'macOS must not carry bare Edit');
     // Narrowed verbs land — gated on gh presence on host (ALLOW-22 integration)
     try {
-      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
-      assert.ok(allow.includes('Bash(gh repo view *)'), 'narrowed repo view must land');
-      assert.ok(allow.includes('Bash(gh label create *)'), 'narrowed label create must land');
-      assert.ok(!allow.includes('Bash(gh repo *)'), 'broad gh repo must NOT land (narrowed)');
-      assert.ok(!allow.includes('Bash(gh label *)'), 'broad gh label must NOT land (narrowed)');
-    } catch { /* gh not installed — skip narrow-verb assertions */ }
+      require('child_process').execSync('which gh', {
+        stdio: 'ignore',
+        timeout: 2000,
+      });
+      assert.ok(
+        allow.includes('Bash(gh repo view *)'),
+        'narrowed repo view must land',
+      );
+      assert.ok(
+        allow.includes('Bash(gh label create *)'),
+        'narrowed label create must land',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh repo *)'),
+        'broad gh repo must NOT land (narrowed)',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh label *)'),
+        'broad gh label must NOT land (narrowed)',
+      );
+    } catch {
+      /* gh not installed — skip narrow-verb assertions */
+    }
   } finally {
     cleanup(tmpDir);
   }
@@ -1829,18 +2829,32 @@ test('ALLOW-16: install.js --local on win32 writes canonical glob forms and narr
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'win32' }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'win32',
+        }),
+      },
     );
     assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
 
-    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'));
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'),
+    );
     const allow = settings.permissions?.allow ?? [];
 
     // Canonical forms present (win32 mirrors darwin per getReadEditWriteAllowRules)
-    assert.ok(allow.includes('Edit(*)'), 'win32 must include canonical Edit(*)');
-    assert.ok(allow.includes('Write(*)'), 'win32 must include canonical Write(*)');
-    assert.ok(allow.includes('Read(*)'), 'win32 must include canonical Read(*)');
+    assert.ok(
+      allow.includes('Edit(*)'),
+      'win32 must include canonical Edit(*)',
+    );
+    assert.ok(
+      allow.includes('Write(*)'),
+      'win32 must include canonical Write(*)',
+    );
+    assert.ok(
+      allow.includes('Read(*)'),
+      'win32 must include canonical Read(*)',
+    );
 
     // Bare forms absent
     assert.ok(!allow.includes('Edit'), 'win32 must NOT carry bare Edit');
@@ -1849,12 +2863,29 @@ test('ALLOW-16: install.js --local on win32 writes canonical glob forms and narr
 
     // Narrowed verbs land — gated on gh presence on host
     try {
-      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
-      assert.ok(allow.includes('Bash(gh repo view *)'), 'narrowed repo view must land');
-      assert.ok(allow.includes('Bash(gh label create *)'), 'narrowed label create must land');
-      assert.ok(!allow.includes('Bash(gh repo *)'), 'broad gh repo must NOT land (narrowed)');
-      assert.ok(!allow.includes('Bash(gh label *)'), 'broad gh label must NOT land (narrowed)');
-    } catch { /* gh not installed — skip narrow-verb assertions */ }
+      require('child_process').execSync('which gh', {
+        stdio: 'ignore',
+        timeout: 2000,
+      });
+      assert.ok(
+        allow.includes('Bash(gh repo view *)'),
+        'narrowed repo view must land',
+      );
+      assert.ok(
+        allow.includes('Bash(gh label create *)'),
+        'narrowed label create must land',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh repo *)'),
+        'broad gh repo must NOT land (narrowed)',
+      );
+      assert.ok(
+        !allow.includes('Bash(gh label *)'),
+        'broad gh label must NOT land (narrowed)',
+      );
+    } catch {
+      /* gh not installed — skip narrow-verb assertions */
+    }
   } finally {
     cleanup(tmpDir);
   }
@@ -1869,7 +2900,11 @@ test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allo
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'settings.json'),
-      JSON.stringify({ permissions: { allow: ['Bash(custom-cmd *)'] } }, null, 2)
+      JSON.stringify(
+        { permissions: { allow: ['Bash(custom-cmd *)'] } },
+        null,
+        2,
+      ),
     );
 
     const result = spawnSync(
@@ -1879,22 +2914,48 @@ test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allo
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'darwin',
+        }),
+      },
     );
     assert.strictEqual(result.status, 0, `install.js failed: ${result.stderr}`);
 
-    const settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
-    assert.ok(settings.permissions.allow.includes('Bash(custom-cmd *)'), 'user entry must be preserved');
-    assert.ok(settings.permissions.allow.includes('Bash(node *)'), 'template entries must be added');
-    assert.match(result.stdout, /Added \d+ allow entries/, 'must log per-section allow count');
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'),
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Bash(custom-cmd *)'),
+      'user entry must be preserved',
+    );
+    assert.ok(
+      settings.permissions.allow.includes('Bash(node *)'),
+      'template entries must be added',
+    );
+    assert.match(
+      result.stdout,
+      /Added \d+ allow entries/,
+      'must log per-section allow count',
+    );
     // Narrowed-verb check — gated on gh presence (ALLOW-22 integration)
     try {
-      require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
+      require('child_process').execSync('which gh', {
+        stdio: 'ignore',
+        timeout: 2000,
+      });
       const allow = settings.permissions?.allow ?? [];
-      assert.ok(!allow.includes('Bash(gh repo *)'), 'linux install must not land broad gh repo (narrowed)');
-      assert.ok(allow.includes('Bash(gh repo view *)') || allow.length === 0, 'narrowed repo view lands when gh present');
-    } catch { /* gh not installed */ }
+      assert.ok(
+        !allow.includes('Bash(gh repo *)'),
+        'linux install must not land broad gh repo (narrowed)',
+      );
+      assert.ok(
+        allow.includes('Bash(gh repo view *)') || allow.length === 0,
+        'narrowed repo view lands when gh present',
+      );
+    } catch {
+      /* gh not installed */
+    }
   } finally {
     cleanup(tmpDir);
   }
@@ -1909,7 +2970,11 @@ test('ALLOW-10: deny-section sync preserves user denies and does not log deny ad
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'settings.json'),
-      JSON.stringify({ permissions: { allow: [], deny: ['Bash(user-deny *)'] } }, null, 2)
+      JSON.stringify(
+        { permissions: { allow: [], deny: ['Bash(user-deny *)'] } },
+        null,
+        2,
+      ),
     );
 
     const result = spawnSync(
@@ -1919,14 +2984,26 @@ test('ALLOW-10: deny-section sync preserves user denies and does not log deny ad
         encoding: 'utf8',
         timeout: 15000,
         cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
-      }
+        env: Object.assign({}, process.env, {
+          HOME: os.homedir(),
+          GSD_TEST_FORCE_PLATFORM: 'darwin',
+        }),
+      },
     );
     assert.strictEqual(result.status, 0);
 
-    const settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
-    assert.ok(settings.permissions.deny.includes('Bash(user-deny *)'), 'user deny must be preserved');
-    assert.doesNotMatch(result.stdout, /Added \d+ deny/, 'no deny additions expected');
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'),
+    );
+    assert.ok(
+      settings.permissions.deny.includes('Bash(user-deny *)'),
+      'user deny must be preserved',
+    );
+    assert.doesNotMatch(
+      result.stdout,
+      /Added \d+ deny/,
+      'no deny additions expected',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -1938,16 +3015,20 @@ test('ALLOW-11: second install logs "Permissions already up to date" (no per-sec
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-11-'));
   try {
     const configDir = path.join(tmpDir, '.claude');
-    const spawn = () => spawnSync(
-      process.execPath,
-      [INSTALLER, '--runtime', 'claude', '--local'],
-      {
-        encoding: 'utf8',
-        timeout: 15000,
-        cwd: tmpDir,
-        env: Object.assign({}, process.env, { HOME: os.homedir(), GSD_TEST_FORCE_PLATFORM: 'darwin' }),
-      }
-    );
+    const spawn = () =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', 'claude', '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, {
+            HOME: os.homedir(),
+            GSD_TEST_FORCE_PLATFORM: 'darwin',
+          }),
+        },
+      );
     const first = spawn();
     assert.strictEqual(first.status, 0);
     const second = spawn();
