@@ -4,6 +4,15 @@
     "autoAllowBashIfSandboxed": true
   },
   "permissions": {
+    "ask": [
+      "Bash(git push * main*)",
+      "Bash(git push * master*)",
+      "Bash(git push * develop*)",
+      "Bash(git -C * push * main*)",
+      "Bash(git -C * push * master*)",
+      "Bash(git -C * push * develop*)",
+      "Bash(gh pr merge *--admin*)"
+    ],
     "allow": [
       "Bash(node *)",
       "Bash(git *)",
