@@ -89,3 +89,21 @@ jobs:
       - name: Run tests with coverage
         shell: bash
         run: npm run test:coverage
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          ACTIONLINT_VERSION="1.7.7"
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz
+          tar -xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint
+          chmod +x /usr/local/bin/actionlint
+          actionlint --version
+
+      - name: Lint GitHub Actions workflows
+        shell: bash
+        run: actionlint .github/workflows/*.yml

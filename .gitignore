@@ -10,3 +10,6 @@ dist/
 
 # Coverage artifacts
 coverage/
+
+# Vendored local binaries (platform-specific, not committed)
+.bin/
