@@ -42,6 +42,32 @@ test('test-baseline lib module', async (t) => {
     assert.ok(output.includes('Unknown test subcommand') || output.includes('unknown-subcmd'), `expected error for unknown subcommand, got: ${output}`);
   });
 
+  // F-002: captureBaseline should not pollute stdout with progress messages
+  await t.test('F-002: captureBaseline progress output goes to stderr, not stdout', () => {
+    const tmpBase = resolveTmpDir();
+    const tmpDir = fs.mkdtempSync(path.join(tmpBase, 'gsd-baseline-test-'));
+    try {
+      const outputFile = path.join(tmpDir, 'baseline.json');
+      const { captureBaseline } = require('../gsd-ng/bin/lib/test-baseline.cjs');
+      // Intercept stdout to verify no progress is written there
+      const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+      const stdoutChunks = [];
+      process.stdout.write = (chunk) => { stdoutChunks.push(String(chunk)); return true; };
+      try {
+        captureBaseline(JSON.stringify([{ dir: '.', command: 'echo test' }]), outputFile);
+      } finally {
+        process.stdout.write = originalStdoutWrite;
+      }
+      const stdoutOutput = stdoutChunks.join('');
+      assert.ok(
+        !stdoutOutput.includes(': passing') && !stdoutOutput.includes(': failing'),
+        `captureBaseline should not write progress to stdout, got: ${stdoutOutput}`,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   // F-001: corrupt baseline file should produce a stderr warning
   await t.test('F-001: compareBaseline emits stderr warning when baseline file is corrupt JSON', () => {
     const tmpBase = resolveTmpDir();
