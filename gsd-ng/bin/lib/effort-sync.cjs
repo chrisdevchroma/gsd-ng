@@ -68,6 +68,9 @@ function syncAgentEffortFrontmatter(cwd, agentsDir) {
 /**
  * Returns the canonical restart notice string, or '' when no changes occurred.
  * Wording is locked by CONTEXT.md §"Restart-required notice UX (Area 4)".
+ *
+ * @param {Array<{agent: string, effort: string|null}>} changes - Array of applied changes
+ * @returns {string} Restart notice string, or '' if no changes occurred.
  */
 function formatRestartNotice(changes) {
   if (!changes || changes.length === 0) return '';
