@@ -1840,6 +1840,11 @@ function install(isGlobal) {
     fs.writeFileSync(versionDest, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
 
+    // Write file manifest for Copilot installs (same as Claude path).
+    // Required for local-patch detection on future re-installs.
+    writeManifest(targetDir, INSTALLED_VERSION);
+    console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
+
     // Persist runtime to .planning/config.json for effort-gating
     writeRuntimeToConfig(runtime);
 

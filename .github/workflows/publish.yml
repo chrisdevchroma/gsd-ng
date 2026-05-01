@@ -34,7 +34,8 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *-* ]]; then
-            TAG=$(echo "$VERSION" | sed 's/.*-\([a-z]*\).*/\1/')
+            PRERELEASE="${VERSION#*-}"
+            TAG="${PRERELEASE%%.*}"
             echo "Publishing $VERSION under '$TAG' tag"
             npm publish --access public --provenance --tag "$TAG"
           else
