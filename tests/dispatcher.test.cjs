@@ -502,3 +502,75 @@ describe('sync-agents command (Phase 55)', () => {
     );
   });
 });
+
+// ─── F-SKILL-HINT: skill-redirect hints in error messages ────────────────────
+
+describe('F-SKILL-HINT: skill-redirect hints in gsd-tools error messages', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('F-SKILL-HINT: todo unknown subcommand error includes /gsd:add-todo hint', () => {
+    const result = runGsdTools('todo unknown-sub', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    assert.ok(
+      result.error.includes('/gsd:add-todo'),
+      `F-SKILL-HINT: Expected /gsd:add-todo hint in stderr, got: ${result.error}`,
+    );
+  });
+
+  test('F-SKILL-HINT: todo unknown subcommand still shows Available list', () => {
+    const result = runGsdTools('todo unknown-sub', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    assert.ok(
+      result.error.includes('Available:'),
+      `Expected "Available:" in stderr alongside skill hint, got: ${result.error}`,
+    );
+  });
+});
+
+// ─── F-DYM-SCOPE: did-you-mean namespace scoping ─────────────────────────────
+
+describe('F-DYM-SCOPE: did-you-mean suggestions scoped to current namespace', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('F-DYM-SCOPE: todo typo suggests same-namespace subcommand, not cross-namespace', () => {
+    // "compleet" is a typo for "complete" (in todo namespace)
+    const result = runGsdTools('todo compleet', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    // Should suggest "complete" (same-namespace)
+    assert.ok(
+      result.error.includes('complete'),
+      `F-DYM-SCOPE: Expected same-namespace suggestion "complete" in stderr, got: ${result.error}`,
+    );
+    // Must NOT suggest anything from the phase namespace
+    assert.ok(
+      !result.error.includes('phase '),
+      `F-DYM-SCOPE: Must not suggest cross-namespace "phase ..." in stderr, got: ${result.error}`,
+    );
+  });
+
+  test('F-DYM-SCOPE: todo add does not suggest phase add', () => {
+    // "add" is not in the todo namespace; fuzzy matching against phase namespace must not fire
+    const result = runGsdTools('todo add', tmpDir);
+    assert.strictEqual(result.success, false, 'Should exit non-zero');
+    assert.ok(
+      !result.error.includes('phase add'),
+      `F-DYM-SCOPE: Must not suggest "phase add" when user types "todo add", got: ${result.error}`,
+    );
+  });
+});
