@@ -159,6 +159,12 @@ function validateTasks(tasks, config) {
 
 /**
  * Resolve a writable temp directory — TMPDIR may not be accessible in some environments.
+ *
+ * NOTE: This function is intentionally duplicated from tests/helpers.cjs. The benchmark
+ * runner is a standalone CLI tool and cannot import from the tests/ directory. If the
+ * logic in helpers.cjs::resolveTmpDir() changes (e.g., new candidate paths, fallback order),
+ * this copy must be updated to match.
+ *
  * @returns {string} Path to writable temp dir
  */
 function resolveTmpDir() {
@@ -512,7 +518,6 @@ function writeResults(resultsMap, atRefMatrix, config, models) {
 
   const output = {
     captured: now.toISOString(),
-    phase: 'pre-phase-39',
     models: models.map(m => m.id),
     tasks: resultsMap,
     at_ref_matrix: atRefMatrix,
