@@ -73,7 +73,11 @@ function compareBaseline(entriesJson, baselineFile) {
   let baselines = {};
   try {
     baselines = JSON.parse(fs.readFileSync(baselineFile, 'utf-8'));
-  } catch {}
+  } catch (err) {
+    process.stderr.write(
+      `[gsd] Warning: could not parse baseline file '${baselineFile}': ${err.message}\n`,
+    );
+  }
 
   const results = [];
   let hasNewFailure = false;
