@@ -2196,7 +2196,14 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
       path.join(tmpDir, '.claude', 'commands', 'gsd'),
       path.join(tmpDir, '.claude', 'gsd-ng'),
     ];
-    const BAD_TOKENS = ['{{USER_QUESTION_TOOL}}', '{{PROJECT_RULES_FILE}}'];
+    const BAD_TOKENS = [
+      '{{USER_QUESTION_TOOL}}',
+      '{{PROJECT_RULES_FILE}}',
+      '{{COMMAND_PREFIX}}',
+      '{{GSD_BLOCK_OPEN}}',
+      '{{GSD_BLOCK_CLOSE}}',
+      '{{MEMORY_DIR}}',
+    ];
 
     function walk(dir, out) {
       if (!fs.existsSync(dir)) return;
@@ -3126,12 +3133,14 @@ test('ALLOW-11: second install logs "Permissions already up to date" (no per-sec
   }
 });
 
-// ── F-RULES-01: {{PROJECT_RULES_FILE}} must appear in source skill files (unified generation) ──
-// TDD: install.js previously hardcoded {{PROJECT_RULES_FILE}} -> CLAUDE.md in copyWithPathReplacement().
-// Fix: remove that substitution; skill files use {{PROJECT_RULES_FILE}} as a runtime-detect instruction.
-// The acceptance criteria (plan 49-04) check SOURCE files for {{PROJECT_RULES_FILE}} presence.
+// ── F-RULES-01: source seed-memories.md exists (relaxed in 49.1-01) ──
+// History: plan 49-04 added a token assertion on the seed-memories source file.
+// 49.1-01 relaxes this: per CONTEXT.md decision, plan 49.1-02 will rewrite the skill to use
+// skill-time prose detection (no template variable). The original token assertion would then
+// fail. F-RULES-02 still asserts the token in new-project.md (kept in unified flow).
+// This test now only asserts source presence — a tombstone preserving the F-RULES-01 ID.
 
-test('F-RULES-01: source seed-memories.md uses {{PROJECT_RULES_FILE}} for runtime-aware project rules detection', () => {
+test('F-RULES-01: source seed-memories.md exists (assertion relaxed in 49.1-01 — skill-time detection moved to prose)', () => {
   const seedMemoriesSrc = path.resolve(
     __dirname,
     '..',
@@ -3143,12 +3152,8 @@ test('F-RULES-01: source seed-memories.md uses {{PROJECT_RULES_FILE}} for runtim
     fs.existsSync(seedMemoriesSrc),
     'commands/gsd/seed-memories.md must exist in source (F-RULES-01)',
   );
-  const content = fs.readFileSync(seedMemoriesSrc, 'utf8');
-  assert.ok(
-    content.includes('{{PROJECT_RULES_FILE}}'),
-    'seed-memories.md source must use {{PROJECT_RULES_FILE}} for runtime-aware project rules file detection (F-RULES-01).\n' +
-      'Fix: update seed-memories.md to reference {{PROJECT_RULES_FILE}} and detect runtime (Claude vs Copilot) at skill execution time.',
-  );
+  // 49.1-01: {{PROJECT_RULES_FILE}} assertion removed — file will use skill-time prose detection
+  // per CONTEXT.md, rewritten in plan 49.1-02. F-RULES-02 covers new-project.md unified flow.
 });
 
 test('F-RULES-02: source new-project.md workflow uses {{PROJECT_RULES_FILE}} in Step 9', () => {
