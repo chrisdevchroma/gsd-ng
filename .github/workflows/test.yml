@@ -99,9 +99,11 @@ jobs:
         shell: bash
         run: |
           ACTIONLINT_VERSION="1.7.7"
+          mkdir -p "$HOME/.local/bin"
           curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz
-          tar -xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint
-          chmod +x /usr/local/bin/actionlint
+          tar -xzf /tmp/actionlint.tar.gz -C "$HOME/.local/bin" actionlint
+          chmod +x "$HOME/.local/bin/actionlint"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
           actionlint --version
 
       - name: Lint GitHub Actions workflows
