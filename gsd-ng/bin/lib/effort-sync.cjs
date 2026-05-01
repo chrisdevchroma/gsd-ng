@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * effort-sync — Writes resolved effort: frontmatter into deployed Claude agent files.
  *
@@ -11,8 +13,6 @@
  * Does its OWN before/after change detection because the frontmatter setter always
  * writes the file unconditionally (no short-circuit on unchanged values).
  */
-
-'use strict';
 
 const fs = require('fs');
 const path = require('path');
