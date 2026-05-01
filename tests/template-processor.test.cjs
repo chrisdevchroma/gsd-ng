@@ -280,3 +280,35 @@ describe('processTemplate - idempotency', () => {
     assert.equal(twice, once);
   });
 });
+
+// --- Input validation ---
+
+describe('processTemplate - input validation (F-005)', () => {
+  test('F-005: processTemplate throws descriptive error when context is null', () => {
+    assert.throws(
+      () => processTemplate('hello {{NAME}}', null),
+      (err) => {
+        assert.ok(err instanceof Error, 'should throw an Error');
+        assert.ok(
+          err.message.includes('context') && err.message.includes('non-null'),
+          `Expected descriptive error about context being non-null, got: ${err.message}`,
+        );
+        return true;
+      },
+    );
+  });
+
+  test('F-005: processTemplate throws descriptive error when context is undefined', () => {
+    assert.throws(
+      () => processTemplate('hello {{NAME}}', undefined),
+      (err) => {
+        assert.ok(err instanceof Error, 'should throw an Error');
+        assert.ok(
+          err.message.includes('context'),
+          `Expected error mentioning context, got: ${err.message}`,
+        );
+        return true;
+      },
+    );
+  });
+});
