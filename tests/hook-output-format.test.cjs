@@ -3,7 +3,6 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { runHook } = require('./hook-harness.cjs');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { resolveTmpDir } = require('./helpers.cjs');
 

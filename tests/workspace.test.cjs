@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir, createSubmoduleWorkspace, touchSubmodule } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, cleanupSubdir, resolveTmpDir, createSubmoduleWorkspace, touchSubmodule } = require('./helpers.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // detectWorkspaceType — workspace topology detection
@@ -1086,13 +1086,13 @@ describe('F-CWD: cwd resolution prefers superproject when inside a submodule', (
     // Add worktree config so git knows where the submodule is checked out
     fs.appendFileSync(path.join(submoduleGitDir, 'config'), `\n[core]\n\tworktree = ${subDir}\n`);
     // Replace submodule's .git dir with a .git file pointing to the modules dir
-    fs.rmSync(subGitDir, { recursive: true, force: true });
+    cleanupSubdir(subDir, '.git');
     fs.writeFileSync(path.join(subDir, '.git'), `gitdir: ${submoduleGitDir}\n`);
   });
 
   afterEach(() => {
     if (superDir) {
-      try { fs.rmSync(superDir, { recursive: true, force: true }); } catch {}
+      try { cleanup(superDir); } catch {}
     }
   });
 

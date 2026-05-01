@@ -6,7 +6,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, createTempGitProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 
 describe('roadmap get-phase command', () => {
   let tmpDir;
@@ -1214,7 +1214,7 @@ describe('getPhaseCompletionStatus helper', () => {
   });
 
   test('non-existent directory returns not_started', () => {
-    const result = getPhaseCompletionStatus('/tmp/gsd-nonexistent-dir-' + Date.now());
+    const result = getPhaseCompletionStatus(path.join(resolveTmpDir(), 'gsd-nonexistent-dir-' + Date.now()));
     assert.strictEqual(result.isComplete, false, 'isComplete should be false');
     assert.strictEqual(result.status, 'not_started', 'status should be not_started');
   });

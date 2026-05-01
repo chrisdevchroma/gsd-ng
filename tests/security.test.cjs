@@ -10,7 +10,6 @@
 'use strict';
 const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
-const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');

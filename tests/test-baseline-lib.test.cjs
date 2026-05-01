@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
-const { resolveTmpDir } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const GSD_TOOLS = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
 
@@ -64,7 +64,7 @@ test('test-baseline lib module', async (t) => {
         `captureBaseline should not write progress to stdout, got: ${stdoutOutput}`,
       );
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -91,7 +91,7 @@ test('test-baseline lib module', async (t) => {
         `Expected a stderr warning about corrupt baseline file, got: ${stderrOutput}`,
       );
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 });

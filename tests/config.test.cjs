@@ -11,7 +11,6 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { runGsdTools, createTempProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
 const { EFFORT_PROFILES, MODEL_PROFILES, getAgentToEffortMapForProfile, formatAgentToEffortMapAsTable } = require('../gsd-ng/bin/lib/model-profiles.cjs');
 

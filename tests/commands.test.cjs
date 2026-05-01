@@ -2011,7 +2011,6 @@ describe('help command', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('discoverTestCommand', () => {
-  const os = require('os');
   const { discoverTestCommand } = require('../gsd-ng/bin/lib/commands.cjs');
   let tmpDir;
 
@@ -2246,7 +2245,6 @@ describe('discoverTestCommand', () => {
 // =============================================================================
 
 describe('divergence helpers', () => {
-  const os = require('os');
   const {
     classifyCommit,
     priorityOrder,
@@ -2734,7 +2732,6 @@ describe('cmdIssueSync verify state modes', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cleanup command', () => {
-  const os = require('os');
   let tmpDir;
 
   function createCleanupProject() {
@@ -3279,14 +3276,12 @@ describe('summary-extract --default flag', () => {
 // { permissions: { allow: [...] } } matching install.js's settings.json structure.
 
 describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => {
-  const pathMod = require('path');
-  const osMod = require('os');
-  const fsMod = require('fs');
+  const { homedir } = require('os');
   const { spawnSync: spawnSyncMod } = require('node:child_process');
-  const INSTALLER = pathMod.resolve(__dirname, '..', 'bin', 'install.js');
+  const INSTALLER = path.resolve(__dirname, '..', 'bin', 'install.js');
 
   function runInstallAndRead(platform) {
-    const tmpCwd = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'gsd-parity-'));
+    const tmpCwd = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-parity-'));
     try {
       const r = spawnSyncMod(
         process.execPath,
@@ -3295,13 +3290,13 @@ describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => 
           encoding: 'utf8',
           timeout: 15000,
           cwd: tmpCwd,
-          env: Object.assign({}, process.env, { HOME: osMod.homedir(), GSD_TEST_FORCE_PLATFORM: platform }),
+          env: Object.assign({}, process.env, { HOME: homedir(), GSD_TEST_FORCE_PLATFORM: platform }),
         }
       );
       assert.strictEqual(r.status, 0, `install.js failed on ${platform}: ${r.stderr}`);
-      return JSON.parse(fsMod.readFileSync(pathMod.join(tmpCwd, '.claude', 'settings.json'), 'utf8')).permissions.allow;
+      return JSON.parse(fs.readFileSync(path.join(tmpCwd, '.claude', 'settings.json'), 'utf8')).permissions.allow;
     } finally {
-      try { fsMod.rmSync(tmpCwd, { recursive: true, force: true }); } catch {}
+      try { cleanup(tmpCwd); } catch {}
     }
   }
 
