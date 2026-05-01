@@ -7,10 +7,18 @@ const RUNTIMES = {
   claude: {
     PROJECT_RULES_FILE: 'CLAUDE.md',
     USER_QUESTION_TOOL: 'AskUserQuestion',
+    COMMAND_PREFIX: '/gsd:',
+    GSD_BLOCK_OPEN: '## GSD',
+    GSD_BLOCK_CLOSE: '## ',
+    MEMORY_DIR: '.claude/memory/',
   },
   copilot: {
     PROJECT_RULES_FILE: '.github/copilot-instructions.md',
     USER_QUESTION_TOOL: 'TBD',
+    COMMAND_PREFIX: '/gsd-',
+    GSD_BLOCK_OPEN: '<!-- GSD Configuration -->',
+    GSD_BLOCK_CLOSE: '<!-- /GSD Configuration -->',
+    MEMORY_DIR: '.github/memory/',
   },
 };
 
