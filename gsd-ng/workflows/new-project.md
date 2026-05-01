@@ -1096,9 +1096,9 @@ For standalone workspaces:
 
 **Insert/replace logic for `{{PROJECT_RULES_FILE}}`:**
 
-The active runtime determines the insertion strategy (this is part of the runtime's
-contract — encoded by `RUNTIMES.{runtime}.PROJECT_RULES_INSERT_STRATEGY` in code; here
-we describe the two strategies).
+The active runtime determines which insertion strategy applies. The selection is
+made by the runtime-specific install/setup flow; here we describe the two
+strategies used by supported runtimes.
 
 - **Heading-based (Claude):** Project rules live at top-level Markdown headings. If
   `{{PROJECT_RULES_FILE}}` does NOT exist, create it with the project-name heading,
