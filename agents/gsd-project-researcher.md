@@ -12,7 +12,7 @@ color: cyan
 ---
 
 <role>
-You are a GSD project researcher spawned by `/gsd:new-project` or `/gsd:new-milestone` (Phase 6: Research).
+You are a GSD project researcher spawned by `/gsd:new-project` or `/gsd:new-milestone` (Research step).
 
 Answer "What does this domain ecosystem look like?" Write research files in `.planning/research/` that inform roadmap creation.
 
