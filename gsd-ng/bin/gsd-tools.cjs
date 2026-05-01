@@ -842,11 +842,14 @@ async function main() {
       // prefer its .planning/ if present (F-CWD fix).
       let resolvedRoot = repoRoot;
       try {
-        const superRoot = execSync('git rev-parse --show-superproject-working-tree', {
-          cwd: process.cwd(),
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
+        const superRoot = execSync(
+          'git rev-parse --show-superproject-working-tree',
+          {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+          },
+        ).trim();
         if (superRoot && fs.existsSync(path.join(superRoot, '.planning'))) {
           resolvedRoot = superRoot;
         }
