@@ -52,7 +52,7 @@ function captureBaseline(entriesJson, outputFile) {
       fail: failMatch ? parseInt(failMatch[1]) : null,
     };
     const status = exitCode === 0 ? 'passing' : 'failing (pre-existing)';
-    console.log('  ' + dir + ': ' + status);
+    process.stderr.write('  ' + dir + ': ' + status + '\n');
   }
 
   fs.writeFileSync(outputFile, JSON.stringify(baselines, null, 2));
