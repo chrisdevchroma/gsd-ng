@@ -2,7 +2,7 @@
 
 // Lint for grep patterns embedded in documentation / reference / agent files.
 //
-// Three detection classes:
+// Four detection classes:
 //
 //   1. PCRE-only escapes (`\s`/`\S`/`\b`/`\B`/`\w`/`\W`/`\d`/`\D`) in
 //      `grep -E` patterns. These fail silently on BSD grep and emit
@@ -18,6 +18,11 @@
 //      run under Claude Code whose tree-sitter walker crashes on this
 //      syntax (upstream claude-code#42085/#43713/#48717); use flat
 //      alternation.
+//
+//   4. Caret-pipe alternation `^|pat` in `grep -E`. In ERE the `^` arm is
+//      a zero-width start-of-line anchor that matches every line — the
+//      grep outputs the entire file, not just lines matching `pat`.
+//      The correct form is `grep -E "pat"` (no bare `^|` prefix).
 //
 // Structure: synthetic-input self-tests prove the detectors catch what
 // they claim to; real-doc tests assert zero violations across the
@@ -38,6 +43,7 @@ const LINTED_FILES = [
   'gsd-ng/references/verification-patterns-deep.md',
   'agents/gsd-verifier.md',
   'gsd-ng/workflows/map-codebase.md',
+  'gsd-ng/workflows/verify-phase.md',
 ];
 
 // Extract fenced ```bash / ```sh blocks. Returns [{ startLine, lines }],
@@ -199,10 +205,42 @@ function findGroupedAltInGrepE(line) {
   return "grouped alternation '" + m[0] + "' in grep -E (trips tree-sitter walker; use flat alternation)";
 }
 
+// Detect caret-pipe alternation `^|pat` as the first alternation arm in
+// a grep -E pattern. In ERE, `^` is a zero-width start-of-line anchor;
+// when it appears as the left arm of `|`, the alternation matches every
+// line unconditionally (because every line starts at position 0). The
+// resulting grep outputs the entire file instead of just matching lines.
+//
+// Pattern: the quoted argument to grep -E starts with `^|` (caret
+// immediately followed by pipe) as the very first characters, making
+// the caret the entire left alternation arm with no further restrictions.
+//
+// Examples that FAIL:
+//   grep -E "^| $VAR" file        -- `^` alone is left arm
+//   grep -E "^| ${PHASE_NUM}" f   -- same
+//
+// Examples that PASS (caret is part of a real pattern, not a bare arm):
+//   grep -E "^foo|bar" file       -- left arm is `^foo` (anchored prefix)
+//   grep -E "^[[:digit:]]+" file  -- no alternation, caret anchors the match
+//   grep -E "pat|^other" file     -- caret is in the right arm, not left alone
+function findCaretPipeAlternation(line) {
+  if (!/\bgrep\b[^|]*\s-[A-Za-z]*E[A-Za-z]*\b/.test(line)) return null;
+  // Extract the quoted pattern argument. Accepts single or double quotes.
+  // The regex captures the first quoted token after flags that could be the
+  // grep pattern — heuristic, not a full parser.
+  const m = /\bgrep\b[^"']*[-][A-Za-z]*E[A-Za-z]*[^"']*["'](\^)\|/.exec(line);
+  if (!m) return null;
+  return (
+    "caret-pipe alternation '^|...' in grep -E — the bare '^' left arm matches every line; " +
+    "use 'grep -E \"pattern\"' (remove the '^|' prefix and match the intended content directly)"
+  );
+}
+
 const DETECTORS = [
   { name: 'PCRE escape', fn: findPCREescape },
   { name: 'Chained-prefix trap', fn: findChainedPrefixTrap },
   { name: 'Grouped alternation in grep -E', fn: findGroupedAltInGrepE },
+  { name: 'Caret-pipe alternation in grep -E', fn: findCaretPipeAlternation },
 ];
 
 function lintContent(content) {
@@ -338,6 +376,28 @@ describe('docs-grep-lint detectors', () => {
     assert.equal(findGroupedAltInGrepE('grep -E "export (async )?function" file'), null);
   });
 
+  test('findCaretPipeAlternation catches bare ^| as left alternation arm in grep -E', () => {
+    // The bare `^` left arm matches every line — the grep outputs the
+    // entire file instead of filtering for the right arm.
+    assert.ok(findCaretPipeAlternation('grep -E "^| $PHASE_NUM" file'));
+    assert.ok(findCaretPipeAlternation('grep -E "^| ${phase_number}" file'));
+    assert.ok(findCaretPipeAlternation('grep -E "^| foo" file'));
+  });
+
+  test('findCaretPipeAlternation ignores caret as part of a real anchored prefix', () => {
+    // `^foo|bar` — left arm is `^foo`, a meaningful anchored prefix.
+    // `^[[:digit:]]+` — no alternation; caret anchors the whole pattern.
+    assert.equal(findCaretPipeAlternation('grep -E "^foo|bar" file'), null);
+    assert.equal(findCaretPipeAlternation('grep -E "^[[:digit:]]+" file'), null);
+    assert.equal(findCaretPipeAlternation('grep -E "pat|^other" file'), null);
+  });
+
+  test('findCaretPipeAlternation ignores non-grep-E lines', () => {
+    // Plain grep (BRE) and grep -F don't use ERE, so not flagged.
+    assert.equal(findCaretPipeAlternation('grep "^| $VAR" file'), null);
+    assert.equal(findCaretPipeAlternation('grep -F "^| $VAR" file'), null);
+  });
+
   test('extractBashBlocks handles indented fences (inside list items)', () => {
     const content = [
       '- Step 1:',         // 1
@@ -403,6 +463,7 @@ module.exports = {
   findPCREescape,
   findChainedPrefixTrap,
   findGroupedAltInGrepE,
+  findCaretPipeAlternation,
   countFileArgsInGrep,
   lintContent,
 };
