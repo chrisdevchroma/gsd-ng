@@ -24,12 +24,18 @@ Detect workspace topology (submodule, monorepo, standalone) and seed appropriate
    - Future templates should define their own keyword sets following this same pattern.
 3. If type is `submodule` or `monorepo`: seed the multi-boundary memory template from `$HOME/.claude/gsd-ng/templates/memory-templates/multi-boundary.md` into `.claude/memory/project_commit-boundary.md`
 4. If type is `standalone`: no memories to seed (report "standalone workspace, no structural memories needed")
-5. Scan `.claude/memory/*.md` and regenerate the CLAUDE.md Memories section (append if CLAUDE.md exists, create if not). Also write/update the `## GSD` metadata section above the Memories section using the workspace type from Step 1:
+5. Detect the active runtime and target project-rules file:
+   - If `.claude/` exists in the project root → `PROJECT_RULES_FILE=CLAUDE.md` (Claude Code runtime)
+   - If `.github/` exists but not `.claude/` → `PROJECT_RULES_FILE=copilot-instructions.md` (Copilot runtime)
+   - Resolve `{{PROJECT_RULES_FILE}}` to the detected value for all remaining steps.
+
+   Scan `.claude/memory/*.md` (or `.github/memory/*.md` for Copilot) and regenerate the `{{PROJECT_RULES_FILE}}` Memories section (append if file exists, create if not). Also write/update the `## GSD` metadata section above the Memories section using the workspace type from Step 1:
    - For non-standalone workspaces: `## GSD\n\n**Workspace type:** {type}\n**Detection signal:** {signal}`
    - For standalone workspaces: `## GSD\n\n**Workspace type:** standalone`
-   - If CLAUDE.md already has a `## GSD` section, replace it in-place. If not, insert it before the `## Memories` section.
+   - If `{{PROJECT_RULES_FILE}}` already has a `## GSD` section, replace it in-place. If not, insert it before the `## Memories` section.
+   - For Copilot runtime: write the GSD + Memories content inside the `<!-- GSD Configuration -->` / `<!-- /GSD Configuration -->` marker block using insert/replace-in-place logic.
 6. Regenerate `.claude/memory/MEMORY.md` from current memory files
-7. Commit changes
+7. Commit changes using `{{PROJECT_RULES_FILE}}` as the updated file
 
 **If `--force` flag:** Skip confirmation, bypass skip detection, and overwrite existing memory files even if existing memories already cover the concept.
 **Otherwise:** Show what would be seeded and ask user to confirm via {{USER_QUESTION_TOOL}} before writing.

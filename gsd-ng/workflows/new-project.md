@@ -1023,15 +1023,21 @@ Use AskUserQuestion:
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: create roadmap ([N] phases)" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md
 ```
 
-## 9. CLAUDE.md & Memory Seeding
+## 9. Project Rules File & Memory Seeding
 
-**Detect workspace topology:**
+**Detect workspace topology and runtime:**
 
 ```bash
 WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
 ```
 
 Parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).
+
+**Detect the active runtime and target project-rules file (`{{PROJECT_RULES_FILE}}`):**
+- If `.claude/` exists in the project root → `PROJECT_RULES_FILE=CLAUDE.md` (Claude Code)
+- If `.github/` exists but not `.claude/` → `PROJECT_RULES_FILE=copilot-instructions.md` (Copilot)
+
+All subsequent steps use `{{PROJECT_RULES_FILE}}` as the target file for project metadata and memory sections.
 
 **If type is NOT `standalone`:**
 
@@ -1064,11 +1070,11 @@ If "Skip": Do not copy the template.
 
 **If type IS `standalone`:**
 
-No template to seed. Continue to CLAUDE.md generation.
+No template to seed. Continue to `{{PROJECT_RULES_FILE}}` generation.
 
-**Generate CLAUDE.md:**
+**Generate `{{PROJECT_RULES_FILE}}`:**
 
-Read existing CLAUDE.md if present (`fs.existsSync`).
+Read existing `{{PROJECT_RULES_FILE}}` if present (`fs.existsSync`).
 
 Build the GSD metadata section from the workspace detection result:
 
@@ -1087,6 +1093,8 @@ For standalone workspaces:
 **Workspace type:** standalone
 ```
 
+**For Claude runtime (`{{PROJECT_RULES_FILE}}` = CLAUDE.md):**
+
 If CLAUDE.md does NOT exist: Create new file with project name heading, then the `## GSD` section with workspace type, then the `## Memories` section.
 
 If CLAUDE.md exists and has NO `## GSD` section: Insert the `## GSD` section before `## Memories` (or before end of file if no Memories section).
@@ -1094,6 +1102,12 @@ If CLAUDE.md exists and has NO `## GSD` section: Insert the `## GSD` section bef
 If CLAUDE.md exists and HAS a `## GSD` section: Replace the existing `## GSD` section content (from `## GSD` to the next `## ` heading) with the new workspace type content.
 
 The `## GSD` section must always appear before the `## Memories` section in the generated output.
+
+**For Copilot runtime (`{{PROJECT_RULES_FILE}}` = copilot-instructions.md):**
+
+Write the `## GSD` and `## Memories` sections inside the `<!-- GSD Configuration -->` / `<!-- /GSD Configuration -->` marker block using insert/replace-in-place logic. If the file doesn't contain the markers, append the block. This preserves existing non-GSD content in copilot-instructions.md.
+
+**Memory section (both runtimes):**
 
 The Memories section is built by scanning `.claude/memory/*.md` (excluding MEMORY.md):
 - For each file, read frontmatter `description` field (fallback: `name`, then `(no description)`)
@@ -1138,7 +1152,7 @@ Only generate if `.claude/memory/` has files to index.
 **Commit:**
 
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: generate CLAUDE.md with memory seeding" --files CLAUDE.md .claude/memory/
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: generate {{PROJECT_RULES_FILE}} with memory seeding" --files {{PROJECT_RULES_FILE}} .claude/memory/
 ```
 
 ## 10. Done

@@ -332,8 +332,11 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(globalClaudeRegex, toHomePrefix(pathPrefix));
       content = content.replace(globalClaudeHomeRegex, toHomePrefix(pathPrefix));
       content = content.replace(localClaudeRegex, `./${dirName}/`);
-      // Template variable: project rules file path (Claude Code uses CLAUDE.md)
-      content = content.replace(/\{\{PROJECT_RULES_FILE\}\}/g, 'CLAUDE.md');
+      // NOTE: {{PROJECT_RULES_FILE}} is intentionally NOT resolved here.
+      // Skills (seed-memories, new-project Step 9) detect the active runtime at
+      // skill-execution time (.claude/ vs .github/ presence) and resolve this
+      // variable themselves — allowing both Claude (CLAUDE.md) and Copilot
+      // (copilot-instructions.md) runtimes to use the same skill source files.
       content = processAttribution(content, getCommitAttribution());
       fs.writeFileSync(destPath, content);
     } else {
