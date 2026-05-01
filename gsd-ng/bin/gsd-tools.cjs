@@ -837,10 +837,26 @@ async function main() {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
+      // When invoked from inside a git submodule, --show-toplevel resolves to
+      // the submodule root (not the superproject). Check for a superproject and
+      // prefer its .planning/ if present (F-CWD fix).
+      let resolvedRoot = repoRoot;
+      try {
+        const superRoot = execSync('git rev-parse --show-superproject-working-tree', {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        if (superRoot && fs.existsSync(path.join(superRoot, '.planning'))) {
+          resolvedRoot = superRoot;
+        }
+      } catch {
+        // Not inside a submodule or git unavailable — keep repoRoot
+      }
       // Only use git root if it has a .planning directory
       // (avoids incorrectly resolving when invoked from a non-GSD repo)
-      if (fs.existsSync(path.join(repoRoot, '.planning'))) {
-        cwd = repoRoot;
+      if (fs.existsSync(path.join(resolvedRoot, '.planning'))) {
+        cwd = resolvedRoot;
       }
     } catch {
       // Not a git repo or git unavailable — keep process.cwd()
