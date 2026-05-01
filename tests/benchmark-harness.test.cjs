@@ -30,7 +30,11 @@ const {
   substituteRefs,
   classifyError,
   filterModels,
+  filterTasks,
+  buildAtRefMatrix,
 } = require('../benchmarks/benchmark-runner.cjs');
+
+const { compareResults } = require('../benchmarks/benchmark-compare.cjs');
 
 const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
@@ -391,6 +395,16 @@ describe('results write', () => {
       cleanup(tmpResultDir);
     }
   });
+
+  it('results JSON does not contain stale hardcoded phase field', () => {
+    // F-B003: writeResults used to hardcode phase: 'pre-phase-39' which becomes stale.
+    // The benchmark-runner source must not emit this stale field.
+    const src = fs.readFileSync(path.join(BENCHMARKS_DIR, 'benchmark-runner.cjs'), 'utf-8');
+    assert.ok(
+      !src.includes("phase: 'pre-phase-"),
+      "benchmark-runner.cjs must not hardcode a 'phase: pre-phase-N' field in writeResults output"
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -448,5 +462,179 @@ describe('ref substitution', () => {
     const prompt = 'Read @.planning/STATE.md and summarize.';
     const result = substituteRefs(prompt, model);
     assert.strictEqual(result, prompt, 'prompt without {{REF_PREFIX}} must be returned unchanged');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Task filtering — F-B001
+// ---------------------------------------------------------------------------
+
+describe('task filtering', () => {
+  const mockModels = {
+    claudeOnly: [{ id: 'claude-sonnet-4.6', group: 'claude' }],
+    copilotOnly: [{ id: 'copilot-gpt-5-mini', group: 'copilot' }],
+    both: [
+      { id: 'claude-sonnet-4.6', group: 'claude' },
+      { id: 'copilot-gpt-5-mini', group: 'copilot' },
+    ],
+  };
+
+  const mockTasks = [
+    { id: 'task-all', runtime_filter: 'all' },
+    { id: 'task-claude-only', runtime_filter: 'claude-only' },
+    { id: 'task-copilot-only', runtime_filter: 'copilot-only' },
+  ];
+
+  it('claude-only tasks are excluded when only copilot models run', () => {
+    const result = filterTasks(mockTasks, mockModels.copilotOnly);
+    const ids = result.map((t) => t.id);
+    assert.ok(!ids.includes('task-claude-only'), 'claude-only task must be excluded for copilot-only run');
+    assert.ok(ids.includes('task-all'), '"all" task must be included');
+    assert.ok(ids.includes('task-copilot-only'), 'copilot-only task must be included');
+  });
+
+  it('copilot-only tasks are excluded when only claude models run', () => {
+    const result = filterTasks(mockTasks, mockModels.claudeOnly);
+    const ids = result.map((t) => t.id);
+    assert.ok(!ids.includes('task-copilot-only'), 'copilot-only task must be excluded for claude-only run');
+    assert.ok(ids.includes('task-all'), '"all" task must be included');
+    assert.ok(ids.includes('task-claude-only'), 'claude-only task must be included');
+  });
+
+  it('"all" tasks pass through regardless of model group', () => {
+    for (const models of [mockModels.claudeOnly, mockModels.copilotOnly, mockModels.both]) {
+      const result = filterTasks(mockTasks, models);
+      assert.ok(
+        result.some((t) => t.id === 'task-all'),
+        '"all" task must always be included',
+      );
+    }
+  });
+
+  it('all tasks included when both claude and copilot models run', () => {
+    const result = filterTasks(mockTasks, mockModels.both);
+    assert.strictEqual(result.length, mockTasks.length, 'all tasks must be included when both groups present');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. @ ref matrix — F-B001
+// ---------------------------------------------------------------------------
+
+describe('@ ref matrix', () => {
+  it('aggregates at_ref_verified by ref type and runtime', () => {
+    const resultsMap = {
+      'task-1': {
+        'claude-sonnet-4.6': { at_ref_verified: { relative: true, tilde: false } },
+        'copilot-gpt-5-mini': { at_ref_verified: { relative: false } },
+      },
+      'task-2': {
+        'claude-sonnet-4.6': { at_ref_verified: { tilde: true } },
+      },
+    };
+
+    const matrix = buildAtRefMatrix(resultsMap);
+
+    // relative: claude=true (from task-1), copilot=false (from task-1)
+    assert.strictEqual(matrix.relative.claude, true, 'claude relative should be true');
+    assert.strictEqual(matrix.relative.copilot, false, 'copilot relative should be false');
+
+    // tilde: claude=true (true from task-2 overrides false from task-1)
+    assert.strictEqual(matrix.tilde.claude, true, 'claude tilde should be true after aggregation');
+  });
+
+  it('returns empty matrix for empty resultsMap', () => {
+    const matrix = buildAtRefMatrix({});
+    assert.deepStrictEqual(matrix, {}, 'empty resultsMap should produce empty matrix');
+  });
+
+  it('skips results without at_ref_verified field', () => {
+    const resultsMap = {
+      'task-1': {
+        'claude-sonnet-4.6': { pass: true }, // no at_ref_verified
+      },
+    };
+    const matrix = buildAtRefMatrix(resultsMap);
+    assert.deepStrictEqual(matrix, {}, 'results without at_ref_verified must be skipped');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. compareResults — F-B002
+// ---------------------------------------------------------------------------
+
+describe('compareResults', () => {
+  function makeResult(pass, durationMs) {
+    return {
+      pass,
+      format_compliance: pass,
+      completeness: pass,
+      correctness: pass,
+      duration_ms: durationMs || null,
+    };
+  }
+
+  it('classifies pass→fail as regression', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(false, 1200) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.regressions.length, 1, 'should have 1 regression');
+    assert.strictEqual(report.regressions[0].taskId, 'task-1');
+    assert.strictEqual(report.regressions[0].modelId, 'model-a');
+    assert.strictEqual(report.improvements.length, 0);
+    assert.strictEqual(report.unchanged.length, 0);
+  });
+
+  it('classifies fail→pass as improvement', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(false) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.improvements.length, 1, 'should have 1 improvement');
+    assert.strictEqual(report.regressions.length, 0);
+    assert.strictEqual(report.unchanged.length, 0);
+  });
+
+  it('classifies same pass/fail as unchanged', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.unchanged.length, 1, 'should have 1 unchanged');
+    assert.strictEqual(report.regressions.length, 0);
+    assert.strictEqual(report.improvements.length, 0);
+  });
+
+  it('classifies task+model in current but not baseline as added', () => {
+    const baseline = { tasks: {}, models: [] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.added.length, 1, 'new task+model should be added');
+    assert.strictEqual(report.added[0].taskId, 'task-1');
+  });
+
+  it('classifies task+model in baseline but not current as removed', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const current = { tasks: {}, models: [] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.removed.length, 1, 'missing task+model should be removed');
+    assert.strictEqual(report.removed[0].taskId, 'task-1');
+  });
+
+  it('flags duration delta >10% as durationChange', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true, 1200) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.durationChanges.length, 1, 'should flag >10% duration change');
+    assert.ok(parseFloat(report.durationChanges[0].pctChange) >= 10);
+  });
+
+  it('does not flag duration delta <10% as durationChange', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true, 1050) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.durationChanges.length, 0, 'should not flag <10% duration change');
+  });
+
+  it('handles empty task sets without throwing', () => {
+    assert.doesNotThrow(() => compareResults({ tasks: {} }, { tasks: {} }));
   });
 });
