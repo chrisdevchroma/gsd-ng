@@ -189,6 +189,80 @@ describe('RUNTIMES', () => {
   });
 });
 
+// --- RUNTIMES extension — Phase 49.1 ---
+
+describe('RUNTIMES extension — Phase 49.1', () => {
+  test('RUNTIMES.claude exposes COMMAND_PREFIX = /gsd:', () => {
+    assert.equal(RUNTIMES.claude.COMMAND_PREFIX, '/gsd:');
+  });
+  test('RUNTIMES.claude exposes GSD_BLOCK_OPEN = ## GSD', () => {
+    assert.equal(RUNTIMES.claude.GSD_BLOCK_OPEN, '## GSD');
+  });
+  test('RUNTIMES.claude exposes GSD_BLOCK_CLOSE = ## (h2 prefix marker)', () => {
+    assert.equal(RUNTIMES.claude.GSD_BLOCK_CLOSE, '## ');
+  });
+  test('RUNTIMES.claude exposes MEMORY_DIR = .claude/memory/', () => {
+    assert.equal(RUNTIMES.claude.MEMORY_DIR, '.claude/memory/');
+  });
+  test('RUNTIMES.copilot exposes COMMAND_PREFIX = /gsd-', () => {
+    assert.equal(RUNTIMES.copilot.COMMAND_PREFIX, '/gsd-');
+  });
+  test('RUNTIMES.copilot exposes GSD_BLOCK_OPEN = <!-- GSD Configuration -->', () => {
+    assert.equal(RUNTIMES.copilot.GSD_BLOCK_OPEN, '<!-- GSD Configuration -->');
+  });
+  test('RUNTIMES.copilot exposes GSD_BLOCK_CLOSE = <!-- /GSD Configuration -->', () => {
+    assert.equal(RUNTIMES.copilot.GSD_BLOCK_CLOSE, '<!-- /GSD Configuration -->');
+  });
+  test('RUNTIMES.copilot exposes MEMORY_DIR = .github/memory/', () => {
+    assert.equal(RUNTIMES.copilot.MEMORY_DIR, '.github/memory/');
+  });
+
+  test('processTemplate resolves 4 new tokens for claude', () => {
+    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+    const out = processTemplate(corpus, buildContext('claude'));
+    assert.equal(out, '/gsd: ## GSD ##  .claude/memory/');
+    assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
+  });
+  test('processTemplate resolves 4 new tokens for copilot', () => {
+    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+    const out = processTemplate(corpus, buildContext('copilot'));
+    assert.equal(out, '/gsd- <!-- GSD Configuration --> <!-- /GSD Configuration --> .github/memory/');
+    assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
+  });
+
+  test('SYNTHETIC RUNTIME ACCEPTANCE: adding _test_runtime registry entry alone resolves all 6 keys', () => {
+    // Mutate RUNTIMES in-test to add a synthetic runtime — proves "registry-only abstraction" property.
+    const stash = RUNTIMES._test_runtime;
+    RUNTIMES._test_runtime = {
+      PROJECT_RULES_FILE: '_TEST_RULES.md',
+      USER_QUESTION_TOOL: '_TEST_TOOL',
+      COMMAND_PREFIX: '/_test:',
+      GSD_BLOCK_OPEN: '<!-- TEST OPEN -->',
+      GSD_BLOCK_CLOSE: '<!-- TEST CLOSE -->',
+      MEMORY_DIR: '_test/memory/',
+    };
+    try {
+      const corpus = [
+        '{{PROJECT_RULES_FILE}}',
+        '{{USER_QUESTION_TOOL}}',
+        '{{COMMAND_PREFIX}}',
+        '{{GSD_BLOCK_OPEN}}',
+        '{{GSD_BLOCK_CLOSE}}',
+        '{{MEMORY_DIR}}',
+      ].join(' | ');
+      const out = processTemplate(corpus, { runtime: '_test_runtime' });
+      assert.equal(
+        out,
+        '_TEST_RULES.md | _TEST_TOOL | /_test: | <!-- TEST OPEN --> | <!-- TEST CLOSE --> | _test/memory/',
+      );
+      assert.ok(!out.includes('{{'), 'all template vars must resolve via the registry alone');
+    } finally {
+      if (stash === undefined) delete RUNTIMES._test_runtime;
+      else RUNTIMES._test_runtime = stash;
+    }
+  });
+});
+
 // --- fillBetweenMarkers ---
 
 describe('fillBetweenMarkers', () => {
