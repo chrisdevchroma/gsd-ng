@@ -334,9 +334,13 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(localClaudeRegex, `./${dirName}/`);
       // NOTE: {{PROJECT_RULES_FILE}} is intentionally NOT resolved here.
       // Skills (seed-memories, new-project Step 9) detect the active runtime at
-      // skill-execution time (.claude/ vs .github/ presence) and resolve this
-      // variable themselves — allowing both Claude (CLAUDE.md) and Copilot
-      // (copilot-instructions.md) runtimes to use the same skill source files.
+      // skill-execution time and resolve runtime-divergent paths themselves
+      // (project rules file, memory directory) using the topology of the
+      // workspace — so the same skill source files work for every runtime in
+      // the RUNTIMES registry. Other template variables such as
+      // {{PROJECT_RULES_FILE}} and {{MEMORY_DIR}} are resolved later by the
+      // processTemplate loop using values from the active runtime's RUNTIMES
+      // entry.
       content = processAttribution(content, getCommitAttribution());
       fs.writeFileSync(destPath, content);
     } else {
@@ -1840,7 +1844,8 @@ function install(isGlobal) {
     fs.writeFileSync(versionDest, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote VERSION (${INSTALLED_VERSION})`);
 
-    // Write file manifest for Copilot installs (same as Claude path).
+    // Manifest records post-template-processing hashes for all installed
+    // runtimes; the active runtime is determined by buildContext().
     // Required for local-patch detection on future re-installs.
     writeManifest(targetDir, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
