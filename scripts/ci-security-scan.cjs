@@ -24,6 +24,8 @@ if (!PR_NUMBER || !GITHUB_TOKEN || !GITHUB_REPOSITORY) {
   process.exit(1);
 }
 
+// Must match the 'paths:' trigger in .github/workflows/security-scan.yml.
+// If you update either, update both to keep them in sync.
 const SCAN_PATHS = ['.planning/', '.claude/', '.github/'];
 
 async function fetchPRFiles() {
