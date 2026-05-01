@@ -1710,22 +1710,22 @@ async function main() {
       } else if (subcommand === 'scan-phase-linked') {
         commands.cmdTodoScanPhaseLinked(cwd, args[2]);
       } else {
+        // F-DYM-SCOPE: only use same-namespace suggestions to avoid misleading
+        // cross-namespace matches (e.g. "todo add" suggesting "phase add").
         const suggestions = suggestSubcommand(subcommand, 'todo');
-        if (
-          suggestions.sameNamespace.length > 0 ||
-          suggestions.crossNamespace.length > 0
-        ) {
-          const parts = [];
-          if (suggestions.sameNamespace.length > 0)
-            parts.push(`todo ${suggestions.sameNamespace[0]}`);
-          if (suggestions.crossNamespace.length > 0)
-            parts.push(...suggestions.crossNamespace.slice(0, 2));
+        // F-SKILL-HINT: hint users toward the /gsd:add-todo skill for create operations.
+        const skillHint =
+          '\nTo add a todo, use `/gsd:add-todo` (a workflow skill).';
+        if (suggestions.sameNamespace.length > 0) {
+          const parts = suggestions.sameNamespace
+            .slice(0, 2)
+            .map((s) => `todo ${s}`);
           error(
-            `Unknown todo subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.todo.join(', ')}`,
+            `Unknown todo subcommand '${subcommand}'. Did you mean: ${parts.join(', ')}?\nAvailable: ${SUBCOMMANDS.todo.join(', ')}${skillHint}`,
           );
         } else {
           error(
-            `Unknown todo subcommand '${subcommand}'. Available: ${SUBCOMMANDS.todo.join(', ')}`,
+            `Unknown todo subcommand '${subcommand}'. Available: ${SUBCOMMANDS.todo.join(', ')}${skillHint}`,
           );
         }
       }
