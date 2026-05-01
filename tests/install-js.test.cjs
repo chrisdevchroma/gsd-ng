@@ -344,6 +344,92 @@ test('PERM-07: local install seeds granular gh subcommand patterns (not blanket 
   }
 });
 
+// ── PERM-08: settings-sandbox.json template ships ask rules for protected-branch
+//            pushes and admin merges (2026-05-01 incident response).
+//
+//            Background: On 2026-05-01 Claude bypassed develop's GitHub branch
+//            protection (admin-role token had bypass capability) and pushed
+//            Phase 49 work directly to develop, then opened a wrong-target PR.
+//            Recovery required force-pushing develop back.
+//
+//            Fix: Layer-3 local guardrails. Claude Code's permission precedence
+//            is `deny > ask > allow`, so these `ask` patterns override the
+//            broad `Bash(git *)` allow rule and force a confirmation prompt
+//            before any push to a protected branch lands.
+
+const PERM_08_EXPECTED_ASK = [
+  'Bash(git push * main*)',
+  'Bash(git push * master*)',
+  'Bash(git push * develop*)',
+  'Bash(git -C * push * main*)',
+  'Bash(git -C * push * master*)',
+  'Bash(git -C * push * develop*)',
+  'Bash(gh pr merge *--admin*)',
+];
+
+test('PERM-08: settings-sandbox.json template ships protected-branch ask rules (template shape)', () => {
+  const templatePath = path.resolve(
+    __dirname,
+    '..',
+    'gsd-ng',
+    'templates',
+    'settings-sandbox.json',
+  );
+  const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+  assert.ok(
+    Array.isArray(template.permissions.ask),
+    'template.permissions.ask must be an array (PERM-08)',
+  );
+  assert.strictEqual(
+    template.permissions.ask.length,
+    PERM_08_EXPECTED_ASK.length,
+    `template.permissions.ask must have exactly ${PERM_08_EXPECTED_ASK.length} entries (PERM-08) — catches accidental additions/removals`,
+  );
+  for (const pattern of PERM_08_EXPECTED_ASK) {
+    assert.ok(
+      template.permissions.ask.includes(pattern),
+      `template.permissions.ask must include ${pattern} (PERM-08)`,
+    );
+  }
+});
+
+test('PERM-08: local install propagates protected-branch ask rules into .claude/settings.json (round-trip)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm08-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --local must exit 0 (PERM-08)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.ok(
+      Array.isArray(settings.permissions.ask),
+      'settings.permissions.ask must be an array after install (PERM-08)',
+    );
+    for (const pattern of PERM_08_EXPECTED_ASK) {
+      assert.ok(
+        settings.permissions.ask.includes(pattern),
+        `settings.permissions.ask must include ${pattern} after install (PERM-08)`,
+      );
+    }
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
 // ── PERM-01: local install seeds permissions.allow with template entries ──────
 
 test('PERM-01: local install seeds permissions.allow with template entries (Bash(node *) and Agent(*))', () => {
