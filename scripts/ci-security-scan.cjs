@@ -26,7 +26,7 @@ if (!PR_NUMBER || !GITHUB_TOKEN || !GITHUB_REPOSITORY) {
 
 // Must match the 'paths:' trigger in .github/workflows/security-scan.yml.
 // If you update either, update both to keep them in sync.
-const SCAN_PATHS = ['.planning/', '.claude/', '.github/'];
+const SCAN_PATHS = ['.planning/', '.claude/', '.github/', 'scripts/'];
 
 async function fetchPRFiles() {
   const url = `https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100`;
