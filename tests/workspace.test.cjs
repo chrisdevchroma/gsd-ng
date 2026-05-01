@@ -1013,3 +1013,101 @@ describe('complete-milestone in submodule workspace', () => {
     assert.ok(milestonesContent.includes('v1.0'), 'MILESTONES.md should reference v1.0');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F-CWD: gsd-tools prefers superproject .planning/ when invoked from submodule
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('F-CWD: cwd resolution prefers superproject when inside a submodule', () => {
+  let superDir;
+  let subDir;
+
+  beforeEach(() => {
+    const base = resolveTmpDir();
+
+    // Build superproject with .planning/
+    superDir = fs.mkdtempSync(path.join(base, 'gsd-super-'));
+    fs.mkdirSync(path.join(superDir, '.planning', 'phases'), { recursive: true });
+    fs.writeFileSync(
+      path.join(superDir, '.planning', 'STATE.md'),
+      '---\ngsd_state_version: 1.0\ncurrent_phase: 1\n---\n# Project State\n',
+    );
+    execSync('git init', { cwd: superDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: superDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: superDir, stdio: 'pipe' });
+    execSync('git config commit.gpgsign false', { cwd: superDir, stdio: 'pipe' });
+    execSync('git add .', { cwd: superDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: superDir, stdio: 'pipe' });
+
+    // Build submodule inside superproject (no .planning/)
+    subDir = path.join(superDir, 'sub-module');
+    fs.mkdirSync(subDir, { recursive: true });
+    fs.writeFileSync(path.join(subDir, 'README.md'), '# Sub\n');
+    execSync('git init', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: subDir, stdio: 'pipe' });
+    execSync('git config commit.gpgsign false', { cwd: subDir, stdio: 'pipe' });
+    execSync('git add .', { cwd: subDir, stdio: 'pipe' });
+    execSync('git commit -m "initial"', { cwd: subDir, stdio: 'pipe' });
+
+    // Register submodule in superproject
+    const subHeadSha = execSync('git rev-parse HEAD', { cwd: subDir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    execSync(
+      `git update-index --add --cacheinfo 160000,${subHeadSha},sub-module`,
+      { cwd: superDir, stdio: 'pipe' },
+    );
+    fs.writeFileSync(
+      path.join(superDir, '.gitmodules'),
+      '[submodule "sub-module"]\n\tpath = sub-module\n\turl = https://example.com/sub.git\n',
+    );
+    execSync('git add .gitmodules', { cwd: superDir, stdio: 'pipe' });
+    execSync('git commit -m "add submodule"', { cwd: superDir, stdio: 'pipe' });
+
+    // Wire the superproject reference in the submodule's git config so that
+    // git rev-parse --show-superproject-working-tree works when run from subDir.
+    // This normally happens when `git submodule update --init` is run, which
+    // writes a .git file (not directory) into the submodule pointing back to
+    // the superproject's .git/modules/<name>/. We simulate it manually.
+    const submoduleGitDir = path.join(superDir, '.git', 'modules', 'sub-module');
+    fs.mkdirSync(submoduleGitDir, { recursive: true });
+    // Copy submodule's .git dir contents to superproject's modules/sub-module/
+    const subGitDir = path.join(subDir, '.git');
+    const subGitFiles = fs.readdirSync(subGitDir);
+    for (const f of subGitFiles) {
+      const src = path.join(subGitDir, f);
+      const dst = path.join(submoduleGitDir, f);
+      const stat = fs.statSync(src);
+      if (stat.isDirectory()) {
+        fs.cpSync(src, dst, { recursive: true });
+      } else {
+        fs.copyFileSync(src, dst);
+      }
+    }
+    // Add worktree config so git knows where the submodule is checked out
+    fs.appendFileSync(path.join(submoduleGitDir, 'config'), `\n[core]\n\tworktree = ${subDir}\n`);
+    // Replace submodule's .git dir with a .git file pointing to the modules dir
+    fs.rmSync(subGitDir, { recursive: true, force: true });
+    fs.writeFileSync(path.join(subDir, '.git'), `gitdir: ${submoduleGitDir}\n`);
+  });
+
+  afterEach(() => {
+    if (superDir) {
+      try { fs.rmSync(superDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  test('F-CWD: prefers superproject .planning/ when gsd-tools is invoked from inside a submodule', () => {
+    // Run gsd-tools 'state load' from inside the submodule directory.
+    // The superproject STATE.md has current_phase: 1 (sentinel value).
+    // - If cwd resolves to the superproject (correct): state_exists = true, output contains phase data
+    // - If cwd resolves to the submodule (bug): state_exists = false (no .planning/ there)
+    const result = runGsdTools(['state', 'load'], subDir);
+    assert.ok(result.success, `state load should not error, got: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(
+      parsed.state_exists,
+      true,
+      `F-CWD: gsd-tools invoked from submodule should resolve to superproject root and find STATE.md (state_exists=true), got state_exists=${parsed.state_exists}`,
+    );
+  });
+});
