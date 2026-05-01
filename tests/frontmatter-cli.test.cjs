@@ -12,7 +12,6 @@ const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { runGsdTools, resolveTmpDir } = require('./helpers.cjs');
 
 // Track temp files for cleanup

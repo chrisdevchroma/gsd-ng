@@ -10,7 +10,6 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const { parseDuration, isRecurringDue, cmdTodoComplete, cmdRecurringDue, syncSingleRef } = require('../gsd-ng/bin/lib/commands.cjs');
