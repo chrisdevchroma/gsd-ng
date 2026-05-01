@@ -3039,3 +3039,94 @@ test('ALLOW-11: second install logs "Permissions already up to date" (no per-sec
     cleanup(tmpDir);
   }
 });
+
+// ── F-RULES-01: {{PROJECT_RULES_FILE}} must survive install (not collapsed to CLAUDE.md) ──
+// TDD RED: currently collapsed to CLAUDE.md at install time in copyWithPathReplacement().
+// Fix: remove the {{PROJECT_RULES_FILE}} -> CLAUDE.md substitution from install.js.
+
+test('F-RULES-01: {{PROJECT_RULES_FILE}} template variable is NOT collapsed to CLAUDE.md in installed skill files (claude runtime)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-frules-01-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (F-RULES-01)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    // Check that seed-memories.md retains {{PROJECT_RULES_FILE}} after install
+    // (it should NOT be collapsed to 'CLAUDE.md' at install time)
+    const seedMemoriesPath = path.join(
+      tmpDir,
+      '.claude',
+      'commands',
+      'gsd',
+      'seed-memories.md',
+    );
+    assert.ok(
+      fs.existsSync(seedMemoriesPath),
+      'commands/gsd/seed-memories.md must exist after claude install (F-RULES-01)',
+    );
+    const seedContent = fs.readFileSync(seedMemoriesPath, 'utf8');
+    assert.ok(
+      seedContent.includes('{{PROJECT_RULES_FILE}}'),
+      'installed seed-memories.md must retain {{PROJECT_RULES_FILE}} template variable (F-RULES-01).\n' +
+        'It was collapsed to CLAUDE.md at install time — remove that substitution from install.js.',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('F-RULES-02: {{PROJECT_RULES_FILE}} template variable is retained in installed workflow files (claude runtime)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-frules-02-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install.js --runtime claude --local must exit 0 (F-RULES-02)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    // Check new-project.md retains {{PROJECT_RULES_FILE}} after install
+    const newProjectPath = path.join(
+      tmpDir,
+      '.claude',
+      'gsd-ng',
+      'workflows',
+      'new-project.md',
+    );
+    assert.ok(
+      fs.existsSync(newProjectPath),
+      'gsd-ng/workflows/new-project.md must exist after claude install (F-RULES-02)',
+    );
+    const npContent = fs.readFileSync(newProjectPath, 'utf8');
+    assert.ok(
+      npContent.includes('{{PROJECT_RULES_FILE}}'),
+      'installed new-project.md must retain {{PROJECT_RULES_FILE}} template variable (F-RULES-02).\n' +
+        'It was collapsed to CLAUDE.md at install time — remove that substitution from install.js.',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
