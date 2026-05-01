@@ -456,7 +456,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs({phase}-{plan}): comp
 
 **Plan-completion tag (preserves granular history through squash):**
 
-After the metadata commit, create a lightweight tag at HEAD. These tags survive branch deletion and squash operations, enabling Phase 14's per-plan commit rewriting.
+After the metadata commit, create a lightweight tag at HEAD. These tags survive branch deletion and squash operations, enabling per-plan commit rewriting via `/gsd:squash --strategy per-plan`.
 
 ```bash
 # Create lightweight tag at plan completion commit
