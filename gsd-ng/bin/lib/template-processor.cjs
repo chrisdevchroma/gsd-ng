@@ -26,6 +26,9 @@ const RUNTIMES = {
  * @returns {string} Processed content
  */
 function processTemplate(content, context) {
+  if (!context || typeof context !== 'object') {
+    throw new Error('processTemplate: context must be a non-null object');
+  }
   let out = content;
 
   // 1. Validate markers (balanced open/close)
