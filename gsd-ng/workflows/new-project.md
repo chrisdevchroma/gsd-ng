@@ -1025,7 +1025,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: create roadmap ([N] 
 
 ## 9. Project Rules File & Memory Seeding
 
-**Detect workspace topology and runtime:**
+**Detect workspace topology:**
 
 ```bash
 WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
@@ -1033,19 +1033,20 @@ WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
 
 Parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).
 
-**Detect the active runtime and target project-rules file (`{{PROJECT_RULES_FILE}}`):**
-- If `.claude/` exists in the project root → `PROJECT_RULES_FILE=CLAUDE.md` (Claude Code)
-- If `.github/` exists but not `.claude/` → `PROJECT_RULES_FILE=copilot-instructions.md` (Copilot)
+**Runtime-resolved targets (install-baked):**
 
-All subsequent steps use `{{PROJECT_RULES_FILE}}` as the target file for project metadata and memory sections.
+- `{{PROJECT_RULES_FILE}}` — the active runtime's project rules file, resolved from `RUNTIMES.{runtime}.PROJECT_RULES_FILE` (see `gsd-ng/bin/lib/template-processor.cjs`).
+- `{{MEMORY_DIR}}` — the active runtime's memory directory, resolved from `RUNTIMES.{runtime}.MEMORY_DIR` (see `gsd-ng/bin/lib/template-processor.cjs`).
+
+Both variables are baked at install time by `processTemplate` from the active runtime's `RUNTIMES` registry entry. Subsequent steps use them as-is.
 
 **If type is NOT `standalone`:**
 
 Seed the multi-boundary structural memory template:
 
 ```bash
-mkdir -p .claude/memory
-cp "$HOME/.claude/gsd-ng/templates/memory-templates/multi-boundary.md" .claude/memory/project_commit-boundary.md
+mkdir -p {{MEMORY_DIR}}
+cp "$HOME/.claude/gsd-ng/templates/memory-templates/multi-boundary.md" {{MEMORY_DIR}}project_commit-boundary.md
 ```
 
 **If auto mode:** Seed silently.
@@ -1063,7 +1064,7 @@ Use AskUserQuestion:
 - header: "Memory"
 - question: "Seed this structural guardrail memory?"
 - options:
-  - "Yes (Recommended)" — Seed memory file to .claude/memory/
+  - "Yes (Recommended)" — Seed memory file to `{{MEMORY_DIR}}`
   - "Skip" — Don't seed any memories
 
 If "Skip": Do not copy the template.
@@ -1093,25 +1094,35 @@ For standalone workspaces:
 **Workspace type:** standalone
 ```
 
-**For Claude runtime (`{{PROJECT_RULES_FILE}}` = CLAUDE.md):**
+**Insert/replace logic for `{{PROJECT_RULES_FILE}}`:**
 
-If CLAUDE.md does NOT exist: Create new file with project name heading, then the `## GSD` section with workspace type, then the `## Memories` section.
+The active runtime determines the insertion strategy (this is part of the runtime's
+contract — encoded by `RUNTIMES.{runtime}.PROJECT_RULES_INSERT_STRATEGY` in code; here
+we describe the two strategies).
 
-If CLAUDE.md exists and has NO `## GSD` section: Insert the `## GSD` section before `## Memories` (or before end of file if no Memories section).
+- **Heading-based (Claude):** Project rules live at top-level Markdown headings. If
+  `{{PROJECT_RULES_FILE}}` does NOT exist, create it with the project-name heading,
+  then the `## GSD` section with workspace type, then the `## Memories` section. If
+  the file exists and has NO `## GSD` section, insert the `## GSD` section before
+  `## Memories` (or before end of file if no Memories section). If the file exists
+  and HAS a `## GSD` section, replace its content (from `## GSD` to the next `##`
+  heading) with the new workspace-type content. The `## GSD` section must always
+  appear before the `## Memories` section.
+- **Marker-based (Copilot):** Project rules live inside an HTML-comment marker
+  block. Write the `## GSD` and `## Memories` sections inside the
+  `<!-- GSD Configuration -->` / `<!-- /GSD Configuration -->` marker pair using
+  insert/replace-in-place logic. If the file doesn't contain the markers, append
+  the block. This preserves existing non-GSD content in `{{PROJECT_RULES_FILE}}`.
 
-If CLAUDE.md exists and HAS a `## GSD` section: Replace the existing `## GSD` section content (from `## GSD` to the next `## ` heading) with the new workspace type content.
+The runtime-appropriate strategy is selected at install time; the unified
+generation logic above produces identical `## GSD` + `## Memories` content for
+both strategies.
 
-The `## GSD` section must always appear before the `## Memories` section in the generated output.
+**Memory section (runtime-agnostic):**
 
-**For Copilot runtime (`{{PROJECT_RULES_FILE}}` = copilot-instructions.md):**
-
-Write the `## GSD` and `## Memories` sections inside the `<!-- GSD Configuration -->` / `<!-- /GSD Configuration -->` marker block using insert/replace-in-place logic. If the file doesn't contain the markers, append the block. This preserves existing non-GSD content in copilot-instructions.md.
-
-**Memory section (both runtimes):**
-
-The Memories section is built by scanning `.claude/memory/*.md` (excluding MEMORY.md):
+The Memories section is built by scanning `{{MEMORY_DIR}}*.md` (excluding `MEMORY.md`):
 - For each file, read frontmatter `description` field (fallback: `name`, then `(no description)`)
-- Format as: `- [.claude/memory/{filename}](.claude/memory/{filename}) — {description}`
+- Format as: `- [{{MEMORY_DIR}}{filename}]({{MEMORY_DIR}}{filename}) — {description}`
 - Sort alphabetically
 
 Full section format (showing GSD before Memories):
@@ -1123,23 +1134,23 @@ Full section format (showing GSD before Memories):
 
 ## Memories
 
-Read `.claude/memory/` for persistent feedback and project context. Key entries:
+Read `{{MEMORY_DIR}}` for persistent feedback and project context. Key entries:
 
-- [.claude/memory/project_commit-boundary.md](.claude/memory/project_commit-boundary.md) — This repo has multiple code boundaries — commit changes in the right sub-directory
+- [{{MEMORY_DIR}}project_commit-boundary.md]({{MEMORY_DIR}}project_commit-boundary.md) — This repo has multiple code boundaries — commit changes in the right sub-directory
 ```
 
-If no `.claude/memory/` directory or no files in it, write a minimal Memories section:
+If no `{{MEMORY_DIR}}` directory or no files in it, write a minimal Memories section:
 ```
 ## Memories
 
-Read `.claude/memory/` for persistent feedback and project context.
+Read `{{MEMORY_DIR}}` for persistent feedback and project context.
 
 (No memory files yet — memories accumulate through use.)
 ```
 
 **Generate MEMORY.md:**
 
-Write `.claude/memory/MEMORY.md` with grouped index. Group by `type` field from frontmatter (capitalize group names). Format:
+Write `{{MEMORY_DIR}}MEMORY.md` with grouped index. Group by `type` field from frontmatter (capitalize group names). Format:
 ```
 # Memory Index
 
@@ -1147,12 +1158,12 @@ Write `.claude/memory/MEMORY.md` with grouped index. Group by `type` field from 
 - [project_commit-boundary.md](project_commit-boundary.md) — Description from frontmatter
 ```
 
-Only generate if `.claude/memory/` has files to index.
+Only generate if `{{MEMORY_DIR}}` has files to index.
 
 **Commit:**
 
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: generate {{PROJECT_RULES_FILE}} with memory seeding" --files {{PROJECT_RULES_FILE}} .claude/memory/
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: generate {{PROJECT_RULES_FILE}} with memory seeding" --files {{PROJECT_RULES_FILE}} {{MEMORY_DIR}}
 ```
 
 ## 10. Done
@@ -1173,8 +1184,8 @@ Present completion summary:
 | Research       | `.planning/research/`       |
 | Requirements   | `.planning/REQUIREMENTS.md` |
 | Roadmap        | `.planning/ROADMAP.md`      |
-| CLAUDE.md      | `CLAUDE.md`                 |
-| Memories       | `.claude/memory/`           |
+| Project rules  | `{{PROJECT_RULES_FILE}}`    |
+| Memories       | `{{MEMORY_DIR}}`            |
 
 **[N] phases** | **[X] requirements** | Ready to build ✓
 ```
@@ -1225,9 +1236,9 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - `.planning/REQUIREMENTS.md`
 - `.planning/ROADMAP.md`
 - `.planning/STATE.md`
-- `CLAUDE.md` (with Memories section)
-- `.claude/memory/MEMORY.md` (memory index)
-- `.claude/memory/project_commit-boundary.md` (if multi-boundary workspace)
+- `{{PROJECT_RULES_FILE}}` (with Memories section)
+- `{{MEMORY_DIR}}MEMORY.md` (memory index)
+- `{{MEMORY_DIR}}project_commit-boundary.md` (if multi-boundary workspace)
 
 </output>
 
@@ -1249,8 +1260,8 @@ Exit skill and invoke SlashCommand("/gsd:discuss-phase 1 --auto")
 - [ ] ROADMAP.md created with phases, requirement mappings, success criteria
 - [ ] STATE.md initialized
 - [ ] REQUIREMENTS.md traceability updated
-- [ ] CLAUDE.md generated with Memories section referencing all .claude/memory/*.md files → **committed**
-- [ ] .claude/memory/MEMORY.md generated as memory index → **committed**
+- [ ] `{{PROJECT_RULES_FILE}}` generated with Memories section referencing all `{{MEMORY_DIR}}*.md` files → **committed**
+- [ ] `{{MEMORY_DIR}}MEMORY.md` generated as memory index → **committed**
 - [ ] Workspace topology detected and appropriate memories seeded (if non-standalone)
 - [ ] User knows next step is `/gsd:discuss-phase 1`
 
