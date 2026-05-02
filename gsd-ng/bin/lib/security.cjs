@@ -639,6 +639,15 @@ function stripUntrustedWrappers(content) {
  *
  * Always fails silently — log failures must never propagate to callers.
  *
+ * Phase 50 — optional homoglyph evasion fields (sanitized before write):
+ *   - evasion_type: e.g. 'homoglyph'
+ *   - original:    pre-normalization text; truncated to 200 chars + '…' suffix
+ *   - normalized:  post-normalization text; truncated to 200 chars + '…' suffix
+ *   - chars_changed: array of {offset, from, to}; capped at 5 with a 6th
+ *                    summary entry {truncated: true, total_changed: N}
+ * Truncation prevents log-as-injection-vector attacks where an attacker tries
+ * to land a payload in the audit log itself.
+ *
  * @param {string} cwd       - Project root directory
  * @param {object} eventData - Event fields to log (source, tier, findings, etc.)
  */
@@ -657,10 +666,38 @@ function logSecurityEvent(cwd, eventData) {
     }
     fs.mkdirSync(logDir, { recursive: true });
     const logFile = path.join(logDir, 'security-events.log');
+
+    // Phase 50: sanitize evasion fields if present (truncation + cap).
+    const sanitized = { ...eventData };
+    if (
+      'original' in sanitized &&
+      typeof sanitized.original === 'string' &&
+      sanitized.original.length > 200
+    ) {
+      sanitized.original = sanitized.original.slice(0, 200) + '…';
+    }
+    if (
+      'normalized' in sanitized &&
+      typeof sanitized.normalized === 'string' &&
+      sanitized.normalized.length > 200
+    ) {
+      sanitized.normalized = sanitized.normalized.slice(0, 200) + '…';
+    }
+    if (
+      Array.isArray(sanitized.chars_changed) &&
+      sanitized.chars_changed.length > 5
+    ) {
+      const total = sanitized.chars_changed.length;
+      sanitized.chars_changed = [
+        ...sanitized.chars_changed.slice(0, 5),
+        { truncated: true, total_changed: total },
+      ];
+    }
+
     const entry = JSON.stringify({
       ts: new Date().toISOString(),
       event: 'injection_detected',
-      ...eventData,
+      ...sanitized,
     });
     fs.appendFileSync(logFile, entry + '\n');
   } catch {
