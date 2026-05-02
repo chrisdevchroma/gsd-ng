@@ -676,6 +676,15 @@ function cmdTodoComplete(cwd, filename) {
 
   const { todosPending: pendingDir, todosCompleted: completedDir } =
     planningPaths(cwd);
+
+  const strayDoneDir = path.join(pendingDir, '..', 'done');
+  if (fs.existsSync(strayDoneDir)) {
+    process.stderr.write(
+      `[warning] Stray .planning/todos/done/ directory detected — likely created by an off-piste agent. ` +
+      `Move its contents into .planning/todos/completed/ and remove the empty done/ directory.\n`
+    );
+  }
+
   const sourcePath = path.join(pendingDir, filename);
 
   if (!fs.existsSync(sourcePath)) {

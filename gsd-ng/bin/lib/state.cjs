@@ -1059,9 +1059,10 @@ function writeStateMd(statePath, content, cwd) {
       `[security] Advisory: potential injection in STATE.md: ${findings.join('; ')}\n`,
     );
   }
-  // Transparent write — no implicit frontmatter sync.
-  // Use `state rebuild-frontmatter` to explicitly regenerate frontmatter from body.
-  fs.writeFileSync(statePath, content, 'utf-8');
+  // Sync YAML frontmatter from body on every write so top YAML and body bold stay in lockstep.
+  // syncStateFrontmatter is idempotent and read-only on the body — only constructs FM from it.
+  const synced = syncStateFrontmatter(content, cwd);
+  fs.writeFileSync(statePath, synced, 'utf-8');
 }
 
 function cmdStateRebuildFrontmatter(cwd) {
