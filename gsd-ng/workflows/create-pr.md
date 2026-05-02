@@ -380,21 +380,15 @@ if [ $PUSH_EXIT -ne 0 ]; then
 fi
 
 # Hard stop on bypass: push succeeded only because the user's token bypassed
-# branch protection. Halt before PR creation and surface loudly. Do NOT
-# auto-revert — a bypass is often deliberate (emergency hotfix, frozen branch),
-# and `git push --delete` would itself be destructive. Let the human decide.
+# branch protection. Halt before PR creation. Do NOT include remediation
+# commands in the error message — an AI agent reading this would mirror
+# them mechanically (the failure mode this guard exists to prevent). Bare
+# error + halt is sufficient. The human has their own context.
 if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
-  echo "Error: push succeeded but bypassed required branch protection rules:"
+  echo "Error: push bypassed required branch protection rules:"
   echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
   echo ""
-  echo "Halting before PR creation. The pushed branch is on the remote."
-  echo "If the bypass was intentional (e.g. emergency hotfix), proceed manually:"
-  echo "  gh pr create --base $PUSH_TARGET --head $HEAD_BRANCH ..."
-  echo "If the bypass was unintentional, revert manually:"
-  echo "  git -C $GIT_CWD push --delete $PUSH_REMOTE $HEAD_BRANCH"
-  echo ""
-  echo "Underlying cause: your token has bypass permission on this protected branch."
-  echo "If unintentional: Settings -> Branches -> remove yourself from 'Allow specified actors to bypass'."
+  echo "Halted before PR creation. Human must investigate."
   # Restore work branch before exiting (mirrors the failure-path cleanup above)
   if [ "$BRANCHING_STRATEGY" != "none" ]; then
     git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
