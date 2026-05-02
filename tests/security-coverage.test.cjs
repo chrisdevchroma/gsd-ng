@@ -352,8 +352,29 @@ describe('Phase 50 logSecurityEvent evasion fields (SEC50-HOMOGLYPH-SURFACE)', (
   });
 });
 
+// ─── Multi-language coverage (50-03, SEC50-MULTILANG) ─────────────────────────
+describe('Phase 50 multi-language coverage (SEC50-MULTILANG)', () => {
+  for (const fx of loadFixtures('multilang-patterns.jsonl')) {
+    test(`${fx.id} (${fx.attack_family}): ${fx.text.slice(0, 50)}…`, () => {
+      const result = scanForInjection(fx.text);
+      if (fx.expected_label === 1) {
+        assert.strictEqual(
+          result.tier,
+          'high',
+          `[${fx.id}] from ${fx.source_dataset} (family=${fx.attack_family}) expected tier=high; got ${result.tier} blocked=${JSON.stringify(result.blocked)} findings=${JSON.stringify(result.findings)}`,
+        );
+      } else {
+        assert.strictEqual(
+          result.tier,
+          'clean',
+          `[${fx.id}] from ${fx.source_dataset} (family=${fx.attack_family}) is benign and must NOT trigger; got ${result.tier} blocked=${JSON.stringify(result.blocked)} findings=${JSON.stringify(result.findings)}`,
+        );
+      }
+    });
+  }
+});
+
 // ─── Stubs for downstream plans ───────────────────────────────────────────────
-// Plan 50-03 will populate: Multi-language pattern detection + FP guard tests
 // Plan 50-04 will populate: Context-reset / authority / roleplay tests + dataset coverage tests
 //
 // Export the loader for plans 02-04 to import (kept here as the canonical helper).

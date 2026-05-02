@@ -195,6 +195,113 @@ const INJECTION_PATTERNS_TIERED = [
       /(?:tool(?:\s+output)?|search\s+result|webpage\s+content|external\s+data)[^.]{0,40}(?:ignore|override|forget|disregard)\s+(?:previous|prior|above|all)/i,
     confidence: 'medium',
   },
+
+  // ── Multi-language patterns (Phase 50, SEC50-MULTILANG) ─────────────────────
+  // All high-confidence: native-speaker prose rarely uses imperative override
+  // framings any more than English speakers do. Native-script only; homoglyph
+  // normalization (Phase 50 normalizeForScan) handles cross-script evasion.
+  // Canonical phrasings cross-checked against Lakera/deepset corpora and
+  // multi-translator references; see 50-RESEARCH.md §"Multi-language Patterns"
+  // and §"Pitfall 2" for translation provenance.
+
+  // German: "Ignoriere alle vorherigen Anweisungen"
+  // Variants: ignoriere/ignorier/ignore (rare loanword); vorherig/bisherig (synonyms);
+  //           Anweisungen / Anleitungen / Befehle / Instruktionen
+  {
+    pattern:
+      /ignorier(?:e|t|en)?\s+(?:alle\s+)?(?:vorherig|bisherig|frühere?n?|obig)e[nrs]?\s+(?:anweisung|anleitung|befehl|instruktion|regel)(?:en|s)?/i,
+    confidence: 'high',
+  },
+
+  // French: "Ignore toutes les instructions précédentes"
+  // Variants: ignore/ignorez (tu/vous); précédent/antérieur; instructions/consignes/directives
+  {
+    pattern:
+      /ignor(?:e|ez|er)\s+(?:toutes?\s+)?(?:les\s+)?(?:instructions?|consignes?|directives?|règles?|ordres?)\s+(?:précédent|antérieur|précedent|ci-dessus)/i,
+    confidence: 'high',
+  },
+
+  // Spanish: "Ignora todas las instrucciones anteriores"
+  // Variants: ignora/ignore/ignoren; anterior/previa/precedente; instrucciones/órdenes/reglas
+  {
+    pattern:
+      /ignor(?:a|e|en|ar)\s+(?:todas?\s+)?(?:las?\s+)?(?:instruccion(?:es)?|órden(?:es)?|reglas?|directrices?)\s+(?:anterior|previ|precedent)/i,
+    confidence: 'high',
+  },
+
+  // Chinese (Simplified + Traditional): "忽略之前的指令", "无视所有先前指令",
+  //                                      "忽略之前的所有指令"
+  // No \b — JS regex \b is undefined on CJK
+  // Verbs: 忽略 / 无视 / 忽视 / 忘记 / 不理会
+  // Modifier (required, in either order): 之前/以前/上述/先前/前面/上面 OR 所有
+  //   (e.g. "忽略所有之前指令" vs "忽略之前的所有指令" vs "忽略之前指令")
+  // Nouns: 指令/指示/说明/命令/规则
+  {
+    pattern:
+      /(?:忽略|无视|忽视|忘记|不理会)(?:所有的?)?(?:之前|以前|上述|先前|前面|上面)的?(?:所有)?(?:指令|指示|说明|命令|规则|要求)/i,
+    confidence: 'high',
+  },
+
+  // Japanese: "これまでの指示をすべて無視して"
+  // Verbs: 無視/むし; 忘れて
+  // Modifiers: これまで(の)/以前(の)/上記(の)/前(の)
+  // Particles between modifier and noun: の, は, を allowed
+  // Nouns: 指示/指令/命令/ルール/規則
+  {
+    pattern:
+      /(?:これまで|以前|上記|前)の?(?:指示|指令|命令|ルール|規則)を?(?:すべて|全て)?(?:無視|むし|忘れ)/,
+    confidence: 'high',
+  },
+
+  // Korean: "이전의 모든 지시를 무시하고"
+  // Verbs: 무시 / 잊 / 따르지 마
+  // Modifiers: 이전(의) / 앞서 / 위의 / 모든
+  // Nouns: 지시 / 명령 / 규칙 / 안내
+  {
+    pattern:
+      /(?:이전|앞서|위의?|이전의?)\s*(?:모든\s+)?(?:지시|명령|규칙|안내|지침)(?:을|를|은|는)?\s*(?:무시|잊)/,
+    confidence: 'high',
+  },
+
+  // Russian (Cyrillic): "Игнорируй все предыдущие инструкции"
+  // Verbs: игнорируй/игнорируйте/игнорируешь/игнорировать; забудь(те)
+  // Modifiers: все/всё; предыдущие/прежние/вышеуказанные
+  // Nouns: инструкции/указания/правила/команды/директивы
+  {
+    pattern:
+      /(?:игнорируй(?:те)?|игнориру[еюя]ш?[ьм]?|игнорировать|забудь(?:те)?)\s+(?:все[её]?\s+)?(?:предыдущ|прежн|вышеуказа|выше\s*указа|ранее\s*данн)/i,
+    confidence: 'high',
+  },
+
+  // Portuguese: "Ignore todas as instruções anteriores"
+  // Variants: ignore/ignora/ignorem; instruções/ordens/regras/diretrizes
+  // anterior/prévia/precedente; covers BR + PT spelling differences
+  {
+    pattern:
+      /ignor(?:e|a|em|ar)\s+(?:todas?\s+)?(?:as\s+)?(?:instruç(?:ão|ões)|ordens?|regras?|diretrizes?|orient(?:ação|ações)?)\s+(?:anterior|prévi|precedent)/i,
+    confidence: 'high',
+  },
+
+  // Arabic: "تجاهل جميع التعليمات السابقة"
+  // No \b on non-Latin
+  // Verbs: تجاهل / انس / لا تتبع
+  // Nouns: التعليمات / الأوامر / القواعد
+  // Modifier: السابقة / السابقه / السابقين / أعلاه
+  {
+    pattern:
+      /(?:تجاهل|انس|تجاوز)\s*(?:جميع\s*|كل\s*)?(?:التعليمات|الأوامر|القواعد|التوجيهات)\s*(?:السابق|أعلاه|السابقه)/,
+    confidence: 'high',
+  },
+
+  // Hindi (Devanagari): "पिछले सभी निर्देशों को अनदेखा करें"
+  // Verbs: अनदेखा कर / नज़रअंदाज़ कर / भूल / न मान
+  // Nouns: निर्देशों / निर्देश / आदेश / नियम
+  // Modifier: पिछले (सभी)? / पूर्व / उपरोक्त
+  {
+    pattern:
+      /(?:पिछल|पूर्व|उपरोक्त)(?:े|ी)?\s*(?:सभी\s+)?(?:निर्देश(?:ों)?|आदेश(?:ों)?|नियम(?:ों)?)\s*(?:को\s+)?(?:अनदेखा|नज़रअंदाज़|नजरअंदाज|भूल|न\s+मान)/,
+    confidence: 'high',
+  },
 ];
 
 // ─── validatePath ─────────────────────────────────────────────────────────────
@@ -466,12 +573,24 @@ function scanForInjection(content, opts = {}) {
   const findings = [];
   const blocked = [];
 
-  // Scan against tiered patterns (Phase 50: against normalized form)
+  // Scan against tiered patterns. We test EACH pattern against both the
+  // original `content` and the post-normalization `normalized` copy:
+  //   - matches original only        → direct attack (e.g. native-script
+  //                                    multilang pattern; ASCII English attack)
+  //   - matches normalized only      → homoglyph evasion (Cyrillic/Greek look-
+  //                                    alikes folded back to Latin)
+  //   - matches both                 → direct attack (no evasion tag)
+  //
+  // Phase 50-03 note: testing against the original is required for native-
+  // script multi-language patterns whose source codepoints (Cyrillic, Arabic)
+  // are themselves remapped by normalizeForScan via the TR39 confusables
+  // map. Pure ASCII/Latin attacks are unaffected; the homoglyph-evasion path
+  // remains exact (matches normalized but not original).
   for (const { pattern, confidence } of INJECTION_PATTERNS_TIERED) {
-    if (pattern.test(normalized)) {
-      // If the pattern fires on normalized but NOT on the original, the
-      // attacker used homoglyph substitution to evade detection.
-      const evasion = !pattern.test(content);
+    const matchesOriginal = pattern.test(content);
+    const matchesNormalized = pattern.test(normalized);
+    if (matchesOriginal || matchesNormalized) {
+      const evasion = matchesNormalized && !matchesOriginal;
       const tag = evasion ? ' [homoglyph-evasion]' : '';
       const entry = pattern.toString() + tag;
       if (confidence === 'high') {
