@@ -681,7 +681,7 @@ function cmdTodoComplete(cwd, filename) {
   if (fs.existsSync(strayDoneDir)) {
     process.stderr.write(
       `[warning] Stray .planning/todos/done/ directory detected — likely created by an off-piste agent. ` +
-      `Move its contents into .planning/todos/completed/ and remove the empty done/ directory.\n`
+        `Move its contents into .planning/todos/completed/ and remove the empty done/ directory.\n`,
     );
   }
 

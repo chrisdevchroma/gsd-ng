@@ -378,6 +378,12 @@ if [ $PUSH_EXIT -ne 0 ]; then
   git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
   exit 1
 fi
+
+if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
+  echo "Error: push bypassed required branch protection rules:"
+  echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
+  exit 1
+fi
 ```
 
 STOP on push failure — cannot create PR without pushed branch.
