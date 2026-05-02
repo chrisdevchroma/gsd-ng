@@ -156,7 +156,7 @@ fi
 
 Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_model`, `commit_docs`, `quick_id`, `slug`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`.
 
-**If `roadmap_exists` is false:** Error — Quick mode requires an active project with ROADMAP.md. Run `/gsd:new-project` first.
+**If `roadmap_exists` is false:** Error — Quick mode requires an active project with ROADMAP.md. Run `{{COMMAND_PREFIX}}new-project` first.
 
 Quick tasks can run mid-phase - validation only checks ROADMAP.md exists, not phase status.
 
@@ -737,7 +737,7 @@ Commit: ${commit_hash}
 
 ---
 
-Ready for next task: /gsd:quick
+Ready for next task: {{COMMAND_PREFIX}}quick
 ```
 
 **If NOT `$VERIFY_MODE`:**
@@ -754,7 +754,7 @@ Commit: ${commit_hash}
 
 ---
 
-Ready for next task: /gsd:quick
+Ready for next task: {{COMMAND_PREFIX}}quick
 ```
 
 ---

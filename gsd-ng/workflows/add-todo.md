@@ -36,7 +36,7 @@ Note existing areas from the todos array for consistency in infer_area step.
 
 <step name="extract_content">
 **With arguments:** Use as the title/focus.
-- `/gsd:add-todo Add auth token refresh` → title = "Add auth token refresh"
+- `{{COMMAND_PREFIX}}add-todo Add auth token refresh` → title = "Add auth token refresh"
 
 **Without arguments:** Analyze recent conversation to extract:
 - The specific problem, idea, or task discussed
@@ -136,7 +136,7 @@ files:
 **Recurring todos:** If the user specifies this should be a recurring or permanent reminder, add `recurring: true` and `interval: {duration}` to the frontmatter (uncomment and fill those fields). Valid interval formats: `7d`, `14d`, `30d`, `90d` (any Nd/Nw/Nm/Ny format — d=days, w=weeks, m=months, y=years). Do NOT add `last_completed` — it will be set automatically on first completion. Recurring todos stay in `pending/` after completion and resurface when their interval elapses.
 
 The `--recurring` and `--interval` flags are recognized when invoking via arguments:
-- `/gsd:add-todo Check upstream changes --recurring --interval 30d`
+- `{{COMMAND_PREFIX}}add-todo Check upstream changes --recurring --interval 30d`
 </step>
 
 <step name="update_state">
@@ -209,10 +209,10 @@ Then use AskUserQuestion:
 - options:
   - "Continue with current work" -- return to what you were doing; exit workflow
   - "Add another todo" -- capture another todo now
-  - "View all todos" -- run /gsd:check-todos
+  - "View all todos" -- run {{COMMAND_PREFIX}}check-todos
 
-If user selects "Add another todo": loop back to the `extract_content` step within this same workflow invocation (do NOT invoke a fresh /gsd:add-todo).
-If user selects "View all todos": invoke /gsd:check-todos (the workflow reference, not inline summary).
+If user selects "Add another todo": loop back to the `extract_content` step within this same workflow invocation (do NOT invoke a fresh {{COMMAND_PREFIX}}add-todo).
+If user selects "View all todos": invoke {{COMMAND_PREFIX}}check-todos (the workflow reference, not inline summary).
 If user selects "Continue with current work": exit the workflow.
 </step>
 

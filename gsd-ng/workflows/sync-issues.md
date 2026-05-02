@@ -28,7 +28,7 @@ Platform detected: {platform || 'none'}
 CLI installed: {cli_installed}
 {If cli_install_url: "Install: {cli_install_url}"}
 
-Configure platform via /gsd:settings or install the CLI tool.
+Configure platform via {{COMMAND_PREFIX}}settings or install the CLI tool.
 ```
 Exit.
 </step>
@@ -58,7 +58,7 @@ Add references using the `external_ref` field:
 - REQUIREMENTS.md traceability table: `| REQ-01 | Phase 1 | Complete | github:#42 |`
 - Todo frontmatter: `external_ref: github:#42`
 
-Import external issues: /gsd:import-issues
+Import external issues: {{COMMAND_PREFIX}}import-issues
 ```
 Exit.
 
@@ -115,7 +115,7 @@ For each conflict, use AskUserQuestion:
 <step name="security_awareness">
 After sync completes, check stderr output for `[security]` warnings.
 If present, inform the user:
-"Security scan detected suspicious content in synced issues. Details logged to .claude/logs/security-events.log. Run /gsd:health to review."
+"Security scan detected suspicious content in synced issues. Details logged to .claude/logs/security-events.log. Run {{COMMAND_PREFIX}}health to review."
 </step>
 
 <step name="summary">

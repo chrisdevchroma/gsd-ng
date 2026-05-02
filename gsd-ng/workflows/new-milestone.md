@@ -22,7 +22,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 - Read PROJECT.md (existing project, validated requirements, decisions)
 - Read MILESTONES.md (what shipped previously)
 - Read STATE.md (pending todos, blockers)
-- Check for MILESTONE-CONTEXT.md (from /gsd:discuss-milestone)
+- Check for MILESTONE-CONTEXT.md (from {{COMMAND_PREFIX}}discuss-milestone)
 
 ## 2. Gather Milestone Goals
 
@@ -128,7 +128,7 @@ AskUserQuestion: "Research the domain ecosystem for new features before defining
 - "Skip research (current default)" — Go straight to requirements
 - "Research first" — Discover patterns, features, architecture for NEW capabilities
 
-**IMPORTANT:** Do NOT persist this choice to config.json. The `workflow.research` setting is a persistent user preference that controls plan-phase behavior across the project. Changing it here would silently alter future `/gsd:plan-phase` behavior. To change the default, use `/gsd:settings`.
+**IMPORTANT:** Do NOT persist this choice to config.json. The `workflow.research` setting is a persistent user preference that controls plan-phase behavior across the project. Changing it here would silently alter future `{{COMMAND_PREFIX}}plan-phase` behavior. To change the default, use `{{COMMAND_PREFIX}}settings`.
 
 **If user chose "Research first":**
 
@@ -387,11 +387,11 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: create milestone v[X
 
 **Phase [N]: [Phase Name]** — [Goal]
 
-`/gsd:discuss-phase [N]` — gather context and clarify approach
+`{{COMMAND_PREFIX}}discuss-phase [N]` — gather context and clarify approach
 
 <sub>`/clear` first → fresh context window</sub>
 
-Also: `/gsd:plan-phase [N]` — skip discussion, plan directly
+Also: `{{COMMAND_PREFIX}}plan-phase [N]` — skip discussion, plan directly
 ```
 
 </process>
@@ -408,7 +408,7 @@ Also: `/gsd:plan-phase [N]` — skip discussion, plan directly
 - [ ] User feedback incorporated (if any)
 - [ ] ROADMAP.md phases continue from previous milestone
 - [ ] All commits made (if planning docs committed)
-- [ ] User knows next step: `/gsd:discuss-phase [N]`
+- [ ] User knows next step: `{{COMMAND_PREFIX}}discuss-phase [N]`
 - [ ] If --target-branch provided: git.target_branch updated in config.json
 
 **Atomic commits:** Each phase commits its artifacts immediately.

@@ -87,6 +87,29 @@ The CLI checks `commit_docs` config and gitignore status internally — no manua
 
 </commit_docs_behavior>
 
+<workflow_config>
+
+**Workflow Toggles:**
+
+Boolean toggles that gate optional steps in GSD workflows. Set to `false` to disable. Defaults preserve current behavior — adding the key is opt-out.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `workflow.research` | `true` | Spawn researcher subagent during `plan-phase` |
+| `workflow.plan_check` | `true` | Spawn plan checker during `plan-phase` |
+| `workflow.verifier` | `true` | Spawn verifier subagent during `execute-phase` |
+| `workflow.nyquist_validation` | `true` | Validation-architecture research during `plan-phase` |
+| `workflow.ui_phase` | `true` | Generate UI-SPEC.md design contracts for frontend phases |
+| `workflow.ui_safety_gate` | `true` | Prompt to run `{{COMMAND_PREFIX}}ui-phase` before planning frontend phases |
+| `workflow.node_repair` | `true` | Auto-attempt RETRY/DECOMPOSE/PRUNE on verification failure during `execute-plan` |
+| `workflow.node_repair_budget` | `2` | Max repair attempts per failing task before ESCALATE |
+| `workflow.incremental_remap` | `true` | Auto-update codebase docs after phase completion via `gsd-incremental-mapper` agents. Set `false` to skip — useful when codebase docs are intentionally manual or when phase work doesn't touch documented modules. |
+| `workflow.auto_advance` | `false` | Auto-chain phases without user confirmation (yolo mode) |
+
+**Settings UI exposure:** Most toggles surface in `{{COMMAND_PREFIX}}settings`. Internal performance/quality tweaks (`node_repair`, `node_repair_budget`) are config-only — edit `.planning/config.json` directly.
+
+</workflow_config>
+
 <search_behavior>
 
 **When `search_gitignored: false` (default):**
@@ -238,7 +261,7 @@ GSD uses a two-layer branch model for team collaboration:
 
 1. **Work branch** (Layer 1): GSD's internal branch for atomic per-task commits. Controlled by existing `branching_strategy`, `phase_branch_template`, `milestone_branch_template`. Based from `target_branch` instead of current HEAD.
 
-2. **Review branch** (Layer 2): Team-facing branch created by `/gsd:create-pr`. Named via `review_branch_template`. Contains squashed commits for clean PR history.
+2. **Review branch** (Layer 2): Team-facing branch created by `{{COMMAND_PREFIX}}create-pr`. Named via `review_branch_template`. Contains squashed commits for clean PR history.
 
 **Target Branch:**
 
@@ -247,7 +270,7 @@ The `target_branch` determines:
 - PR target: PRs opened against this branch
 - Merge target in `complete-milestone`
 
-Per-milestone override: `/gsd:new-milestone --target-branch develop`
+Per-milestone override: `{{COMMAND_PREFIX}}new-milestone --target-branch develop`
 
 **Review Branch Template Variables:**
 

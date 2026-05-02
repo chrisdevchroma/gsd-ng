@@ -373,7 +373,7 @@ PUSH_EXIT=$?
 
 if [ $PUSH_EXIT -ne 0 ]; then
   echo "Error: Push failed — $PUSH_OUT"
-  echo "Fix the issue and retry: /gsd:create-pr ${PHASE_ARG}"
+  echo "Fix the issue and retry: {{COMMAND_PREFIX}}create-pr ${PHASE_ARG}"
   # Return to work branch before exiting
   git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
   exit 1

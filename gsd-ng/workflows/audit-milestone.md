@@ -156,7 +156,7 @@ Classify per phase:
 
 Add to audit YAML: `nyquist: { compliant_phases, partial_phases, missing_phases, overall }`
 
-Discovery only — never auto-calls `/gsd:validate-phase`.
+Discovery only — never auto-calls `{{COMMAND_PREFIX}}validate-phase`.
 
 ## 6. Aggregate into v{version}-MILESTONE-AUDIT.md
 
@@ -227,7 +227,7 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 
 **Complete milestone** — archive and tag
 
-`/gsd:complete-milestone {version}`
+`{{COMMAND_PREFIX}}complete-milestone {version}`
 
 <sub>`/clear` first → fresh context window</sub>
 
@@ -262,9 +262,9 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 
 | Phase | VALIDATION.md | Compliant | Action |
 |-------|---------------|-----------|--------|
-| {phase} | exists/missing | true/false/partial | `/gsd:validate-phase {N}` |
+| {phase} | exists/missing | true/false/partial | `{{COMMAND_PREFIX}}validate-phase {N}` |
 
-Phases needing validation: run `/gsd:validate-phase {N}` for each flagged phase.
+Phases needing validation: run `{{COMMAND_PREFIX}}validate-phase {N}` for each flagged phase.
 
 ───────────────────────────────────────────────────────────────
 
@@ -272,7 +272,7 @@ Phases needing validation: run `/gsd:validate-phase {N}` for each flagged phase.
 
 **Plan gap closure** — create phases to complete milestone
 
-`/gsd:plan-milestone-gaps`
+`{{COMMAND_PREFIX}}plan-milestone-gaps`
 
 <sub>`/clear` first → fresh context window</sub>
 
@@ -280,7 +280,7 @@ Phases needing validation: run `/gsd:validate-phase {N}` for each flagged phase.
 
 **Also available:**
 - cat .planning/v{version}-MILESTONE-AUDIT.md — see full report
-- /gsd:complete-milestone {version} — proceed anyway (accept tech debt)
+- {{COMMAND_PREFIX}}complete-milestone {version} — proceed anyway (accept tech debt)
 
 ───────────────────────────────────────────────────────────────
 
@@ -310,11 +310,11 @@ All requirements met. No critical blockers. Accumulated tech debt needs review.
 
 **A. Complete milestone** — accept debt, track in backlog
 
-`/gsd:complete-milestone {version}`
+`{{COMMAND_PREFIX}}complete-milestone {version}`
 
 **B. Plan cleanup phase** — address debt before completing
 
-`/gsd:plan-milestone-gaps`
+`{{COMMAND_PREFIX}}plan-milestone-gaps`
 
 <sub>`/clear` first → fresh context window</sub>
 

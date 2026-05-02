@@ -116,7 +116,7 @@ Never proceed with an empty answer.
 
 <process>
 
-**Express path available:** If you already have a PRD or acceptance criteria document, use `/gsd:plan-phase {phase} --prd path/to/prd.md` to skip this discussion and go straight to planning.
+**Express path available:** If you already have a PRD or acceptance criteria document, use `{{COMMAND_PREFIX}}plan-phase {phase} --prd path/to/prd.md` to skip this discussion and go straight to planning.
 
 <step name="initialize" priority="first">
 Phase number from argument (required).
@@ -138,7 +138,7 @@ Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phas
 ```
 Phase [X] not found in roadmap.
 
-Use /gsd:progress to see available phases.
+Use {{COMMAND_PREFIX}}progress to see available phases.
 ```
 Exit workflow.
 
@@ -185,7 +185,7 @@ Check `has_plans` and `plan_count` from init. **If `has_plans` is true:**
 - header: "Plans exist"
 - question: "Phase [X] already has {plan_count} plan(s) created without user context. Your decisions here won't affect existing plans unless you replan."
 - options:
-  - "Continue and replan after" — Capture context, then run /gsd:plan-phase {X} to replan
+  - "Continue and replan after" — Capture context, then run {{COMMAND_PREFIX}}plan-phase {X} to replan
   - "View existing plans" — Show plans before deciding
   - "Cancel" — Skip discuss-phase
 
@@ -858,15 +858,15 @@ Created: .planning/phases/${PADDED_PHASE}-${SLUG}/${PADDED_PHASE}-CONTEXT.md
 
 **Phase ${PHASE}: [Name]** — [Goal from ROADMAP.md]
 
-`/gsd:plan-phase ${PHASE}`
+`{{COMMAND_PREFIX}}plan-phase ${PHASE}`
 
 <sub>`/clear` first → fresh context window</sub>
 
 ---
 
 **Also available:**
-- `/gsd:plan-phase ${PHASE} --skip-research` — plan without research
-- `/gsd:ui-phase ${PHASE}` — generate UI design contract before planning (if phase has frontend work)
+- `{{COMMAND_PREFIX}}plan-phase ${PHASE} --skip-research` — plan without research
+- `{{COMMAND_PREFIX}}ui-phase ${PHASE}` — generate UI design contract before planning (if phase has frontend work)
 - Review/edit CONTEXT.md before continuing
 
 ---
@@ -945,23 +945,23 @@ This keeps the auto-advance chain flat — discuss, plan, and execute all run at
 
   Auto-advance pipeline finished: discuss → plan → execute
 
-  Next: /gsd:discuss-phase ${NEXT_PHASE} --auto
+  Next: {{COMMAND_PREFIX}}discuss-phase ${NEXT_PHASE} --auto
   <sub>`/clear` first → fresh context window</sub>
   ```
 - **PLANNING COMPLETE** → Planning done, execution didn't complete:
   ```
   Auto-advance partial: Planning complete, execution did not finish.
-  Continue: /gsd:execute-phase ${PHASE}
+  Continue: {{COMMAND_PREFIX}}execute-phase ${PHASE}
   ```
 - **PLANNING INCONCLUSIVE / CHECKPOINT** → Stop chain:
   ```
   Auto-advance stopped: Planning needs input.
-  Continue: /gsd:plan-phase ${PHASE}
+  Continue: {{COMMAND_PREFIX}}plan-phase ${PHASE}
   ```
 - **GAPS FOUND** → Stop chain:
   ```
   Auto-advance stopped: Gaps found during execution.
-  Continue: /gsd:plan-phase ${PHASE} --gaps
+  Continue: {{COMMAND_PREFIX}}plan-phase ${PHASE} --gaps
   ```
 
 **If neither `--auto` nor config enabled:**

@@ -168,7 +168,7 @@ Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objec
 ```
 WARNING: Same-wave file overlap detected — {overlap.plans[0]} and {overlap.plans[1]} share: {overlap.files.join(', ')}
 These plans may cause Edit conflicts or Write overwrites during parallel execution.
-Consider re-planning with /gsd:plan-phase to separate into sequential waves.
+Consider re-planning with {{COMMAND_PREFIX}}plan-phase to separate into sequential waves.
 ```
 Continue execution (advisory-only, not blocking) — the planner should have prevented this, so runtime overlap is informational.
 
@@ -560,7 +560,7 @@ grep "^status:" "$PHASE_DIR"/*-VERIFICATION.md | cut -d: -f2 | tr -d ' '
 |--------|--------|
 | `passed` | → update_roadmap |
 | `human_needed` | Present items for human testing, get approval or feedback |
-| `gaps_found` | Present gap summary, offer `/gsd:plan-phase {phase} --gaps` |
+| `gaps_found` | Present gap summary, offer `{{COMMAND_PREFIX}}plan-phase {phase} --gaps` |
 
 **If human_needed:**
 ```
@@ -586,15 +586,15 @@ All automated checks passed. {N} items need human testing:
 ---
 ## ▶ Next Up
 
-`/gsd:plan-phase {X} --gaps`
+`{{COMMAND_PREFIX}}plan-phase {X} --gaps`
 
 <sub>`/clear` first → fresh context window</sub>
 
 Also: `cat {phase_dir}/{phase_num}-VERIFICATION.md` — full report
-Also: `/gsd:verify-work {X}` — manual testing first
+Also: `{{COMMAND_PREFIX}}verify-work {X}` — manual testing first
 ```
 
-Gap closure cycle: `/gsd:plan-phase {X} --gaps` reads VERIFICATION.md → creates gap plans with `gap_closure: true` → user runs `/gsd:execute-phase {X} --gaps-only` → verifier re-runs.
+Gap closure cycle: `{{COMMAND_PREFIX}}plan-phase {X} --gaps` reads VERIFICATION.md → creates gap plans with `gap_closure: true` → user runs `{{COMMAND_PREFIX}}execute-phase {X} --gaps-only` → verifier re-runs.
 </step>
 
 <step name="update_roadmap">
@@ -648,7 +648,14 @@ If `AUTO_SYNC` is `"false"`: skip entirely, no output.
 </step>
 
 <step name="incremental_remap">
-After phase completion is committed, trigger incremental codebase re-mapping if codebase docs exist:
+
+```bash
+INCREMENTAL_REMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.incremental_remap --default "true")
+```
+
+If `[ "$INCREMENTAL_REMAP" != "true" ]`: skip this step silently and proceed to `offer_next`.
+
+If `[ "$INCREMENTAL_REMAP" = "true" ]` (default): After phase completion is committed, trigger incremental codebase re-mapping if codebase docs exist:
 
 ```bash
 STALE_COUNT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count)
@@ -701,7 +708,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: incremental codebase
 
 <step name="offer_next">
 
-**Exception:** If `gaps_found`, the `verify_phase_goal` step already presents the gap-closure path (`/gsd:plan-phase {X} --gaps`). No additional routing needed — skip auto-advance.
+**Exception:** If `gaps_found`, the `verify_phase_goal` step already presents the gap-closure path (`{{COMMAND_PREFIX}}plan-phase {X} --gaps`). No additional routing needed — skip auto-advance.
 
 **No-transition check (spawned by auto-advance chain):**
 
@@ -729,7 +736,7 @@ STOP. Do not proceed to auto-advance or transition.
 If `branching_strategy` is not `"none"` AND push succeeded (or `auto_push` is enabled):
 ```
 ---
-**Create a PR:** `/gsd:create-pr {phase}` — squash work into review branch and open PR
+**Create a PR:** `{{COMMAND_PREFIX}}create-pr {phase}` — squash work into review branch and open PR
 ---
 ```
 
@@ -764,10 +771,10 @@ Read and follow `~/.claude/gsd-ng/workflows/transition.md`, passing through the 
 ```
 ## ✓ Phase {X}: {Name} Complete
 
-/gsd:progress — see updated roadmap
-/gsd:discuss-phase {next} — discuss next phase before planning
-/gsd:plan-phase {next} — plan next phase
-/gsd:execute-phase {next} — execute next phase
+{{COMMAND_PREFIX}}progress — see updated roadmap
+{{COMMAND_PREFIX}}discuss-phase {next} — discuss next phase before planning
+{{COMMAND_PREFIX}}plan-phase {next} — plan next phase
+{{COMMAND_PREFIX}}execute-phase {next} — execute next phase
 ```
 </step>
 
@@ -1003,7 +1010,7 @@ Orchestrator: ~10-15% context. Subagents: fresh 200k each. No polling (Task bloc
 </failure_handling>
 
 <resumption>
-Re-run `/gsd:execute-phase {phase}` → discover_plans finds completed SUMMARYs → skips them → resumes from first incomplete plan → continues wave execution.
+Re-run `{{COMMAND_PREFIX}}execute-phase {phase}` → discover_plans finds completed SUMMARYs → skips them → resumes from first incomplete plan → continues wave execution.
 
 STATE.md tracks: last completed plan, current wave, pending checkpoints.
 </resumption>
