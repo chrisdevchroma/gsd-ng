@@ -13,3 +13,7 @@ coverage/
 
 # Vendored local binaries (platform-specific, not committed)
 .bin/
+
+# GSD artifacts
+/.claude/
+/.planning/
