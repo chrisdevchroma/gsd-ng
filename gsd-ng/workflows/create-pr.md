@@ -379,11 +379,6 @@ if [ $PUSH_EXIT -ne 0 ]; then
   exit 1
 fi
 
-# Hard stop on bypass: push succeeded only because the user's token bypassed
-# branch protection. Halt before PR creation. Do NOT include remediation
-# commands in the error message — an AI agent reading this would mirror
-# them mechanically (the failure mode this guard exists to prevent). Bare
-# error + halt is sufficient. The human has their own context.
 if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
   echo "Error: push bypassed required branch protection rules:"
   echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
