@@ -45,6 +45,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { CONFUSABLES_MAP } = require('./confusables.cjs');
 
 // ─── Injection patterns (legacy — backward compat) ────────────────────────────
 
@@ -353,6 +354,76 @@ function isEntropyGloballyEnabled(cwd) {
   }
 }
 
+// ─── normalizeForScan (Phase 50) ──────────────────────────────────────────────
+
+/**
+ * Normalize content for prompt-injection scanning.
+ *
+ * Two-step pipeline:
+ *   1. NFKC: handles full-width Latin (ＡＢＣ → ABC), ligatures (ﬁ → fi),
+ *      super/subscript, and other Unicode compatibility decomposition cases.
+ *   2. TR39 confusable substitution: collapses visual homoglyphs (Cyrillic а,
+ *      Greek α, Math-Latin 𝐚, Cherokee, etc.) to their Latin a-z/A-Z target.
+ *
+ * Used internally by scanForInjection. Original content is NEVER mutated;
+ * downstream display, audit logs, and outbound prompts must use the original.
+ *
+ * @param {string} content - Input string
+ * @returns {string} Normalized string (only different characters; same length
+ *                   in most cases since NFKC of compat-decomposed Latin is 1:1
+ *                   and TR39 MA-table mappings we vendor are single-codepoint).
+ */
+function normalizeForScan(content) {
+  if (!content || typeof content !== 'string') return '';
+  const out = content.normalize('NFKC');
+  // Apply confusable map character-by-character. Codepoint-aware iteration via
+  // Array.from handles surrogate pairs correctly for Math-Latin variants.
+  //
+  // ASCII source characters (codepoint < 128) are left untouched. The TR39 MA
+  // table collapses visually-confusable ASCII characters too (e.g. 'I' → 'l',
+  // '0' → 'O', '1' → 'l', '|' → 'l') which would corrupt legitimate ASCII
+  // input ("Ignore" → "lgnore"). We only want to fold *non-ASCII* homoglyphs
+  // back to their Latin a-z/A-Z target so existing English regex patterns fire.
+  return Array.from(out)
+    .map((ch) => {
+      const cp = ch.codePointAt(0);
+      if (cp < 128) return ch;
+      return CONFUSABLES_MAP[ch] || ch;
+    })
+    .join('');
+}
+
+// ─── diffConfusables (Phase 50) ──────────────────────────────────────────────
+
+/**
+ * Compute character-level differences between original and normalized scan input.
+ * Iterates by Unicode codepoint (Array.from) so surrogate pairs (e.g. Math-Latin
+ * Bold variants) are handled as single positions.
+ *
+ * Used by callers to populate `chars_changed` audit-log fields. Only positions
+ * where original[i] !== normalized[i] are reported. When NFKC changes string
+ * length (rare with single-codepoint mappings), only the overlapping prefix is
+ * compared — callers should pass output of normalizeForScan, where length is
+ * preserved for the confusable-substitution stage.
+ *
+ * @param {string} original   - Pre-normalization string
+ * @param {string} normalized - Post-normalization string (output of normalizeForScan)
+ * @returns {Array<{offset: number, from: string, to: string}>} Differences in
+ *          codepoint order, by offset within the codepoint-array view.
+ */
+function diffConfusables(original, normalized) {
+  const origChars = Array.from(original || '');
+  const normChars = Array.from(normalized || '');
+  const diffs = [];
+  const len = Math.min(origChars.length, normChars.length);
+  for (let i = 0; i < len; i++) {
+    if (origChars[i] !== normChars[i]) {
+      diffs.push({ offset: i, from: origChars[i], to: normChars[i] });
+    }
+  }
+  return diffs;
+}
+
 // ─── scanForInjection ────────────────────────────────────────────────────────
 
 /**
@@ -367,6 +438,13 @@ function isEntropyGloballyEnabled(cwd) {
  * opts.entropy=false overrides opts.external=true to disable entropy scanning.
  * opts.cwd enables global config toggle reading from .planning/config.json.
  *
+ * Phase 50 change: Patterns now run against an NFKC + TR39 confusable-normalized
+ * copy of the input (homoglyph evasion mitigation). When a pattern matches the
+ * normalized form but NOT the original, the resulting blocked/findings entry
+ * carries a "[homoglyph-evasion]" tag. Original content is preserved unchanged
+ * in the return value, audit logs, and downstream prompts. Unicode bidi/zero-
+ * width and entropy scans continue to run against the original content.
+ *
  * @param {string} content   - Text to scan (e.g., .planning/ file content)
  * @param {object} [opts]
  * @param {boolean} [opts.strict] - If explicitly false, disables Unicode detection. Default: on.
@@ -380,16 +458,26 @@ function scanForInjection(content, opts = {}) {
     return { clean: true, findings: [], blocked: [], tier: 'clean' };
   }
 
+  // Phase 50: normalize once at scan entry. Pattern loops below run against
+  // `normalized`; an evasion tag is added when a pattern matches `normalized`
+  // but NOT `content` (= homoglyph evasion attempt).
+  const normalized = normalizeForScan(content);
+
   const findings = [];
   const blocked = [];
 
-  // Scan against tiered patterns
+  // Scan against tiered patterns (Phase 50: against normalized form)
   for (const { pattern, confidence } of INJECTION_PATTERNS_TIERED) {
-    if (pattern.test(content)) {
+    if (pattern.test(normalized)) {
+      // If the pattern fires on normalized but NOT on the original, the
+      // attacker used homoglyph substitution to evade detection.
+      const evasion = !pattern.test(content);
+      const tag = evasion ? ' [homoglyph-evasion]' : '';
+      const entry = pattern.toString() + tag;
       if (confidence === 'high') {
-        blocked.push(pattern.toString());
+        blocked.push(entry);
       } else {
-        findings.push(pattern.toString());
+        findings.push(entry);
       }
     }
   }
@@ -489,7 +577,17 @@ function sanitizeForPrompt(content, opts = {}) {
   }
   // Prepend advisory warning with tier — never strip or escape original content
   const allFindings = [...result.blocked, ...result.findings];
-  return `[SECURITY WARNING: potential injection detected (tier: ${result.tier}) — ${allFindings.join('; ')}]\n\n${content}`;
+  // Phase 50: surface "homoglyph evasion" phrase when any finding/blocked entry
+  // carries the [homoglyph-evasion] tag. This gives agents an explicit cue that
+  // a Unicode-substitution attack was attempted (no innocent reason to write
+  // "ignore previous instructions" with a Cyrillic а).
+  const evasionDetected = allFindings.some((f) =>
+    f.includes('[homoglyph-evasion]'),
+  );
+  const evasionPhrase = evasionDetected
+    ? 'Active prompt injection with homoglyph evasion detected. '
+    : '';
+  return `[SECURITY WARNING: ${evasionPhrase}potential injection detected (tier: ${result.tier}) — ${allFindings.join('; ')}]\n\n${content}`;
 }
 
 // ─── wrapUntrustedContent ────────────────────────────────────────────────────
@@ -702,6 +800,8 @@ module.exports = {
   wrapUntrustedContent,
   stripUntrustedWrappers,
   logSecurityEvent,
+  normalizeForScan, // Phase 50 — NFKC + TR39 confusable normalization (test visibility)
+  diffConfusables, // Phase 50 — codepoint diff for homoglyph audit log
   INJECTION_PATTERNS, // backward compat — 11-element array unchanged
   INJECTION_PATTERNS_TIERED, // Phase 40 — tiered patterns with confidence classification
 };
