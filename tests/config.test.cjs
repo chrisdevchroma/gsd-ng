@@ -4,7 +4,7 @@
  * CLI integration tests for config-ensure-section, config-set, and config-get
  * commands exercised through gsd-tools.cjs via execSync.
  *
- * Requirements: TEST-13
+ * Tests: config-set/get operations, git keys, commit keys, model profiles, effort overrides
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
@@ -229,7 +229,7 @@ describe('config-set command', () => {
   });
 });
 
-// ─── Phase 13 git config keys (GIT-01) ───────────────────────────────────────
+// ─── git config keys ───────────────────────────────────────────────────────────
 
 describe('Phase 13 git config keys (GIT-01)', () => {
   let tmpDir;
@@ -303,7 +303,7 @@ describe('Phase 13 git config keys (GIT-01)', () => {
     const fs = require('fs');
     const path = require('path');
 
-    // Create a ROADMAP.md with Phase 13 entry
+    // Create a ROADMAP.md with a git-branching phase entry
     const roadmapContent = `# Milestone v2.0\n\n## Phase 13: Git Branching And Collaboration\n\n**Goal:** Add git branching support\n**Requirements:** GIT-01\n`;
     fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent, 'utf-8');
 
@@ -465,7 +465,7 @@ describe('config-get command', () => {
   });
 });
 
-// ─── Phase 14 commit and versioning config keys (COMM-01) ────────────────────
+// ─── commit and versioning config keys ────────────────────────────────────────
 
 describe('git commit and versioning config keys', () => {
   let tmpDir;
@@ -508,7 +508,7 @@ describe('git commit and versioning config keys', () => {
   });
 });
 
-// ─── Phase 21-03 issue_tracker.verify_label config key (VERIFY-01) ───────────
+// ─── issue_tracker.verify_label config key ───────────────────────────────────
 
 describe('issue_tracker.verify_label config key (VERIFY-01)', () => {
   let tmpDir;
@@ -540,7 +540,7 @@ describe('issue_tracker.verify_label config key (VERIFY-01)', () => {
   });
 });
 
-// ─── Per-submodule config keys (SUBMOD-01) ────────────────────────────────────
+// ─── per-submodule config keys ────────────────────────────────────────────────
 
 describe('Per-submodule config keys (SUBMOD-01)', () => {
   let tmpDir;
@@ -689,7 +689,7 @@ describe('EFFORT_PROFILES', () => {
   });
 });
 
-// ─── set-profile effort display and config-set effort_overrides (EFF-04, EFF-05) ─
+// ─── set-profile effort display and config-set effort_overrides ─────────────────
 
 describe('set-profile effort display and effort_overrides config-set (EFF-04, EFF-05)', () => {
   let tmpDir;
@@ -810,7 +810,7 @@ describe('set-profile effort display and effort_overrides config-set (EFF-04, EF
   });
 });
 
-// ─── Phase 55 — effort sync wiring ───────────────────────────────────────────
+// ─── effort sync wiring ───────────────────────────────────────────────────────
 
 describe('Phase 55 — effort sync wiring', () => {
   let tmpDir;

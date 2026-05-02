@@ -5,7 +5,7 @@
  * Covers: no-command, unknown command, unknown subcommands for every command group,
  * --cwd parsing, and previously untouched routing branches.
  *
- * Requirements: DISP-01, DISP-02
+ * Tests: dispatch routing, unknown commands, --cwd parsing, error paths
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
@@ -454,9 +454,9 @@ requirements-completed: [TEST-01]
   });
 });
 
-// ─── sync-agents command (Phase 55) ──────────────────────────────────────────
+// ─── sync-agents command ──────────────────────────────────────────────────────
 
-describe('sync-agents command (Phase 55)', () => {
+describe('sync-agents command', () => {
   let tmpDir;
   const { createTempProjectWithAgents } = require('./helpers.cjs');
   afterEach(() => { if (tmpDir) cleanup(tmpDir); });
@@ -503,9 +503,9 @@ describe('sync-agents command (Phase 55)', () => {
   });
 });
 
-// ─── F-SKILL-HINT: skill-redirect hints in error messages ────────────────────
+// ─── skill-redirect hints in error messages ──────────────────────────────────
 
-describe('F-SKILL-HINT: skill-redirect hints in gsd-tools error messages', () => {
+describe('skill-redirect hints in gsd-tools error messages', () => {
   let tmpDir;
 
   beforeEach(() => {
@@ -535,9 +535,9 @@ describe('F-SKILL-HINT: skill-redirect hints in gsd-tools error messages', () =>
   });
 });
 
-// ─── F-DYM-SCOPE: did-you-mean namespace scoping ─────────────────────────────
+// ─── did-you-mean namespace scoping ──────────────────────────────────────────
 
-describe('F-DYM-SCOPE: did-you-mean suggestions scoped to current namespace', () => {
+describe('did-you-mean suggestions scoped to current namespace', () => {
   let tmpDir;
 
   beforeEach(() => {

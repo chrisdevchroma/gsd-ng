@@ -2219,7 +2219,7 @@ function cmdIssueImport(cwd, platform, number, repo) {
   // Wrap body in untrusted-content tags for all non-blocked writes
   const wrappedBody = wrapUntrustedContent(body, externalRef);
 
-  // Generate filename: YYYY-MM-DD-{slug}.md
+  // Generate filename: date-slug.md (ISO date prefix)
   const today = new Date().toISOString().split('T')[0];
   const slug = title
     .toLowerCase()
@@ -2780,7 +2780,7 @@ function cmdHelp(cwd, args) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Divergence tracking helpers and command (CLEAN-05)
+// Divergence tracking helpers and command
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -3601,7 +3601,7 @@ function cmdDivergence(cwd, opts) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ping-pong oscillation detection (REL-01)
+// Ping-pong oscillation detection
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -4021,7 +4021,7 @@ function cmdGenerateAllowlist(cwd, platform = process.platform) {
 
   // 2. Strip bare + canonical Read/Edit/Write from template — we append
   //    the platform-appropriate form below, matching install.js behavior.
-  //    Uses RW_FORMS (frozen Set) from allowlist.cjs — single source of truth (ALLOW-19).
+  //    Uses RW_FORMS (frozen Set) from allowlist.cjs — single source of truth for permission forms.
   const baseStatic = (template.permissions?.allow || []).filter(
     (e) => !RW_FORMS.has(e),
   );

@@ -8,7 +8,7 @@ const { resolveTmpDir } = require('./helpers.cjs');
 
 const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
-// ── SAND-01: sandbox-detect emits additionalContext JSON ──────────────────────
+// ── sandbox-detect emits additionalContext JSON ──────────────────────
 
 test('SAND-01: sandbox-detect emits additionalContext JSON when SANDBOX_RUNTIME=1', () => {
   const sessionId = 'sand01-test-' + Date.now();
@@ -43,7 +43,7 @@ test('SAND-01: sandbox-detect emits additionalContext JSON when SANDBOX_RUNTIME=
   }
 });
 
-// ── SAND-01: once-per-session deduplication ───────────────────────────────────
+// ── once-per-session deduplication ───────────────────────────────────
 
 test('SAND-01: sandbox-detect exits 0 silently on second call (once-per-session)', () => {
   const sessionId = 'sand01-once-' + Date.now();
@@ -67,7 +67,7 @@ test('SAND-01: sandbox-detect exits 0 silently on second call (once-per-session)
   }
 });
 
-// ── SAND-02: gsd-statusline exits 0 under sandbox simulation ─────────────────
+// ── gsd-statusline exits 0 under sandbox simulation ─────────────────
 
 test('SAND-02: gsd-statusline exits 0 with no stderr under GSD_SIMULATE_SANDBOX', () => {
   const hookPath = path.join(HOOKS_DIR, 'gsd-statusline.js');
@@ -86,7 +86,7 @@ test('SAND-02: gsd-statusline exits 0 with no stderr under GSD_SIMULATE_SANDBOX'
   assert.strictEqual(stderr, '', 'gsd-statusline must produce no stderr under sandbox simulation');
 });
 
-// ── SAND-03: gsd-context-monitor exits 0 under sandbox simulation ─────────────
+// ── gsd-context-monitor exits 0 under sandbox simulation ─────────────
 
 test('SAND-03: gsd-context-monitor exits 0 with no stderr under GSD_SIMULATE_SANDBOX', () => {
   // Note: with no metrics bridge file, gsd-context-monitor exits 0 early (line 50-52).
@@ -108,7 +108,7 @@ test('SAND-03: gsd-context-monitor exits 0 with no stderr under GSD_SIMULATE_SAN
   assert.strictEqual(stderr, '', 'gsd-context-monitor must produce no stderr under sandbox simulation');
 });
 
-// ── SAND-04: gsd-check-update exits 0 under sandbox simulation ───────────────
+// ── gsd-check-update exits 0 under sandbox simulation ───────────────
 
 test('SAND-04: gsd-check-update exits 0 with no stderr under GSD_SIMULATE_SANDBOX', () => {
   const hookPath = path.join(HOOKS_DIR, 'gsd-check-update.js');
@@ -123,7 +123,7 @@ test('SAND-04: gsd-check-update exits 0 with no stderr under GSD_SIMULATE_SANDBO
   assert.strictEqual(stderr, '', 'gsd-check-update must produce no stderr under sandbox simulation');
 });
 
-// ── SAND-06: full suite anchor — all sandbox degradation tests present ────────
+// ── full suite anchor — all sandbox degradation tests present ────────
 
 test('SAND-06: full suite — all sandbox degradation tests pass', () => {
   // This is a documentation/structure anchor test. It asserts that this file
@@ -134,7 +134,7 @@ test('SAND-06: full suite — all sandbox degradation tests pass', () => {
   assert.ok(true, 'SAND-06: sandbox degradation tests present for all three hooks');
 });
 
-// ── DIST-08: gsd-check-update exits 0 silently under GSD_OFFLINE ──────────────
+// ── gsd-check-update exits 0 silently under GSD_OFFLINE ──────────────
 
 test('DIST-08: gsd-check-update exits 0 with no output under GSD_OFFLINE=1', () => {
   const hookPath = path.join(HOOKS_DIR, 'gsd-check-update.js');
@@ -150,7 +150,7 @@ test('DIST-08: gsd-check-update exits 0 with no output under GSD_OFFLINE=1', () 
   assert.strictEqual(stdout, '', 'gsd-check-update must produce no stdout under GSD_OFFLINE=1');
 });
 
-// ── AGENT-01: both-sources-fail silent exit ───────────────────────────────────
+// ── both-sources-fail silent exit ───────────────────────────────────
 
 test('AGENT-01: gsd-check-update exits 0 silently when both npm and GitHub are unreachable', () => {
   // GSD_OFFLINE=1 short-circuits before either npm or GitHub source is tried,

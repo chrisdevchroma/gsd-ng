@@ -1,6 +1,6 @@
 'use strict';
 // Unit tests for GitHub Releases fallback helper functions in gsd-check-update.js
-// AGENT-01: GitHub fallback for update detection when npm registry is unavailable
+// GitHub fallback for update detection when npm registry is unavailable
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -71,10 +71,10 @@ test('isSnapshot: returns false for version with pre-release dash (not a snapsho
   assert.strictEqual(result, false, `expected isSnapshot('1.0.0-beta.1') === false, got ${result}`);
 });
 
-// ── AGENT-01 anchor ───────────────────────────────────────────────────────────
+// ── all-unit-tests anchor ───────────────────────────────────────────────────────────
 
 test('AGENT-01: all GitHub fallback unit tests present (anchor)', () => {
-  // This is a structural anchor test for CI grep — confirms the full AGENT-01
+  // This is a structural anchor test for CI grep — confirms the full
   // unit test suite is present: SemVer comparison, tag normalization, snapshot skip.
   // When gsd-check-update.js exports these functions (Task 2), all preceding tests
   // in this file will be GREEN.

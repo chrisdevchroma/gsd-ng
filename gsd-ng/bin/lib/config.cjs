@@ -310,7 +310,7 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
     );
   }
 
-  // Phase 55 Area 1 lock: profile/effort keys are Claude-only.
+  // Claude-only surface lock: profile/effort keys are Claude-only.
   // When runtime === 'copilot', treat these keys as not-present so callers
   // get the same not-found / defaultValue behaviour they would on a config
   // that simply doesn't define them.

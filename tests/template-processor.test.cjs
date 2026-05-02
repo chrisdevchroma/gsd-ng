@@ -189,9 +189,9 @@ describe('RUNTIMES', () => {
   });
 });
 
-// --- RUNTIMES extension — Phase 49.1 ---
+// --- RUNTIMES extension ---
 
-describe('RUNTIMES extension — Phase 49.1', () => {
+describe('RUNTIMES extension', () => {
   test('RUNTIMES.claude exposes COMMAND_PREFIX = /gsd:', () => {
     assert.equal(RUNTIMES.claude.COMMAND_PREFIX, '/gsd:');
   });

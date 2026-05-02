@@ -22,7 +22,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw) {
     );
   }
 
-  // Accept comma-separated, space-separated, or bracket-wrapped: [REQ-01, REQ-02]
+  // Accept comma-separated, space-separated, or bracket-wrapped list of IDs
   const reqIds = reqIdsRaw
     .join(' ')
     .replace(/[\[\]]/g, '')
@@ -52,7 +52,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw) {
     let found = false;
     const reqEscaped = escapeRegex(reqId);
 
-    // Update checkbox: - [ ] **REQ-ID** → - [x] **REQ-ID**
+    // Update checkbox: - [ ] **<id>** → - [x] **<id>**
     const checkboxPattern = new RegExp(
       `(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEscaped}\\*\\*)`,
       'gi',
@@ -62,7 +62,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw) {
       found = true;
     }
 
-    // Update traceability table: | REQ-ID | Phase N | Pending | → | REQ-ID | Phase N | Complete |
+    // Update traceability table: | <id> | phase | Pending | → | <id> | phase | Complete |
     const tablePattern = new RegExp(
       `(\\|\\s*${reqEscaped}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`,
       'gi',

@@ -4,7 +4,7 @@
  * Unit tests for bash-safety-hook.cjs decomposition, matching, builtins,
  * deny-first logic, settings layer merging, kill switch, and graceful degradation.
  *
- * Test ID prefix: BASH-HOOK-08 through BASH-HOOK-12+ (per CONTEXT.md test plan)
+ * Tests: decomposition, matching, builtins, deny-first logic, settings layers, kill switch, degradation
  */
 
 const { describe, test, before, after } = require('node:test');
@@ -32,7 +32,7 @@ const {
   isInsideQuotes,
 } = hook;
 
-// ── BASH-HOOK-08: splitOnOperators splits compound bash commands correctly ────
+// ── splitOnOperators splits compound bash commands correctly ────
 
 describe('BASH-HOOK-08: splitOnOperators', () => {
   test('splits on && operator', () => {
@@ -99,7 +99,7 @@ describe('BASH-HOOK-08: splitOnOperators', () => {
   });
 });
 
-// ── BASH-HOOK-09: commandMatchesPattern matches Bash(glob) patterns ──────────
+// ── commandMatchesPattern matches Bash(glob) patterns ──────────
 
 describe('BASH-HOOK-09: commandMatchesPattern', () => {
   test('git commit matches Bash(git:*)', () => {
@@ -136,7 +136,7 @@ describe('BASH-HOOK-09: commandMatchesPattern', () => {
   });
 });
 
-// ── BASH-HOOK-14: Bug 10 regression — trailing-star patterns match zero-arg commands ──
+// ── Bug 10 regression — trailing-star patterns match zero-arg commands ──
 
 describe('BASH-HOOK-14: trailing-star patterns match zero-arg commands (Bug 10 fix)', () => {
   test('Bash(echo *) matches bare "echo" (zero args)', () => {
@@ -175,7 +175,7 @@ describe('BASH-HOOK-14: trailing-star patterns match zero-arg commands (Bug 10 f
   });
 });
 
-// ── BASH-HOOK-10: compound all-match -> approve ───────────────────────────────
+// ── compound all-match -> approve ───────────────────────────────
 
 describe('BASH-HOOK-10: compound all-match -> approve', () => {
   test('git status && git diff with allow=[Bash(git:*)] -> approve', () => {
@@ -204,7 +204,7 @@ describe('BASH-HOOK-10: compound all-match -> approve', () => {
   });
 });
 
-// ── BASH-HOOK-11: compound partial-match -> fall through ─────────────────────
+// ── compound partial-match -> fall through ─────────────────────
 
 describe('BASH-HOOK-11: compound partial-match -> passthrough', () => {
   test('git status && curl http://evil.com with allow=[Bash(git:*)] -> passthrough', () => {
@@ -232,7 +232,7 @@ describe('BASH-HOOK-11: compound partial-match -> passthrough', () => {
   });
 });
 
-// ── BASH-HOOK-12: reads allowlist from all 4 settings layers ─────────────────
+// ── reads allowlist from all 4 settings layers ─────────────────
 
 describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
   const BASE_TMPDIR = resolveTmpDir();
@@ -333,7 +333,7 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
   });
 });
 
-// ── BASH-HOOK-NO-BUILTINS: builtins require explicit allowlist ────────────────
+// ── builtins require explicit allowlist ────────────────
 // Regression tests for the SAFE_BUILTINS removal. Previously, builtins like
 // echo, cd, read were auto-approved without any allowlist entry. Combined with
 // redirection stripping, this allowed `echo "x" > ~/.bashrc` to be auto-approved.
@@ -675,7 +675,7 @@ describe('BASH-HOOK-HEREDOC: heredoc body lines are not treated as sub-commands'
   });
 });
 
-// ── BASH-HOOK-HERESTRING: here-strings (<<<) must NOT be treated as heredocs ─
+// ── here-strings (<<<) must NOT be treated as heredocs ─
 // Regression tests for the <<<-vs-<< bypass. Without (?<!<)<<(?!<) in
 // stripHeredocs, the regex can match the 2nd+3rd '<' of '<<<' as a valid '<<',
 // causing subsequent lines to be silently dropped from analysis — an
@@ -745,7 +745,7 @@ describe('BASH-HOOK-HERESTRING: here-strings must not trigger heredoc stripping'
   });
 });
 
-// ── BASH-HOOK-SUBSHELL-DEPTH: $() must not prevent operator splitting ────────
+// ── $() must not prevent operator splitting ────────
 // Regression tests for the $( depth double-count porting bug. The Python
 // upstream consumes $( as a unit (i += 2); the JS port originally used i++,
 // leaving ( for re-processing by the bare-paren handler → depth double-
@@ -954,10 +954,10 @@ describe('BASH-HOOK-SUBSHELL: $() and backtick contents are checked independentl
   });
 });
 
-// BASH-HOOK-BUILTINS-EXCLUSIONS removed — SAFE_BUILTINS no longer exists.
+// SAFE_BUILTINS section removed — builtins no longer auto-approved.
 // All commands (including trap, source, .) require explicit allowlist entries.
 
-// ── BASH-HOOK-PARITY-01: backslash-newline collapse ───────────────────────────
+// ── backslash-newline collapse ───────────────────────────
 
 describe('BASH-HOOK-PARITY-01: backslash-newline collapse', () => {
   test('backslash-newline continuation is collapsed to single segment', () => {
@@ -973,7 +973,7 @@ describe('BASH-HOOK-PARITY-01: backslash-newline collapse', () => {
   });
 });
 
-// ── BASH-HOOK-PARITY-02: quote-depth guard in subshells ──────────────────────
+// ── quote-depth guard in subshells ──────────────────────
 
 describe('BASH-HOOK-PARITY-02: quote-depth guard in subshells', () => {
   test("single quote inside $() does not affect outer splitting", () => {
@@ -992,7 +992,7 @@ describe('BASH-HOOK-PARITY-02: quote-depth guard in subshells', () => {
   });
 });
 
-// ── BASH-HOOK-PARITY-03: _skipShellValue and env var stripping ───────────────
+// ── _skipShellValue and env var stripping ───────────────
 
 describe('BASH-HOOK-PARITY-03: _skipShellValue unit tests', () => {
   test('_skipShellValue is exported from the hook module', () => {
@@ -1043,7 +1043,7 @@ describe('BASH-HOOK-PARITY-03: normalizeCommand with quoted env var values', () 
   });
 });
 
-// ── BASH-HOOK-PARITY-05: compound header filtering ───────────────────────────
+// ── compound header filtering ───────────────────────────
 
 describe('BASH-HOOK-PARITY-05: compound header filtering', () => {
   test('for loop: echo $i is present, for header is NOT', () => {
@@ -1065,7 +1065,7 @@ describe('BASH-HOOK-PARITY-05: compound header filtering', () => {
   });
 });
 
-// ── BASH-HOOK-PARITY-06: standalone assignment with complex values ─────────────
+// ── standalone assignment with complex values ─────────────
 
 describe('BASH-HOOK-PARITY-06: isStandaloneAssignment unit tests', () => {
   test('isStandaloneAssignment is exported from the hook module', () => {
@@ -1116,7 +1116,7 @@ describe('BASH-HOOK-PARITY-06: decomposeCommand filters standalone assignments w
   });
 });
 
-// ── BASH-HOOK-PARITY-REGRESSION: edge case regression tests ──────────────────
+// ── edge case regression tests ──────────────────
 
 describe('BASH-HOOK-PARITY-REGRESSION: edge cases across all 6 fixes', () => {
   test('backslash-newline with operator: collapses then splits on &&', () => {

@@ -88,7 +88,7 @@ describe('E2E smoke test: install to execute', () => {
   test('E2E-03: scaffold phase-dir creates phase directory', () => {
     assert.ok(INSTALLED_TOOLS, 'INSTALLED_TOOLS must be set from E2E-01');
 
-    // Write a minimal ROADMAP.md with a Phase 1 entry so scaffold can locate phase context
+    // Write a minimal ROADMAP.md with a phase entry so scaffold can locate phase context
     const roadmapContent = [
       '# Roadmap',
       '',

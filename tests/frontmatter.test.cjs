@@ -5,7 +5,7 @@
  * extractFrontmatter, reconstructFrontmatter, spliceFrontmatter,
  * parseMustHavesBlock, and FRONTMATTER_SCHEMAS.
  *
- * Includes REG-04 regression: quoted comma inline array edge case.
+ * Includes regression test: quoted comma inline array edge case.
  */
 
 const { test, describe } = require('node:test');
@@ -54,8 +54,8 @@ describe('extractFrontmatter', () => {
     assert.deepStrictEqual(result.key, ['a', 'b', 'c']);
   });
 
-  test('handles quoted commas in inline arrays — REG-04 known limitation', () => {
-    // REG-04: The split(',') on line 53 does NOT respect quotes.
+  test('handles quoted commas in inline arrays — known limitation (split does not respect quotes)', () => {
+    // The split(',') on line 53 does NOT respect quotes.
     // The parser WILL split on commas inside quotes, producing wrong results.
     // This test documents the CURRENT (buggy) behavior.
     const content = '---\nkey: ["a, b", c]\n---\n';

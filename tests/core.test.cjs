@@ -2,7 +2,7 @@
  * GSD Tools Tests - core.cjs
  *
  * Tests for the foundational module's exports including regressions
- * for known bugs (REG-01: loadConfig model_overrides, REG-02: getRoadmapPhaseInternal export).
+ * for known bugs in loadConfig model_overrides and getRoadmapPhaseInternal export.
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
@@ -664,7 +664,7 @@ describe('getRoadmapPhaseInternal', () => {
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.ok(result.section.includes('Phase 1: Foundation'));
     assert.ok(result.section.includes('Some details here'));
-    // Should not include Phase 2 content
+    // Should not include next-phase content
     assert.ok(!result.section.includes('Phase 2: API'));
   });
 });

@@ -5,7 +5,7 @@
  * buildSyncComment, buildImportComment, issue_tracker.* config keys,
  * cmdIssueImport, cmdIssueSync, and cmdIssueListRefs.
  *
- * Requirements: ISSUE-01, ISSUE-02, ISSUE-03, ISSUE-04, ISSUE-05
+ * Tests: issue tracker sync operations, labeling, state modes, error paths
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');

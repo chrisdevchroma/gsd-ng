@@ -14,7 +14,7 @@ const INSTALLER = path.resolve(__dirname, '..', 'bin', 'install.js');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 const BASE_TMPDIR = resolveTmpDir();
 
-// ── TILDE-01: global install uses tilde paths, not absolute home dir ──────────
+// ── global install uses tilde paths, not absolute home dir ──────────
 
 test('TILDE-01: install.js global install uses tilde paths in workflow files (no PII leak)', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-tilde-'));
@@ -69,7 +69,7 @@ test('TILDE-01: install.js global install uses tilde paths in workflow files (no
   }
 });
 
-// ── UNINSTALL-01: banner shows Mode: Uninstall in uninstall mode ──────────────
+// ── banner shows Mode: Uninstall in uninstall mode ──────────────
 
 test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in output', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-uninstall-'));
@@ -101,7 +101,7 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
   }
 });
 
-// ── PATH-03: local install produces $CLAUDE_PROJECT_DIR paths, not $HOME ──────
+// ── local install produces $CLAUDE_PROJECT_DIR paths, not $HOME ──────
 
 test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bash blocks', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-path-local-'));
@@ -164,7 +164,7 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
   }
 });
 
-// ── PATH-04: local install must not produce ./.claude/ relative paths ─────────
+// ── local install must not produce ./.claude/ relative paths ─────────
 
 test('PATH-04: install.js local install must not produce ./.claude/ paths in bash code blocks', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-no-rel-'));
@@ -206,7 +206,7 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
   }
 });
 
-// ── PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(*)/Write(*)/Read(*),
+// ── settings-sandbox.json template contains Agent(*), canonical Edit(*)/Write(*)/Read(*),
 //            no deny rules, subshell builtins.
 //
 //            Template uses canonical macOS forms (Edit(*), Write(*), Read(*)).
@@ -237,7 +237,7 @@ test('PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(
     allow.includes('Read(*)'),
     'template must include canonical Read(*) (down-converted to bare Read on Linux at install time)',
   );
-  // Two-sided contract: bare forms must NOT be present (ALLOW-17)
+  // Two-sided contract: bare forms must NOT be present in the template
   assert.ok(
     !allow.includes('Edit'),
     'template must NOT include bare Edit — use Edit(*)',
@@ -250,7 +250,7 @@ test('PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(
     !allow.includes('Read'),
     'template must NOT include bare Read — use Read(*)',
   );
-  // Deny rules dropped per Phase 52 -- GSD-NG ships allow rules only
+  // Deny rules dropped (the tool ships allow rules only)
   assert.strictEqual(
     template.permissions.deny,
     undefined,
@@ -275,7 +275,7 @@ test('PERM-06: settings-sandbox.json template contains Agent(*), canonical Edit(
   assert.ok(allow.includes('Bash(seq *)'), 'template must include Bash(seq *)');
 });
 
-// ── PERM-07: install seeds granular platform CLI patterns, not blanket wildcards ──
+// ── install seeds granular platform CLI patterns, not blanket wildcards ──
 
 test('PERM-07: local install seeds granular gh subcommand patterns (not blanket Bash(gh *))', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm07-'));
@@ -344,12 +344,12 @@ test('PERM-07: local install seeds granular gh subcommand patterns (not blanket 
   }
 });
 
-// ── PERM-08: settings-sandbox.json template ships ask rules for protected-branch
+// ── settings-sandbox.json template ships ask rules for protected-branch
 //            pushes and admin merges (2026-05-01 incident response).
 //
 //            Background: On 2026-05-01 Claude bypassed develop's GitHub branch
 //            protection (admin-role token had bypass capability) and pushed
-//            Phase 49 work directly to develop, then opened a wrong-target PR.
+//            work directly to develop, then opened a wrong-target PR.
 //            Recovery required force-pushing develop back.
 //
 //            Fix: Layer-3 local guardrails. Claude Code's permission precedence
@@ -430,7 +430,7 @@ test('PERM-08: local install propagates protected-branch ask rules into .claude/
   }
 });
 
-// ── PERM-01: local install seeds permissions.allow with template entries ──────
+// ── local install seeds permissions.allow with template entries ──────
 
 test('PERM-01: local install seeds permissions.allow with template entries (Bash(node *) and Agent(*))', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm01-'));
@@ -466,7 +466,7 @@ test('PERM-01: local install seeds permissions.allow with template entries (Bash
       settings.permissions.allow.includes('Agent(*)'),
       'permissions.allow must include Agent(*) (PERM-01)',
     );
-    // Sandbox is default-on: verify sandbox settings are seeded by default (PERM-01 default-on check)
+    // Sandbox is default-on: verify sandbox settings are seeded by default
     assert.strictEqual(
       settings.sandbox && settings.sandbox.enabled,
       true,
@@ -482,7 +482,7 @@ test('PERM-01: local install seeds permissions.allow with template entries (Bash
   }
 });
 
-// ── PERM-02: running --local install twice produces no duplicate entries ──────
+// ── running --local install twice produces no duplicate entries ──────
 
 test('PERM-02: running --local install twice produces no duplicate entries in permissions.allow', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm02-'));
@@ -535,7 +535,7 @@ test('PERM-02: running --local install twice produces no duplicate entries in pe
   }
 });
 
-// ── PERM-03: --no-seed-permissions-config does NOT create permissions.allow ───
+// ── --no-seed-permissions-config does NOT create permissions.allow ───
 
 test('PERM-03: --local --no-seed-permissions-config does not create permissions.allow in settings.json', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm03-'));
@@ -577,7 +577,7 @@ test('PERM-03: --local --no-seed-permissions-config does not create permissions.
   }
 });
 
-// ── PERM-04: --no-seed-sandbox-config suppresses sandbox settings seeding ────
+// ── --no-seed-sandbox-config suppresses sandbox settings seeding ────
 
 test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seeding', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm04-'));
@@ -613,7 +613,7 @@ test('PERM-04: --local --no-seed-sandbox-config suppresses sandbox settings seed
   }
 });
 
-// ── PERM-05: uninstall removes template entries but preserves custom entries ──
+// ── uninstall removes template entries but preserves custom entries ──
 
 test('PERM-05: uninstall removes template-sourced entries from permissions.allow but preserves custom user entries', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-perm05-'));
@@ -680,7 +680,7 @@ test('PERM-05: uninstall removes template-sourced entries from permissions.allow
   }
 });
 
-// ── SAND-01: --no-seed-sandbox-config still seeds permissions.allow ───────────
+// ── --no-seed-sandbox-config still seeds permissions.allow ───────────
 
 test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-sand01-'));
@@ -731,7 +731,7 @@ test('SAND-01: --local --no-seed-sandbox-config still seeds permissions.allow', 
   }
 });
 
-// ── RUNTIME-01: --local without --runtime exits non-zero ──────────────────────
+// ── --local without --runtime exits non-zero ──────────────────────
 
 test('RUNTIME-01: --local without --runtime exits non-zero with helpful error', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt01-'));
@@ -758,7 +758,7 @@ test('RUNTIME-01: --local without --runtime exits non-zero with helpful error', 
   }
 });
 
-// ── RUNTIME-02: --global without --runtime exits non-zero ─────────────────────
+// ── --global without --runtime exits non-zero ─────────────────────
 
 test('RUNTIME-02: --global without --runtime exits non-zero with helpful error', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt02-'));
@@ -788,7 +788,7 @@ test('RUNTIME-02: --global without --runtime exits non-zero with helpful error',
   }
 });
 
-// ── RUNTIME-03: --uninstall without --runtime exits non-zero ──────────────────
+// ── --uninstall without --runtime exits non-zero ──────────────────
 
 test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-rt03-'));
@@ -819,7 +819,7 @@ test('RUNTIME-03: --uninstall --local without --runtime exits non-zero', () => {
   }
 });
 
-// ── COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md ──────────────
+// ── --local --copilot creates skills/gsd-*/SKILL.md ──────────────
 
 test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -868,7 +868,7 @@ test('COPILOT-01: --local --copilot creates skills/gsd-*/SKILL.md from commands'
   }
 });
 
-// ── COPILOT-02: --local --copilot creates agents/gsd-*.agent.md ──────────────
+// ── --local --copilot creates agents/gsd-*.agent.md ──────────────
 
 test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -909,7 +909,7 @@ test('COPILOT-02: --local --copilot creates agents/gsd-*.agent.md files', () => 
   }
 });
 
-// ── COPILOT-03: --local --copilot generates copilot-instructions.md ───────────
+// ── --local --copilot generates copilot-instructions.md ───────────
 
 test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD markers', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -956,7 +956,7 @@ test('COPILOT-03: --local --copilot generates copilot-instructions.md with GSD m
   }
 });
 
-// ── COPILOT-04: --local --copilot does NOT create settings.json ───────────────
+// ── --local --copilot does NOT create settings.json ───────────────
 
 test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -989,7 +989,7 @@ test('COPILOT-04: --local --copilot does NOT create settings.json', () => {
   }
 });
 
-// ── COPILOT-05: --local --copilot does NOT seed permissions or sandbox ────────
+// ── --local --copilot does NOT seed permissions or sandbox ────────
 
 test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox settings', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -1053,7 +1053,7 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
   }
 });
 
-// ── COPILOT-06: --local --copilot --uninstall removes GSD artifacts ───────────
+// ── --local --copilot --uninstall removes GSD artifacts ───────────
 
 test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and cleans copilot-instructions.md', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -1143,7 +1143,7 @@ test('COPILOT-06: --local --copilot --uninstall removes GSD skills, agents, and 
   }
 });
 
-// ── COPILOT-07: no leaked ~/.claude/ paths in Copilot installed content ───────
+// ── no leaked ~/.claude/ paths in Copilot installed content ───────
 
 test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .claude/ path references', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -1212,7 +1212,7 @@ test('COPILOT-07: --local --copilot installed files contain no ~/.claude/ or .cl
   }
 });
 
-// ── COPILOT-08: --runtime copilot flag works for non-interactive install ──────
+// ── --runtime copilot flag works for non-interactive install ──────
 
 test('COPILOT-08: --local --runtime copilot selects Copilot runtime', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-'));
@@ -1260,7 +1260,7 @@ test('COPILOT-08: --local --runtime copilot selects Copilot runtime', () => {
   }
 });
 
-// ── COPILOT-09: hooks/gsd-hooks.json written on Copilot local install ─────────
+// ── hooks/gsd-hooks.json written on Copilot local install ─────────
 
 test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with sessionStart hook', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-cop09-'));
@@ -1310,7 +1310,7 @@ test('COPILOT-09: --local --runtime copilot writes hooks/gsd-hooks.json with ses
   }
 });
 
-// ── BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks dir ──
+// ── claude local install creates bash-safety-hook.cjs in hooks dir ──
 
 test('BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks directory', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-01-'));
@@ -1351,7 +1351,7 @@ test('BASH-HOOK-01: claude local install creates bash-safety-hook.cjs in hooks d
   }
 });
 
-// ── BASH-HOOK-02: claude local install wires bash-safety-hook into settings.json ──
+// ── claude local install wires bash-safety-hook into settings.json ──
 
 test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.json PreToolUse', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-02-'));
@@ -1404,7 +1404,7 @@ test('BASH-HOOK-02: claude local install wires bash-safety-hook into settings.js
   }
 });
 
-// ── BASH-HOOK-03: idempotent — re-running does not duplicate hook in PreToolUse ──
+// ── idempotent — re-running does not duplicate hook in PreToolUse ──
 
 test('BASH-HOOK-03: idempotent — re-running install does not duplicate bash-safety-hook in PreToolUse', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-03-'));
@@ -1455,7 +1455,7 @@ test('BASH-HOOK-03: idempotent — re-running install does not duplicate bash-sa
   }
 });
 
-// ── BASH-HOOK-04: copilot install does NOT wire bash-safety-hook into settings.json ──
+// ── copilot install does NOT wire bash-safety-hook into settings.json ──
 
 test('BASH-HOOK-04: copilot local install does NOT wire bash-safety-hook into settings.json', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-04-'));
@@ -1508,7 +1508,7 @@ test('BASH-HOOK-04: copilot local install does NOT wire bash-safety-hook into se
   }
 });
 
-// ── BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md ──
+// ── anti-heredoc instruction present in agent-shared-context.md ──
 
 test('BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md after claude install', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-05-'));
@@ -1554,7 +1554,7 @@ test('BASH-HOOK-05: anti-heredoc instruction present in agent-shared-context.md 
   }
 });
 
-// ── BASH-HOOK-06: copilot install ALSO has anti-heredoc in agent-shared-context.md ──
+// ── copilot install ALSO has anti-heredoc in agent-shared-context.md ──
 
 test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in agent-shared-context.md', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-06-'));
@@ -1596,7 +1596,7 @@ test('BASH-HOOK-06: copilot local install ALSO has anti-heredoc instruction in a
   }
 });
 
-// ── BASH-HOOK-07: anti-heredoc not duplicated on re-install ──────────────────
+// ── anti-heredoc not duplicated on re-install ──────────────────
 
 test('BASH-HOOK-07: anti-heredoc not duplicated on re-install of claude local', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-bh-07-'));
@@ -1643,7 +1643,7 @@ test('BASH-HOOK-07: anti-heredoc not duplicated on re-install of claude local', 
   }
 });
 
-// ── COPILOT-10: SKILL.md name: fields must not contain colon character ────────
+// ── SKILL.md name: fields must not contain colon character ────────
 
 test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no colons)', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-cop10-'));
@@ -1704,7 +1704,7 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
   }
 });
 
-// ── SVN-01: copilot install writes snapshot VERSION (not verbatim copy) ───────
+// ── copilot install writes snapshot VERSION (not verbatim copy) ───────
 
 test('SVN-01: --runtime copilot --local writes .github/gsd-ng/VERSION with resolved version', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-01-'));
@@ -1750,7 +1750,7 @@ test('SVN-01: --runtime copilot --local writes .github/gsd-ng/VERSION with resol
   }
 });
 
-// ── SVN-02: banner output prints resolved (snapshot-aware) version ────────────
+// ── banner output prints resolved (snapshot-aware) version ────────────
 
 test('SVN-02: --runtime claude --local banner prints resolved version matching VERSION file', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-02-'));
@@ -1798,7 +1798,7 @@ test('SVN-02: --runtime claude --local banner prints resolved version matching V
   }
 });
 
-// ── SVN-03: manifest.version matches VERSION file byte-for-byte ───────────────
+// ── manifest.version matches VERSION file byte-for-byte ───────────────
 
 test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION file contents', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-03-'));
@@ -1845,7 +1845,7 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
   }
 });
 
-// ── RUNTIME-01: install.js writes runtime field to .planning/config.json ─────
+// ── install.js writes runtime field to .planning/config.json ─────
 
 test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .planning/config.json', () => {
   const tmpDir = fs.mkdtempSync(
@@ -1927,7 +1927,7 @@ test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .pl
   }
 });
 
-// ── ALLOW-18: env var rename — GSD_TEST_FORCE_PLATFORM is the test seam ────────
+// ── env var rename — GSD_TEST_FORCE_PLATFORM is the test seam ────────
 
 test('ALLOW-18: install.js seeding block uses GSD_TEST_FORCE_PLATFORM (not GSD_FORCE_PLATFORM)', () => {
   // Static code inspection: the source must not reference the old env var name
@@ -1942,7 +1942,7 @@ test('ALLOW-18: install.js seeding block uses GSD_TEST_FORCE_PLATFORM (not GSD_F
   );
 });
 
-// ── ALLOW-19: RW_FORMS imported from allowlist.cjs — no inline Set literal ──────
+// ── RW_FORMS imported from allowlist.cjs — no inline Set literal ──────
 
 test('ALLOW-19: install.js imports RW_FORMS from allowlist.cjs and uses no inline rwForms Set literal', () => {
   const src = fs.readFileSync(INSTALLER, 'utf8');
@@ -1958,7 +1958,7 @@ test('ALLOW-19: install.js imports RW_FORMS from allowlist.cjs and uses no inlin
   );
 });
 
-// ── ALLOW-19: GSD_TEST_FORCE_PLATFORM seam works at runtime ─────────────────────
+// ── GSD_TEST_FORCE_PLATFORM seam works at runtime ─────────────────────
 
 test('ALLOW-19: GSD_TEST_FORCE_PLATFORM env var controls platform detection in seeding block', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow19-'));
@@ -1999,7 +1999,7 @@ test('ALLOW-19: GSD_TEST_FORCE_PLATFORM env var controls platform detection in s
   }
 });
 
-// ── ALLOW-20: syncSection uses Set.has() for O(1) membership ─────────────────
+// ── syncSection uses Set.has() for O(1) membership ─────────────────
 
 test('ALLOW-20: install.js syncSection uses Set.has() — not Array.includes() — for membership check', () => {
   const src = fs.readFileSync(INSTALLER, 'utf8');
@@ -2113,7 +2113,7 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
   }
 });
 
-// ── MANIFEST-STAB-01: double-install is idempotent — no phantom local modifications ──
+// ── double-install is idempotent — no phantom local modifications ──
 
 test('MANIFEST-STAB-01: running --local claude install twice produces no "Found N locally modified" output and no populated gsd-local-patches/', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-stab-'));
@@ -2170,7 +2170,7 @@ test('MANIFEST-STAB-01: running --local claude install twice produces no "Found 
   }
 });
 
-// ── TEMPLATE-RESOLVE-01: no unresolved {{…}} tokens in deployed .md files ──
+// ── no unresolved {{…}} tokens in deployed .md files ──
 
 test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file under commands/gsd/ or gsd-ng/ contains {{USER_QUESTION_TOOL}} or {{PROJECT_RULES_FILE}}', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-tpl-resolve-'));
@@ -2242,7 +2242,7 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
   }
 });
 
-// ── MANIFEST-DISK-01: every manifest entry hashes to the on-disk file SHA256 ──
+// ── every manifest entry hashes to the on-disk file SHA256 ──
 
 test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.json entries match SHA256 of deployed files', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-disk-'));
@@ -2311,7 +2311,7 @@ test('MANIFEST-DISK-01: after single --local claude install, gsd-file-manifest.j
   }
 });
 
-// ── MANIFEST-V2-01: writeManifest writes schema_version: 2 ──────────────────
+// ── writeManifest writes schema_version: 2 ──────────────────
 
 test('MANIFEST-V2-01: writeManifest writes schema_version: 2 in fresh manifest', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-01-'));
@@ -2347,7 +2347,7 @@ test('MANIFEST-V2-01: writeManifest writes schema_version: 2 in fresh manifest',
   }
 });
 
-// ── MANIFEST-V2-02: v1 manifest triggers migration notice and refreshes files ─
+// ── v1 manifest triggers migration notice and refreshes files ─
 
 test('MANIFEST-V2-02: v1 manifest (missing schema_version) triggers migration notice and refreshes files', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-02-'));
@@ -2437,7 +2437,7 @@ test('MANIFEST-V2-02: v1 manifest (missing schema_version) triggers migration no
   }
 });
 
-// ── MANIFEST-V2-03: migration does not run when schema_version: 2 already present ─
+// ── migration does not run when schema_version: 2 already present ─
 
 test('MANIFEST-V2-03: migration does not run when schema_version: 2 already present', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-03-'));
@@ -2485,7 +2485,7 @@ test('MANIFEST-V2-03: migration does not run when schema_version: 2 already pres
   }
 });
 
-// ── MANIFEST-V2-04: reportLocalPatches skipped after migration run ───────────
+// ── reportLocalPatches skipped after migration run ───────────
 
 test('MANIFEST-V2-04: reportLocalPatches skipped after migration run', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-v2-04-'));
@@ -2544,7 +2544,7 @@ test('MANIFEST-V2-04: reportLocalPatches skipped after migration run', () => {
   }
 });
 
-// ── CLEAN-01: --clean flag wipes managed dirs before install and produces fresh v2 manifest ──
+// ── --clean flag wipes managed dirs before install and produces fresh v2 manifest ──
 
 test('CLEAN-01: --clean flag wipes managed dirs before install and produces fresh v2 manifest', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-01-'));
@@ -2590,7 +2590,7 @@ test('CLEAN-01: --clean flag wipes managed dirs before install and produces fres
   }
 });
 
-// ── CLEAN-02: --clean leaves gsd-local-patches/ intact ──────────────────────
+// ── --clean leaves gsd-local-patches/ intact ──────────────────────
 
 test('CLEAN-02: --clean leaves gsd-local-patches/ intact', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-02-'));
@@ -2628,7 +2628,7 @@ test('CLEAN-02: --clean leaves gsd-local-patches/ intact', () => {
   }
 });
 
-// ── CLEAN-03: --clean skips migration even when manifest is v1 ───────────────
+// ── --clean skips migration even when manifest is v1 ───────────────
 
 test('CLEAN-03: --clean skips migration even when manifest is v1 (missing schema_version)', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-03-'));
@@ -2672,7 +2672,7 @@ test('CLEAN-03: --clean skips migration even when manifest is v1 (missing schema
   }
 });
 
-// ── CLEAN-04: --help output documents --clean ────────────────────────────────
+// ── --help output documents --clean ────────────────────────────────
 
 test('CLEAN-04: --help output documents --clean', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-clean-04-'));
@@ -2706,7 +2706,7 @@ test('CLEAN-04: --help output documents --clean', () => {
   }
 });
 
-// ── Phase 55 effort frontmatter sync integration tests ──────────────────────
+// ── effort frontmatter sync integration tests ───────────────────────────────
 
 describe('install.js - Phase 55 effort frontmatter sync', () => {
   let tmpDir;
@@ -2806,7 +2806,7 @@ describe('install.js - Phase 55 effort frontmatter sync', () => {
   });
 });
 
-// ── ALLOW-07: install.js writes bare Edit/Write/Read on Linux ─────────────
+// ── install.js writes bare Edit/Write/Read on Linux ─────────────
 // Force Linux seeding via GSD_TEST_FORCE_PLATFORM and verify bare Edit/Write/Read
 // permissions are written instead of the globbed forms used on non-Linux platforms.
 
@@ -2852,7 +2852,7 @@ test('ALLOW-07: install.js --local on Linux writes bare Edit/Write/Read forms', 
   }
 });
 
-// ── ALLOW-08: install.js writes canonical Edit(*)/Write(*)/Read(*) on macOS ──
+// ── install.js writes canonical Edit(*)/Write(*)/Read(*) on macOS ──
 
 test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-08-'));
@@ -2880,7 +2880,7 @@ test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => 
     assert.ok(allow.includes('Write(*)'));
     assert.ok(allow.includes('Read(*)'));
     assert.ok(!allow.includes('Edit'), 'macOS must not carry bare Edit');
-    // Narrowed verbs land — gated on gh presence on host (ALLOW-22 integration)
+    // Narrowed verbs land — gated on gh presence on host
     try {
       require('child_process').execSync('which gh', {
         stdio: 'ignore',
@@ -2910,7 +2910,7 @@ test('ALLOW-08: install.js --local on macOS writes canonical glob forms', () => 
   }
 });
 
-// ── ALLOW-16: install.js writes canonical forms + narrowed CLI verbs on win32 ──
+// ── install.js writes canonical forms + narrowed CLI verbs on win32 ──
 
 test('ALLOW-16: install.js --local on win32 writes canonical glob forms and narrowed CLI verbs', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-16-'));
@@ -2984,7 +2984,7 @@ test('ALLOW-16: install.js --local on win32 writes canonical glob forms and narr
   }
 });
 
-// ── ALLOW-09: allow section sync union preserves user entries + logs per-section count ──
+// ── allow section sync union preserves user entries + logs per-section count ──
 
 test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allow entries"', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-09-'));
@@ -3031,7 +3031,7 @@ test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allo
       /Added \d+ allow entries/,
       'must log per-section allow count',
     );
-    // Narrowed-verb check — gated on gh presence (ALLOW-22 integration)
+    // Narrowed-verb check — gated on gh presence
     try {
       require('child_process').execSync('which gh', {
         stdio: 'ignore',
@@ -3054,7 +3054,7 @@ test('ALLOW-09: allow-section sync preserves user entries and logs "Added N allo
   }
 });
 
-// ── ALLOW-10: deny section sync is no-op today (template has no deny block) ──
+// ── deny section sync is no-op today (template has no deny block) ──
 
 test('ALLOW-10: deny-section sync preserves user denies and does not log deny additions', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-10-'));
@@ -3102,7 +3102,7 @@ test('ALLOW-10: deny-section sync preserves user denies and does not log deny ad
   }
 });
 
-// ── ALLOW-11: "up to date" only after all three sections return zero additions ──
+// ── "up to date" only after all three sections return zero additions ──
 
 test('ALLOW-11: second install logs "Permissions already up to date" (no per-section adds)', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-allow-11-'));
@@ -3133,12 +3133,12 @@ test('ALLOW-11: second install logs "Permissions already up to date" (no per-sec
   }
 });
 
-// ── F-RULES-01: source seed-memories.md exists (relaxed in 49.1-01) ──
+// ── source seed-memories.md exists (relaxed in 49.1-01) ──
 // History: plan 49-04 added a token assertion on the seed-memories source file.
 // 49.1-01 relaxes this: per CONTEXT.md decision, plan 49.1-02 will rewrite the skill to use
 // skill-time prose detection (no template variable). The original token assertion would then
-// fail. F-RULES-02 still asserts the token in new-project.md (kept in unified flow).
-// This test now only asserts source presence — a tombstone preserving the F-RULES-01 ID.
+// fail. The companion test still asserts the token in new-project.md (kept in unified flow).
+// This test now only asserts source presence — a tombstone preserving the original assertion.
 
 test('F-RULES-01: source seed-memories.md exists (assertion relaxed in 49.1-01 — skill-time detection moved to prose)', () => {
   const seedMemoriesSrc = path.resolve(
@@ -3152,8 +3152,8 @@ test('F-RULES-01: source seed-memories.md exists (assertion relaxed in 49.1-01 �
     fs.existsSync(seedMemoriesSrc),
     'commands/gsd/seed-memories.md must exist in source (F-RULES-01)',
   );
-  // 49.1-01: {{PROJECT_RULES_FILE}} assertion removed — file will use skill-time prose detection
-  // per CONTEXT.md, rewritten in plan 49.1-02. F-RULES-02 covers new-project.md unified flow.
+  // {{PROJECT_RULES_FILE}} assertion removed — file will use skill-time prose detection
+  // per CONTEXT.md; the companion test covers new-project.md unified flow.
 });
 
 test('F-RULES-02: source new-project.md workflow uses {{PROJECT_RULES_FILE}} in Step 9', () => {

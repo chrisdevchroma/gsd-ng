@@ -5,7 +5,7 @@
  * Covers: flag in positional slot, equals syntax, count validation, unknown flags,
  * no-regression tests for valid commands, and schema coverage for all 14 namespaces.
  *
- * Requirements: CLI44-SCHEMA, CLI44-FLAG, CLI44-EQUALS, CLI44-COUNT, CLI44-UNKNOWN
+ * Tests: flag in positional slot, equals syntax, count validation, unknown flags, schema coverage
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');

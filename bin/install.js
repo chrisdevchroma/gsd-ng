@@ -836,7 +836,7 @@ function migrateV1ToV2(configDir, _manifest) {
 // Each entry: { from: schema_version (null = missing/v1), to: schema_version, run: fn }
 // Entries MUST be ordered ascending by `from` so chained migrations apply in a single pass.
 const MIGRATIONS = [
-  // schema_version: 2 — post-#41 post-substitution hashes (Phase 57+)
+  // schema_version: 2 — post-substitution hashes (current schema)
   { from: null, to: 2, run: migrateV1ToV2 },
 ];
 
@@ -1753,7 +1753,7 @@ function install(isGlobal) {
       const commandFiles = fs.readdirSync(commandsSrc).filter(f => {
         if (!f.endsWith('.md')) return false;
         // Skip Claude-only commands. set-profile configures effort: frontmatter
-        // which Copilot does not support (see Phase 55 CONTEXT §Area 1).
+        // which Copilot does not support (Claude-only feature).
         if (f === 'set-profile.md') return false;
         return true;
       });
