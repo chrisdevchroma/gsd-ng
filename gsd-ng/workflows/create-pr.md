@@ -387,12 +387,6 @@ fi
 if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
   echo "Error: push bypassed required branch protection rules:"
   echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
-  echo ""
-  echo "Halted before PR creation. Human must investigate."
-  # Restore work branch before exiting (mirrors the failure-path cleanup above)
-  if [ "$BRANCHING_STRATEGY" != "none" ]; then
-    git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
-  fi
   exit 1
 fi
 ```
