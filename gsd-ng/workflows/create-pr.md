@@ -378,6 +378,29 @@ if [ $PUSH_EXIT -ne 0 ]; then
   git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
   exit 1
 fi
+
+# Hard stop on bypass: push succeeded only because the user's token bypassed
+# branch protection. Treat exactly like a permission denial — revert and surface.
+if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
+  echo "Error: push was accepted but bypassed branch protection rules:"
+  echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
+  echo ""
+  echo "Reverting push: git push --delete $PUSH_REMOTE $HEAD_BRANCH"
+  if git -C "$GIT_CWD" push --delete "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1; then
+    echo "  Reverted."
+  else
+    echo "  WARNING: revert failed. Manually delete the remote ref."
+  fi
+  echo ""
+  echo "Cause: your token has bypass permission on this protected branch."
+  echo "Fix: Settings -> Branches -> remove yourself from 'Allow specified actors to bypass'."
+  echo "Do NOT retry create-pr until protection is in effect."
+  # Restore work branch before exiting (mirrors the failure-path cleanup above)
+  if [ "$BRANCHING_STRATEGY" != "none" ]; then
+    git -C "$GIT_CWD" checkout "$CURRENT_BRANCH" 2>/dev/null || true
+  fi
+  exit 1
+fi
 ```
 
 STOP on push failure — cannot create PR without pushed branch.
