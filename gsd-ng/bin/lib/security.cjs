@@ -302,6 +302,47 @@ const INJECTION_PATTERNS_TIERED = [
       /(?:पिछल|पूर्व|उपरोक्त)(?:े|ी)?\s*(?:सभी\s+)?(?:निर्देश(?:ों)?|आदेश(?:ों)?|नियम(?:ों)?)\s*(?:को\s+)?(?:अनदेखा|नज़रअंदाज़|नजरअंदाज|भूल|न\s+मान)/,
     confidence: 'high',
   },
+
+  // ── Context-reset family (Phase 50, SEC50-CTXRESET) ──────────────────────────
+  // OWASP LLM01 direct-injection family / Garak promptinject coverage.
+  // Detects imperative reset framings: "from now on you will", "starting now you must",
+  // "new/updated/revised instructions:" prefix.
+  // High-confidence: legitimate prose rarely uses second-person imperative reset
+  // ("you will/must/shall/are to") in combination with temporal reset markers.
+  // FP guard: legitimate uses like "from now on the project will" (no "you")
+  // and "the new instructions document" (no colon, no second-person verb) stay clean.
+
+  // "From/starting now/today, you will/must/shall/are to ..."
+  {
+    pattern:
+      /\b(?:from\s+now\s+on|starting\s+(?:now|today))\s*,?\s*you\s+(?:will|must|shall|are\s+to)\b/i,
+    confidence: 'high',
+  },
+  // "New/Updated/Revised instructions:" prefix
+  {
+    pattern: /\b(?:new|updated|revised)\s+instructions\s*:/i,
+    confidence: 'high',
+  },
+
+  // ── Authority-claim family (Phase 50, SEC50-AUTHORITY) ──────────────────────
+  // Garak `dan` family + complements existing ADMIN OVERRIDE prefix from Phase 40.1.
+  // Detects self-asserted authority: "I am authorized", "I have admin/root/sudo permission",
+  // "as an administrator", "as a developer with full access".
+  // FP guard: "Authorization:" header, "the admin endpoint", "as a developer, I prefer X"
+  // (no privilege-claim noun phrase) stay clean.
+
+  // "I am authorized to ..." / "I have admin/root/sudo/superuser/elevated permission/access/privileges"
+  {
+    pattern:
+      /\bi\s+(?:am\s+authorized\s+to|have\s+(?:admin|root|sudo|superuser|elevated)\s+(?:permission|access|privilege)s?)/i,
+    confidence: 'high',
+  },
+  // "As an administrator/admin/root/sysadmin/developer with full access"
+  {
+    pattern:
+      /\bas\s+(?:an?\s+)?(?:administrator|admin|root|sysadmin|developer\s+with\s+full\s+access)\b/i,
+    confidence: 'high',
+  },
 ];
 
 // ─── validatePath ─────────────────────────────────────────────────────────────
