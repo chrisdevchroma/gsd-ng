@@ -753,6 +753,16 @@ function getMilestonePhaseFilter(cwd) {
     while ((m = phasePattern.exec(roadmap)) !== null) {
       milestonePhaseNums.add(m[1]);
     }
+    // Also recognize bullet-only entries: `- [ ] **Phase N: Title**` (no Details header yet).
+    // These exist for phases that are declared in the roadmap but not yet planned
+    // via /gsd:plan-phase. The `getMilestonePhaseFilter` only needs the phase number,
+    // so a simple Set union with the header results is sufficient.
+    const bulletPattern =
+      /^[-*]\s*\[[ x]\]\s*\*\*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\b/gim;
+    let bm;
+    while ((bm = bulletPattern.exec(roadmap)) !== null) {
+      milestonePhaseNums.add(bm[1]);
+    }
   } catch {}
 
   if (milestonePhaseNums.size === 0) {

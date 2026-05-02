@@ -802,6 +802,45 @@ describe('getMilestonePhaseFilter', () => {
     const filter = getMilestonePhaseFilter(tmpDir);
     assert.strictEqual(filter.phaseCount, 0);
   });
+
+  test('recognizes phase declared as bullet entry without Details header', () => {
+    // 60 is bullet-only (no Details section yet); 59 has a full Details header
+    // to verify the union still works
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '## Roadmap v3.0: Quality',
+        '',
+        '- [ ] **Phase 59: Runtime Sweep**',
+        '- [ ] **Phase 60: Test Coverage Uplift**',
+        '',
+        '### Phase 59: Runtime Sweep',
+        '**Goal:** Sweep runtime references',
+      ].join('\n')
+    );
+
+    const filter = getMilestonePhaseFilter(tmpDir);
+
+    // Bullet-only entry for 60 must be recognized
+    assert.strictEqual(filter('60-test-coverage-uplift'), true, 'bullet-only Phase 60 should match');
+    // Entry with Details header for 59 must also be recognized
+    assert.strictEqual(filter('59-runtime-sweep'), true, 'Phase 59 with Details header should still match');
+    // phaseCount must include both phases
+    assert.ok(filter.phaseCount >= 2, `phaseCount should be >= 2, got ${filter.phaseCount}`);
+
+    // Also verify that a checked bullet (already-completed) is recognized
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '## Roadmap v3.0: Quality',
+        '',
+        '- [x] **Phase 60: Test Coverage Uplift**',
+      ].join('\n')
+    );
+
+    const filter2 = getMilestonePhaseFilter(tmpDir);
+    assert.strictEqual(filter2('60-test-coverage-uplift'), true, 'checked bullet Phase 60 should also match');
+  });
 });
 
 // ─── planningPaths ─────────────────────────────────────────────────────────────

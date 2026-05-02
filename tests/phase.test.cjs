@@ -1745,6 +1745,56 @@ describe('phase complete milestone-scoped next-phase', () => {
     assert.strictEqual(output.is_last_phase, true, 'should be last phase — only phase 5 is in milestone');
     assert.strictEqual(output.next_phase, null, 'no next phase in milestone');
   });
+
+  test('advances to bullet-only next phase (no Details section yet)', () => {
+    // Auth (5) has a Details section; Dashboard (6) is bullet-only, not yet planned
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '## Roadmap v2.0: Release',
+        '',
+        '- [ ] **Phase 5: Auth**',
+        '- [ ] **Phase 6: Dashboard**',
+        '',
+        '### Phase 5: Auth',
+        '**Goal:** Add authentication',
+        '**Plans:** 1 plans',
+        // No Details section for Dashboard (6) — bullet-only entry
+      ].join('\n')
+    );
+
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      '# State\n\n**Current Phase:** 05\n**Current Phase Name:** Auth\n**Status:** In progress\n**Current Plan:** 05-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n'
+    );
+
+    // Only 05-auth exists on disk; no 06-* directory forces roadmap fallback to fire
+    const p5 = path.join(tmpDir, '.planning', 'phases', '05-auth');
+    fs.mkdirSync(p5, { recursive: true });
+    fs.writeFileSync(path.join(p5, '05-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p5, '05-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('phase complete 5 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    // Dashboard (6) exists as bullet-only entry — must NOT be treated as last phase
+    assert.strictEqual(output.is_last_phase, false, 'should NOT be last phase — bullet-only next phase exists in ROADMAP');
+    // Bullet regex captures unpadded '6'; accept either '6' or '06'
+    const nextNum = output.next_phase && output.next_phase.number;
+    assert.ok(
+      nextNum === '6' || nextNum === '06',
+      `next_phase.number should be '6' or '06', got '${nextNum}'`
+    );
+    assert.strictEqual(output.next_phase && output.next_phase.name, 'dashboard', 'next_phase.name should be dashboard');
+
+    // STATE.md should reflect the transition
+    const stateContent = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    assert.ok(
+      /\*\*Current Phase:\*\*\s*(6|06)/.test(stateContent),
+      'STATE.md Current Phase should be updated to 6 or 06'
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
