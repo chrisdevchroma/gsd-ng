@@ -70,7 +70,7 @@ Overrides take precedence over the profile. Valid values: `opus`, `sonnet`, `hai
 
 ## Switching Profiles
 
-Runtime: `/gsd:set-profile <profile>`
+Runtime: `{{COMMAND_PREFIX}}set-profile <profile>`
 
 Per-project default: Set in `.planning/config.json`:
 ```json

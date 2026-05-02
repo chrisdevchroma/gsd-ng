@@ -13,8 +13,8 @@ allowed-tools:
   - AskUserQuestion
 argument-instructions: |
   Parse the argument as a phase number (integer, decimal, or letter-suffix), plus optional free-text instructions.
-  Example: /gsd:add-tests 12
-  Example: /gsd:add-tests 12 focus on edge cases in the pricing module
+  Example: {{COMMAND_PREFIX}}add-tests 12
+  Example: {{COMMAND_PREFIX}}add-tests 12 focus on edge cases in the pricing module
 ---
 
 

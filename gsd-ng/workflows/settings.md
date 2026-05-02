@@ -39,7 +39,8 @@ Parse current values (default to `true` if not present):
 - `workflow.verifier` — spawn verifier during execute-phase
 - `workflow.nyquist_validation` — validation architecture research during plan-phase (default: true if absent)
 - `workflow.ui_phase` — generate UI-SPEC.md design contracts for frontend phases (default: true if absent)
-- `workflow.ui_safety_gate` — prompt to run /gsd:ui-phase before planning frontend phases (default: true if absent)
+- `workflow.ui_safety_gate` — prompt to run {{COMMAND_PREFIX}}ui-phase before planning frontend phases (default: true if absent)
+- `workflow.incremental_remap` — auto-update codebase docs after phase completion via gsd-incremental-mapper (default: true if absent)
 - `model_profile` — which model each agent uses (default: `balanced`)
 - `git.branching_strategy` — branching approach (default: `"none"`)
 - `git.target_branch` — default merge target for PRs (default: `"main"`)
@@ -127,12 +128,21 @@ AskUserQuestion([
     ]
   },
   {
-    question: "Enable UI Safety Gate? (prompts to run /gsd:ui-phase before planning frontend phases)",
+    question: "Enable UI Safety Gate? (prompts to run {{COMMAND_PREFIX}}ui-phase before planning frontend phases)",
     header: "UI Gate",
     multiSelect: false,
     options: [
-      { label: "Yes (Recommended)", description: "plan-phase asks to run /gsd:ui-phase first when frontend indicators detected." },
+      { label: "Yes (Recommended)", description: "plan-phase asks to run {{COMMAND_PREFIX}}ui-phase first when frontend indicators detected." },
       { label: "No", description: "No prompt — plan-phase proceeds without UI-SPEC check." }
+    ]
+  },
+  {
+    question: "Enable Incremental Remap? (auto-updates codebase docs after each phase)",
+    header: "Remap",
+    multiSelect: false,
+    options: [
+      { label: "Yes (Recommended)", description: "Run gsd-incremental-mapper agents after phase completion to keep codebase docs current." },
+      { label: "No", description: "Skip doc updates. Good when codebase docs are manual or phase work doesn't touch documented modules." }
     ]
   },
   {
@@ -160,7 +170,7 @@ AskUserQuestion([
     header: "Auto Push",
     multiSelect: false,
     options: [
-      { label: "No (Default)", description: "Push manually or via /gsd:create-pr" },
+      { label: "No (Default)", description: "Push manually or via {{COMMAND_PREFIX}}create-pr" },
       { label: "Yes", description: "Automatically push work branch to remote after each phase" }
     ]
   },
@@ -218,7 +228,7 @@ AskUserQuestion([
     multiSelect: false,
     options: [
       { label: "Yes (Default)", description: "Automatically close/comment external issues when GSD work completes" },
-      { label: "No", description: "Manual sync only via /gsd:sync-issues" }
+      { label: "No", description: "Manual sync only via {{COMMAND_PREFIX}}sync-issues" }
     ]
   },
   {
@@ -316,7 +326,8 @@ Merge new settings into existing config.json:
     "auto_advance": true/false,
     "nyquist_validation": true/false,
     "ui_phase": true/false,
-    "ui_safety_gate": true/false
+    "ui_safety_gate": true/false,
+    "incremental_remap": true/false
   },
   "git": {
     "branching_strategy": "none" | "phase" | "milestone",
@@ -404,6 +415,7 @@ Display:
 | Nyquist Validation   | {On/Off} |
 | UI Phase             | {On/Off} |
 | UI Safety Gate       | {On/Off} |
+| Incremental Remap    | {On/Off} |
 | Git Branching        | {None/Per Phase/Per Milestone} |
 | Target Branch        | {main/develop/custom} |
 | Auto Push            | {On/Off} |
@@ -417,13 +429,13 @@ Display:
 | Context Warnings     | {On/Off} |
 | Saved as Defaults    | {Yes/No} |
 
-These settings apply to future /gsd:plan-phase and /gsd:execute-phase runs.
+These settings apply to future {{COMMAND_PREFIX}}plan-phase and {{COMMAND_PREFIX}}execute-phase runs.
 
 Quick commands:
-- /gsd:set-profile <profile> — switch model profile
-- /gsd:plan-phase --research — force research
-- /gsd:plan-phase --skip-research — skip research
-- /gsd:plan-phase --skip-verify — skip plan check
+- {{COMMAND_PREFIX}}set-profile <profile> — switch model profile
+- {{COMMAND_PREFIX}}plan-phase --research — force research
+- {{COMMAND_PREFIX}}plan-phase --skip-research — skip research
+- {{COMMAND_PREFIX}}plan-phase --skip-verify — skip plan check
 ```
 </step>
 
@@ -431,7 +443,7 @@ Quick commands:
 
 <success_criteria>
 - [ ] Current config read
-- [ ] User presented with 18 settings (profile + 7 workflow toggles + git branching + target branch + auto push + PR draft + platform + 4 issue_tracker settings + context warnings), plus conditional platform follow-up and conditional verify_label
+- [ ] User presented with 19 settings (profile + 8 workflow toggles + git branching + target branch + auto push + PR draft + platform + 4 issue_tracker settings + context warnings), plus conditional platform follow-up and conditional verify_label
 - [ ] Config updated with model_profile, workflow, and git sections
 - [ ] User offered to save as global defaults (~/.gsd/defaults.json)
 - [ ] Changes confirmed to user

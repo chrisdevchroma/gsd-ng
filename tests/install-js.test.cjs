@@ -10,6 +10,8 @@ const crypto = require('crypto');
 
 const INSTALLER = path.resolve(__dirname, '..', 'bin', 'install.js');
 
+const { RUNTIMES } = require('../gsd-ng/bin/lib/template-processor.cjs');
+
 // Resolve a writable temp base — sandbox sets TMPDIR=/tmp/claude which may not exist on disk
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 const BASE_TMPDIR = resolveTmpDir();
@@ -3173,5 +3175,67 @@ test('F-RULES-02: source new-project.md workflow uses {{PROJECT_RULES_FILE}} in 
     content.includes('{{PROJECT_RULES_FILE}}'),
     'new-project.md source must use {{PROJECT_RULES_FILE}} in Step 9 (F-RULES-02).\n' +
       'Fix: update new-project.md Step 9 to detect runtime and write dynamic content into {{PROJECT_RULES_FILE}}.',
+  );
+});
+
+// no runtime-specific PROJECT_RULES_FILE literals in template-mechanical source files
+test('RTAGNOSTIC-01: no PROJECT_RULES_FILE literals in template-mechanical sources', () => {
+  const REPO_ROOT = path.join(__dirname, '..');
+  const TEMPLATE_MECHANICAL_DIRS = [
+    path.join(REPO_ROOT, 'gsd-ng', 'workflows'),
+    path.join(REPO_ROOT, 'gsd-ng', 'references'),
+    path.join(REPO_ROOT, 'commands', 'gsd'),
+  ];
+
+  // Banned literals derived dynamically from RUNTIMES registry — no hardcoded list.
+  const BANNED_LITERALS = Object.values(RUNTIMES)
+    .map((r) => r.PROJECT_RULES_FILE)
+    .filter(Boolean);
+
+  function walkMd(dir) {
+    if (!fs.existsSync(dir)) return [];
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...walkMd(full));
+      else if (entry.isFile() && entry.name.endsWith('.md')) out.push(full);
+    }
+    return out;
+  }
+
+  const offenders = [];
+  for (const dir of TEMPLATE_MECHANICAL_DIRS) {
+    for (const file of walkMd(dir)) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const literal of BANNED_LITERALS) {
+        if (content.includes(literal)) {
+          offenders.push(`${path.relative(REPO_ROOT, file)} :: ${literal}`);
+          break;
+        }
+      }
+    }
+  }
+
+  assert.strictEqual(
+    offenders.length,
+    0,
+    `RTAGNOSTIC-01: runtime-specific PROJECT_RULES_FILE literals found in template-mechanical sources:\n  ${offenders.join('\n  ')}`,
+  );
+});
+
+// runtime-comparison prose must survive Copilot conversion intact
+test('COPILOT-RT: runtime-comparison prose survives Copilot conversion intact', () => {
+  const { convertClaudeToCopilotContent } = require('../bin/install.js');
+  const input =
+    'Updates both the project rules file (`CLAUDE.md` for Claude, ' +
+    '`.github/copilot-instructions.md` for Copilot).';
+  const output = convertClaudeToCopilotContent(input, false);
+  assert.ok(
+    output.includes('`CLAUDE.md` for Claude'),
+    `COPILOT-RT: expected '\`CLAUDE.md\` for Claude' to survive verbatim, got: ${output}`,
+  );
+  assert.ok(
+    output.includes('`.github/copilot-instructions.md` for Copilot'),
+    `COPILOT-RT: expected '\`.github/copilot-instructions.md\` for Copilot' to survive verbatim, got: ${output}`,
   );
 });

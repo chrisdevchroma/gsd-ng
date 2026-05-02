@@ -26,7 +26,7 @@ Platform detected: {platform || 'none'}
 CLI installed: {cli_installed}
 {If cli_install_url: "Install: {cli_install_url}"}
 
-Configure platform via /gsd:settings or install the CLI tool.
+Configure platform via {{COMMAND_PREFIX}}settings or install the CLI tool.
 ```
 </step>
 
@@ -132,7 +132,7 @@ Skipped: {M}
 |---|-------|-----------|-------------|
 | 1 | Fix auth | 2026-03-18-fix-auth.md | github:#42 |
 
-Next: /gsd:check-todos to review imported items
+Next: {{COMMAND_PREFIX}}check-todos to review imported items
 ```
 </step>
 

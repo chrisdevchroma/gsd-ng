@@ -196,16 +196,18 @@ function resolveInstalledVersion(baseVersion) {
 // to avoid repeated git probes and guarantee consistency across all surfaces.
 const INSTALLED_VERSION = resolveInstalledVersion(pkg.version);
 
-console.log(buildBanner(INSTALLED_VERSION));
+if (require.main === module) {
+  console.log(buildBanner(INSTALLED_VERSION));
 
-if (hasUninstall) {
-  console.log(`  ${yellow}Mode: Uninstall${reset}\n`);
-}
+  if (hasUninstall) {
+    console.log(`  ${yellow}Mode: Uninstall${reset}\n`);
+  }
 
-// Show help if requested
-if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--clean${reset}                            Wipe the GSD-managed tree before install (debugging / fresh-state reset)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
-  process.exit(0);
+  // Show help if requested
+  if (hasHelp) {
+    console.log(`  ${yellow}Usage:${reset} npx gsd-ng [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}                       Install globally (to ~/.claude)\n    ${cyan}-l, --local${reset}                        Install locally (to current directory)\n    ${cyan}-u, --uninstall${reset}                    Uninstall GSD (requires --global or --local)\n    ${cyan}-h, --help${reset}                         Show this help message\n    ${cyan}--force-statusline${reset}                 Replace existing statusline config\n    ${cyan}--snapshot${reset}                         Force +hash build metadata in VERSION (auto-detected on non-tag commits)\n    ${cyan}--no-seed-permissions-config${reset}       Skip permissions.allow seeding\n    ${cyan}--no-seed-sandbox-config${reset}           Skip sandbox.enabled seeding (permissions still seeded)\n    ${cyan}--clean${reset}                            Wipe the GSD-managed tree before install (debugging / fresh-state reset)\n    ${cyan}--runtime <runtime>${reset}                Select runtime: claude or copilot (REQUIRED for non-interactive)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx gsd-ng\n\n    ${dim}# Install Claude runtime globally${reset}\n    npx gsd-ng --runtime claude --global\n\n    ${dim}# Install Claude runtime to current project only${reset}\n    npx gsd-ng --runtime claude --local\n\n    ${dim}# Install for GitHub Copilot CLI (local)${reset}\n    npx gsd-ng --runtime copilot --local\n\n    ${dim}# Install for GitHub Copilot CLI (global)${reset}\n    npx gsd-ng --runtime copilot --global\n\n    ${dim}# Uninstall GSD globally${reset}\n    npx gsd-ng --runtime claude --global --uninstall\n\n    ${dim}# Uninstall Copilot CLI runtime globally${reset}\n    npx gsd-ng --runtime copilot --global --uninstall\n\n  ${yellow}Notes:${reset}\n    Sandbox mode is enabled by default. Use --no-seed-sandbox-config to skip it.\n`);
+    process.exit(0);
+  }
 }
 
 /**
@@ -1024,16 +1026,10 @@ function convertClaudeToCopilotContent(content, isGlobal = false) {
     out = out.replace(/\.\/\.claude\//g, './.github/');
   }
 
-  // Slash command prefix: gsd: → gsd- (applies to all Markdown content)
-  out = out.replace(/gsd:/g, 'gsd-');
-
   // Resolve {{variables}} and <!-- ONLY:x --> conditional blocks via template-processor.
   // Path rewriting stays above (separate per design — CONTEXT.md Decision #7).
   const ctx = buildContext('copilot');
   out = processTemplate(out, ctx);
-
-  // Standalone CLAUDE.md references → copilot-instructions.md
-  out = out.replace(/\bCLAUDE\.md\b/g, 'copilot-instructions.md');
 
   return out;
 }
@@ -2028,53 +2024,57 @@ function promptLocation(callback) {
   });
 }
 
-// Main logic
-if (hasGlobal && hasLocal) {
-  console.error(`  ${yellow}Cannot specify both --global and --local${reset}`);
-  process.exit(1);
-} else if (hasUninstall) {
-  if (!hasGlobal && !hasLocal) {
-    console.error(`  ${yellow}--uninstall requires --global or --local${reset}`);
+// Main logic — only runs when executed directly, not when require()d by tests
+if (require.main === module) {
+  if (hasGlobal && hasLocal) {
+    console.error(`  ${yellow}Cannot specify both --global and --local${reset}`);
     process.exit(1);
-  }
-  if (!runtime) {
-    console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
-    process.exit(1);
-  }
-  uninstall(hasGlobal);
-} else if (hasGlobal || hasLocal) {
-  // Non-interactive: --runtime is REQUIRED
-  if (!runtime) {
-    console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
-    process.exit(1);
-  }
-  installAndFinish(hasGlobal, false);
-} else {
-  // Interactive
-  if (!process.stdin.isTTY) {
-    console.error(`  ${yellow}Non-interactive terminal detected. Use --runtime with --global or --local.${reset}\n`);
-    console.error(`  ${dim}Examples:${reset}\n    npx gsd-ng --runtime claude --global\n    npx gsd-ng --runtime claude --local\n    npx gsd-ng --runtime copilot --local\n`);
-    process.exit(1);
+  } else if (hasUninstall) {
+    if (!hasGlobal && !hasLocal) {
+      console.error(`  ${yellow}--uninstall requires --global or --local${reset}`);
+      process.exit(1);
+    }
+    if (!runtime) {
+      console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
+      process.exit(1);
+    }
+    uninstall(hasGlobal);
+  } else if (hasGlobal || hasLocal) {
+    // Non-interactive: --runtime is REQUIRED
+    if (!runtime) {
+      console.error(`  ${yellow}Error: --runtime required. Use --runtime claude or --runtime copilot${reset}`);
+      process.exit(1);
+    }
+    installAndFinish(hasGlobal, false);
   } else {
-    // Interactive flow: runtime -> location -> sandbox (Claude only)
-    promptRuntime((selectedRuntime) => {
-      runtime = selectedRuntime;
-      promptLocation((isGlobal) => {
-        if (runtime === 'claude') {
-          // Claude: ask about sandbox mode
-          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-          askSandboxMode(rl, (enableSandbox) => {
-            rl.close();
-            if (!enableSandbox) {
-              noSeedSandboxConfig = true;
-            }
+    // Interactive
+    if (!process.stdin.isTTY) {
+      console.error(`  ${yellow}Non-interactive terminal detected. Use --runtime with --global or --local.${reset}\n`);
+      console.error(`  ${dim}Examples:${reset}\n    npx gsd-ng --runtime claude --global\n    npx gsd-ng --runtime claude --local\n    npx gsd-ng --runtime copilot --local\n`);
+      process.exit(1);
+    } else {
+      // Interactive flow: runtime -> location -> sandbox (Claude only)
+      promptRuntime((selectedRuntime) => {
+        runtime = selectedRuntime;
+        promptLocation((isGlobal) => {
+          if (runtime === 'claude') {
+            // Claude: ask about sandbox mode
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            askSandboxMode(rl, (enableSandbox) => {
+              rl.close();
+              if (!enableSandbox) {
+                noSeedSandboxConfig = true;
+              }
+              installAndFinish(isGlobal, true);
+            });
+          } else {
+            // Copilot has no sandbox model -- skip sandbox prompt
             installAndFinish(isGlobal, true);
-          });
-        } else {
-          // Copilot has no sandbox model -- skip sandbox prompt
-          installAndFinish(isGlobal, true);
-        }
+          }
+        });
       });
-    });
+    }
   }
 }
+
+module.exports = { convertClaudeToCopilotContent };

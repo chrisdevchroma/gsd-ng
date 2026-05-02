@@ -39,31 +39,31 @@ Evaluate `$ARGUMENTS` against these routing rules. Apply the **first matching** 
 
 | If the text describes... | Route to | Why |
 |--------------------------|----------|-----|
-| Starting a new project, "set up", "initialize" | `/gsd:new-project` | Needs full project initialization |
-| Mapping or analyzing an existing codebase | `/gsd:map-codebase` | Codebase discovery |
-| A bug, error, crash, failure, or something broken | `/gsd:debug` | Needs systematic investigation |
-| Exploring, researching, comparing, or "how does X work" | `/gsd:research-phase` | Domain research before planning |
-| Discussing vision, "how should X look", brainstorming | `/gsd:discuss-phase` | Needs context gathering |
-| A complex task: refactoring, migration, multi-file architecture, system redesign | `/gsd:add-phase` | Needs a full phase with plan/build cycle |
-| Planning a specific phase or "plan phase N" | `/gsd:plan-phase` | Direct planning request |
-| Executing a phase or "build phase N", "run phase N" | `/gsd:execute-phase` | Direct execution request |
-| Running all remaining phases automatically | `/gsd:autonomous` | Full autonomous execution |
-| A review or quality concern about existing work | `/gsd:verify-work` | Needs verification |
-| Checking progress, status, "where am I" | `/gsd:progress` | Status check |
-| Resuming work, "pick up where I left off" | `/gsd:resume-work` | Session restoration |
-| A note, idea, or "remember to..." | `/gsd:add-todo` | Capture for later |
-| Adding tests, "write tests", "test coverage" | `/gsd:add-tests` | Test generation |
-| Completing a milestone, shipping, releasing | `/gsd:complete-milestone` | Milestone lifecycle |
-| A specific, actionable, small task (add feature, fix typo, update config) | `/gsd:quick` | Self-contained, single executor |
+| Starting a new project, "set up", "initialize" | `{{COMMAND_PREFIX}}new-project` | Needs full project initialization |
+| Mapping or analyzing an existing codebase | `{{COMMAND_PREFIX}}map-codebase` | Codebase discovery |
+| A bug, error, crash, failure, or something broken | `{{COMMAND_PREFIX}}debug` | Needs systematic investigation |
+| Exploring, researching, comparing, or "how does X work" | `{{COMMAND_PREFIX}}research-phase` | Domain research before planning |
+| Discussing vision, "how should X look", brainstorming | `{{COMMAND_PREFIX}}discuss-phase` | Needs context gathering |
+| A complex task: refactoring, migration, multi-file architecture, system redesign | `{{COMMAND_PREFIX}}add-phase` | Needs a full phase with plan/build cycle |
+| Planning a specific phase or "plan phase N" | `{{COMMAND_PREFIX}}plan-phase` | Direct planning request |
+| Executing a phase or "build phase N", "run phase N" | `{{COMMAND_PREFIX}}execute-phase` | Direct execution request |
+| Running all remaining phases automatically | `{{COMMAND_PREFIX}}autonomous` | Full autonomous execution |
+| A review or quality concern about existing work | `{{COMMAND_PREFIX}}verify-work` | Needs verification |
+| Checking progress, status, "where am I" | `{{COMMAND_PREFIX}}progress` | Status check |
+| Resuming work, "pick up where I left off" | `{{COMMAND_PREFIX}}resume-work` | Session restoration |
+| A note, idea, or "remember to..." | `{{COMMAND_PREFIX}}add-todo` | Capture for later |
+| Adding tests, "write tests", "test coverage" | `{{COMMAND_PREFIX}}add-tests` | Test generation |
+| Completing a milestone, shipping, releasing | `{{COMMAND_PREFIX}}complete-milestone` | Milestone lifecycle |
+| A specific, actionable, small task (add feature, fix typo, update config) | `{{COMMAND_PREFIX}}quick` | Self-contained, single executor |
 
-**Requires `.planning/` directory:** All routes except `/gsd:new-project`, `/gsd:map-codebase`, and `/gsd:help`. If the project doesn't exist and the route requires it, suggest `/gsd:new-project` first.
+**Requires `.planning/` directory:** All routes except `{{COMMAND_PREFIX}}new-project`, `{{COMMAND_PREFIX}}map-codebase`, and `{{COMMAND_PREFIX}}help`. If the project doesn't exist and the route requires it, suggest `{{COMMAND_PREFIX}}new-project` first.
 
 **Ambiguity handling:** If the text could reasonably match multiple routes, ask the user via AskUserQuestion with the top 2-3 options. For example:
 
 ```
 "Refactor the authentication system" could be:
-1. /gsd:add-phase — Full planning cycle (recommended for multi-file refactors)
-2. /gsd:quick — Quick execution (if scope is small and clear)
+1. {{COMMAND_PREFIX}}add-phase — Full planning cycle (recommended for multi-file refactors)
+2. {{COMMAND_PREFIX}}quick — Quick execution (if scope is small and clear)
 
 Which approach fits better?
 ```
@@ -86,7 +86,7 @@ Which approach fits better?
 <step name="dispatch">
 **Invoke the chosen command.**
 
-Run the selected `/gsd:*` command, passing `$ARGUMENTS` as args.
+Run the selected `{{COMMAND_PREFIX}}*` command, passing `$ARGUMENTS` as args.
 
 If the chosen command expects a phase number and one wasn't provided in the text, extract it from context or ask via AskUserQuestion.
 

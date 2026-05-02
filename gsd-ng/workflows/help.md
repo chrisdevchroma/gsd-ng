@@ -27,9 +27,9 @@ Present the command reference to the user:
 
 ## Quick Start
 
-1. `/gsd:new-project` - Initialize project (includes research, requirements, roadmap)
-2. `/gsd:plan-phase 1` - Create detailed plan for first phase
-3. `/gsd:execute-phase 1` - Execute the phase
+1. `{{COMMAND_PREFIX}}new-project` - Initialize project (includes research, requirements, roadmap)
+2. `{{COMMAND_PREFIX}}plan-phase 1` - Create detailed plan for first phase
+3. `{{COMMAND_PREFIX}}execute-phase 1` - Execute the phase
 
 ## Staying Updated
 

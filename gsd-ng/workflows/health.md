@@ -62,10 +62,10 @@ Errors: N | Warnings: N | Info: N
 ## Errors
 
 - [E001] config.json: JSON parse error at line 5
-  Fix: Run /gsd:health --repair to reset to defaults
+  Fix: Run {{COMMAND_PREFIX}}health --repair to reset to defaults
 
 - [E002] PROJECT.md not found
-  Fix: Run /gsd:new-project to create
+  Fix: Run {{COMMAND_PREFIX}}new-project to create
 ```
 
 **If warnings exist:**
@@ -73,7 +73,7 @@ Errors: N | Warnings: N | Info: N
 ## Warnings
 
 - [W001] STATE.md references phase 5, but only phases 1-3 exist
-  Fix: Run /gsd:health --repair to regenerate
+  Fix: Run {{COMMAND_PREFIX}}health --repair to regenerate
 
 - [W005] Phase directory "1-setup" doesn't follow NN-name format
   Fix: Rename to match pattern (e.g., 01-setup)
@@ -90,7 +90,7 @@ Errors: N | Warnings: N | Info: N
 **Footer (if repairable issues exist and --repair was NOT used):**
 ```
 ---
-N issues can be auto-repaired. Run: /gsd:health --repair
+N issues can be auto-repaired. Run: {{COMMAND_PREFIX}}health --repair
 ```
 </step>
 
@@ -100,7 +100,7 @@ N issues can be auto-repaired. Run: /gsd:health --repair
 Ask user if they want to run repairs:
 
 ```
-Would you like to run /gsd:health --repair to fix N issues automatically?
+Would you like to run {{COMMAND_PREFIX}}health --repair to fix N issues automatically?
 ```
 
 If yes, re-run with --repair flag and display results.
@@ -138,9 +138,9 @@ Report final status.
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | W008 | warning | config.json: workflow.nyquist_validation absent (defaults to enabled but agents may skip) | Yes |
 | W009 | warning | Phase has Validation Architecture in RESEARCH.md but no VALIDATION.md | No |
-| W010 | warning | CLAUDE.md not found — agents missing project instructions | Yes |
-| W011 | warning | Memory files not referenced in CLAUDE.md | Yes |
-| W012 | warning | CLAUDE.md references non-existent memory files | Yes |
+| W010 | warning | `{{PROJECT_RULES_FILE}}` not found — agents missing project instructions | Yes |
+| W011 | warning | Memory files not referenced in `{{PROJECT_RULES_FILE}}` | Yes |
+| W012 | warning | `{{PROJECT_RULES_FILE}}` references non-existent memory files | Yes |
 | W013 | warning | MEMORY.md out of sync with .claude/memory/ contents | Yes |
 | W014 | warning | Workspace topology detected but no structural memory seeded | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
@@ -155,14 +155,14 @@ Report final status.
 | resetConfig | Delete + recreate config.json | Loses custom settings |
 | regenerateState | Create STATE.md from ROADMAP structure | Loses session history |
 | addNyquistKey | Add workflow.nyquist_validation: true to config.json | None — matches existing default |
-| writeCLAUDEmd | Create CLAUDE.md with Memories section from .claude/memory/ | None — generates from existing files |
-| syncCLAUDEmdMemories | Update CLAUDE.md Memories section to match .claude/memory/ | Replaces Memories section in-place |
+| writeCLAUDEmd | Create `{{PROJECT_RULES_FILE}}` with Memories section from .claude/memory/ | None — generates from existing files |
+| syncCLAUDEmdMemories | Update `{{PROJECT_RULES_FILE}}` Memories section to match .claude/memory/ | Replaces Memories section in-place |
 | syncMemoryMd | Regenerate .claude/memory/MEMORY.md from .claude/memory/ files | Overwrites MEMORY.md |
 
 **Not repairable (too risky):**
 - PROJECT.md, ROADMAP.md content
 - Phase directory renaming
 - Orphaned plan cleanup
-- Topology drift (W014) — complex; suggests running /gsd:seed-memories manually
+- Topology drift (W014) — complex; suggests running {{COMMAND_PREFIX}}seed-memories manually
 
 </repair_actions>

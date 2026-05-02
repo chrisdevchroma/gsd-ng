@@ -27,14 +27,14 @@ If `count` is 0 and recurring count is 0:
 ```
 No pending todos.
 
-Todos are captured during work sessions with /gsd:add-todo.
+Todos are captured during work sessions with {{COMMAND_PREFIX}}add-todo.
 
 ---
 
 Would you like to:
 
-1. Continue with current phase (/gsd:progress)
-2. Add a todo now (/gsd:add-todo)
+1. Continue with current phase ({{COMMAND_PREFIX}}progress)
+2. Add a todo now ({{COMMAND_PREFIX}}add-todo)
 ```
 Exit.
 </step>
@@ -66,7 +66,7 @@ Pending Todos:
 ---
 
 Reply with a number to view details, or:
-- `/gsd:check-todos [area]` to filter by area
+- `{{COMMAND_PREFIX}}check-todos [area]` to filter by area
 - `q` to exit
 ```
 </step>
@@ -143,9 +143,9 @@ Use AskUserQuestion:
 - header: "Action"
 - question: "This todo relates to Phase [N]: [name]. What would you like to do?"
 - options (always show ALL, place recommended option FIRST):
-  - "Debug this[(Recommended) if recommended]" — "Investigate and fix via /gsd:debug"
-  - "Handle as quick task[(Recommended) if recommended]" — "Small ad-hoc fix via /gsd:quick"
-  - "Plan as phase[(Recommended) if recommended]" — "Create planned work via /gsd:plan-phase"
+  - "Debug this[(Recommended) if recommended]" — "Investigate and fix via {{COMMAND_PREFIX}}debug"
+  - "Handle as quick task[(Recommended) if recommended]" — "Small ad-hoc fix via {{COMMAND_PREFIX}}quick"
+  - "Plan as phase[(Recommended) if recommended]" — "Create planned work via {{COMMAND_PREFIX}}plan-phase"
   - "Work on it now" — "Start working immediately (existing behavior)"
   - "Add to phase plan" — "Include when planning Phase [N]"
   - "Brainstorm approach" — "Think through before deciding"
@@ -157,11 +157,11 @@ Use AskUserQuestion:
 - header: "Action"
 - question: "What would you like to do with this todo?"
 - options (always show ALL, place recommended option FIRST):
-  - "Debug this[(Recommended) if recommended]" — "Investigate and fix via /gsd:debug"
-  - "Handle as quick task[(Recommended) if recommended]" — "Small ad-hoc fix via /gsd:quick"
-  - "Plan as phase[(Recommended) if recommended]" — "Create planned work via /gsd:plan-phase"
+  - "Debug this[(Recommended) if recommended]" — "Investigate and fix via {{COMMAND_PREFIX}}debug"
+  - "Handle as quick task[(Recommended) if recommended]" — "Small ad-hoc fix via {{COMMAND_PREFIX}}quick"
+  - "Plan as phase[(Recommended) if recommended]" — "Create planned work via {{COMMAND_PREFIX}}plan-phase"
   - "Work on it now" — "Start working immediately (existing behavior)"
-  - "Create a phase" — "Add as new roadmap phase via /gsd:add-phase"
+  - "Create a phase" — "Add as new roadmap phase via {{COMMAND_PREFIX}}add-phase"
   - "Brainstorm approach" — "Think through before deciding"
   - "Put it back" — "Return to list"
 
@@ -170,9 +170,9 @@ Use AskUserQuestion:
 If user selects "Debug this", "Handle as quick task", or "Plan as phase":
 
 Determine the command and compose the launch instruction:
-- Debug: `/gsd:debug --todo-file {filename} {todo title}`
-- Quick: `/gsd:quick --todo-file {filename} {todo title}`
-- Plan as phase: `/gsd:plan-phase` (todo becomes phase scope)
+- Debug: `{{COMMAND_PREFIX}}debug --todo-file {filename} {todo title}`
+- Quick: `{{COMMAND_PREFIX}}quick --todo-file {filename} {todo title}`
+- Plan as phase: `{{COMMAND_PREFIX}}plan-phase` (todo becomes phase scope)
 
 Display in "Next Up" style:
 
@@ -245,7 +245,7 @@ Present problem/solution context. Begin work or ask how to proceed.
 Note todo reference in phase planning notes. Keep in pending. Return to list or exit.
 
 **Create a phase:**
-Display: `/gsd:add-phase [description from todo]`
+Display: `{{COMMAND_PREFIX}}add-phase [description from todo]`
 Keep in pending. User runs command in fresh context.
 
 **Brainstorm approach:**
