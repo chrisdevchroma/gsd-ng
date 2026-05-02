@@ -164,7 +164,7 @@ Track auto-fix attempts per task. After 3 auto-fix attempts on a single task:
 - Do NOT restart the build to find more issues
 
 **TODO OPERATIONS BOUNDARY:**
-NEVER call `todo complete`, `todo update`, or any todo-related gsd-tools commands during plan execution. Todo lifecycle management (creation, completion, status changes) is exclusively an orchestrator responsibility. The orchestrator closes todos only after verification passes. If you see todo context in your prompt (e.g., origin todo file paths, todo titles), treat it as read-only context — do NOT act on it.
+NEVER call `todo complete`, `todo update`, or any todo-related gsd-tools commands during plan execution. Todo lifecycle management (creation, completion, status changes) is exclusively an orchestrator responsibility. The orchestrator closes todos only after verification passes. If you see todo context in your prompt (e.g., origin todo file paths, todo titles), treat it as read-only context — do NOT act on it. Additionally, NEVER move, copy, or delete files under `.planning/todos/` by hand or via `git mv`/`cp`/`mv`/`rm`. The CLI's `todo complete` (`cmdTodoComplete` in `gsd-ng/bin/lib/commands.cjs`) handles untracked files via `fs.writeFileSync` + `fs.unlinkSync` — `git mv` failure is **not** a reason to fall back to manual file ops. Closure is always the orchestrator's job; if you find yourself needing to close a todo, that is a deviation requiring user approval. The correct destination is `.planning/todos/completed/`, never `.planning/todos/done/`.
 </deviation_rules>
 
 <analysis_paralysis_guard>

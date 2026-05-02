@@ -425,8 +425,8 @@ stopped_at: Plan 2 of Phase 3
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATE.md frontmatter sync (Bug 1 fix: writeStateMd is now a transparent write)
-// Frontmatter is only added/updated via explicit `state rebuild-frontmatter`.
+// STATE.md frontmatter sync (Bug 260502-wid fix: writeStateMd now auto-syncs YAML frontmatter)
+// Every write keeps top YAML and body bold in lockstep via syncStateFrontmatter.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('STATE.md frontmatter sync', () => {
@@ -440,9 +440,9 @@ describe('STATE.md frontmatter sync', () => {
     cleanup(tmpDir);
   });
 
-  test('state update updates body field but does NOT auto-add frontmatter (Bug 1 fix)', () => {
-    // Bug 1 fix: writeStateMd is now a transparent write — no implicit syncStateFrontmatter.
-    // state update only updates the body field; frontmatter is NOT auto-generated.
+  test('state update updates body field AND auto-adds frontmatter', () => {
+    // Bug 260502-wid fix: writeStateMd now calls syncStateFrontmatter on every write.
+    // state update updates the body field AND auto-generates YAML frontmatter.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -459,8 +459,8 @@ describe('STATE.md frontmatter sync', () => {
     // Body field should be updated
     assert.ok(content.includes('**Current Phase:** 02'), 'body field should be preserved');
     assert.ok(content.includes('**Status:** Executing Plan 1'), 'updated field in body');
-    // Frontmatter should NOT be auto-added (no longer coupled to writeStateMd)
-    assert.ok(!content.startsWith('---\n'), 'frontmatter should NOT be auto-added on state update');
+    // Frontmatter SHOULD be auto-added (now coupled to writeStateMd)
+    assert.ok(content.startsWith('---\n'), 'frontmatter should be auto-added on state update');
   });
 
   test('state rebuild-frontmatter explicitly adds frontmatter to STATE.md', () => {
@@ -484,7 +484,7 @@ describe('STATE.md frontmatter sync', () => {
     assert.ok(content.includes('**Current Phase:** 02'), 'body field should be preserved');
   });
 
-  test('state patch updates body field but does NOT auto-add frontmatter (Bug 1 fix)', () => {
+  test('state patch updates body field AND auto-adds frontmatter', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -501,13 +501,13 @@ describe('STATE.md frontmatter sync', () => {
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
     // Body should be updated
     assert.ok(content.includes('**Current Plan:** 04-02'), 'body field should be updated by patch');
-    // Frontmatter should NOT be auto-added
-    assert.ok(!content.startsWith('---\n'), 'frontmatter should NOT be auto-added on state patch');
+    // Frontmatter SHOULD be auto-added
+    assert.ok(content.startsWith('---\n'), 'frontmatter should be auto-added on state patch');
   });
 
-  test('multiple state updates do not accumulate frontmatter (Bug 1 fix)', () => {
-    // Previously: each write would call syncStateFrontmatter, potentially duplicating delimiters.
-    // Now: transparent writes; no frontmatter accumulation.
+  test('multiple state updates do not accumulate frontmatter (Bug 260502-wid fix)', () => {
+    // Each write calls syncStateFrontmatter which is idempotent — multiple writes
+    // produce exactly one frontmatter block, never duplicated delimiters.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -521,13 +521,19 @@ describe('STATE.md frontmatter sync', () => {
     runGsdTools('state update Status "Paused"', tmpDir);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
-    // Should have zero frontmatter blocks (none auto-added)
+    // Should have exactly one frontmatter block (2 delimiters: opening and closing ---)
     const delimiterCount = (content.match(/^---$/gm) || []).length;
-    assert.strictEqual(delimiterCount, 0, 'no frontmatter should be auto-added on multiple writes');
+    assert.strictEqual(delimiterCount, 2, 'exactly one frontmatter block (2 delimiters) should exist after multiple writes');
   });
 
-  test('preserves existing frontmatter unchanged when updating body (Bug 1 fix)', () => {
-    // writeStateMd is transparent — existing frontmatter in content is preserved as-is.
+  test('preserves existing frontmatter values when body has no overriding bold field', () => {
+    // Seed body has **Current Phase:** and **Current Plan:** but NO **Status:** line.
+    // syncStateFrontmatter trace on this seed:
+    //   stateExtractField(body, 'Status') → null
+    //   buildStateFrontmatter sees null → preservation branch fires → status: 'executing' is kept from existing FM
+    //   milestone is non-canonical → dropped (only canonical keys survive a rebuild)
+    // After `state update "Current Plan" "03-03"` the body's bold is updated, then writeStateMd
+    // re-runs syncStateFrontmatter so YAML's current_plan now reads "03-03".
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `---
@@ -542,18 +548,20 @@ milestone: v1.0
 `
     );
 
-    // state update now only changes the body field; frontmatter is not touched
     runGsdTools('state update "Current Plan" "03-03"', tmpDir);
 
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
-    // The existing frontmatter should be preserved (transparent write)
-    assert.ok(content.includes('status: executing'), 'existing frontmatter should be preserved by transparent write');
+    // Status preserved via preservation branch (body has no **Status:** field)
+    assert.ok(content.includes('status: executing'), 'status preserved because body has no **Status:** field for buildStateFrontmatter to derive from');
     assert.ok(content.includes('**Current Plan:** 03-03'), 'body field should be updated');
+    // YAML current_plan should sync from the updated body bold
+    assert.match(content, /current_plan:\s*03-03/, 'YAML current_plan should sync from body bold');
   });
 
   test('round-trip: write then read via state json', () => {
-    // state json reads from frontmatter if present, otherwise builds from body.
-    // After an update, the frontmatter may be stale — state json falls back to body parsing.
+    // state json reads from the YAML frontmatter (now always present + current after Bug 260502-wid fix).
+    // Before the fix, FM could be stale and state json would fall back to body parsing; that fallback
+    // path still exists for legacy STATE.md files but is no longer the common case.
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       `# Project State
@@ -573,7 +581,7 @@ milestone: v1.0
     assert.ok(result.success, `state json failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    // state json builds frontmatter on-the-fly from body when no frontmatter exists
+    // state json reads from the now-current YAML frontmatter (built by syncStateFrontmatter on write)
     assert.strictEqual(output.current_phase, '07', 'round-trip: phase preserved');
     assert.strictEqual(output.current_phase_name, 'Production', 'round-trip: phase name preserved');
     assert.strictEqual(output.status, 'executing', 'round-trip: status normalized');
@@ -2095,9 +2103,9 @@ describe('stateReplaceField frontmatter safety (Bug 6)', () => {
   });
 });
 
-// ─── Bug 1: writeStateMd decoupling ──────────────────────────────────────────
+// ─── Bug 1 fix v2: writeStateMd coupling ─────────────────────────────────────
 
-describe('writeStateMd decoupling (Bug 1)', () => {
+describe('writeStateMd coupling (Bug 1 fix v2)', () => {
   let tmpDir;
 
   beforeEach(() => {
@@ -2108,22 +2116,24 @@ describe('writeStateMd decoupling (Bug 1)', () => {
     cleanup(tmpDir);
   });
 
-  test('writeStateMd writes content as-is without calling syncStateFrontmatter', () => {
-    // Write a STATE.md with known body content — if syncStateFrontmatter were called
-    // it would regenerate the frontmatter from the body, potentially changing it.
-    // We pass content with a deliberately unusual frontmatter to detect any transformation.
+  test('writeStateMd auto-syncs frontmatter from body', () => {
+    // writeStateMd now calls syncStateFrontmatter before writing.
+    // A non-canonical key in the original FM (unique marker) is dropped and the FM
+    // is rebuilt from body bold. The canonical keys (current_phase, last_updated) must be present.
     const statePath = path.join(tmpDir, '.planning', 'STATE.md');
-    const uniqueMarker = 'UNIQUE_MARKER_SHOULD_NOT_BE_REMOVED_12345';
-    const content = `---\n${uniqueMarker}: yes\n---\n\n**Status:** executing\n`;
+    const uniqueMarker = 'UNIQUE_MARKER_SHOULD_BE_REMOVED_12345';
+    const content = `---\n${uniqueMarker}: yes\n---\n\n**Current Phase:** 7\n**Status:** executing\n`;
     const { writeStateMd } = require('../gsd-ng/bin/lib/state.cjs');
 
     writeStateMd(statePath, content, tmpDir);
 
     const written = fs.readFileSync(statePath, 'utf-8');
     assert.ok(
-      written.includes(uniqueMarker),
-      `writeStateMd should write content as-is; unique frontmatter key should be preserved. Got:\n${written}`
+      !written.includes(uniqueMarker),
+      `syncStateFrontmatter should rebuild FM from body, dropping the non-canonical unique marker. Got:\n${written}`
     );
+    assert.ok(written.includes('current_phase:'), 'FM should contain canonical current_phase key');
+    assert.ok(written.includes('last_updated:'), 'FM should contain canonical last_updated key');
   });
 
   test('writeStateMd still performs scanForInjection advisory check (exits 0 on injection)', () => {

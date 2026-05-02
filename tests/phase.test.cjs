@@ -1509,6 +1509,59 @@ describe('phase complete command', () => {
     assert.strictEqual(cells[1], 'v1.0', 'Milestone column should be preserved');
     assert.ok(cells[3].includes('Complete'), 'Status column should be Complete');
   });
+
+  test('phase complete keeps top YAML and body bold in sync (Bug 260502-wid)', () => {
+    // Seed: body has current phase 01 body bold fields; no YAML frontmatter yet.
+    // Simulates a STATE.md that has only ever had body bold (pre-fix drift state).
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Foundation
+- [ ] Phase 2: API
+
+### Phase 1: Foundation
+**Goal:** Setup
+**Plans:** 1 plans
+
+### Phase 2: API
+**Goal:** Build API
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Foundation\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working on phase 1\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-api'), { recursive: true });
+
+    const result = runGsdTools('phase complete 1 --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const { extractFrontmatter } = require('../gsd-ng/bin/lib/frontmatter.cjs');
+    const content = fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8');
+    const fm = extractFrontmatter(content);
+
+    assert.ok(fm && Object.keys(fm).length > 0, 'STATE.md should have YAML frontmatter after phase complete');
+
+    // Extract body bold values for comparison
+    const bodyPhase = (content.match(/\*\*Current Phase:\*\*\s*(\S+)/) || [])[1];
+    const bodyStatus = (content.match(/\*\*Status:\*\*\s*(.+)/) || [])[1];
+
+    assert.ok(bodyPhase, 'body should have **Current Phase:** field');
+    assert.ok(bodyStatus, 'body should have **Status:** field');
+
+    // Top YAML current_phase should match body bold **Current Phase:**
+    assert.strictEqual(
+      String(fm.current_phase),
+      bodyPhase.trim(),
+      `YAML current_phase (${fm.current_phase}) should match body bold (${bodyPhase.trim()})`
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

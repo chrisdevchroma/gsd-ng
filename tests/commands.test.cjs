@@ -629,6 +629,71 @@ describe('todo complete command', () => {
     assert.ok(!result.success, 'should fail');
     assert.ok(result.error.includes('not found'), 'error mentions not found');
   });
+
+  test('warns when stray .planning/todos/done/ directory exists (non-recurring path)', () => {
+    const pendingDir = path.join(tmpDir, '.planning', 'todos', 'pending');
+    const strayDoneDir = path.join(tmpDir, '.planning', 'todos', 'done');
+    fs.mkdirSync(pendingDir, { recursive: true });
+    fs.mkdirSync(strayDoneDir, { recursive: true });
+    fs.writeFileSync(path.join(pendingDir, 'sample.md'), 'title: Sample\n');
+
+    const result = runGsdTools('todo complete sample.md --json', tmpDir);
+    assert.ok(result.success, `Command should succeed despite stray dir: ${result.error}`);
+    assert.match(
+      result.stderr || '',
+      /Stray \.planning\/todos\/done\//,
+      'should warn about stray done/ directory'
+    );
+    assert.ok(
+      fs.existsSync(path.join(tmpDir, '.planning', 'todos', 'completed', 'sample.md')),
+      'non-recurring todo should be moved to completed/'
+    );
+  });
+
+  test('warns when stray .planning/todos/done/ directory exists (recurring path)', () => {
+    // Recurring todos take an early-return branch. The warning must fire BEFORE that branch.
+    const pendingDir = path.join(tmpDir, '.planning', 'todos', 'pending');
+    const strayDoneDir = path.join(tmpDir, '.planning', 'todos', 'done');
+    fs.mkdirSync(pendingDir, { recursive: true });
+    fs.mkdirSync(strayDoneDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pendingDir, 'recurring.md'),
+      '---\nrecurring: true\ninterval: weekly\n---\n\n# Weekly check\n'
+    );
+
+    const result = runGsdTools('todo complete recurring.md --json', tmpDir);
+    assert.ok(result.success, `Recurring complete should succeed: ${result.error}`);
+    assert.match(
+      result.stderr || '',
+      /Stray \.planning\/todos\/done\//,
+      'should warn about stray done/ directory on recurring path too'
+    );
+    // Recurring file STAYS in pending/ — verify it did not move to completed/
+    assert.ok(
+      fs.existsSync(path.join(pendingDir, 'recurring.md')),
+      'recurring todo should stay in pending/'
+    );
+    assert.ok(
+      !fs.existsSync(path.join(tmpDir, '.planning', 'todos', 'completed', 'recurring.md')),
+      'recurring todo should NOT be in completed/'
+    );
+    // last_completed should be added
+    const updated = fs.readFileSync(path.join(pendingDir, 'recurring.md'), 'utf-8');
+    assert.match(updated, /last_completed:\s*\d{4}-\d{2}-\d{2}T/, 'last_completed timestamp should be added');
+  });
+
+  test('does NOT warn when no stray done/ directory exists', () => {
+    const pendingDir = path.join(tmpDir, '.planning', 'todos', 'pending');
+    fs.mkdirSync(pendingDir, { recursive: true });
+    fs.writeFileSync(path.join(pendingDir, 'sample.md'), 'title: Sample\n');
+
+    const result = runGsdTools('todo complete sample.md --json', tmpDir);
+    assert.ok(result.success);
+    assert.ok(
+      !/Stray \.planning\/todos\/done\//.test(result.stderr || ''),
+      'should NOT warn when no stray done/ exists'
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
