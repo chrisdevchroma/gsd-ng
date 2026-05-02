@@ -726,7 +726,7 @@ describe('scaffold command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdGenerateSlug tests (CMD-01)
+// cmdGenerateSlug tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('generate-slug command', () => {
@@ -780,7 +780,7 @@ describe('generate-slug command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdCurrentTimestamp tests (CMD-01)
+// cmdCurrentTimestamp tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('current-timestamp command', () => {
@@ -828,7 +828,7 @@ describe('current-timestamp command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdListTodos tests (CMD-02)
+// cmdListTodos tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('list-todos command', () => {
@@ -919,7 +919,7 @@ describe('list-todos command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdVerifyPathExists tests (CMD-02)
+// cmdVerifyPathExists tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('verify-path-exists command', () => {
@@ -984,7 +984,7 @@ describe('verify-path-exists command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdResolveModel tests (CMD-03)
+// cmdResolveModel tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('resolve-model command', () => {
@@ -1034,7 +1034,7 @@ describe('resolve-model command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdCommit tests (CMD-04)
+// cmdCommit tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('commit command', () => {
@@ -1129,7 +1129,7 @@ describe('commit command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdWebsearch tests (CMD-05)
+// cmdWebsearch tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('websearch command', () => {
@@ -1295,13 +1295,13 @@ describe('stats command', () => {
     fs.mkdirSync(p1, { recursive: true });
     fs.mkdirSync(p2, { recursive: true });
 
-    // Phase 1: 2 plans, 2 summaries (complete)
+    // First phase: 2 plans, 2 summaries (complete)
     fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
     fs.writeFileSync(path.join(p1, '01-02-PLAN.md'), '# Plan');
     fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
     fs.writeFileSync(path.join(p1, '01-02-SUMMARY.md'), '# Summary');
 
-    // Phase 2: 1 plan, 0 summaries (planned)
+    // Second phase: 1 plan, 0 summaries (planned)
     fs.writeFileSync(path.join(p2, '02-01-PLAN.md'), '# Plan');
 
     const result = runGsdTools('stats --json', tmpDir);
@@ -1534,7 +1534,7 @@ describe('cmdSquash command', () => {
   });
 });
 
-// ─── applyCommitFormat function (COMM-01) ────────────────────────────────────
+// ─── applyCommitFormat function ────────────────────────────────────
 
 describe('applyCommitFormat function', () => {
   const { applyCommitFormat, appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1573,7 +1573,7 @@ describe('applyCommitFormat function', () => {
   });
 });
 
-// ─── appendIssueTrailers function (COMM-02) ───────────────────────────────────
+// ─── appendIssueTrailers function ───────────────────────────────────
 
 describe('appendIssueTrailers function', () => {
   const { appendIssueTrailers } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1602,7 +1602,7 @@ describe('appendIssueTrailers function', () => {
   });
 });
 
-// ─── bumpVersion function (VER-01, VER-02) ────────────────────────────────────
+// ─── bumpVersion function ────────────────────────────────────
 
 describe('bumpVersion function', () => {
   const { bumpVersion, appendBuildMetadata } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1649,7 +1649,7 @@ describe('bumpVersion function', () => {
   });
 });
 
-// ─── deriveVersionBump function (VER-01) ─────────────────────────────────────
+// ─── deriveVersionBump function ─────────────────────────────────────
 
 describe('deriveVersionBump function', () => {
   const { deriveVersionBump } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1686,7 +1686,7 @@ describe('deriveVersionBump function', () => {
   });
 });
 
-// ─── generateChangelog function (COMM-04, COMM-05) ───────────────────────────
+// ─── generateChangelog function ───────────────────────────
 
 describe('generateChangelog function', () => {
   const { generateChangelog } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1718,7 +1718,7 @@ describe('generateChangelog function', () => {
   });
 });
 
-// ─── categorizeCommitType function (COMM-05) ─────────────────────────────────
+// ─── categorizeCommitType function ─────────────────────────────────
 
 describe('categorizeCommitType function', () => {
   const { categorizeCommitType } = require('../gsd-ng/bin/lib/commands.cjs');
@@ -1758,7 +1758,7 @@ describe('categorizeCommitType function', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdDivergence tests (CLEAN-05)
+// cmdDivergence tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('divergence command', () => {
@@ -2601,7 +2601,7 @@ describe('config-get scalar extraction', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ISSUE_COMMANDS label operations (Phase 21-03)
+// ISSUE_COMMANDS label operations
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ISSUE_COMMANDS label operations', () => {
@@ -2649,7 +2649,7 @@ describe('ISSUE_COMMANDS label operations', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdIssueSync verify state modes (Phase 21-03)
+// cmdIssueSync verify state modes
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdIssueSync verify state modes', () => {
@@ -3270,7 +3270,7 @@ describe('summary-extract --default flag', () => {
   });
 });
 
-// ── ALLOW-15: cmdGenerateAllowlist parity with install.js seeding ─────────────
+// ── cmdGenerateAllowlist parity with install.js seeding ─────────────
 // `gsd-tools` supports a global `--json` flag (handled before command routing),
 // so `generate-allowlist --platform <linux|darwin> --json` returns
 // { permissions: { allow: [...] } } matching install.js's settings.json structure.
@@ -3313,7 +3313,7 @@ describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => 
       const generateAllow = runGenerateAllowlist(cwd, 'darwin');
       assert.deepStrictEqual(new Set(installAllow), new Set(generateAllow),
         `Set mismatch:\ninstall only: ${installAllow.filter(x => !generateAllow.includes(x)).join(', ')}\ngenerate only: ${generateAllow.filter(x => !installAllow.includes(x)).join(', ')}`);
-      // ALLOW-21/22 parity check: narrowed verbs appear in both outputs.
+      // Narrowed-verb parity check: narrowed verbs appear in both outputs.
       try {
         require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
         assert.ok(installAllow.includes('Bash(gh repo view *)'), 'install.js must seed narrowed repo view');
@@ -3334,7 +3334,7 @@ describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => 
       assert.deepStrictEqual(new Set(installAllow), new Set(generateAllow));
       assert.ok(generateAllow.includes('Edit'));
       assert.ok(!generateAllow.includes('Edit(*)'));
-      // ALLOW-21/22 parity check: narrowed verbs appear in both outputs.
+      // Narrowed-verb parity check: narrowed verbs appear in both outputs.
       try {
         require('child_process').execSync('which gh', { stdio: 'ignore', timeout: 2000 });
         assert.ok(installAllow.includes('Bash(gh repo view *)'), 'install.js must seed narrowed repo view');
@@ -3359,7 +3359,7 @@ describe('ALLOW-15: cmdGenerateAllowlist parity with install.js seeding', () => 
   });
 });
 
-// ── ALLOW-19: RW_FORMS dedup — commands.cjs imports from allowlist.cjs ────────
+// ── RW_FORMS dedup — commands.cjs imports from allowlist.cjs ────────
 // Verifies that commands.cjs no longer defines an inline rwForms Set literal and
 // instead imports RW_FORMS from allowlist.cjs (single source of truth).
 

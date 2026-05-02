@@ -18,6 +18,28 @@ const { cmdDetectPlatform } = require('./commands.cjs');
 // ─── Workspace topology detection ────────────────────────────────────────────
 
 /**
+ * Find the sole configured submodule that overlaps with the candidate path set.
+ * Configured submodules live under `config.git.submodules.<basename>`.
+ * Candidate paths are the full submodule paths from .gitmodules (e.g. 'lib-a' or 'nested/lib-a').
+ * Matching is by basename (path.split('/').pop()) — same keying as the existing single-hit resolution.
+ * Returns the candidate path if exactly one match, null otherwise.
+ *
+ * @param {object} config - Parsed .planning/config.json (may be empty / missing git.submodules)
+ * @param {string[]} candidatePaths - Submodule paths to check (full paths from .gitmodules)
+ * @returns {string|null} Sole matching candidate path, or null if 0 or 2+ matches
+ */
+function findConfiguredIntersection(config, candidatePaths) {
+  const configuredBasenames = new Set(
+    Object.keys(config?.git?.submodules || {}),
+  );
+  const intersection = (candidatePaths || []).filter((p) => {
+    const basename = p.split('/').pop();
+    return configuredBasenames.has(basename);
+  });
+  return intersection.length === 1 ? intersection[0] : null;
+}
+
+/**
  * Parse .gitmodules to extract submodule path= values.
  * @param {string} gitmodulesPath - Absolute path to .gitmodules
  * @returns {string[]} Array of submodule paths (relative to project root)
@@ -304,6 +326,17 @@ function resolveGitContext(cwd) {
 
   // ── Submodule workspace ────────────────────────────────────────────────────
 
+  // Load config once for both ambiguity disambiguation and the eventual
+  // single-hit per-submodule override merge below.
+  let parsedConfig = {};
+  try {
+    const pp = planningPaths(cwd);
+    const rawConfig = fs.readFileSync(pp.config, 'utf-8');
+    parsedConfig = JSON.parse(rawConfig);
+  } catch {
+    parsedConfig = {};
+  }
+
   // Detect which submodule(s) have changes in the workspace diff
   const headDiff = execGit(cwd, ['diff', '--name-only', 'HEAD']);
   const cachedDiff = execGit(cwd, ['diff', '--cached', '--name-only']);
@@ -317,60 +350,81 @@ function resolveGitContext(cwd) {
       : []),
   ];
 
-  const hitPaths = submodulePaths.filter((sp) =>
+  let hitPaths = submodulePaths.filter((sp) =>
     changedFiles.some((f) => f === sp || f.startsWith(sp + '/')),
   );
 
-  // Ambiguous: multiple submodules have changes
+  // Multiple submodules dirty — try to disambiguate via per-submodule config.
   if (hitPaths.length > 1) {
-    return {
-      is_submodule: true,
-      submodule_path: null,
-      git_cwd: null,
-      remote: null,
-      remote_url: null,
-      ssh_url: false,
-      target_branch: null,
-      current_branch: null,
-      ambiguous: true,
-      ambiguous_paths: hitPaths,
-      platform: null,
-      cli: null,
-      cli_installed: false,
-      cli_install_url: null,
-    };
+    const sole = findConfiguredIntersection(parsedConfig, hitPaths);
+    if (sole) {
+      // Exactly one of the dirty submodules is configured; pick it and
+      // fall through to single-hit resolution below.
+      hitPaths = [sole];
+    } else {
+      // Either zero configured submodules among the dirty ones (real ambiguity)
+      // or 2+ configured (multi-config — still ambiguous, surface configured set).
+      const configuredBasenames = Object.keys(
+        parsedConfig?.git?.submodules || {},
+      );
+      const ambiguousList =
+        configuredBasenames.length > 1 ? configuredBasenames : hitPaths;
+      return {
+        is_submodule: true,
+        submodule_path: null,
+        git_cwd: null,
+        remote: null,
+        remote_url: null,
+        ssh_url: false,
+        target_branch: null,
+        current_branch: null,
+        ambiguous: true,
+        ambiguous_paths: ambiguousList,
+        platform: null,
+        cli: null,
+        cli_installed: false,
+        cli_install_url: null,
+      };
+    }
   }
 
-  // Ambiguous: multiple submodules exist but none have changes — can't determine target
+  // Clean tree, multiple submodules — disambiguate via per-submodule config.
   if (submodulePaths.length > 1 && hitPaths.length === 0) {
-    return {
-      is_submodule: true,
-      submodule_path: null,
-      git_cwd: null,
-      remote: null,
-      remote_url: null,
-      ssh_url: false,
-      target_branch: null,
-      current_branch: null,
-      ambiguous: true,
-      ambiguous_paths: submodulePaths,
-      platform: null,
-      cli: null,
-      cli_installed: false,
-      cli_install_url: null,
-    };
+    const sole = findConfiguredIntersection(parsedConfig, submodulePaths);
+    if (sole) {
+      hitPaths = [sole];
+    } else {
+      const configuredBasenames = Object.keys(
+        parsedConfig?.git?.submodules || {},
+      );
+      const ambiguousList =
+        configuredBasenames.length > 1 ? configuredBasenames : submodulePaths;
+      return {
+        is_submodule: true,
+        submodule_path: null,
+        git_cwd: null,
+        remote: null,
+        remote_url: null,
+        ssh_url: false,
+        target_branch: null,
+        current_branch: null,
+        ambiguous: true,
+        ambiguous_paths: ambiguousList,
+        platform: null,
+        cli: null,
+        cli_installed: false,
+        cli_install_url: null,
+      };
+    }
   }
 
   // Resolve active submodule: matched submodule or fallback to first
   const activePath = hitPaths[0] || submodulePaths[0];
   const subCwd = path.join(cwd, activePath);
 
-  // Read submodule config overrides from .planning/config.json
+  // Read submodule config overrides from already-parsed .planning/config.json
   let configSubmodule = {};
   try {
-    const pp = planningPaths(cwd);
-    const rawConfig = fs.readFileSync(pp.config, 'utf-8');
-    const parsedConfig = JSON.parse(rawConfig);
     const globalGit = parsedConfig.git || {};
     const submoduleName = activePath ? activePath.split('/').pop() : null;
     const perSubmodule =
@@ -378,10 +432,10 @@ function resolveGitContext(cwd) {
         globalGit.submodules &&
         globalGit.submodules[submoduleName]) ||
       {};
-    // Merged: global git.* fields as base, per-submodule overrides on top
+    // Merged: global git fields as base, per-submodule overrides on top
     configSubmodule = { ...globalGit, ...perSubmodule };
   } catch {
-    // No config or malformed — use defaults
+    // Defaults — parsedConfig is empty when config missing or malformed
   }
 
   const remote = configSubmodule.remote || 'origin';
@@ -553,6 +607,7 @@ function cmdSshCheck(remoteUrl, silent) {
 
 module.exports = {
   detectWorkspaceType,
+  findConfiguredIntersection,
   generateMemoriesSection,
   generateMemoryMd,
   seedMemoryTemplate,

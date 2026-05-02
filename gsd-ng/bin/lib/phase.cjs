@@ -840,13 +840,13 @@ function cmdPhaseRemove(cwd, targetPhase, options) {
       const oldPad = oldStr.padStart(2, '0');
       const newPad = newStr.padStart(2, '0');
 
-      // Phase headings: ## Phase 18: or ### Phase 18: → ## Phase 17: or ### Phase 17:
+      // Phase headings: ## Phase N: or ### Phase N: — renumber old to new
       roadmapContent = roadmapContent.replace(
         new RegExp(`(#{2,4}\\s*Phase\\s+)${oldStr}(\\s*:)`, 'gi'),
         `$1${newStr}$2`,
       );
 
-      // Checkbox items: - [ ] **Phase 18:** → - [ ] **Phase 17:**
+      // Checkbox items: - [ ] **Phase N:** — renumber old to new
       roadmapContent = roadmapContent.replace(
         new RegExp(`(Phase\\s+)${oldStr}([:\\s])`, 'g'),
         `$1${newStr}$2`,
@@ -1008,12 +1008,12 @@ function cmdPhaseComplete(cwd, phaseNum) {
 
         for (const reqId of reqIds) {
           const reqEscaped = escapeRegex(reqId);
-          // Update checkbox: - [ ] **REQ-ID** → - [x] **REQ-ID**
+          // Update checkbox: - [ ] **<id>** → - [x] **<id>**
           reqContent = reqContent.replace(
             new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEscaped}\\*\\*)`, 'gi'),
             '$1x$2',
           );
-          // Update traceability table: | REQ-ID | Phase N | Pending/In Progress | → | REQ-ID | Phase N | Complete |
+          // Update traceability table: | <id> | phase | Pending/In Progress | → | <id> | phase | Complete |
           reqContent = reqContent.replace(
             new RegExp(
               `(\\|\\s*${reqEscaped}\\s*\\|[^|]+\\|)\\s*(?:Pending|In Progress)\\s*(\\|)`,

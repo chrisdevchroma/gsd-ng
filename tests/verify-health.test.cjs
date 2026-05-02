@@ -180,7 +180,7 @@ describe('validate health command', () => {
     writeMinimalProjectMd(tmpDir);
     writeMinimalRoadmap(tmpDir, ['1']);
     writeValidConfigJson(tmpDir);
-    // STATE.md mentions Phase 99 but only 01-a dir exists
+    // STATE.md mentions a nonexistent phase but only 01-a dir exists
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
       '# Session State\n\nPhase 99 is the current phase.\n'
@@ -306,7 +306,7 @@ describe('validate health command', () => {
 
   test('warns about phase in ROADMAP but not on disk', () => {
     writeMinimalProjectMd(tmpDir);
-    // ROADMAP mentions Phase 5 but no 05-xxx dir
+    // ROADMAP mentions a phase number but no matching dir exists
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n\n### Phase 5: Future Phase\n'

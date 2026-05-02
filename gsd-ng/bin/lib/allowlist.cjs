@@ -4,15 +4,15 @@
  * Per-CLI subcommand mappings. Each CLI gets granular subcommand patterns
  * instead of blanket Bash(cli *) wildcards.
  *
- * Phase 54.1 narrowing (ALLOW-21, ALLOW-22):
+ * Subcommand narrowing per platform:
  *   - gh repo:   view, list, clone, fork, create, sync, set-default (excludes delete, rename, edit, archive, etc.)
  *   - gh label:  list, create, clone                                (excludes delete, edit)
  *   - glab:      mirrors gh minus missing verbs (no sync/set-default; no label clone)
- *   - fj:        mirrors gh minus missing verbs (no repo list; NO label subcommand exists at all — corrects Phase 54 ALLOW-14 drift)
+ *   - fj:        mirrors gh minus missing verbs (no repo list; NO label subcommand exists at all — corrects historical drift)
  *   - tea:       mirrors gh minus missing verbs (no repo view, no repo clone; retains 'repos'/'labels' plural aliases)
  *
  * Existing users keep their broader Bash(<cli> repo *) / Bash(<cli> label *) entries
- * until Phase 57 delivers the --clean / manifest migration mechanism (Option B conservative).
+ * until the manifest migration mechanism delivers granular narrowing.
  *
  * Multi-word entries (e.g. 'repo view') are emitted by getPlatformCliPatterns
  * as literal Bash(gh repo view *) / Bash(gh repo view) permission rules — the
@@ -69,7 +69,7 @@ const CLI_SUBCOMMANDS = {
     'repo clone',
     'repo fork',
     'repo create',
-    // NOTE: fj has no 'label' subcommand — intentionally empty (corrects Phase 54 ALLOW-14 drift)
+    // NOTE: fj has no 'label' subcommand — intentionally empty (no label support in this CLI)
   ],
   tea: [
     'pr',
@@ -86,7 +86,7 @@ const CLI_SUBCOMMANDS = {
     'label list',
     'label create',
     'repos',
-    'labels', // retained plural aliases (broad) — Phase 57 candidate to narrow
+    'labels', // retained plural aliases (broad) — candidate to narrow when manifest migration lands
   ],
 };
 
@@ -136,7 +136,7 @@ const PLATFORM_TO_CLI = {
  * RW_FORMS — canonical Read/Edit/Write permission forms — both bare and glob.
  * Exported as a frozen Set so install.js and commands.cjs can strip these
  * from template entries before injecting the platform-appropriate form.
- * Single source of truth — see ALLOW-19.
+ * Single source of truth for Read/Edit/Write permission forms.
  */
 const RW_FORMS = Object.freeze(
   new Set(['Edit', 'Write', 'Read', 'Edit(*)', 'Write(*)', 'Read(*)']),

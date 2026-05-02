@@ -40,7 +40,7 @@ const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 // ---------------------------------------------------------------------------
-// 1. Config parsing — BENCH-01
+// 1. Config parsing
 // ---------------------------------------------------------------------------
 
 describe('config parsing', () => {
@@ -81,7 +81,7 @@ describe('config parsing', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Task validation — BENCH-08
+// 2. Task validation
 // ---------------------------------------------------------------------------
 
 describe('task validation', () => {
@@ -172,7 +172,7 @@ describe('task validation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Structural evaluator — BENCH-04
+// 3. Structural evaluator
 // ---------------------------------------------------------------------------
 
 describe('structural evaluator', () => {
@@ -281,7 +281,7 @@ describe('structural evaluator', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Fixture isolation — BENCH-07
+// 4. Fixture isolation
 // ---------------------------------------------------------------------------
 
 describe('fixture isolation', () => {
@@ -324,7 +324,7 @@ describe('fixture isolation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Results write — BENCH-06
+// 5. Results write
 // ---------------------------------------------------------------------------
 
 describe('results write', () => {

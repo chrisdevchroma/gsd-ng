@@ -1321,13 +1321,13 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
       '# Project State\n\n**Progress:** [░░░░░░░░░░] 0%\n'
     );
 
-    // Phase 01: 1 PLAN + 1 SUMMARY = completed
+    // First phase dir: 1 PLAN + 1 SUMMARY = completed
     const phase01Dir = path.join(tmpDir, '.planning', 'phases', '01');
     fs.mkdirSync(phase01Dir, { recursive: true });
     fs.writeFileSync(path.join(phase01Dir, '01-01-PLAN.md'), '# Plan\n');
     fs.writeFileSync(path.join(phase01Dir, '01-01-SUMMARY.md'), '# Summary\n');
 
-    // Phase 02: 1 PLAN only = not completed
+    // Second phase dir: 1 PLAN only = not completed
     const phase02Dir = path.join(tmpDir, '.planning', 'phases', '02');
     fs.mkdirSync(phase02Dir, { recursive: true });
     fs.writeFileSync(path.join(phase02Dir, '02-01-PLAN.md'), '# Plan\n');

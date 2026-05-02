@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const { resolveTmpDir } = require('./helpers.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
@@ -125,10 +126,43 @@ function findTestNameIncidentMarker(line) {
   return null;
 }
 
+// Detector: phase-number references in comments.
+// Phase numbers are task-local context — they belong in commit messages
+// and PR descriptions, not in code where they rot as work progresses.
+//
+// Exempt: lines tagged with `BACKWARD COMPAT`, `INVARIANT`, or `LOCKED:`
+// (load-bearing references where the citation is part of the contract).
+// Opt out per-line with `// hygiene-allow: phase-ref` plus a rationale.
+function findPhaseReference(line) {
+  const ctx = commentContext(line);
+  if (!ctx.comment) return null;
+  if (/BACKWARD COMPAT|INVARIANT|LOCKED:/.test(line)) return null;
+  if (/hygiene-allow:\s*phase-ref/.test(line)) return null;
+  const m = /\bPhase \d+(\.\d+)?\b/.exec(ctx.comment);
+  if (m) return "Phase reference '" + m[0] + "' — phase numbers belong in commit messages, not in code";
+  return null;
+}
+
+// Detector: requirement-ID references in comments.
+// Matches the pattern \b[A-Z]{2,}\d*-[A-Z0-9]+\b (uppercase prefix, optional digits,
+// dash, uppercase/digit suffix — e.g. requirement labels, ticket IDs, etc.).
+// Same exemption + opt-out rules as findPhaseReference.
+function findRequirementIdReference(line) {
+  const ctx = commentContext(line);
+  if (!ctx.comment) return null;
+  if (/BACKWARD COMPAT|INVARIANT|LOCKED:/.test(line)) return null;
+  if (/hygiene-allow:\s*phase-ref/.test(line)) return null;
+  const m = /\b[A-Z]{2,}\d*-[A-Z0-9]+\b/.exec(ctx.comment);
+  if (m) return "Requirement ID reference '" + m[0] + "' — requirement IDs belong in commit messages, not in code";
+  return null;
+}
+
 const DETECTORS = [
-  { name: 'PR reference', fn: findPRReference },
-  { name: 'Review-round reference', fn: findRoundReference },
-  { name: 'Test-name incident marker', fn: findTestNameIncidentMarker },
+  { name: 'PR reference', fn: findPRReference, realCodeScan: true },
+  { name: 'Review-round reference', fn: findRoundReference, realCodeScan: true },
+  { name: 'Test-name incident marker', fn: findTestNameIncidentMarker, realCodeScan: true },
+  { name: 'Phase reference', fn: findPhaseReference, realCodeScan: true },
+  { name: 'Requirement ID reference', fn: findRequirementIdReference, realCodeScan: true },
 ];
 
 // Walk a file and extract the portion of each line that falls inside a
@@ -167,11 +201,12 @@ function extractBlockCommentText(content) {
   return result;
 }
 
-function lintFile(abs) {
+function lintFile(abs, { onlyRealCodeScan = false } = {}) {
   const content = fs.readFileSync(abs, 'utf8');
   const lines = content.split('\n');
   const blockMap = extractBlockCommentText(content);
   const violations = [];
+  const detectors = onlyRealCodeScan ? DETECTORS.filter(d => d.realCodeScan !== false) : DETECTORS;
   for (let i = 0; i < lines.length; i++) {
     // Enrich the line with any block-comment text on this line so
     // detectors (which use line-comment extraction) also see /* ... */
@@ -179,7 +214,7 @@ function lintFile(abs) {
     // the first // and takes everything after it.
     const block = blockMap.get(i);
     const forDetectors = block ? lines[i] + ' //BLOCK ' + block : lines[i];
-    for (const { name, fn } of DETECTORS) {
+    for (const { name, fn } of detectors) {
       const reason = fn(forDetectors);
       if (reason) violations.push({ line: i + 1, detector: name, reason, text: lines[i].trim() });
     }
@@ -296,6 +331,104 @@ describe('comment-hygiene detectors', () => {
     const c3 = commentContext("  describe('suite A', () => {});");
     assert.equal(c3.testName, 'suite A');
   });
+
+  // ── findPhaseReference self-tests ────────────────────────────────────
+  test('findPhaseReference catches Phase N in line comments', () => {
+    assert.ok(findPhaseReference('  // fix for Phase 50'));
+    assert.ok(findPhaseReference('// updated in Phase 54.1'));
+    assert.ok(findPhaseReference('// Phase 38 evolution: see docs'));
+  });
+
+  test('findPhaseReference violation message includes matched phrase and rationale', () => {
+    const msg = findPhaseReference('// fix for Phase 50');
+    assert.match(msg, /Phase 50/);
+    assert.match(msg, /phase numbers belong in commit messages/);
+  });
+
+  test('findPhaseReference ignores lowercase "phase" prefix', () => {
+    assert.equal(findPhaseReference('// fix for phase 50'), null);
+  });
+
+  test('findPhaseReference ignores phase identifier in code (not in comment)', () => {
+    assert.equal(findPhaseReference('const phase50Pattern = /foo/;'), null);
+  });
+
+  test('findPhaseReference ignores Phase inside a string literal (no comment)', () => {
+    assert.equal(findPhaseReference('const url = "Phase 50 cool";'), null);
+  });
+
+  test('findPhaseReference ignores PhaseRunner (no digit, no space)', () => {
+    assert.equal(findPhaseReference('// PhaseRunner handles transitions'), null);
+  });
+
+  test('findPhaseReference exempts BACKWARD COMPAT lines', () => {
+    assert.equal(findPhaseReference(' * BACKWARD COMPAT: This array is unchanged from Phase 31'), null);
+  });
+
+  test('findPhaseReference exempts INVARIANT lines', () => {
+    assert.equal(findPhaseReference('// some doc INVARIANT: must hold from Phase 12 onward'), null);
+  });
+
+  test('findPhaseReference exempts LOCKED: lines', () => {
+    assert.equal(findPhaseReference('// LOCKED: matches Phase 7 contract'), null);
+  });
+
+  test('findPhaseReference respects hygiene-allow opt-out marker', () => {
+    assert.equal(findPhaseReference('// Phase 50 context // hygiene-allow: phase-ref (rationale)'), null);
+  });
+
+  test('findPhaseReference catches Phase N in block comments via lintFile', () => {
+    const tmpPath = path.join(resolveTmpDir(), 'comment-hygiene-test-' + Date.now() + '.cjs');
+    fs.writeFileSync(tmpPath, '\'use strict\';\n/** Phase 50 fix applied here */\nmodule.exports = {};\n');
+    const violations = lintFile(tmpPath);
+    fs.unlinkSync(tmpPath);
+    assert.ok(violations.some(v => v.detector === 'Phase reference'),
+      'Expected a Phase reference violation from block comment; got: ' + JSON.stringify(violations));
+  });
+
+  // ── findRequirementIdReference self-tests ─────────────────────────────
+  test('findRequirementIdReference catches SEC50-MULTILANG in comments', () => {
+    assert.ok(findRequirementIdReference('// SEC50-MULTILANG entrypoint'));
+  });
+
+  test('findRequirementIdReference catches various requirement ID shapes', () => {
+    assert.ok(findRequirementIdReference('// SEC40-TIER tier handling'));
+    assert.ok(findRequirementIdReference('// ALLOW-21 narrowing'));
+    assert.ok(findRequirementIdReference('// EFF-01 mapping'));
+    assert.ok(findRequirementIdReference('// REL43-09 no regression'));
+    assert.ok(findRequirementIdReference('// PERM-06 contract'));
+    assert.ok(findRequirementIdReference('// RV-04 follow-up'));
+  });
+
+  test('findRequirementIdReference violation message includes matched ID and rationale', () => {
+    const msg = findRequirementIdReference('// SEC50-MULTILANG entrypoint');
+    assert.match(msg, /SEC50-MULTILANG/);
+    assert.match(msg, /requirement IDs belong in commit messages/);
+  });
+
+  test('findRequirementIdReference ignores underscore-separated identifier in code', () => {
+    assert.equal(findRequirementIdReference('const SEC50_THRESHOLD = 5;'), null);
+  });
+
+  test('findRequirementIdReference ignores lowercase tail (AB-cd)', () => {
+    assert.equal(findRequirementIdReference('// AB-cd lower tail'), null);
+  });
+
+  test('findRequirementIdReference ignores single-letter prefix (X-1)', () => {
+    assert.equal(findRequirementIdReference('// X-1 single letter'), null);
+  });
+
+  test('findRequirementIdReference ignores PR reference shape (not a requirement ID)', () => {
+    assert.equal(findRequirementIdReference('// fixed in PR #37'), null);
+  });
+
+  test('findRequirementIdReference exempts BACKWARD COMPAT lines', () => {
+    assert.equal(findRequirementIdReference(' * BACKWARD COMPAT: keeps SEC40-TIER tier in place'), null);
+  });
+
+  test('findRequirementIdReference respects hygiene-allow opt-out marker', () => {
+    assert.equal(findRequirementIdReference('// SEC50-MULTILANG entrypoint // hygiene-allow: phase-ref (load-bearing)'), null);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────
@@ -319,7 +452,7 @@ describe('comment-hygiene real code', () => {
 
   for (const rel of files) {
     test(rel + ' has zero comment-hygiene violations', () => {
-      const violations = lintFile(path.join(REPO_ROOT, rel));
+      const violations = lintFile(path.join(REPO_ROOT, rel), { onlyRealCodeScan: true });
       const formatted = violations.map(v =>
         '  ' + rel + ':' + v.line + ' [' + v.detector + '] ' + v.reason + '\n    line: ' + v.text
       ).join('\n');
@@ -336,6 +469,8 @@ module.exports = {
   findPRReference,
   findRoundReference,
   findTestNameIncidentMarker,
+  findPhaseReference,
+  findRequirementIdReference,
   lintFile,
   listCodeFiles,
 };

@@ -41,7 +41,7 @@
  *     [--scheme semver|calver|date]     Override configured scheme
  *     [--snapshot]                      Append +{hash} to VERSION file only
  *   generate-changelog <version>       Generate CHANGELOG.md entries from SUMMARY.md files
- *     [--date YYYY-MM-DD]              Override date (default: today)
+ *     [--date <date>]                  Override date (iso8601, default: today)
  *   generate-allowlist                 Generate .claude/settings.json permissions
  *                                      from static template + config-derived entries
  *   divergence                          Show upstream/branch drift and manage triage
@@ -76,7 +76,7 @@
  *
  * Requirements Operations:
  *   requirements mark-complete <ids>   Mark requirement IDs as complete in REQUIREMENTS.md
- *                                      Accepts: REQ-01,REQ-02 or REQ-01 REQ-02 or [REQ-01, REQ-02]
+ *                                      Accepts: comma-sep, space-sep, or bracket-wrapped IDs
  *
  * Milestone Operations:
  *   milestone complete <version>       Archive milestone, create MILESTONES.md
@@ -1710,10 +1710,10 @@ async function main() {
       } else if (subcommand === 'scan-phase-linked') {
         commands.cmdTodoScanPhaseLinked(cwd, args[2]);
       } else {
-        // F-DYM-SCOPE: only use same-namespace suggestions to avoid misleading
+        // Only use same-namespace suggestions to avoid misleading
         // cross-namespace matches (e.g. "todo add" suggesting "phase add").
         const suggestions = suggestSubcommand(subcommand, 'todo');
-        // F-SKILL-HINT: hint users toward the /gsd:add-todo skill for create operations.
+        // Hint users toward the /gsd:add-todo skill for create operations.
         const skillHint =
           '\nTo add a todo, use `/gsd:add-todo` (a workflow skill).';
         if (suggestions.sameNamespace.length > 0) {

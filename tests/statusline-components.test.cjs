@@ -1,10 +1,10 @@
 /**
  * Statusline Components Tests
  *
- * Unit tests for the new statusline render functions added in Phase 16.
+ * Unit tests for statusline render functions: git branch, token breakdown, cross-model warning.
  * Tests cover: git branch, token breakdown, cross-model warning.
  *
- * Requirements: UX-01, UX-02
+ * Tests: git branch, token breakdown, cross-model warning
  */
 
 'use strict';

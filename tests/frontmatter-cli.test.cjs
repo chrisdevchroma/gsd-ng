@@ -302,9 +302,9 @@ describe('frontmatter get --format newline', () => {
   });
 });
 
-// ─── frontmatter set validates field name (SEC-02) ──────────────────────────
+// ─── frontmatter set validates field name ────────────────────────────────────
 
-describe('frontmatter set validates field name (SEC-02)', () => {
+describe('frontmatter set validates field name', () => {
   test('rejects field name with colon (YAML injection)', () => {
     const testFile = writeTempFile('---\nstatus: draft\n---\nContent\n');
     const result = runGsdTools(['frontmatter', 'set', testFile, '--field', 'bad:field', '--value', 'value']);

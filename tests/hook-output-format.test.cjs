@@ -75,7 +75,7 @@ test('gsd-check-update exits 0 without crashing', () => {
   assert.strictEqual(exitCode, 0, 'check-update must exit 0');
 });
 
-// ── HOOK-07: regression guard ─────────────────────────────────────────────────
+// ── regression guard ─────────────────────────────────────────────────
 
 test('HOOK-07: hookSpecificOutput must not appear in context-monitor stdout', () => {
   const session = 'hook07-test-' + Date.now();

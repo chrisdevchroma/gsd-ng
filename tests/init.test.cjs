@@ -200,10 +200,10 @@ describe('init commands', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Effort fields in init commands (EFF-03)
+// Effort fields in init commands
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Effort fields in init commands (EFF-03)', () => {
+describe('Effort fields in init commands', () => {
   let tmpDir;
 
   beforeEach(() => {
@@ -330,7 +330,7 @@ describe('Effort fields in init commands (EFF-03)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitTodos (INIT-01)
+// cmdInitTodos
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitTodos', () => {
@@ -456,7 +456,7 @@ describe('cmdInitTodos', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitMilestoneOp (INIT-02)
+// cmdInitMilestoneOp
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitMilestoneOp', () => {
@@ -553,7 +553,7 @@ describe('cmdInitMilestoneOp', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitPhaseOp fallback (INIT-04)
+// cmdInitPhaseOp fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitPhaseOp fallback', () => {
@@ -698,7 +698,7 @@ describe('cmdInitPhaseOp fallback', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitProgress (INIT-03)
+// cmdInitProgress
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitProgress', () => {
@@ -725,18 +725,18 @@ describe('cmdInitProgress', () => {
   });
 
   test('multiple phases with mixed statuses', () => {
-    // Phase 01: complete (has plan + summary)
+    // First phase: complete (has plan + summary)
     const phase1 = path.join(tmpDir, '.planning', 'phases', '01-setup');
     fs.mkdirSync(phase1, { recursive: true });
     fs.writeFileSync(path.join(phase1, '01-01-PLAN.md'), '# Plan');
     fs.writeFileSync(path.join(phase1, '01-01-SUMMARY.md'), '# Summary');
 
-    // Phase 02: in_progress (has plan, no summary)
+    // Second phase: in_progress (has plan, no summary)
     const phase2 = path.join(tmpDir, '.planning', 'phases', '02-api');
     fs.mkdirSync(phase2, { recursive: true });
     fs.writeFileSync(path.join(phase2, '02-01-PLAN.md'), '# Plan');
 
-    // Phase 03: pending (no plan, no research)
+    // Third phase: pending (no plan, no research)
     const phase3 = path.join(tmpDir, '.planning', 'phases', '03-ui');
     fs.mkdirSync(phase3, { recursive: true });
     fs.writeFileSync(path.join(phase3, '03-CONTEXT.md'), '# Context');
@@ -822,7 +822,7 @@ describe('cmdInitProgress', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitQuick (INIT-05)
+// cmdInitQuick
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitQuick', () => {
@@ -901,7 +901,7 @@ describe('cmdInitQuick', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitMapCodebase (INIT-05)
+// cmdInitMapCodebase
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitMapCodebase', () => {
@@ -957,7 +957,7 @@ describe('cmdInitMapCodebase', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitNewProject (INIT-06)
+// cmdInitNewProject
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitNewProject', () => {
@@ -1016,7 +1016,7 @@ describe('cmdInitNewProject', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// cmdInitNewMilestone (INIT-06)
+// cmdInitNewMilestone
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cmdInitNewMilestone', () => {
@@ -1176,10 +1176,10 @@ describe('cmdInitPlanPhase gap research detection', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// init phase-op validates phase number (SEC-02)
+// init phase-op validates phase number
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('init phase-op validates phase number (SEC-02)', () => {
+describe('init phase-op validates phase number', () => {
   let tmpDir;
 
   beforeEach(() => {
@@ -1204,7 +1204,7 @@ describe('init phase-op validates phase number (SEC-02)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// init execute-phase submodule fields (SUB-06)
+// init execute-phase submodule fields
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('init execute-phase submodule fields', () => {

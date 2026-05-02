@@ -857,7 +857,7 @@ describe('phase remove command', () => {
     assert.strictEqual(output.removed, '2');
     assert.strictEqual(output.directory_deleted, '02-auth');
 
-    // Phase 3 should be renumbered to 02
+    // the third phase should be renumbered to 02
     assert.ok(
       fs.existsSync(path.join(tmpDir, '.planning', 'phases', '02-features')),
       'phase 3 should be renumbered to 02-features'
@@ -1395,7 +1395,7 @@ describe('phase complete command', () => {
     const result = runGsdTools('phase complete 1', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    // Phase 1 has no Requirements field, so Phase 2's AUTH-01 should NOT be updated
+    // First phase has no Requirements field, so second phase's requirement should NOT be updated
     const req = fs.readFileSync(path.join(tmpDir, '.planning', 'REQUIREMENTS.md'), 'utf-8');
     assert.ok(req.includes('- [ ] **AUTH-01**'), 'AUTH-01 should remain unchecked (belongs to Phase 2)');
     assert.ok(req.includes('| AUTH-01 | Phase 2 | Pending |'), 'AUTH-01 should remain Pending (belongs to Phase 2)');
@@ -1691,13 +1691,13 @@ describe('phase complete milestone-scoped next-phase', () => {
       fs.writeFileSync(path.join(phaseDir, `${padded}-01-SUMMARY.md`), '# Summary');
     }
 
-    // Phase 5 — completing this one
+    // fifth phase — completing this one
     const p5 = path.join(tmpDir, '.planning', 'phases', '05-auth');
     fs.mkdirSync(p5, { recursive: true });
     fs.writeFileSync(path.join(p5, '05-01-PLAN.md'), '# Plan');
     fs.writeFileSync(path.join(p5, '05-01-SUMMARY.md'), '# Summary');
 
-    // Phase 6 — next phase in milestone
+    // sixth phase — next phase in milestone
     fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '06-dashboard'), { recursive: true });
 
     const result = runGsdTools('phase complete 5 --json', tmpDir);

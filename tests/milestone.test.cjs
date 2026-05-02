@@ -245,7 +245,7 @@ describe('milestone complete command', () => {
   });
 
   test('scopes stats to current milestone phases only', () => {
-    // Set up ROADMAP.md that only references Phase 3 and Phase 4
+    // Set up ROADMAP.md with specific phase entries
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       `# Roadmap v1.1\n\n### Phase 3: New Feature\n**Goal:** Build it\n\n### Phase 4: Polish\n**Goal:** Ship it\n`
@@ -313,12 +313,12 @@ describe('milestone complete command', () => {
     const result = runGsdTools('milestone complete v1.1 --name Test --archive-phases', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    // Phase 2 should be archived
+    // Current milestone phase should be archived
     assert.ok(
       fs.existsSync(path.join(tmpDir, '.planning', 'milestones', 'v1.1-phases', '02-current')),
       'current milestone phase should be archived'
     );
-    // Phase 1 should still be in place (not archived)
+    // Previous milestone phase should NOT be archived
     assert.ok(
       fs.existsSync(path.join(tmpDir, '.planning', 'phases', '01-old')),
       'previous milestone phase should NOT be archived'
@@ -412,7 +412,7 @@ describe('milestone complete command', () => {
     fs.mkdirSync(p457, { recursive: true });
     fs.writeFileSync(path.join(p457, '457-01-PLAN.md'), '# Plan\n');
 
-    // Phase 45 from prior milestone — should not match
+    // Prior milestone phase — should not match current range
     const p45 = path.join(tmpDir, '.planning', 'phases', '45-old');
     fs.mkdirSync(p45, { recursive: true });
     fs.writeFileSync(path.join(p45, 'PLAN.md'), '# Plan\n');
@@ -630,7 +630,7 @@ describe('requirements mark-complete command', () => {
   test('idempotent — re-marking already-complete requirement does not corrupt', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    // TEST-03 already has [x] and Complete in the fixture
+    // The third test requirement already has [x] and Complete in the fixture
     const result = runGsdTools('requirements mark-complete TEST-03 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
@@ -648,7 +648,7 @@ describe('requirements mark-complete command', () => {
   test('returns already_complete for idempotent calls on completed requirements', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    // TEST-03 already has [x] and Complete in the fixture
+    // The third test requirement already has [x] and Complete in the fixture
     const result = runGsdTools('requirements mark-complete TEST-03 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
@@ -660,7 +660,7 @@ describe('requirements mark-complete command', () => {
   test('mixed: updates pending, reports already-complete, and flags missing', () => {
     writeRequirements(tmpDir, STANDARD_REQUIREMENTS);
 
-    // TEST-01: pending (will be marked), TEST-03: already complete, FAKE-99: not found
+    // first: pending (will be marked), third: already complete, last: not found
     const result = runGsdTools('requirements mark-complete TEST-01,TEST-03,FAKE-99 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 

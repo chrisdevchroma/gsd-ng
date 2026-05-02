@@ -41,7 +41,7 @@ const path = require('path');
 // (liberzon/claude-hooks) never had this feature.
 //
 // Builtins are now approved through the same allowlist path as everything else.
-// GSD-NG's settings-sandbox.json template already includes Bash(echo *),
+// The settings-sandbox.json template already includes Bash(echo *),
 // Bash(cd *), etc. — so sandbox users see no change. Non-sandbox users must
 // explicitly allowlist builtins they want auto-approved.
 
@@ -79,8 +79,8 @@ const COMPOUND_HEADER_RE = /^(for|while|until|if|case|select)\b/;
 // without BOTH anchors, the regex engine can match the 2nd+3rd '<' of '<<<'
 // as a valid '<<', bypassing a lookahead-only guard. This is an improvement
 // over the upstream Python (liberzon/claude-hooks) which uses \w+ — immune
-// to '<<<' by accident but unable to match non-word delimiters like EOF-1
-// or END.TXT.
+// to '<<<' by accident but unable to match non-word here-doc delimiters
+// (hyphenated or dotted labels, e.g. eof-1, end.txt).
 //
 // Capture groups: (1) single-quoted delimiter, (2) double-quoted, (3) unquoted.
 // Use: m[1] || m[2] || m[3] to get the delimiter.

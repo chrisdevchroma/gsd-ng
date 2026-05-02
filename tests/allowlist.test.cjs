@@ -12,7 +12,7 @@ const {
   RW_FORMS,
 } = require(path.resolve(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 
-// ── ALLOW-01: getPlatformCliPatterns('gh') returns patterns for all 18 narrowed subcommands (post-54.1) ──
+// ── getPlatformCliPatterns('gh') returns patterns for all 18 narrowed subcommands (post-54.1) ──
 
 describe('ALLOW-01: getPlatformCliPatterns(gh) returns patterns for all 18 narrowed subcommands (post-54.1)', () => {
   test('returns 36 patterns (2 per subcommand x 18 subcommands: 8 single-token + 7 repo two-token + 3 label two-token)', () => {
@@ -69,7 +69,7 @@ describe('ALLOW-01: getPlatformCliPatterns(gh) returns patterns for all 18 narro
   });
 });
 
-// ── ALLOW-02: getPlatformCliPatterns('gh') does NOT include api or extension ──
+// ── getPlatformCliPatterns('gh') does NOT include api or extension ──
 
 describe('ALLOW-02: getPlatformCliPatterns(gh) does NOT include api or extension', () => {
   test('does not include Bash(gh api *)', () => {
@@ -88,7 +88,7 @@ describe('ALLOW-02: getPlatformCliPatterns(gh) does NOT include api or extension
   });
 });
 
-// ── ALLOW-03: getPlatformCliPatterns('tea') returns patterns for both canonical and alias forms ──
+// ── getPlatformCliPatterns('tea') returns patterns for both canonical and alias forms ──
 
 describe('ALLOW-03: getPlatformCliPatterns(tea) returns patterns for canonical and alias forms', () => {
   test('includes Bash(tea pr *) canonical form', () => {
@@ -144,7 +144,7 @@ describe('ALLOW-03: getPlatformCliPatterns(tea) returns patterns for canonical a
   });
 });
 
-// ── ALLOW-04: getPlatformCliPatterns('unknown') returns empty array ──
+// ── getPlatformCliPatterns('unknown') returns empty array ──
 
 describe('ALLOW-04: getPlatformCliPatterns(unknown) returns empty array', () => {
   test('returns empty array for unknown CLI', () => {
@@ -160,7 +160,7 @@ describe('ALLOW-04: getPlatformCliPatterns(unknown) returns empty array', () => 
   });
 });
 
-// ── ALLOW-05: getAllPlatformCliPatterns returns object with keys for all 4 CLIs ──
+// ── getAllPlatformCliPatterns returns object with keys for all 4 CLIs ──
 
 describe('ALLOW-05: getAllPlatformCliPatterns returns object with keys for all 4 CLIs', () => {
   test('returns object with gh, glab, fj, tea keys', () => {
@@ -181,7 +181,7 @@ describe('ALLOW-05: getAllPlatformCliPatterns returns object with keys for all 4
   });
 });
 
-// ── ALLOW-06: PLATFORM_TO_CLI maps platform names to CLI binaries ──
+// ── PLATFORM_TO_CLI maps platform names to CLI binaries ──
 
 describe('ALLOW-06: PLATFORM_TO_CLI maps platform names to CLI binaries', () => {
   test('github maps to gh', () => {
@@ -201,7 +201,7 @@ describe('ALLOW-06: PLATFORM_TO_CLI maps platform names to CLI binaries', () => 
   });
 });
 
-// ── ALLOW-07: every pattern starts with 'Bash(' and ends with ')' ──
+// ── every pattern starts with 'Bash(' and ends with ')' ──
 
 describe('ALLOW-07: every pattern starts with Bash( and ends with )', () => {
   test('all gh patterns have correct format', () => {
@@ -247,7 +247,7 @@ describe('ALLOW-07: every pattern starts with Bash( and ends with )', () => {
   });
 });
 
-// ── ALLOW-14+ALLOW-21+ALLOW-22: CLI_SUBCOMMANDS narrowed verbs (post-54.1) ──
+// ── CLI_SUBCOMMANDS narrowed verbs (post-54.1) ──
 
 describe('ALLOW-14+ALLOW-21+ALLOW-22: CLI_SUBCOMMANDS narrowed verbs (post-54.1)', () => {
   test('gh has 18 subcommands: 8 single-token + 7 repo two-token + 3 label two-token', () => {
@@ -294,7 +294,7 @@ describe('ALLOW-14+ALLOW-21+ALLOW-22: CLI_SUBCOMMANDS narrowed verbs (post-54.1)
   });
 });
 
-// ── ALLOW-04: getReadEditWriteAllowRules('linux') returns bare forms ──
+// ── getReadEditWriteAllowRules('linux') returns bare forms ──
 
 describe('ALLOW-04: getReadEditWriteAllowRules(linux) returns bare forms', () => {
   test('returns [Edit, Write, Read] in that order', () => {
@@ -302,7 +302,7 @@ describe('ALLOW-04: getReadEditWriteAllowRules(linux) returns bare forms', () =>
   });
 });
 
-// ── ALLOW-05: getReadEditWriteAllowRules(darwin/win32) returns canonical forms ──
+// ── getReadEditWriteAllowRules(darwin/win32) returns canonical forms ──
 
 describe('ALLOW-05: getReadEditWriteAllowRules(darwin) returns canonical forms', () => {
   test('darwin returns [Edit(*), Write(*), Read(*)]', () => {
@@ -316,7 +316,7 @@ describe('ALLOW-05: getReadEditWriteAllowRules(darwin) returns canonical forms',
   });
 });
 
-// ── ALLOW-06: getReadEditWriteAllowRules is pure (no I/O, fresh array each call) ──
+// ── getReadEditWriteAllowRules is pure (no I/O, fresh array each call) ──
 
 describe('ALLOW-06: getReadEditWriteAllowRules is a pure function', () => {
   test('exported as a function from allowlist.cjs', () => {
@@ -330,7 +330,7 @@ describe('ALLOW-06: getReadEditWriteAllowRules is a pure function', () => {
   });
 });
 
-// ── ALLOW-21: gh label narrowing + glab/fj/tea mirrors ──
+// ── gh label narrowing + glab/fj/tea mirrors ──
 
 describe('ALLOW-21: gh label narrowed — no bare label entry; two-token verbs present', () => {
   test('gh has no bare label entry', () => {
@@ -371,7 +371,7 @@ describe('ALLOW-21: gh label narrowed — no bare label entry; two-token verbs p
   });
 });
 
-// ── ALLOW-22: gh repo narrowing + glab/fj/tea mirrors ──
+// ── gh repo narrowing + glab/fj/tea mirrors ──
 
 describe('ALLOW-22: gh repo narrowed — no bare repo entry; two-token verbs present', () => {
   test('gh has no bare repo entry', () => {
@@ -433,7 +433,7 @@ describe('ALLOW-22: gh repo narrowed — no bare repo entry; two-token verbs pre
   });
 });
 
-// ── ALLOW-19: RW_FORMS frozen-Set export — single source of truth for canonical permission forms ──
+// ── RW_FORMS frozen-Set export — single source of truth for canonical permission forms ──
 
 describe('ALLOW-19: RW_FORMS export', () => {
   test('RW_FORMS is a Set instance', () => {
