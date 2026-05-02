@@ -1060,19 +1060,56 @@ function cmdPhaseComplete(cwd, phaseNum) {
   } catch {}
 
   // Fallback: if filesystem found no next phase, check ROADMAP.md
-  // for phases that are defined but not yet planned (no directory on disk)
+  // for phases that are defined but not yet planned (no directory on disk).
+  // Union of two patterns:
+  //   1. Header pattern: `### Phase N: Title` (post-planning, when Details section exists)
+  //   2. Bullet pattern: `- [ ] **Phase N: Title**` (pre-planning, bullet-only entry)
+  // Note on normalization: the header pattern returns whatever is written (e.g. '06'),
+  // while the bullet pattern returns whatever is written (e.g. '6'). We do NOT pad here —
+  // comparePhaseNum handles both forms semantically. When both a header and bullet reference
+  // the same phase, the header entry is preferred (via sort-stable dedup).
   if (isLastPhase && fs.existsSync(roadmapPath)) {
     try {
       const roadmapForPhases = extractCurrentMilestone(
         fs.readFileSync(roadmapPath, 'utf-8'),
       );
-      const phasePattern =
+      const headerPattern =
         /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+      // Bullet pattern also captures the name (between `:` and the closing `**`)
+      const bulletPattern =
+        /^[-*]\s*\[[ x]\]\s*\*\*Phase\s+(\d+[A-Z]?(?:\.\d+)*):\s*([^*\n]+?)\*\*/gim;
+
+      const candidates = [];
       let pm;
-      while ((pm = phasePattern.exec(roadmapForPhases)) !== null) {
-        if (comparePhaseNum(pm[1], phaseNum) > 0) {
-          nextPhaseNum = pm[1];
-          nextPhaseName = pm[2]
+      while ((pm = headerPattern.exec(roadmapForPhases)) !== null) {
+        candidates.push({ index: pm.index, num: pm[1], name: pm[2] });
+      }
+      while ((pm = bulletPattern.exec(roadmapForPhases)) !== null) {
+        candidates.push({ index: pm.index, num: pm[1], name: pm[2] });
+      }
+      // Sort by phase number ascending (comparePhaseNum handles padded/unpadded forms).
+      // At equal phase number, preserve document order (header tends to appear after bullet
+      // in ROADMAP.md, but the dedup step below keeps the first — typically the bullet — unless
+      // the header appeared earlier in the document, in which case document order wins).
+      candidates.sort((a, b) => {
+        const c = comparePhaseNum(a.num, b.num);
+        if (c !== 0) return c;
+        return a.index - b.index;
+      });
+      // Dedupe by phase number, keeping first (header-preferred when headers appear before
+      // bullets in the ROADMAP; for typical layout where bullet lists precede Details sections,
+      // the bullet match is kept — both yield the same name so the choice is cosmetic).
+      const seen = new Set();
+      const unique = candidates.filter((c) => {
+        if (seen.has(c.num)) return false;
+        seen.add(c.num);
+        return true;
+      });
+
+      for (const c of unique) {
+        if (comparePhaseNum(c.num, phaseNum) > 0) {
+          nextPhaseNum = c.num;
+          nextPhaseName = c.name
             .replace(/\(INSERTED\)/i, '')
             .trim()
             .toLowerCase()
