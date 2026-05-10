@@ -2754,7 +2754,7 @@ describe('install.js - Phase 55 effort frontmatter sync', () => {
       /^effort: max$/m,
       'effort: max must be in frontmatter',
     );
-    // Plan 04 emits the restart notice on stderr when changes occur
+    // install.js emits the restart notice on stderr when changes occur
     assert.ok(
       result.stderr.includes('Restart Claude Code to apply effort changes.'),
       `restart notice missing from stderr: ${result.stderr}`,

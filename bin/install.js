@@ -1313,9 +1313,9 @@ function install(isGlobal) {
 
     // Sync effort: frontmatter into deployed agent files (Claude-only, post-copy).
     // Must run BEFORE writeManifest so manifest hashes the post-sync content.
-    // Note: this code path now lives inside Plan 03's outer `if (isClaudeCode) { ... }`
-    // wrapper, so the explicit isClaudeCode check below is technically redundant —
-    // keep it as a defensive guard that documents intent and survives future refactors.
+    // Note: this code path lives inside an outer `if (isClaudeCode) { ... }` wrapper,
+    // so the explicit isClaudeCode check below is technically redundant — keep it
+    // as a defensive guard that documents intent and survives future refactors.
     if (isClaudeCode && fs.existsSync(path.join(targetDir, 'agents'))) {
       const effortAgentsDir = path.join(targetDir, 'agents');
       const syncResult = syncAgentEffortFrontmatter(process.cwd(), effortAgentsDir);

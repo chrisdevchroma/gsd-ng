@@ -1974,3 +1974,428 @@ describe('F-CWD: cwd resolution prefers superproject when inside a submodule', (
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branch coverage edge cases — error-handling and fallback paths
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseSubmodulePaths edge cases', () => {
+  // parseSubmodulePaths is not exported directly; test its catch via
+  // detectWorkspaceType which calls it when .gitmodules is unreadable.
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('returns empty submodule_paths when .gitmodules is a directory (readFileSync throws)', () => {
+    // Make .gitmodules a directory so readFileSync throws EISDIR
+    fs.mkdirSync(path.join(tmpDir, '.gitmodules'));
+    const result = workspace.detectWorkspaceType(tmpDir);
+    assert.strictEqual(result.type, 'submodule');
+    assert.deepStrictEqual(
+      result.submodule_paths,
+      [],
+      'parseSubmodulePaths catch should return [] when .gitmodules is unreadable',
+    );
+  });
+});
+
+describe('detectWorkspaceType — package.json catch path', () => {
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('treats malformed package.json as standalone (JSON.parse throws)', () => {
+    // Write package.json with invalid JSON so JSON.parse throws
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      '{ this is not valid json',
+    );
+    const result = workspace.detectWorkspaceType(tmpDir);
+    assert.strictEqual(result.type, 'standalone');
+    assert.strictEqual(result.signal, null);
+  });
+});
+
+describe('generateMemoriesSection — error/edge branches', () => {
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    // Restore permissions before cleanup so rmSync can recurse into chmod-0 dirs
+    try {
+      const memDir = path.join(tmpDir, '.claude', 'memory');
+      if (fs.existsSync(memDir)) {
+        fs.chmodSync(memDir, 0o755);
+        for (const f of fs.readdirSync(memDir)) {
+          try {
+            fs.chmodSync(path.join(memDir, f), 0o644);
+          } catch {}
+        }
+      }
+    } catch {}
+    cleanup(tmpDir);
+  });
+
+  test('falls back to (no description) when fs.readFileSync throws (inner catch)', () => {
+    // Skip if running as root — chmod 0 doesn't restrict root reads.
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    const filePath = path.join(memoryDir, 'feedback_unreadable.md');
+    fs.writeFileSync(
+      filePath,
+      '---\nname: Original\ndescription: Original desc\n---\n\nBody.\n',
+    );
+    fs.chmodSync(filePath, 0o000);
+
+    const result = workspace.generateMemoriesSection(tmpDir);
+    // Inner catch swallows the read error; description stays at fallback
+    assert.ok(
+      result.includes('feedback_unreadable.md'),
+      'should still list the file',
+    );
+    assert.ok(
+      result.includes('(no description)'),
+      'should use fallback description when read fails',
+    );
+  });
+
+  test('returns empty string when fs.readdirSync throws (outer catch)', () => {
+    // Skip if running as root — chmod 0 doesn't restrict root reads.
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.chmodSync(memoryDir, 0o000);
+
+    const result = workspace.generateMemoriesSection(tmpDir);
+    assert.strictEqual(
+      result,
+      '',
+      'should return empty string when readdirSync throws',
+    );
+  });
+});
+
+describe('generateMemoryMd — error/edge branches', () => {
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    try {
+      const memDir = path.join(tmpDir, '.claude', 'memory');
+      if (fs.existsSync(memDir)) {
+        fs.chmodSync(memDir, 0o755);
+        for (const f of fs.readdirSync(memDir)) {
+          try {
+            fs.chmodSync(path.join(memDir, f), 0o644);
+          } catch {}
+        }
+      }
+    } catch {}
+    cleanup(tmpDir);
+  });
+
+  test('returns empty string when .claude/memory/ does not exist', () => {
+    // Covers the early-return guard: `if (!fs.existsSync(memoryDir)) return '';`
+    const result = workspace.generateMemoryMd(tmpDir);
+    assert.strictEqual(
+      result,
+      '',
+      'should return empty string when memoryDir is missing',
+    );
+  });
+
+  test('falls back to fm.name when description is missing (inner branch)', () => {
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, 'project_name-only.md'),
+      '---\nname: Name Only Memory\ntype: project\n---\n\nBody.\n',
+    );
+
+    const result = workspace.generateMemoryMd(tmpDir);
+    assert.ok(
+      result.includes('Name Only Memory'),
+      'should use fm.name as description when fm.description is absent',
+    );
+    assert.ok(
+      result.includes('## Project'),
+      'should still group by type when description is absent',
+    );
+  });
+
+  test('groups files without type frontmatter under "Other"', () => {
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, 'untyped.md'),
+      '---\nname: Untyped Memory\ndescription: No type field\n---\n\nBody.\n',
+    );
+
+    const result = workspace.generateMemoryMd(tmpDir);
+    assert.ok(
+      result.includes('## Other'),
+      'files without type should land in Other group',
+    );
+    assert.ok(result.includes('untyped.md'), 'file should be listed');
+  });
+
+  test('uses defaults when fs.readFileSync throws (inner catch)', () => {
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    const filePath = path.join(memoryDir, 'unreadable.md');
+    fs.writeFileSync(
+      filePath,
+      '---\nname: Orig\ndescription: Orig\ntype: project\n---\n\nBody.\n',
+    );
+    fs.chmodSync(filePath, 0o000);
+
+    const result = workspace.generateMemoryMd(tmpDir);
+    // Inner catch lands the file in Other group with (no description)
+    assert.ok(
+      result.includes('## Other'),
+      'unreadable file should land in Other group via catch defaults',
+    );
+    assert.ok(result.includes('unreadable.md'), 'file should still be listed');
+    assert.ok(
+      result.includes('(no description)'),
+      'description should fall back when read fails',
+    );
+  });
+
+  test('returns empty string when fs.readdirSync throws (outer catch)', () => {
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+    const memoryDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.chmodSync(memoryDir, 0o000);
+
+    const result = workspace.generateMemoryMd(tmpDir);
+    assert.strictEqual(
+      result,
+      '',
+      'should return empty string when readdirSync throws',
+    );
+  });
+});
+
+describe('seedMemoryTemplate — copyFileSync error path', () => {
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    try {
+      const memDir = path.join(tmpDir, '.claude', 'memory');
+      if (fs.existsSync(memDir)) {
+        fs.chmodSync(memDir, 0o755);
+      }
+    } catch {}
+    cleanup(tmpDir);
+  });
+
+  test('returns seeded:false with reason when copyFileSync throws (e.g. EACCES)', () => {
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+    // Create a valid template
+    const templateDir = path.join(tmpDir, 'templates');
+    fs.mkdirSync(templateDir, { recursive: true });
+    const templatePath = path.join(templateDir, 'sample.md');
+    fs.writeFileSync(templatePath, '# Sample\n');
+
+    // Create the target dir then chmod 0 so writes fail
+    const targetDir = path.join(tmpDir, '.claude', 'memory');
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.chmodSync(targetDir, 0o500); // r-x — no write
+
+    const result = workspace.seedMemoryTemplate(
+      templatePath,
+      targetDir,
+      'output.md',
+    );
+    assert.strictEqual(
+      result.seeded,
+      false,
+      'should report seeded:false when copy fails',
+    );
+    assert.ok(
+      result.reason && result.reason.length > 0,
+      'should include err.message as reason',
+    );
+  });
+});
+
+describe('resolveGitContext — git tracking branch fallback', () => {
+  // Covers lines 459-460: targetBranch resolved via `git config branch.<X>.merge`
+  // when no per-submodule config target_branch override exists and the submodule
+  // has a tracking ref configured.
+  let workspaceDir;
+
+  afterEach(() => {
+    if (workspaceDir) {
+      try {
+        cleanup(workspaceDir);
+      } catch {}
+      workspaceDir = null;
+    }
+  });
+
+  test('uses git tracking branch.merge value when no config override and no fallback to main', () => {
+    const ws = createSubmoduleWorkspace([
+      {
+        name: 'lib-tracked',
+        path: 'lib-tracked',
+        remoteUrl: 'https://github.com/test/lib-tracked.git',
+      },
+    ]);
+    workspaceDir = ws.workspaceDir;
+    const subDir = ws.subDirs[0];
+
+    // Configure the current branch to track refs/heads/develop on origin
+    const currentBranch = execSync('git branch --show-current', {
+      cwd: subDir,
+      encoding: 'utf-8',
+    }).trim();
+    execSync(`git config branch.${currentBranch}.merge refs/heads/develop`, {
+      cwd: subDir,
+      stdio: 'pipe',
+    });
+    execSync(`git config branch.${currentBranch}.remote origin`, {
+      cwd: subDir,
+      stdio: 'pipe',
+    });
+
+    // Touch the submodule so resolveGitContext picks it as the active path
+    touchSubmodule(workspaceDir, 'lib-tracked');
+
+    const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+    const result = workspace.resolveGitContext(workspaceDir);
+    assert.strictEqual(
+      result.target_branch,
+      'develop',
+      'should resolve target_branch from git config branch.<current>.merge with refs/heads/ prefix stripped',
+    );
+  });
+});
+
+describe('cmdSshCheck — execSync error branches via PATH stub', () => {
+  // These tests stub `ssh-add` by prepending a temp bin dir to PATH that
+  // contains a fake ssh-add script with controlled exit code and stderr.
+  // No internal mocking — pure on-disk fixture + env override.
+  const workspace = require('../gsd-ng/bin/lib/workspace.cjs');
+  let tmpDir;
+  let stubBin;
+  let savedPath;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-ssh-stub-'));
+    stubBin = path.join(tmpDir, 'stub-bin');
+    fs.mkdirSync(stubBin, { recursive: true });
+    savedPath = process.env.PATH;
+  });
+
+  afterEach(() => {
+    if (savedPath !== undefined) {
+      process.env.PATH = savedPath;
+    }
+    cleanup(tmpDir);
+  });
+
+  function writeStub(exitCode, stderr) {
+    const stubPath = path.join(stubBin, 'ssh-add');
+    fs.writeFileSync(
+      stubPath,
+      `#!/bin/sh\n` +
+        (stderr ? `printf '%s\\n' ${JSON.stringify(stderr)} >&2\n` : '') +
+        `exit ${exitCode}\n`,
+    );
+    fs.chmodSync(stubPath, 0o755);
+  }
+
+  test('handles err.status === 1 (agent running, no identities)', () => {
+    writeStub(1, '');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck('git@github.com:user/repo.git', true);
+    assert.strictEqual(result.ssh_required, true);
+    assert.strictEqual(result.agent_running, true);
+    assert.strictEqual(result.status, 'no_identities');
+    assert.match(result.message, /no identities/i);
+  });
+
+  test('handles err.status === 2 (agent not running)', () => {
+    writeStub(2, 'Could not open a connection to your authentication agent.');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck('git@github.com:user/repo.git', true);
+    assert.strictEqual(result.ssh_required, true);
+    assert.strictEqual(result.agent_running, false);
+    assert.strictEqual(result.status, 'agent_not_running');
+    assert.match(result.message, /not running/i);
+  });
+
+  test('handles stderr "Could not open" message regardless of exit code', () => {
+    writeStub(127, 'Could not open');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck(
+      'ssh://git@example.com/repo.git',
+      true,
+    );
+    assert.strictEqual(result.status, 'agent_not_running');
+    assert.match(result.message, /not running/i);
+  });
+
+  test('handles stderr containing "not open" (also matches the OR branch)', () => {
+    writeStub(99, 'agent not open right now');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck('git@example.com:repo.git', true);
+    assert.strictEqual(result.status, 'agent_not_running');
+    assert.match(result.message, /not running/i);
+  });
+
+  test('falls back to "SSH agent check failed" for unknown error (status not 1/2, no socket message)', () => {
+    writeStub(5, 'something else went wrong');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck('git@github.com:user/repo.git', true);
+    assert.strictEqual(result.status, 'agent_not_running');
+    assert.match(result.message, /SSH agent check failed/);
+    assert.match(result.message, /something else went wrong/);
+  });
+});

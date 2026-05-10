@@ -227,6 +227,7 @@ function generateMemoryMd(cwd) {
     groups[groupName].push({ filename, description });
   }
 
+  /* c8 ignore next 3 — unreachable: groups is populated by the loop above whenever files.length > 0, which is already guarded earlier */
   if (Object.keys(groups).length === 0) {
     return '';
   }
@@ -434,6 +435,7 @@ function resolveGitContext(cwd) {
       {};
     // Merged: global git fields as base, per-submodule overrides on top
     configSubmodule = { ...globalGit, ...perSubmodule };
+    /* c8 ignore next 3 — unreachable: parsedConfig is plain JSON.parse output; property access on .git/.submodules cannot throw without internal mocking */
   } catch {
     // Defaults — parsedConfig is empty when config missing or malformed
   }

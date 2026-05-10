@@ -1174,7 +1174,7 @@ async function main() {
           : `Synced ${changeCount} agent${changeCount === 1 ? '' : 's'}.`;
 
       // Emit the restart notice via stderr ONLY when the helper reports real changes.
-      // Same emission shape as Plan 04 (install.js) and Plan 05 (config.cjs) — one voice.
+      // Matches the emission shape used by install.js and config.cjs — one voice.
       const restartNotice = effortSync.formatRestartNotice(
         syncResult.changes || [],
       );

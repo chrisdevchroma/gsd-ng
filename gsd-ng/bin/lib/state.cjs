@@ -5,7 +5,6 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  escapeRegex,
   loadConfig,
   getMilestoneInfo,
   getMilestonePhaseFilter,
@@ -19,21 +18,6 @@ const {
   reconstructFrontmatter,
 } = require('./frontmatter.cjs');
 const { scanForInjection, sanitizeForPrompt } = require('./security.cjs');
-
-// Shared helper: extract a field value from STATE.md content.
-// Supports both **Field:** bold and plain Field: format.
-// Defined here for early use — canonical implementation at the State Progression Engine section below.
-// Note: In JavaScript, the second declaration of stateExtractField (line ~221) shadows this one.
-// Both are kept for clarity; the one at line ~221 is the canonical source of truth.
-function stateExtractField(content, fieldName) {
-  const escaped = escapeRegex(fieldName);
-  const boldPattern = new RegExp(`\\*\\*${escaped}:\\*\\*\\s*(.+)`, 'i');
-  const boldMatch = content.match(boldPattern);
-  if (boldMatch) return boldMatch[1].trim();
-  const plainPattern = new RegExp(`^${escaped}:\\s*(.+)`, 'im');
-  const plainMatch = content.match(plainPattern);
-  return plainMatch ? plainMatch[1].trim() : null;
-}
 
 function cmdStateLoad(cwd) {
   const config = loadConfig(cwd);

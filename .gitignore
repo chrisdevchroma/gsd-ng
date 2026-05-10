@@ -10,6 +10,7 @@ dist/
 
 # Coverage artifacts
 coverage/
+cov-tmp/
 
 # Vendored local binaries (platform-specific, not committed)
 .bin/

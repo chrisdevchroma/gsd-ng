@@ -58,6 +58,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Release pipeline hardening, CI guardrails, and supply chain security — SHA-pinned third-party actions, OIDC trusted publisher, build attestations, validate-release.sh gating tag-vs-package-version drift, prepare-release workflow that bumps version + stamps CHANGELOG + tags atomically
 - Cross-platform test matrix on PRs (ubuntu/macos × node 22/24)
 - Prettier formatting gate in CI — PRs blocked on unformatted code
+- Per-file coverage gate — `scripts/coverage-gate.cjs` wired into `npm run test:coverage` enforces ≥95% line / ≥90% branch / ≥80% function coverage on every `bin/lib/*.cjs` (replacing the previous aggregate `--lines 70` floor). New `tests/c8-ignore-baseline.json` + `tests/c8-ignore-lint.test.cjs` cap c8-ignore directives at the current count so future code can't silently widen the exemption. Coverage uplifts shipped across all `bin/lib/*.cjs` modules to clear the new gate.
 - Branch protection rulesets for main and develop (squash-only, PR required), tag protection for `v*` and `gsd/*`
 - VERSIONING.md documenting release strategy
 
