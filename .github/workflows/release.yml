@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build/release (e.g., v1.0.0-dev.4)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,7 +22,26 @@ jobs:
     environment: release
 
     steps:
+      - name: Resolve ref
+        id: resolve
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            REF="$INPUT_TAG"
+          else
+            REF="${GITHUB_REF#refs/tags/}"
+          fi
+          if [[ ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$ ]]; then
+            echo "::error::Resolved ref '$REF' is not a valid release tag"
+            exit 1
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -24,7 +49,9 @@ jobs:
 
       - name: Validate release
         shell: bash
-        run: bash scripts/validate-release.sh "${GITHUB_REF#refs/tags/v}"
+        env:
+          TAG: ${{ steps.resolve.outputs.ref }}
+        run: bash scripts/validate-release.sh "${TAG#v}"
 
       - name: Install dev dependencies
         run: npm ci
@@ -38,8 +65,9 @@ jobs:
       - name: Detect prerelease and build release body
         id: meta
         shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.ref }}
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
           # Link to the changelog file at the tagged revision for release details
           BODY="See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/${TAG}/CHANGELOG.md) for details."
           {
@@ -61,6 +89,7 @@ jobs:
       - name: Create GitHub Release as draft
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
+          tag_name: ${{ steps.resolve.outputs.ref }}
           files: dist/gsd-ng.tar.gz
           body: ${{ steps.meta.outputs.body }}
           generate_release_notes: true
@@ -70,9 +99,9 @@ jobs:
 
       - name: Publish release
         shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
           RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.tag_name==\"${TAG}\") | .id")
           gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}" --method PATCH -f draft=false
-        env:
-          GH_TOKEN: ${{ github.token }}
