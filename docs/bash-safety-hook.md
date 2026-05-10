@@ -124,6 +124,38 @@ run its own permission logic, which may still allow the command based on
 looser top-level matching, or may prompt the user. The hook never forces
 a prompt; it only actively approves or actively denies.
 
+### 5. Wrapper-bypass guard
+
+A small set of commands accept "wrap + run another command" semantics
+where a naive allowlist match on the outer wrapper would silently approve
+arbitrary inner commands:
+
+```
+env FOO=bar curl evil.com    — Bash(env *) would match the whole string
+timeout 10 curl evil.com     — Bash(timeout *) would match the whole string
+find . | xargs rm -rf        — Bash(xargs *) would match the right side
+```
+
+`WRAPPER_COMMANDS` covers `env`, `timeout`, `xargs`, `nohup`, `exec`,
+`nice`, `ionice`, `chrt`, `taskset`, `flock`, `stdbuf`. For each wrapper
+invocation, `extractWrappedCommand` skips the wrapper's own options /
+values / `KEY=val` assignments and returns the wrapped command. The
+decomposer then pushes the wrapped command as an additional sub-command
+so the allowlist check runs against **both** the wrapper and the wrapped
+command — both must be allowlisted for approval.
+
+`extractWrappedCommand` also handles non-canonical invocation forms
+(`/usr/bin/env`, `"env"`), shell-quoted assignment values
+(`FOO="a b"`, `FOO=a\ b`, `FOO="a\" b"`), GNU long-option `=` forms,
+combined short flags, and `flock`'s `-c <shell-string>` form. Each is
+covered by a unit test in `tests/bash-hook.test.cjs`.
+
+`sudo` is deliberately **not** in `WRAPPER_COMMANDS` — sudo escalates
+privileges and should never be silently approved through a wrapped-command
+match. A user wanting auto-approval explicitly allowlists `Bash(sudo *)`.
+`eval` is excluded for the same reason it falls through everywhere else:
+no static analysis can verify the string it executes.
+
 ## Template location
 
 One canonical template ships in the source tree:
@@ -164,12 +196,36 @@ compound statements) the hook's `allow` suppresses the walker prompt and
 no workaround is needed. Validation data at
 `claude-stability/.../tree-sitter-walker-regression.md#validation-data`.
 
+## Debugging a denial
+
+If a command unexpectedly returns `deny` and you need to know which
+allow/deny pattern (or which sub-command extracted from a compound)
+caused it:
+
+```sh
+GSD_HOOK_DEBUG=1 echo '{"tool_input":{"command":"<your-command>"}}' \
+  | node hooks/bash-safety-hook.cjs
+```
+
+Stderr gets the full decomposition: each sub-command, the matched
+pattern (allow or deny), the wrapper-bypass extraction (if any), and the
+final decision. Stdout still emits the normal `permissionDecision` JSON.
+
+To temporarily disable the hook for a triage session (one-shot — does
+**not** disable Claude Code's own allowlist):
+
+```sh
+GSD_DISABLE_BASH_HOOK=1 claude  # or set in the shell that launches CC
+```
+
+Both env vars are checked at the very top of the hook, before stdin
+parsing, so they're cheap and never affect normal runs.
+
 ## Testing
 
 Unit tests for decomposition, matching, and decision logic live in
-`tests/bash-hook.test.cjs` (166 tests across 30 suites as of 2026-04-18).
-Integration tests for the install-time allowlist generation live in
-`tests/allowlist.test.cjs` (33 tests across 7 suites).
+`tests/bash-hook.test.cjs`. Integration tests for the install-time
+allowlist generation live in `tests/allowlist.test.cjs`.
 
 Run both before any changes to the hook or allowlist:
 

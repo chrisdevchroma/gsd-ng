@@ -65,6 +65,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### Documentation
 - `CONTRIBUTING.md` at repo root — repo layout, test commands, hook-debug pointer, commit-message conventions, issue / security reporting
+- `docs/bash-safety-hook.md` updates — new "Wrapper-bypass guard" section documenting `WRAPPER_COMMANDS` + `extractWrappedCommand` behavior (env / timeout / xargs / nohup / exec / nice / ionice / chrt / taskset / flock / stdbuf); new "Debugging a denial" section with `GSD_HOOK_DEBUG=1` + `GSD_DISABLE_BASH_HOOK=1` env-var pointers; stale-test-count line removed
 
 ### Changed
 - `install.js` permission seeding now emits one log line per section (`Added N allow entries`, `Added N deny rules`, `Added N ask entries`) instead of a single combined `Seeded N permissions` line. The no-op path (`Permissions already up to date`) is unchanged. Any downstream tooling that screen-scrapes installer output will need to adapt.
