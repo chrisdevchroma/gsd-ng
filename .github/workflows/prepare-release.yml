@@ -120,6 +120,17 @@ jobs:
           git push --atomic origin "$RELEASE_BRANCH" "v$VERSION"
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
 
+      - name: Trigger release and publish workflows
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tags pushed by GITHUB_TOKEN do NOT trigger downstream workflows
+          # (anti-loop protection). Explicitly dispatch release.yml and
+          # publish.yml against the just-pushed tag.
+          gh workflow run release.yml --ref "v$VERSION" -f tag="v$VERSION"
+          gh workflow run publish.yml --ref "v$VERSION" -f tag="v$VERSION"
+
       - name: Open release PR with auto-merge
         env:
           VERSION: ${{ inputs.version }}
@@ -130,7 +141,7 @@ jobs:
 
           - \`package.json\` bumped to $VERSION
           - \`CHANGELOG.md\` stamped with the [$VERSION] section
-          - Tag \`v$VERSION\` already pushed; \`release.yml\` and \`publish.yml\` fired on the tag push and run independently of this PR
+          - Tag \`v$VERSION\` already pushed; \`release.yml\` and \`publish.yml\` triggered explicitly against the tag
           - This PR merges the version bump + changelog stamp into \`$BRANCH\`; auto-merge enabled (rebase) so it lands as soon as required checks pass"
           gh pr create \
             --base "$BRANCH" \
