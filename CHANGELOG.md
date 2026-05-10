@@ -76,6 +76,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Deduplicated AST safety rules into single template
 - Wired `defaults.cjs` into config, core, init, verify, workspace modules
 - Removed stale Windows references and guards
+- `prepare-release.yml` workflow now creates a release branch + tag and opens an auto-merging PR into the target branch, instead of pushing the release commit and tag directly. Direct push was blocked by the `pull_request` rule on `develop`/`main` rulesets on user-owned forks (where the `github-actions` integration can't be added as a bypass actor). Downstream `release.yml` and `publish.yml` still fire on the tag push, independent of the PR's merge state.
 
 ### Removed
 - `install.js --config-dir` / `-c` CLI flag — custom config directories are still supported via the `CLAUDE_CONFIG_DIR` / `COPILOT_CONFIG_DIR` environment variables. Users with `--config-dir` in install scripts must switch to the env-var form.
