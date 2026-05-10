@@ -7,49 +7,96 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Phase 54 + 54.1 — Allowlist hardening rework (ALLOW-01..22):
+
+#### Hooks & permissions
+- Bash safety hook hardening — three new layers of protection against allowlist bypass:
+  - Forced-prompt expansion guard: denies `$(...)`, backtick command substitution, and `${VAR:-default}` parameter expansion (Claude Code's expansion guard always prompts on these regardless of allowlist; denying early lets the agent rewrite without expansion). Bypass via `GSD_HOOK_ALLOW_EXPANSION=1`.
+  - Wrapper-bypass guard: `env`, `timeout`, `xargs`, `nohup`, `exec`, `nice`, `ionice`, `chrt`, `taskset`, `flock`, `stdbuf` invocations now have their wrapped command extracted and checked independently against allow/deny — allowlisting `Bash(env *)` no longer silently approves arbitrary wrapped commands. Handles non-canonical invocation forms (`/usr/bin/env`, `"env"`), shell-quoted assignment values (`FOO="a b"`, `FOO=a\ b`, `FOO="a\" b"`), GNU long-option `=` forms, combined short flags, and flock's `-c <shell-string>` form.
+  - Obfuscation guard: denies single-quoted strings containing `{` or `}` with non-quantifier contents (awk inline scripts, embedded JSON, find `{name}` placeholders) since Claude Code's obfuscation guard always prompts on those. Regex quantifiers `{N,M}` are carved out so legitimate `grep -E` / `sed -E` / `find -regex` continue to pass.
+- Bash-hook coverage expansion — broader CLI/argv pattern support and workaround walker triggers
+- Sandbox template additions (`Bash(cd:*)`, `Bash(env:*)`, `Bash(timeout:*)`, `Bash(xargs:*)`) required by the wrapper-bypass guard for legitimate compound and wrapper invocations
+- Protected-branch ask rules in sandbox template — `Bash(git push * <branch>*)` and `Bash(git -C * push * <branch>*)` for `main`/`master`/`develop` now route to the user prompt instead of auto-approving; `gh pr merge *--admin*` likewise gated
+- AST safety hook with rule modernization, shared rule templates, and install-time injection
+- Allowlist hardening rework:
   - `RW_FORMS` frozen-Set export in `allowlist.cjs`; `install.js` and `commands.cjs` consume this canonical source for bare/glob Edit/Write/Read permission forms
   - `getReadEditWriteAllowRules(platform)` pure function down-converts to bare `Edit/Write/Read` on Linux (workaround for claude-code #16170/#6881) and keeps canonical `Edit(*)/Write(*)/Read(*)` on macOS
   - `CLI_SUBCOMMANDS` narrowed from blanket `cli repo *` / `cli label *` patterns to explicit two-token verb entries (`view`, `list`, `clone`, `fork`, `create`, etc.) across `gh/glab/fj/tea` — destructive verbs (`delete`, `rename`, `edit`, `archive`) now fall through to prompting
-  - `fj` no longer has `label` permission patterns (corrects Phase 54 ALLOW-14 drift — the `fj` CLI has no `label` subcommand)
+  - `fj` no longer has `label` permission patterns (the `fj` CLI has no `label` subcommand)
   - `install.js` permission seeding split into independent `allow`/`deny`/`ask` section handlers (`deny`/`ask` infrastructure-ready for future template entries)
   - `generate-allowlist --platform <linux|darwin>` accepts explicit platform flag; output is set-equal to `install.js --local` seeding per platform
-  - PERM-06 test strengthened to a two-sided contract (canonical forms present AND bare forms absent)
-- Phase 52 — AST safety hook with rule modernization, shared rule templates, install-time injection
-- Phase 47 — CLI output refactor and workflow bash simplification
-- Phase 46 — Discuss-phase gap detection and plan-checker coverage improvements
-- Phase 45 — E2E smoke test suite, dynamic UID fix, `--current` filter tests
-- Phase 44 — CLI argument validation (`--flag` parsing, typo suggestions) and snapshot commands
-- Phase 43 — Related-todo frontmatter tags with health checks (W021/W022), `--format newline` flag, repair handlers
-- Phase 42 — `--field` extraction, SSH check, ambiguous fallback, UID fix in init; create-pr/execute-phase/squash refactored to use `$INIT` fields
-- Phase 41 — Submodule-aware git operations: workspace topology detection, per-submodule config, `EFFECTIVE_TARGET_BRANCH` routing
-- Phase 40 — Security hardening with prompt injection defense
-- Phase 39 — Content optimization: 3-tier reference splits, shared ask-user-question and agent-shared-context references, philosophy condensation, behavioral benchmark tasks
+
+#### Security
+- Multi-language prompt-injection defense — Unicode TR39 confusable normalization (NFKC) in `scanForInjection`, homoglyph evasion logging fields, multi-language injection pattern coverage across 10 languages, context-reset and authority-claim pattern families, roleplay family with dataset coverage assertions and override generalization
+- Initial security hardening with prompt-injection defense — input validation, security-event logging, untrusted-content wrapping
+- SECURITY.md with responsible disclosure policy
+
+#### Profiles, effort, and runtimes
+- Claude-only profile system — model-profile resolution scoped to the Claude runtime, with effort frontmatter injection per agent
+- Per-subagent effort tier — agents inherit effort from the active gsd profile, with frontmatter override
+- xhigh effort tier (Opus 4.7, 1M context); skip effort frontmatter for haiku models (claude-haiku-4-5 doesn't accept the `effort` field)
+- Runtime-agnostic content sweep — workflow templates and references purged of runtime-specific assumptions; `RUNTIMES` registry extended with `COMMAND_PREFIX`, `GSD_BLOCK_OPEN`/`GSD_BLOCK_CLOSE`, `MEMORY_DIR` keys
+
+#### Installer
+- `install.js --clean` flag — debugging / fresh-state reset wipes the GSD-managed tree before install
+- Installer manifest migration — file manifest tracks all installed files; uninstall is precise instead of pattern-matching
+- Manifest records post-substitution hashes — reinstalls no longer falsely report "local patches" on files that were merely templated at install time
+- Snapshot version unification across banner, both runtime trees, and the manifest (`+hash` build metadata in VERSION on non-tag commits, auto-detected)
+
+#### Workflows & CLI
+- Quick-task support in `/gsd:create-pr` — open PRs from quick tasks with SUMMARY-derived title and description
+- CLI output refactor and workflow bash simplification — fewer external-tool dependencies, consistent stderr/stdout discipline
+- CLI argument validation (`--flag` parsing, typo suggestions) and snapshot commands
+- Discuss-phase gap detection and plan-checker coverage improvements
+- E2E smoke test suite, dynamic UID fix, `--current` filter tests
+- Related-todo frontmatter tags with health checks, `--format newline` flag for `frontmatter get`, automated repair handlers
+- `--field` extraction, SSH check, ambiguous fallback, UID fix in init; `create-pr` / `execute-phase` / `squash` refactored to use `$INIT` fields
+- Submodule-aware git operations: workspace topology detection, per-submodule config, `EFFECTIVE_TARGET_BRANCH` routing for push/PR/branch handling
+- Content optimization: 3-tier reference splits, shared ask-user-question and agent-shared-context references, philosophy condensation, behavioral benchmark tasks
 - Install-time templating engine (`fillBetweenMarkers`) and AskUserQuestion first-turn injection
 - `defaults.cjs` and `template-processor.cjs` with shared AST safety injection
 - `init-get` CLI command with `gsd-tools` dispatch, replacing all `node -e` one-liners
 - `init-valid` guard with self-recovery block across 26 workflows
-- SECURITY.md with responsible disclosure policy
-- VERSIONING.md documenting release strategy
-- CI/CD workflows — cross-platform tests on PRs, GitHub Release with tarball on tag, npm publish via OIDC trusted publisher
+
+#### CI / release infrastructure
+- Release pipeline hardening, CI guardrails, and supply chain security — SHA-pinned third-party actions, OIDC trusted publisher, build attestations, validate-release.sh gating tag-vs-package-version drift, prepare-release workflow that bumps version + stamps CHANGELOG + tags atomically
+- Cross-platform test matrix on PRs (ubuntu/macos × node 22/24)
+- Prettier formatting gate in CI — PRs blocked on unformatted code
 - Branch protection rulesets for main and develop (squash-only, PR required), tag protection for `v*` and `gsd/*`
+- VERSIONING.md documenting release strategy
 
 ### Changed
 - `install.js` permission seeding now emits one log line per section (`Added N allow entries`, `Added N deny rules`, `Added N ask entries`) instead of a single combined `Seeded N permissions` line. The no-op path (`Permissions already up to date`) is unchanged. Any downstream tooling that screen-scrapes installer output will need to adapt.
-- Template `settings-sandbox.json` now ships canonical `Edit(*)/Write(*)/Read(*)` forms; `install.js` down-converts to bare `Edit/Write/Read` on Linux at install time via `getReadEditWriteAllowRules`. Existing user installs keep their previous forms until the Phase 57 `--clean` migration.
+- Template `settings-sandbox.json` now ships canonical `Edit(*)/Write(*)/Read(*)` forms; `install.js` down-converts to bare `Edit/Write/Read` on Linux at install time via `getReadEditWriteAllowRules`. Existing user installs keep their previous forms until a future `--clean` migration.
 - Windows (`win32`) currently ships canonical glob RW forms (same as macOS) pending Claude Code Windows permission-engine validation. If Windows users hit Linux-style permission warnings, this will be revisited.
+- Replace `jq` with `--pick` / `init-get` where cleaner — fewer external-tool dependencies in workflows
+- First-turn-rule template wording — removed "output ONLY" ambiguity that was producing inconsistent agent behaviour
 - Deduplicated AST safety rules into single template
 - Wired `defaults.cjs` into config, core, init, verify, workspace modules
 - Removed stale Windows references and guards
 
 ### Removed
-- `install.js --config-dir` / `-c` CLI flag removed (quick task 260422-jai). Custom config directories are still supported via the `CLAUDE_CONFIG_DIR` / `COPILOT_CONFIG_DIR` environment variables. Users with `--config-dir` in install scripts must switch to the env-var form.
+- `install.js --config-dir` / `-c` CLI flag — custom config directories are still supported via the `CLAUDE_CONFIG_DIR` / `COPILOT_CONFIG_DIR` environment variables. Users with `--config-dir` in install scripts must switch to the env-var form.
+- First-turn-rule workaround removed — superseded by the install-time templating engine
+- Stability research content removed — moved to a dedicated repository to keep gsd-ng tight
 
 ### Fixed
+- Bypass-rule push detection in `/gsd:create-pr` — pushes that succeed only because the user's token bypasses branch protection now hard-stop with a clear error instead of silently creating the PR
+- STATE.md YAML/body sync + harden gsd-executor todo-closure boundary
+- Bullet-only phase detection in `cmdPhaseComplete` and `getMilestonePhaseFilter`
+- `summary-extract` one-liner now sourced from the body bold line (single source of truth)
+- Manifest unification eliminates ghost local-patches on reinstall
+- CLI state bug fixes — initialization race conditions, stale state propagation
+- Bug-batch fixes (~30 small fixes across two waves):
+  - Release-pipeline workflows: SHA-pin `actions/github-script@v7` and other untrusted actions, switch actionlint installer to `$HOME/.local/bin`, quote `$GITHUB_PATH` in installers (SC2086), fix unpinned `setup-node`
+  - Benchmark coverage gaps: add tests for `filterTasks`, `buildAtRefMatrix`, `compareResults`; remove dead `os` imports and `/tmp` hardcodes
+  - Installer/templating: add input-type guard to `processTemplate` for null/undefined context, route `captureBaseline` progress to stderr, emit warning when `compareBaseline` cannot parse the baseline file
+  - Workflow consistency: unified project-rules generation across Claude/Copilot via the project-rules-file placeholder; per-runtime command-prefix and memory-directory placeholders consistently substituted at install time
+  - `add-todo` UX: add skill-hint message and scope did-you-mean suggestions to the same namespace
+  - Submodule operation: prefer superproject `.planning/` when `gsd-tools` is invoked inside a submodule
 - Debug session false positive and create-pr collision guard
-- `PUSH_TARGET` and `PR_TEMPLATE_PATH` in create-pr workflow
+- `PUSH_TARGET` and `PR_TEMPLATE_PATH` resolution in create-pr workflow
 - Triple guard on `EFFECTIVE_TARGET_BRANCH` block
-- Ambiguous path handling in init execute-phase and milestone-op output
+- Ambiguous path handling in `init execute-phase` and `milestone-op` output
 - Orphaned closing tags and empty headings in checkpoint reference files
 
 ## [1.0.0-dev.3] - 2026-03-28
