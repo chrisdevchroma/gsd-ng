@@ -64,14 +64,55 @@ const path = require('path');
 // `Bash(local *)`, `Bash(export *)`). `eval` is never filtered or
 // allowlisted — it executes arbitrary strings.
 const STRUCTURAL_KEYWORDS = new Set([
-  'done', 'fi', 'esac', '{', '}', 'break', 'continue',
-  'then', 'else', 'elif', 'do',
-  'true', 'false',
+  'done',
+  'fi',
+  'esac',
+  '{',
+  '}',
+  'break',
+  'continue',
+  'then',
+  'else',
+  'elif',
+  'do',
+  'true',
+  'false',
 ]);
 
 // ── Compound statement headers — filter from decomposed output ────────────────
 // These keywords introduce compound commands but are not executable commands themselves.
 const COMPOUND_HEADER_RE = /^(for|while|until|if|case|select)\b/;
+
+// ── Wrapper commands ─────────────────────────────────────────────────────────
+// Commands that take another command as argv suffix. Without per-wrapper
+// handling, an allowlist entry for the wrapper (e.g. `Bash(env *)`) silently
+// bypasses the deny-first check on the wrapped command:
+//   `env FOO=bar curl evil.com`       — `Bash(env *)` matches whole string
+//   `timeout 10 curl evil.com`        — `Bash(timeout *)` matches whole string
+//   `find . | xargs rm -rf`           — `Bash(xargs *)` matches the right side
+//
+// `extractWrappedCommand` (below) skips the wrapper's own options/values and
+// returns the wrapped command, which `decomposeCommand` then ALSO pushes as
+// a sub-command — so the allowlist check is applied to both the wrapper
+// invocation and the wrapped command. Both must be allowlisted for approval.
+//
+// `sudo` is intentionally NOT included — sudo escalates privileges and should
+// never be silently approved through a wrapped-command match. If a user
+// allowlists `Bash(sudo *)` they are explicitly opting in. (`eval` similarly
+// excluded.)
+const WRAPPER_COMMANDS = new Set([
+  'env',
+  'timeout',
+  'xargs',
+  'nohup',
+  'exec',
+  'nice',
+  'ionice',
+  'chrt',
+  'taskset',
+  'flock',
+  'stdbuf',
+]);
 
 // ── Heredoc detection regex ──────────────────────────────────────────────────
 // Matches real heredoc operators (<<WORD, <<-WORD, <<'WORD', <<"WORD") while
@@ -84,7 +125,8 @@ const COMPOUND_HEADER_RE = /^(for|while|until|if|case|select)\b/;
 //
 // Capture groups: (1) single-quoted delimiter, (2) double-quoted, (3) unquoted.
 // Use: m[1] || m[2] || m[3] to get the delimiter.
-const HEREDOC_START_RE = /(?<!<)<<(?!<)-?\s*(?:'([^'\n]+)'|"([^"\n]+)"|([^\s'"]+))/;
+const HEREDOC_START_RE =
+  /(?<!<)<<(?!<)-?\s*(?:'([^'\n]+)'|"([^"\n]+)"|([^\s'"]+))/;
 
 // ── _skipShellValue ───────────────────────────────────────────────────────────
 /**
@@ -107,7 +149,10 @@ function _skipShellValue(cmd, i) {
   if (ch === '"') {
     let j = i + 1;
     while (j < cmd.length) {
-      if (cmd[j] === '\\' && j + 1 < cmd.length) { j += 2; continue; }
+      if (cmd[j] === '\\' && j + 1 < cmd.length) {
+        j += 2;
+        continue;
+      }
       if (cmd[j] === '"') return j + 1;
       j++;
     }
@@ -131,7 +176,11 @@ function _skipShellValue(cmd, i) {
       j += 2;
       continue;
     }
-    if (cmd[j] === '(' && parenDepth > 0) { parenDepth++; j++; continue; }
+    if (cmd[j] === '(' && parenDepth > 0) {
+      parenDepth++;
+      j++;
+      continue;
+    }
     if (cmd[j] === ')' && parenDepth > 0) {
       parenDepth--;
       j++;
@@ -141,6 +190,58 @@ function _skipShellValue(cmd, i) {
     j++;
   }
   return j;
+}
+
+// ── _normalizeWrapperName ────────────────────────────────────────────────────
+/**
+ * Normalize an invocation token to the canonical wrapper name used in
+ * WRAPPER_COMMANDS lookup. Handles two non-canonical forms that would
+ * otherwise bypass the wrapper-bypass guard when allowlisted in the same
+ * non-canonical form:
+ *   - full paths:   `/usr/bin/env` -> `env`
+ *   - quoted name:  `"env"` / `'env'` -> `env`
+ *   - combined:     `"/usr/bin/env"` -> `env`
+ *
+ * The normalization is intentionally narrow: it does NOT do alias lookup,
+ * shell-builtin resolution, or substring matching — `myenv` and `envwrap`
+ * still won't be treated as `env`.
+ *
+ * @param {string} s - Raw first-token of the command
+ * @returns {string} Normalized wrapper name (may be empty)
+ */
+function _normalizeWrapperName(s) {
+  if (typeof s !== 'string' || s.length === 0) return '';
+  let n = s;
+  // Strip matching surrounding quotes (single or double).
+  if (n.length >= 2) {
+    const first = n[0];
+    const last = n[n.length - 1];
+    if ((first === '"' || first === "'") && first === last) {
+      n = n.slice(1, -1);
+    }
+  }
+  // Take basename if any `/` separator is present.
+  const slashIdx = n.lastIndexOf('/');
+  if (slashIdx >= 0) {
+    n = n.slice(slashIdx + 1);
+  }
+  return n;
+}
+
+// ── _endsWithUnescapedBackslash ──────────────────────────────────────────────
+/**
+ * Returns true if `s` ends with an odd number of trailing backslashes,
+ * which means the final backslash is an escape (e.g. `FOO=a\` indicates
+ * the next whitespace was escaped — value continues into next token).
+ * Even-count trailing backslashes (`\\`, `\\\\`, ...) are literal.
+ *
+ * @param {string} s
+ * @returns {boolean}
+ */
+function _endsWithUnescapedBackslash(s) {
+  let n = 0;
+  for (let k = s.length - 1; k >= 0 && s[k] === '\\'; k--) n++;
+  return n % 2 === 1;
 }
 
 // ── isStandaloneAssignment ────────────────────────────────────────────────────
@@ -444,7 +545,9 @@ function normalizeCommand(cmd) {
 
   // Strip heredoc/here-string redirection: << WORD ... (remove << marker and everything after)
   // Uses shared HEREDOC_START_RE to exclude here-strings (<<<), then strips the rest of the line.
-  s = s.replace(new RegExp(HEREDOC_START_RE.source + '\\s*.*$', 's'), '').trim();
+  s = s
+    .replace(new RegExp(HEREDOC_START_RE.source + '\\s*.*$', 's'), '')
+    .trim();
 
   // Strip keyword prefixes: do, then, else, elif (at start of command)
   s = s.replace(/^(do|then|else|elif)\s+/, '');
@@ -456,7 +559,7 @@ function normalizeCommand(cmd) {
     if (!m) break;
     const endVal = _skipShellValue(s, m[0].length);
     const rest = s.slice(endVal).trimStart();
-    if (!rest) break;  // standalone assignment — stop stripping, keep as-is
+    if (!rest) break; // standalone assignment — stop stripping, keep as-is
     s = rest;
   }
 
@@ -491,6 +594,332 @@ function normalizeCommand(cmd) {
  * @param {string} command - Full compound bash command
  * @returns {string[]} Flat array of normalized individual command strings
  */
+/**
+ * Extract the wrapped command from a wrapper invocation. Returns the wrapped
+ * command string (rest of argv after the wrapper's own options/values) or
+ * null if the input isn't a wrapper invocation.
+ *
+ * Per-wrapper option handling:
+ *   - env: skip `-i` / `--ignore-environment`, `-u VAR` / `--unset VAR`,
+ *     and any `KEY=value` tokens (env-var assignments)
+ *   - timeout: skip flags, then skip the duration positional arg
+ *   - xargs: skip flags. xargs flags are option-rich (`-I {}`, `-n N`,
+ *     `-P N`, etc.); we conservatively skip any `-X` token plus the next
+ *     token for known value-taking flags
+ *   - nohup, exec, stdbuf, flock: no options to skip — next token is cmd
+ *   - nice, ionice, chrt, taskset: skip `-N val` style flags
+ *
+ * Limitations: bare-word option syntax varies across implementations; we err
+ * toward over-stripping (skip a token that might be a positional arg). The
+ * cost is a slightly less precise check on the wrapped command — never a
+ * less-strict one. The returned wrapped command itself is run through the
+ * allowlist independently, so over-stripping cannot grant new permissions.
+ *
+ * @param {string} cmd - Normalized sub-command string (single statement)
+ * @returns {string | null} Wrapped command string, or null
+ */
+function extractWrappedCommand(cmd) {
+  if (typeof cmd !== 'string' || cmd.length === 0) return null;
+  const tokens = cmd.trim().split(/\s+/);
+  if (tokens.length < 2) return null;
+  // Normalize the invocation token so non-canonical forms don't bypass
+  // the wrapper-bypass guard: `/usr/bin/env` and `"env"` both reduce to
+  // `env` for the WRAPPER_COMMANDS lookup. The original token is kept
+  // intact for everything else (decomposeCommand still pushes the outer
+  // command verbatim against the allowlist).
+  const wrapper = _normalizeWrapperName(tokens[0]);
+  if (!WRAPPER_COMMANDS.has(wrapper)) return null;
+
+  let i = 1;
+
+  if (wrapper === 'env') {
+    while (i < tokens.length) {
+      const t = tokens[i];
+      // `--` end-of-options marker: skip and stop option parsing — the very
+      // next token is the wrapped command.
+      if (t === '--') {
+        i++;
+        break;
+      }
+      if (t === '-i' || t === '--ignore-environment' || t === '-0') {
+        i++;
+        continue;
+      }
+      if (t === '-u' || t === '--unset' || t === '-C' || t === '--chdir') {
+        i += 2;
+        continue;
+      }
+      // GNU env combined short-flag form: -uVAR, -CDIR (value attached, no space)
+      if (/^-[uC]./.test(t)) {
+        i++;
+        continue;
+      }
+      // GNU env long-option-with-value form: --unset=VAR, --chdir=DIR
+      if (t.startsWith('--unset=') || t.startsWith('--chdir=')) {
+        i++;
+        continue;
+      }
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
+        // Quoted-value handling: `FOO="a b"` or `FOO='a b'` opens a quoted
+        // value that whitespace tokenization splits across multiple tokens
+        // (e.g. tokens become `FOO="a` and `b"`). Without this, the env
+        // option-walk would stop at `b"` (no `=`, not a flag) and return
+        // garbage starting with the value-tail. We detect an unbalanced
+        // opening quote on the value side of `=` and consume forward
+        // tokens until we find the matching closer.
+        //
+        // For double quotes, the closer detection has to be escape-aware:
+        // a token ending in `\"` is an escaped literal `"`, not the end
+        // of the quoted value (`env FOO="a\" b" cmd` — value is `a" b`).
+        // Single quotes don't process escapes in shell at all, so plain
+        // `endsWith("'")` is sufficient.
+        //
+        // Failure mode is conservative: if no closer is found we fall
+        // through, returning a tail that is unlikely to match any
+        // allowlist entry — never silent approval.
+        const eqIdx = t.indexOf('=');
+        const value = t.slice(eqIdx + 1);
+        const quoteChar = value[0];
+        if (quoteChar === '"' || quoteChar === "'") {
+          const isCloser = (s) => {
+            if (s.length === 0 || s[s.length - 1] !== quoteChar) return false;
+            if (quoteChar === "'") return true; // no escapes inside single-quoted
+            // Double-quoted: trailing `"` is a literal closer iff preceded
+            // by an even number (incl. 0) of backslashes.
+            let n = 0;
+            for (let k = s.length - 2; k >= 0 && s[k] === '\\'; k--) n++;
+            return n % 2 === 0;
+          };
+          // Single-token balanced assignment: value has length >= 2 AND
+          // ends with the matching un-escaped quoteChar.
+          if (!(value.length >= 2 && isCloser(value))) {
+            // Unbalanced — consume forward tokens until we find a real closer.
+            i++;
+            while (i < tokens.length) {
+              if (isCloser(tokens[i])) {
+                i++;
+                break;
+              }
+              i++;
+            }
+            continue;
+          }
+        }
+        // Plain (unquoted) value — but it may end with an unescaped
+        // backslash, indicating that the shell consumed an escaped
+        // whitespace and the value continues into the next token
+        // (e.g. `FOO=a\ b` tokenizes as `FOO=a\` then `b`). Trailing
+        // odd-count backslashes = escape; even count = literal `\\`.
+        // Consume continuation tokens until the value no longer ends
+        // with an unescaped backslash.
+        i++;
+        let lastTok = t;
+        while (i < tokens.length && _endsWithUnescapedBackslash(lastTok)) {
+          lastTok = tokens[i];
+          i++;
+        }
+        continue;
+      }
+      break;
+    }
+  } else if (wrapper === 'timeout') {
+    // Skip options
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (
+        t === '-s' ||
+        t === '--signal' ||
+        t === '-k' ||
+        t === '--kill-after'
+      ) {
+        i += 2;
+      } else {
+        i++;
+      }
+    }
+    // Skip duration positional
+    if (i < tokens.length) i++;
+  } else if (wrapper === 'xargs') {
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (t === '--') {
+        i++;
+        break;
+      }
+      // Value-taking flags
+      if (
+        t === '-I' ||
+        t === '-i' ||
+        t === '-n' ||
+        t === '--max-args' ||
+        t === '-P' ||
+        t === '--max-procs' ||
+        t === '-L' ||
+        t === '--max-lines' ||
+        t === '-d' ||
+        t === '--delimiter' ||
+        t === '-E' ||
+        t === '--eof' ||
+        t === '-s' ||
+        t === '--max-chars' ||
+        t === '-a' ||
+        t === '--arg-file'
+      ) {
+        i += 2;
+      } else {
+        // Boolean flags like -0, -t, -p, -r, -x, --no-run-if-empty
+        i++;
+      }
+    }
+  } else if (wrapper === 'nice' || wrapper === 'ionice' || wrapper === 'chrt') {
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (
+        t === '-n' ||
+        t === '--adjustment' ||
+        t === '-c' ||
+        t === '--class' ||
+        t === '-p' ||
+        t === '--pid'
+      ) {
+        i += 2;
+      } else {
+        i++;
+      }
+    }
+  } else if (wrapper === 'taskset') {
+    // taskset has two valid CLI shapes:
+    //   1. command-launch: taskset [options] <mask> <cmd> [args...]
+    //                      taskset -c <cpu-list> <cmd> [args...]
+    //   2. pid-mode:       taskset -p [mask] <pid>
+    //                      taskset --pid [mask] <pid>
+    //                      taskset -pc <cpu-list> <pid>     (combined)
+    //                      taskset -pa <pid>                (with --all-tasks)
+    //
+    // Pid mode operates on an existing process — there is NO wrapped
+    // command. Returning the trailing positional (the PID) as a "wrapped
+    // command" was a false positive that caused decide() to passthrough
+    // instead of allow on `taskset -pc 0 1234` with `Bash(taskset:*)`
+    // allowlisted (the bogus `1234` sub-command failed allowlist match).
+    //
+    // Pid-mode detection: scan the option tokens for any short-flag combo
+    // containing 'p' (-p, -pc, -pa, -pca, etc.) or the long form --pid.
+    // taskset's recognized short flags are p/c/a/h/V — `-typo`-like noise
+    // isn't a realistic input, so a simple includes('p') after the dash
+    // is precise enough.
+    for (let k = 1; k < tokens.length; k++) {
+      const t = tokens[k];
+      if (!t.startsWith('-')) break; // first positional reached
+      if (t === '--pid') return null;
+      // Short-flag combo (single dash, no '=' value): -p, -pc, -pca, -ap, ...
+      if (/^-[a-zA-Z]+$/.test(t) && t.includes('p')) return null;
+    }
+
+    // Command-launch mode: skip option flags, then the mask/cpu-list positional.
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      i++;
+    }
+    if (i < tokens.length) i++; // mask/cpu-list
+  } else if (wrapper === 'flock') {
+    // flock has two valid CLI shapes:
+    //   1. flock [options] <file>|<fd> <cmd> [args...]    — argv form
+    //   2. flock [options] <file>|<fd> -c <shell-string>  — single shell-string
+    //
+    // Form 2 is hostile to whitespace tokenization: the value of -c is a
+    // single shell-quoted argument that spans multiple "tokens" once split
+    // on whitespace. Extracting -c via the existing token-walk produced
+    // garbage like `-c "curl evil.com"` (quotes leaked, leading -c kept) —
+    // the inner curl was never surfaced to the deny-first check, allowing
+    // a wrapper-bypass.
+    //
+    // Fix: do a shell-aware extraction on the ORIGINAL cmd string (not the
+    // whitespace-tokenized tokens). Match -c / --command followed by a
+    // double-quoted, single-quoted, or bare-word value, and return the
+    // INNER content as the wrapped command. The matched value is then run
+    // through decomposeCommand's allowlist check independently.
+    //
+    // The regex below intentionally only handles the three common shell
+    // quoting shapes. More exotic forms (dollar-single-quote, concatenated
+    // strings, locale-quoted forms) are not supported — we err toward
+    // conservative failure (return the post-file-token tail unchanged),
+    // which the caller will check against the allowlist as-is. That fails
+    // closed: a malformed quoted string is unlikely to match any allowlist
+    // entry, so the worst case is passthrough, never silent approval of
+    // the wrapped command.
+    // Match -c <value>, --command <value>, --command=<value>, or -c=<value>.
+    // The `=` form is standard for long options (--command=...) and
+    // accepted here for the short form too (-c=...) to keep the wrapper
+    // guard consistent against either spelling. The value alternatives
+    // are double-quoted, single-quoted, or bare-word.
+    const flockShellMatch = cmd.match(
+      /(?:^|\s)(?:-c|--command)(?:\s+|=)(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))/,
+    );
+    if (flockShellMatch) {
+      const inner =
+        flockShellMatch[1] !== undefined
+          ? flockShellMatch[1]
+          : flockShellMatch[2] !== undefined
+            ? flockShellMatch[2]
+            : flockShellMatch[3];
+      return inner.length > 0 ? inner : null;
+    }
+
+    // No -c form: walk argv-style. flock [options] <file>|<fd> <cmd> ...
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (
+        t === '-w' ||
+        t === '--timeout' ||
+        t === '-E' ||
+        t === '--conflict-exit-code'
+      ) {
+        i += 2;
+      } else {
+        i++;
+      }
+    }
+    if (i < tokens.length) i++; // FILE/FD
+  } else if (wrapper === 'stdbuf') {
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (t === '-i' || t === '-o' || t === '-e') {
+        i += 2;
+      } else {
+        i++;
+      }
+    }
+  } else if (wrapper === 'exec') {
+    // bash builtin exec accepts: exec [-cl] [-a name] [cmd [args...]]
+    //   -a NAME   set argv[0] of cmd (value-taking)
+    //   -c        clear environment
+    //   -l        prepend `-` to argv[0] (login shell)
+    // Without this branch exec was falling through to the no-op tail, so
+    // `exec -a name git status` returned `-a name git status` as the
+    // wrapped command — first word `-a` failed allowlist match → the
+    // wrapped git was never surfaced to the deny-first check.
+    while (i < tokens.length && tokens[i].startsWith('-')) {
+      const t = tokens[i];
+      if (t === '-a') {
+        i += 2;
+        continue;
+      }
+      // Combined short form ending in `a` (e.g. `-cla`, `-la`) — POSIX
+      // getopt convention is the trailing value-taking flag consumes the
+      // next argv. Restrict body to known boolean letters c/l/C/L.
+      if (/^-[clCL]*a$/.test(t)) {
+        i += 2;
+        continue;
+      }
+      // Boolean / boolean-combo: -c, -l, -cl, -lc — single token, skip.
+      i++;
+    }
+  }
+  // nohup — no options to skip; next token is the command
+
+  if (i >= tokens.length) return null;
+  return tokens.slice(i).join(' ');
+}
+
 function decomposeCommand(command) {
   if (!command || !command.trim()) return [];
 
@@ -512,7 +941,12 @@ function decomposeCommand(command) {
       const subParts = splitOnOperators(sub);
       for (const sp of subParts) {
         const norm = normalizeCommand(sp);
-        if (norm && !STRUCTURAL_KEYWORDS.has(norm) && !STRUCTURAL_KEYWORDS.has(norm.split(/\s+/)[0]) && !COMPOUND_HEADER_RE.test(norm)) {
+        if (
+          norm &&
+          !STRUCTURAL_KEYWORDS.has(norm) &&
+          !STRUCTURAL_KEYWORDS.has(norm.split(/\s+/)[0]) &&
+          !COMPOUND_HEADER_RE.test(norm)
+        ) {
           if (!isStandaloneAssignment(norm)) {
             result.push(norm);
           }
@@ -532,6 +966,24 @@ function decomposeCommand(command) {
     if (isStandaloneAssignment(normalized)) continue;
 
     result.push(normalized);
+
+    // Wrapper-bypass guard: if the command is a wrapper invocation
+    // (env/timeout/xargs/etc.), also push the wrapped command so the
+    // allowlist check covers it independently. Without this, a single
+    // `Bash(env *)` allowlist entry would silently approve `env FOO=1
+    // <anything>`. See WRAPPER_COMMANDS for the full list.
+    const wrapped = extractWrappedCommand(normalized);
+    if (wrapped) {
+      const wrappedFirst = wrapped.split(/\s+/)[0];
+      if (
+        wrappedFirst &&
+        !STRUCTURAL_KEYWORDS.has(wrappedFirst) &&
+        !COMPOUND_HEADER_RE.test(wrappedFirst) &&
+        !isStandaloneAssignment(wrapped)
+      ) {
+        result.push(wrapped);
+      }
+    }
   }
 
   return result;
@@ -556,8 +1008,12 @@ function extractSubshells(command) {
 
   // Extract $(...) — state machine tracks quotes/escapes, skips $((...)) arithmetic
   while (i < command.length) {
-    if (command[i] === '$' && i + 1 < command.length && command[i + 1] === '('
-        && !(i + 2 < command.length && command[i + 2] === '(')) {
+    if (
+      command[i] === '$' &&
+      i + 1 < command.length &&
+      command[i + 1] === '(' &&
+      !(i + 2 < command.length && command[i + 2] === '(')
+    ) {
       // Found $(  — scan forward to the matching ) using a state machine
       let depth = 1; // we've consumed the opening (
       const start = i + 2;
@@ -750,7 +1206,11 @@ function parseBashPattern(pattern) {
   // No colon — exact or glob match against full command
   // Fix for Bug 10: patterns ending with " *" (e.g. "echo *", "gh pr *")
   // should match zero-arg case. Treat as prefix match instead of glob.
-  if (inner.endsWith(' *') && !inner.slice(0, -2).includes('*') && !inner.includes('?')) {
+  if (
+    inner.endsWith(' *') &&
+    !inner.slice(0, -2).includes('*') &&
+    !inner.includes('?')
+  ) {
     return { type: 'prefix', prefix: inner.slice(0, -2) };
   }
   // Fall through to regex for non-trailing-star globs (e.g. "*.sh", "test?")
@@ -835,7 +1295,8 @@ function loadMergedSettings(envOverride) {
   const homeDir = env.HOME || os.homedir();
 
   // Layer 1: global settings ($CLAUDE_SETTINGS_PATH or ~/.claude/settings.json)
-  const layer1Path = env.CLAUDE_SETTINGS_PATH || path.join(homeDir, '.claude', 'settings.json');
+  const layer1Path =
+    env.CLAUDE_SETTINGS_PATH || path.join(homeDir, '.claude', 'settings.json');
   const layer1 = loadSettings(layer1Path);
 
   // Layer 2: global local settings (~/.claude/settings.local.json)
@@ -879,11 +1340,211 @@ function loadMergedSettings(envOverride) {
   };
 }
 
+// ── hasNonQuantifierBraces ───────────────────────────────────────────────────
+/**
+ * Returns true if `segment` contains a `{...}` pair whose body is NOT a
+ * regex quantifier. Used by the obfuscation detector to avoid flagging
+ * legitimate regex usage like `grep -E '{0,80}'` or `sed -E 's/x{2,5}/y/'`.
+ *
+ * Quantifier shapes accepted (NOT flagged):
+ *   {N}        — exact count, e.g. {42}
+ *   {N,}       — min only
+ *   {,M}       — max only (POSIX BRE allows it; some engines don't)
+ *   {N,M}      — range
+ *   {}         — empty (unusual but harmless)
+ *
+ * Anything else inside the braces → flag:
+ *   {print $1}  awk program
+ *   {"k": "v"}  JSON
+ *   {name}      find/template placeholder
+ *   {a,b,c}     brace expansion (could be obfuscation; conservatively flag)
+ *
+ * Also flags an unbalanced `{` with no matching `}` (covers truncation /
+ * suspicious construction).
+ *
+ * @param {string} segment - String to inspect (typically a single-quoted segment incl. quotes)
+ * @returns {boolean}
+ */
+function hasNonQuantifierBraces(segment) {
+  for (let i = 0; i < segment.length; i++) {
+    if (segment[i] !== '{') continue;
+    const close = segment.indexOf('}', i + 1);
+    if (close < 0) return true; // unbalanced {
+    const body = segment.slice(i + 1, close);
+    // Quantifier body: zero or more digits, an optional single comma, zero or more digits
+    if (!/^\d*,?\d*$/.test(body)) return true;
+  }
+  return false;
+}
+
 // ── decide ────────────────────────────────────────────────────────────────────
+// ── detectForcedPromptPattern ────────────────────────────────────────────────
+/**
+ * Detect bash patterns that trigger Claude Code's expansion / obfuscation
+ * guards. Those guards run independently of the allowlist + hook decision —
+ * even when this hook returns `permissionDecision: allow`, Claude Code still
+ * surfaces a permission prompt to the user when these patterns appear.
+ *
+ * Returning `decision: deny` from the hook short-circuits the prompt and
+ * passes the reason text back to the agent as a tool error. The agent reads
+ * the suggestion and rewrites the command without the expansion, so the
+ * user is never interrupted.
+ *
+ * Patterns detected:
+ *   Outside single quotes (since `'$(...)'` content is literal text):
+ *     - `$(...)` command substitution
+ *     - Backtick command substitution
+ *     - `${VAR:-default}` / `${VAR:+...}` / `${VAR:?...}` / `${VAR:=...}`
+ *       parameter-expansion-with-operator
+ *
+ *   Single-quoted strings containing `{` or `}` — Claude Code's obfuscation
+ *   guard fires on these (typical patterns: `awk '{print $1}'`, embedded
+ *   JSON like `echo '{"key":"val"}'`, find `'{name}'`, etc.). False positives
+ *   on legit inline awk/jq scripts are an accepted cost — the workaround
+ *   (write the script/JSON to a temp file with the Write tool, use `-f` /
+ *   `--from-file` / `--data-file=`) is straightforward.
+ *
+ * Plain `$VAR`, `${VAR}` (no operator), special vars (`$$`, `$!`, `$?`),
+ * and array indexing (`${arr[0]}`) are NOT flagged — they don't trigger
+ * Claude Code's guard.
+ *
+ * Escape hatch: set GSD_HOOK_ALLOW_EXPANSION=1 to skip this check entirely.
+ *
+ * @param {string} command - Raw bash command (may be compound)
+ * @returns {null | { pattern: string, snippet: string, suggestion: string }}
+ */
+function detectForcedPromptPattern(command) {
+  if (process.env.GSD_HOOK_ALLOW_EXPANSION === '1') return null;
+  if (typeof command !== 'string' || command.length === 0) return null;
+
+  let inSingle = false;
+  let inDouble = false;
+  let singleStart = -1;
+
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+
+    if (!inDouble && c === "'") {
+      if (!inSingle) {
+        inSingle = true;
+        singleStart = i;
+      } else {
+        // Closing single quote — check if the just-closed segment had
+        // suspicious brace contents. Pure-numeric/comma brace bodies
+        // (regex quantifiers like `{0,80}`, `{42}`, `{,5}`, `{5,}`) are
+        // NOT obfuscation — they're standard regex syntax used with
+        // grep -E, sed -E, find -regex, etc. Anything else inside the
+        // braces (letters, quotes, $, spaces, JSON keys, awk programs)
+        // → flag as obfuscation.
+        const segment = command.slice(singleStart, i + 1);
+        if (hasNonQuantifierBraces(segment)) {
+          const snippet =
+            segment.length > 60 ? segment.slice(0, 57) + "...'" : segment;
+          return {
+            pattern: 'single-quoted braces (obfuscation guard)',
+            snippet,
+            suggestion:
+              "Claude Code's obfuscation guard always prompts on single-quoted " +
+              'strings containing { or } with non-quantifier contents (awk/jq/find ' +
+              'inline scripts, embedded JSON-as-arg). Workarounds: write the script to ' +
+              'a temp file with the Write tool and use `awk -f /tmp/s.awk` / ' +
+              '`jq -f /tmp/f.jq`; for JSON args, write to a temp file and use ' +
+              '`--data-file=/tmp/d.json` (or use the Write tool to create the target ' +
+              'file directly instead of `cat > file <<EOF`).',
+          };
+        }
+        inSingle = false;
+        singleStart = -1;
+      }
+      continue;
+    }
+    if (!inSingle && c === '"') {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (c === '\\' && inDouble && i + 1 < command.length) {
+      i++; // skip escaped char inside double quotes
+      continue;
+    }
+    if (inSingle) continue;
+
+    // Backslash escape outside quotes — `\$(date)`, `` \`pwd\` ``, `\${X}`
+    // are literal text in bash, NOT command substitution. Skip both the
+    // backslash and the escaped char so the next iteration doesn't see the
+    // dollar/backtick/brace and falsely flag.
+    if (c === '\\' && i + 1 < command.length) {
+      i++;
+      continue;
+    }
+
+    // Backtick command substitution
+    if (c === '`') {
+      const end = command.indexOf('`', i + 1);
+      const snippet = command.slice(
+        i,
+        end > 0 ? end + 1 : Math.min(command.length, i + 20),
+      );
+      return {
+        pattern: 'backtick command substitution',
+        snippet,
+        suggestion:
+          "Claude Code's expansion guard always prompts on backticks. " +
+          'Run the inner command in a prior Bash call and inline the literal output, ' +
+          "or use a temp file (write the value with a heredoc that uses <<'EOF', then read it).",
+      };
+    }
+
+    // $(...) command substitution
+    if (c === '$' && command[i + 1] === '(') {
+      // Find matching close paren — naive (no nested-paren tracking, but good enough for snippet)
+      const end = command.indexOf(')', i + 2);
+      const snippet = command.slice(
+        i,
+        end > 0 ? end + 1 : Math.min(command.length, i + 30),
+      );
+      return {
+        pattern: '$(...) command substitution',
+        snippet,
+        suggestion:
+          "Claude Code's expansion guard always prompts on $(...). " +
+          'Run the inner command in a prior Bash call and inline the literal output. ' +
+          'Example: instead of `git -C "$(git rev-parse --show-toplevel)" status`, ' +
+          'first call `git rev-parse --show-toplevel` to get the path, then call `git -C /actual/path status`.',
+      };
+    }
+
+    // ${VAR:-default} / ${VAR:+...} / ${VAR:?...} / ${VAR:=...} parameter expansion
+    if (c === '$' && command[i + 1] === '{') {
+      const end = command.indexOf('}', i + 2);
+      if (end > 0) {
+        const expr = command.slice(i + 2, end);
+        // Operators: :- (default), :+ (alt), :? (error), := (assign-default)
+        if (/:[-+?=]/.test(expr)) {
+          return {
+            pattern: '${VAR:-default} parameter expansion',
+            snippet: command.slice(i, end + 1),
+            suggestion:
+              "Claude Code's expansion guard always prompts on ${VAR:-default} (and :+, :?, := variants). " +
+              'Use plain $VAR (and ensure the variable is set in your shell), or pre-resolve to a literal value. ' +
+              'Example: instead of `cd "${TMPDIR:-/tmp}"`, just use `cd /tmp` (or `cd "$TMPDIR"` if you know it is set).',
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * Make an allow/deny/passthrough decision for a bash command.
  *
  * Algorithm:
+ *   0. Pre-check: forced-prompt patterns ($()/backticks/${VAR:-default})
+ *      — Claude Code's expansion guard always prompts on these. Deny early
+ *        with a clear suggestion so the agent rewrites without expansion
+ *        instead of forcing an interactive prompt.
+ *      — Skipped when GSD_HOOK_ALLOW_EXPANSION=1.
  *   1. Decompose command into sub-commands
  *   2. For each sub-command: check deny patterns FIRST (deny-first)
  *   3. If any sub-command matches deny -> return {decision: 'deny', reason}
@@ -896,8 +1557,23 @@ function loadMergedSettings(envOverride) {
  * @returns {{ decision: 'allow'|'deny'|'passthrough', reason?: string }}
  */
 function decide(command, settings) {
-  const allowPatterns = (settings && settings.permissions && settings.permissions.allow) || [];
-  const denyPatterns = (settings && settings.permissions && settings.permissions.deny) || [];
+  const allowPatterns =
+    (settings && settings.permissions && settings.permissions.allow) || [];
+  const denyPatterns =
+    (settings && settings.permissions && settings.permissions.deny) || [];
+
+  // ── Step 0: Forced-prompt pre-check ──────────────────────────────────────
+  const forced = detectForcedPromptPattern(command);
+  if (forced) {
+    return {
+      decision: 'deny',
+      reason:
+        `Command uses ${forced.pattern} (in "${forced.snippet}"), which triggers ` +
+        `Claude Code's expansion guard and forces a permission prompt regardless of allowlist. ` +
+        `${forced.suggestion} ` +
+        `(Bypass: set GSD_HOOK_ALLOW_EXPANSION=1 in this hook's environment.)`,
+    };
+  }
 
   const subCommands = decomposeCommand(command);
 
@@ -939,8 +1615,8 @@ function decide(command, settings) {
   }
 
   if (unmatched.length === 0 && matched.length > 0) {
-    const reasons = matched.map(m =>
-      `"${m.sub}" matches allow pattern "${m.via}"`
+    const reasons = matched.map(
+      (m) => `"${m.sub}" matches allow pattern "${m.via}"`,
     );
     return {
       decision: 'allow',
@@ -968,7 +1644,9 @@ if (require.main === module) {
   // Timeout guard: if stdin doesn't close within 3s, exit silently
   const stdinTimeout = setTimeout(() => process.exit(0), 3000);
   process.stdin.setEncoding('utf8');
-  process.stdin.on('data', chunk => { input += chunk; });
+  process.stdin.on('data', (chunk) => {
+    input += chunk;
+  });
   process.stdin.on('end', () => {
     clearTimeout(stdinTimeout);
     try {
@@ -976,37 +1654,48 @@ if (require.main === module) {
 
       // Only handle Bash tool calls
       if (data.tool_name !== 'Bash') {
-        if (debug) process.stderr.write('[gsd-bash-hook] non-Bash tool, passthrough\n');
+        if (debug)
+          process.stderr.write('[gsd-bash-hook] non-Bash tool, passthrough\n');
         process.exit(0);
       }
 
       const command = (data.tool_input && data.tool_input.command) || '';
-      if (debug) process.stderr.write('[gsd-bash-hook] command: ' + command + '\n');
+      if (debug)
+        process.stderr.write('[gsd-bash-hook] command: ' + command + '\n');
 
       const settings = loadMergedSettings();
       const result = decide(command, settings);
 
-      if (debug) process.stderr.write('[gsd-bash-hook] decision: ' + result.decision + '\n');
+      if (debug)
+        process.stderr.write(
+          '[gsd-bash-hook] decision: ' + result.decision + '\n',
+        );
 
       if (result.decision === 'allow') {
-        process.stdout.write(JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'allow',
-            permissionDecisionReason: result.reason || 'All sub-commands approved',
-          },
-        }));
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'allow',
+              permissionDecisionReason:
+                result.reason || 'All sub-commands approved',
+            },
+          }),
+        );
         process.exit(0);
       }
 
       if (result.decision === 'deny') {
-        process.stdout.write(JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny',
-            permissionDecisionReason: result.reason || 'Command denied by pattern',
-          },
-        }));
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason:
+                result.reason || 'Command denied by pattern',
+            },
+          }),
+        );
         process.exit(0);
       }
 
@@ -1014,7 +1703,8 @@ if (require.main === module) {
       process.exit(0);
     } catch (_e) {
       // Graceful degradation — never block tool execution
-      if (debug) process.stderr.write('[gsd-bash-hook] error: ' + _e.message + '\n');
+      if (debug)
+        process.stderr.write('[gsd-bash-hook] error: ' + _e.message + '\n');
       process.exit(0);
     }
   });
@@ -1028,11 +1718,15 @@ module.exports = {
   normalizeCommand,
   decomposeCommand,
   extractSubshells,
+  extractWrappedCommand,
   parseBashPattern,
   commandMatchesPattern,
   loadMergedSettings,
   decide,
+  detectForcedPromptPattern,
+  hasNonQuantifierBraces,
   HEREDOC_START_RE,
+  WRAPPER_COMMANDS,
   _skipShellValue,
   isStandaloneAssignment,
 };
