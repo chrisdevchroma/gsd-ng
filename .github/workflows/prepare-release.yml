@@ -17,6 +17,7 @@ on:
           - main
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   prepare:
@@ -97,7 +98,7 @@ jobs:
             sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
           fi
 
-      - name: Commit and tag
+      - name: Commit, tag, and push release branch
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
@@ -105,7 +106,35 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # New branch holds the release commit + tag. Pushing to a fresh
+          # branch and to a new tag are not blocked by the branch's
+          # pull_request ruleset (which only governs the existing branch).
+          RELEASE_BRANCH="release/v$VERSION"
+          git checkout -b "$RELEASE_BRANCH"
           git add package.json package-lock.json CHANGELOG.md
           git commit -m "chore: release v$VERSION"
           git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push --atomic origin "$BRANCH" "v$VERSION"
+          # Atomic push: branch + tag together. Downstream release.yml /
+          # publish.yml fire on the tag push and don't depend on the PR
+          # merging to $BRANCH first.
+          git push --atomic origin "$RELEASE_BRANCH" "v$VERSION"
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
+
+      - name: Open release PR with auto-merge
+        env:
+          VERSION: ${{ inputs.version }}
+          BRANCH: ${{ inputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_BODY="Automated release commit for v$VERSION.
+
+          - \`package.json\` bumped to $VERSION
+          - \`CHANGELOG.md\` stamped with the [$VERSION] section
+          - Tag \`v$VERSION\` already pushed; \`release.yml\` and \`publish.yml\` fired on the tag push and run independently of this PR
+          - This PR merges the version bump + changelog stamp into \`$BRANCH\`; auto-merge enabled (rebase) so it lands as soon as required checks pass"
+          gh pr create \
+            --base "$BRANCH" \
+            --head "$RELEASE_BRANCH" \
+            --title "chore: release v$VERSION" \
+            --body "$PR_BODY"
+          gh pr merge --auto --rebase "$RELEASE_BRANCH"
