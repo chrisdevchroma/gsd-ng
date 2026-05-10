@@ -63,6 +63,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Branch protection rulesets for main and develop (squash-only, PR required), tag protection for `v*` and `gsd/*`
 - VERSIONING.md documenting release strategy
 
+#### Documentation
+- `CONTRIBUTING.md` at repo root — repo layout, test commands, hook-debug pointer, commit-message conventions, issue / security reporting
+
 ### Changed
 - `install.js` permission seeding now emits one log line per section (`Added N allow entries`, `Added N deny rules`, `Added N ask entries`) instead of a single combined `Seeded N permissions` line. The no-op path (`Permissions already up to date`) is unchanged. Any downstream tooling that screen-scrapes installer output will need to adapt.
 - Template `settings-sandbox.json` now ships canonical `Edit(*)/Write(*)/Read(*)` forms; `install.js` down-converts to bare `Edit/Write/Read` on Linux at install time via `getReadEditWriteAllowRules`. Existing user installs keep their previous forms until a future `--clean` migration.
