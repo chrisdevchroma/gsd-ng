@@ -462,6 +462,65 @@ describe('comment-hygiene real code', () => {
   }
 });
 
+// ── CHANGELOG.md hygiene ────────────────────────────────────────────────────
+//
+// CHANGELOG.md ships in the npm tarball and is the most user-facing
+// release-notes surface in the project. Internal phase numbers and
+// uppercase requirement-ID labels mean nothing to npm consumers and are
+// even less appropriate here than in code comments — those descriptors
+// belong in commit messages and PR descriptions, not in user-visible
+// release notes. The exact patterns flagged are defined by the regex
+// constants below.
+//
+// Scope: this scan applies the same regexes used for code-comment
+// hygiene to every line of CHANGELOG.md (the whole line is meaningful
+// in markdown — no comment-context extraction needed). Lines with the
+// existing hygiene-allow opt-out marker or BACKWARD COMPAT / INVARIANT /
+// LOCKED: tags are exempted to keep parity with the code-comment lint.
+
+const CHANGELOG_PATH = path.join(REPO_ROOT, 'CHANGELOG.md');
+const CHANGELOG_PHASE_RE = /\bPhase \d+(\.\d+)?\b/;
+const CHANGELOG_REQ_ID_RE = /\b[A-Z]{2,}\d*-[A-Z0-9]+\b/;
+const CHANGELOG_EXEMPT_RE = /BACKWARD COMPAT|INVARIANT|LOCKED:|hygiene-allow:\s*phase-ref/;
+
+describe('CHANGELOG.md user-facing hygiene', () => {
+  test('CHANGELOG.md exists', () => {
+    assert.ok(fs.existsSync(CHANGELOG_PATH), 'CHANGELOG.md must be present');
+  });
+
+  test('CHANGELOG.md has no phase references in user-facing text', () => {
+    const lines = fs.readFileSync(CHANGELOG_PATH, 'utf8').split('\n');
+    const violations = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (CHANGELOG_EXEMPT_RE.test(line)) continue;
+      const m = CHANGELOG_PHASE_RE.exec(line);
+      if (m) violations.push({ line: i + 1, match: m[0], text: line });
+    }
+    const formatted = violations.map(v =>
+      '  CHANGELOG.md:' + v.line + " phase reference '" + v.match + "'\n    line: " + v.text
+    ).join('\n');
+    assert.equal(violations.length, 0,
+      violations.length + ' phase reference(s) in CHANGELOG.md (use user-facing language; phase numbers belong in commits/PRs):\n' + formatted);
+  });
+
+  test('CHANGELOG.md has no requirement-ID references in user-facing text', () => {
+    const lines = fs.readFileSync(CHANGELOG_PATH, 'utf8').split('\n');
+    const violations = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (CHANGELOG_EXEMPT_RE.test(line)) continue;
+      const m = CHANGELOG_REQ_ID_RE.exec(line);
+      if (m) violations.push({ line: i + 1, match: m[0], text: line });
+    }
+    const formatted = violations.map(v =>
+      '  CHANGELOG.md:' + v.line + " requirement-ID reference '" + v.match + "'\n    line: " + v.text
+    ).join('\n');
+    assert.equal(violations.length, 0,
+      violations.length + ' requirement-ID reference(s) in CHANGELOG.md (use user-facing language; IDs belong in commits/PRs):\n' + formatted);
+  });
+});
+
 module.exports = {
   commentContext,
   isInsideString,
