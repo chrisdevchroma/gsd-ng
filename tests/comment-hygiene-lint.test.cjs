@@ -126,9 +126,12 @@ function findTestNameIncidentMarker(line) {
   return null;
 }
 
-// Detector: phase-number references in comments.
-// Phase numbers are task-local context — they belong in commit messages
-// and PR descriptions, not in code where they rot as work progresses.
+// Detector: phase / plan references in comments.
+// Phase and plan numbers are task-local context — they belong in commit
+// messages and PR descriptions, not in code where they rot as work
+// progresses. Catches `Phase N`, `Phase N.N`, `Plan N`, `Plan N-N`,
+// `Plan N.N` (capital P, ASCII space, digit). Lowercase variants and
+// substrings are exempt by design.
 //
 // Exempt: lines tagged with `BACKWARD COMPAT`, `INVARIANT`, or `LOCKED:`
 // (load-bearing references where the citation is part of the contract).
@@ -138,8 +141,8 @@ function findPhaseReference(line) {
   if (!ctx.comment) return null;
   if (/BACKWARD COMPAT|INVARIANT|LOCKED:/.test(line)) return null;
   if (/hygiene-allow:\s*phase-ref/.test(line)) return null;
-  const m = /\bPhase \d+(\.\d+)?\b/.exec(ctx.comment);
-  if (m) return "Phase reference '" + m[0] + "' — phase numbers belong in commit messages, not in code";
+  const m = /\b(?:Phase|Plan) \d+(?:[-.]\d+)?\b/.exec(ctx.comment);
+  if (m) return "Phase/plan reference '" + m[0] + "' — phase and plan numbers belong in commit messages, not in code";
   return null;
 }
 
@@ -342,11 +345,18 @@ describe('comment-hygiene detectors', () => {
   test('findPhaseReference violation message includes matched phrase and rationale', () => {
     const msg = findPhaseReference('// fix for Phase 50');
     assert.match(msg, /Phase 50/);
-    assert.match(msg, /phase numbers belong in commit messages/);
+    assert.match(msg, /phase and plan numbers belong in commit messages/);
   });
 
-  test('findPhaseReference ignores lowercase "phase" prefix', () => {
+  test('findPhaseReference catches Plan N and Plan N-N references', () => {
+    assert.ok(findPhaseReference('// see Plan 60 for rationale'));
+    assert.ok(findPhaseReference('// see Plan 60-10 SUMMARY for rationale'));
+    assert.ok(findPhaseReference('// rolled into Plan 4.2'));
+  });
+
+  test('findPhaseReference ignores lowercase "phase" / "plan" prefix', () => {
     assert.equal(findPhaseReference('// fix for phase 50'), null);
+    assert.equal(findPhaseReference('// test plan covers it'), null);
   });
 
   test('findPhaseReference ignores phase identifier in code (not in comment)', () => {

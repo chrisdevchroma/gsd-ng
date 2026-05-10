@@ -47,7 +47,7 @@
     "pretest": "npm run build:hooks",
     "test": "node scripts/run-tests.cjs",
     "test:e2e": "node --test tests/e2e/smoke.test.cjs",
-    "test:coverage": "npm run build:hooks && c8 --check-coverage --lines 70 --reporter text --include 'gsd-ng/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs",
+    "test:coverage": "npm run build:hooks && c8 --reporter=text --reporter=json-summary --include 'gsd-ng/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs && node scripts/coverage-gate.cjs",
     "lint:actions": "node scripts/run-actionlint.cjs"
   }
 }

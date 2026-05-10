@@ -4,7 +4,13 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { processTemplate, validateMarkers, buildContext, RUNTIMES, fillBetweenMarkers } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const {
+  processTemplate,
+  validateMarkers,
+  buildContext,
+  RUNTIMES,
+  fillBetweenMarkers,
+} = require('../gsd-ng/bin/lib/template-processor.cjs');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 const BASE_TMPDIR = resolveTmpDir();
@@ -82,13 +88,15 @@ describe('processTemplate - conditional blocks', () => {
     },
     {
       name: 'mixed blocks - keeps correct one for claude',
-      input: '<!-- ONLY:claude -->C<!-- /ONLY:claude -->|<!-- ONLY:copilot -->P<!-- /ONLY:copilot -->',
+      input:
+        '<!-- ONLY:claude -->C<!-- /ONLY:claude -->|<!-- ONLY:copilot -->P<!-- /ONLY:copilot -->',
       context: { runtime: 'claude' },
       expected: 'C|',
     },
     {
       name: 'mixed blocks - keeps correct one for copilot',
-      input: '<!-- ONLY:claude -->C<!-- /ONLY:claude -->|<!-- ONLY:copilot -->P<!-- /ONLY:copilot -->',
+      input:
+        '<!-- ONLY:claude -->C<!-- /ONLY:claude -->|<!-- ONLY:copilot -->P<!-- /ONLY:copilot -->',
       context: { runtime: 'copilot' },
       expected: '|P',
     },
@@ -100,7 +108,8 @@ describe('processTemplate - conditional blocks', () => {
     },
     {
       name: 'variable inside conditional block resolved after block resolution',
-      input: '<!-- ONLY:claude -->File: {{PROJECT_RULES_FILE}}<!-- /ONLY:claude -->',
+      input:
+        '<!-- ONLY:claude -->File: {{PROJECT_RULES_FILE}}<!-- /ONLY:claude -->',
       context: { runtime: 'claude' },
       expected: 'File: CLAUDE.md',
     },
@@ -185,7 +194,10 @@ describe('RUNTIMES', () => {
   });
 
   test('copilot PROJECT_RULES_FILE is .github/copilot-instructions.md', () => {
-    assert.equal(RUNTIMES.copilot.PROJECT_RULES_FILE, '.github/copilot-instructions.md');
+    assert.equal(
+      RUNTIMES.copilot.PROJECT_RULES_FILE,
+      '.github/copilot-instructions.md',
+    );
   });
 });
 
@@ -211,22 +223,30 @@ describe('RUNTIMES extension', () => {
     assert.equal(RUNTIMES.copilot.GSD_BLOCK_OPEN, '<!-- GSD Configuration -->');
   });
   test('RUNTIMES.copilot exposes GSD_BLOCK_CLOSE = <!-- /GSD Configuration -->', () => {
-    assert.equal(RUNTIMES.copilot.GSD_BLOCK_CLOSE, '<!-- /GSD Configuration -->');
+    assert.equal(
+      RUNTIMES.copilot.GSD_BLOCK_CLOSE,
+      '<!-- /GSD Configuration -->',
+    );
   });
   test('RUNTIMES.copilot exposes MEMORY_DIR = .github/memory/', () => {
     assert.equal(RUNTIMES.copilot.MEMORY_DIR, '.github/memory/');
   });
 
   test('processTemplate resolves 4 new tokens for claude', () => {
-    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+    const corpus =
+      '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
     const out = processTemplate(corpus, buildContext('claude'));
     assert.equal(out, '/gsd: ## GSD ##  .claude/memory/');
     assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
   });
   test('processTemplate resolves 4 new tokens for copilot', () => {
-    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+    const corpus =
+      '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
     const out = processTemplate(corpus, buildContext('copilot'));
-    assert.equal(out, '/gsd- <!-- GSD Configuration --> <!-- /GSD Configuration --> .github/memory/');
+    assert.equal(
+      out,
+      '/gsd- <!-- GSD Configuration --> <!-- /GSD Configuration --> .github/memory/',
+    );
     assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
   });
 
@@ -255,7 +275,10 @@ describe('RUNTIMES extension', () => {
         out,
         '_TEST_RULES.md | _TEST_TOOL | /_test: | <!-- TEST OPEN --> | <!-- TEST CLOSE --> | _test/memory/',
       );
-      assert.ok(!out.includes('{{'), 'all template vars must resolve via the registry alone');
+      assert.ok(
+        !out.includes('{{'),
+        'all template vars must resolve via the registry alone',
+      );
     } finally {
       if (stash === undefined) delete RUNTIMES._test_runtime;
       else RUNTIMES._test_runtime = stash;
@@ -271,13 +294,33 @@ describe('fillBetweenMarkers', () => {
     try {
       const targetPath = path.join(tmpDir, 'target.md');
       const templatePath = path.join(tmpDir, 'template.md');
-      fs.writeFileSync(targetPath, 'before\n<!-- START -->\n<!-- /START -->\nafter\n');
-      fs.writeFileSync(templatePath, '<!-- START -->\ninner content\n<!-- /START -->\n');
-      fillBetweenMarkers(targetPath, templatePath, '<!-- START -->', '<!-- /START -->');
+      fs.writeFileSync(
+        targetPath,
+        'before\n<!-- START -->\n<!-- /START -->\nafter\n',
+      );
+      fs.writeFileSync(
+        templatePath,
+        '<!-- START -->\ninner content\n<!-- /START -->\n',
+      );
+      fillBetweenMarkers(
+        targetPath,
+        templatePath,
+        '<!-- START -->',
+        '<!-- /START -->',
+      );
       const result = fs.readFileSync(targetPath, 'utf8');
-      assert.ok(result.includes('inner content'), 'filled content must appear between markers');
-      assert.ok(result.includes('before'), 'content before markers must be preserved');
-      assert.ok(result.includes('after'), 'content after markers must be preserved');
+      assert.ok(
+        result.includes('inner content'),
+        'filled content must appear between markers',
+      );
+      assert.ok(
+        result.includes('before'),
+        'content before markers must be preserved',
+      );
+      assert.ok(
+        result.includes('after'),
+        'content after markers must be preserved',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -288,12 +331,29 @@ describe('fillBetweenMarkers', () => {
     try {
       const targetPath = path.join(tmpDir, 'target.md');
       const templatePath = path.join(tmpDir, 'template.md');
-      fs.writeFileSync(targetPath, '<!-- START -->\nstale content\n<!-- /START -->\n');
-      fs.writeFileSync(templatePath, '<!-- START -->\nfresh content\n<!-- /START -->\n');
-      fillBetweenMarkers(targetPath, templatePath, '<!-- START -->', '<!-- /START -->');
+      fs.writeFileSync(
+        targetPath,
+        '<!-- START -->\nstale content\n<!-- /START -->\n',
+      );
+      fs.writeFileSync(
+        templatePath,
+        '<!-- START -->\nfresh content\n<!-- /START -->\n',
+      );
+      fillBetweenMarkers(
+        targetPath,
+        templatePath,
+        '<!-- START -->',
+        '<!-- /START -->',
+      );
       const result = fs.readFileSync(targetPath, 'utf8');
-      assert.ok(result.includes('fresh content'), 'stale content must be replaced with template content');
-      assert.ok(!result.includes('stale content'), 'stale content must not remain');
+      assert.ok(
+        result.includes('fresh content'),
+        'stale content must be replaced with template content',
+      );
+      assert.ok(
+        !result.includes('stale content'),
+        'stale content must not remain',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -305,7 +365,12 @@ describe('fillBetweenMarkers', () => {
       const templatePath = path.join(tmpDir, 'template.md');
       fs.writeFileSync(templatePath, '<!-- S -->\ncontent\n<!-- /S -->\n');
       assert.doesNotThrow(() => {
-        fillBetweenMarkers(path.join(tmpDir, 'missing.md'), templatePath, '<!-- S -->', '<!-- /S -->');
+        fillBetweenMarkers(
+          path.join(tmpDir, 'missing.md'),
+          templatePath,
+          '<!-- S -->',
+          '<!-- /S -->',
+        );
       });
     } finally {
       cleanup(tmpDir);
@@ -321,7 +386,11 @@ describe('fillBetweenMarkers', () => {
       fs.writeFileSync(targetPath, original);
       fs.writeFileSync(templatePath, '<!-- S -->\ncontent\n<!-- /S -->\n');
       fillBetweenMarkers(targetPath, templatePath, '<!-- S -->', '<!-- /S -->');
-      assert.equal(fs.readFileSync(targetPath, 'utf8'), original, 'file must be unchanged when markers absent');
+      assert.equal(
+        fs.readFileSync(targetPath, 'utf8'),
+        original,
+        'file must be unchanged when markers absent',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -336,7 +405,10 @@ describe('fillBetweenMarkers', () => {
       fs.writeFileSync(templatePath, 'bare template content\n');
       fillBetweenMarkers(targetPath, templatePath, '<!-- S -->', '<!-- /S -->');
       const result = fs.readFileSync(targetPath, 'utf8');
-      assert.ok(result.includes('bare template content'), 'bare template content must be injected as fallback');
+      assert.ok(
+        result.includes('bare template content'),
+        'bare template content must be injected as fallback',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -347,7 +419,8 @@ describe('fillBetweenMarkers', () => {
 
 describe('processTemplate - idempotency', () => {
   test('applying processTemplate twice yields same result as once', () => {
-    const input = '<!-- ONLY:claude -->{{PROJECT_RULES_FILE}}<!-- /ONLY:claude -->|<!-- ONLY:copilot -->{{PROJECT_RULES_FILE}}<!-- /ONLY:copilot -->';
+    const input =
+      '<!-- ONLY:claude -->{{PROJECT_RULES_FILE}}<!-- /ONLY:claude -->|<!-- ONLY:copilot -->{{PROJECT_RULES_FILE}}<!-- /ONLY:copilot -->';
     const ctx = { runtime: 'claude' };
     const once = processTemplate(input, ctx);
     const twice = processTemplate(once, ctx);
@@ -384,5 +457,113 @@ describe('processTemplate - input validation (F-005)', () => {
         return true;
       },
     );
+  });
+});
+
+// --- injectAppendToFile (60-11 residuals) ---
+describe('injectAppendToFile', () => {
+  const {
+    injectAppendToFile,
+  } = require('../gsd-ng/bin/lib/template-processor.cjs');
+
+  function setupTmp() {
+    const dir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'tp-inject-'));
+    return dir;
+  }
+
+  test('creates file when target does not exist', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const tpl = path.join(dir, 'block.tpl');
+      fs.writeFileSync(tpl, '## Block\nbody', 'utf8');
+      injectAppendToFile(target, tpl, '## Block');
+      assert.ok(fs.existsSync(target));
+      const content = fs.readFileSync(target, 'utf8');
+      // Created with trimStart on block (no leading newline) but trailing newline
+      assert.ok(content.startsWith('## Block'));
+      assert.ok(content.includes('body'));
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('appends to existing file when marker is absent', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const tpl = path.join(dir, 'block.tpl');
+      fs.writeFileSync(target, '# Existing content\n', 'utf8');
+      fs.writeFileSync(tpl, '## New Block\nadded', 'utf8');
+      injectAppendToFile(target, tpl, '## New Block');
+      const content = fs.readFileSync(target, 'utf8');
+      assert.ok(content.startsWith('# Existing content'));
+      assert.ok(content.includes('## New Block'));
+      assert.ok(content.includes('added'));
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('idempotent: skips when marker already present', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const tpl = path.join(dir, 'block.tpl');
+      fs.writeFileSync(target, '# Existing\n## Marker\nfirst run\n', 'utf8');
+      fs.writeFileSync(tpl, '## Marker\nsecond run', 'utf8');
+      const beforeMtime = fs.statSync(target).mtime.getTime();
+      injectAppendToFile(target, tpl, '## Marker');
+      // Content unchanged — marker was already present
+      const content = fs.readFileSync(target, 'utf8');
+      assert.ok(content.includes('first run'));
+      assert.ok(!content.includes('second run'));
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('silently skips when template path does not exist', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const missingTpl = path.join(dir, 'does-not-exist.tpl');
+      // No-op: target should remain absent (no template to read)
+      injectAppendToFile(target, missingTpl, '## Marker');
+      assert.strictEqual(fs.existsSync(target), false);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('silently skips when template missing but target exists', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const missingTpl = path.join(dir, 'gone.tpl');
+      fs.writeFileSync(target, '# Existing\n', 'utf8');
+      injectAppendToFile(target, missingTpl, '## Never');
+      // File content unchanged
+      const content = fs.readFileSync(target, 'utf8');
+      assert.strictEqual(content, '# Existing\n');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('trims template content (strips trailing newline before wrapping)', () => {
+    const dir = setupTmp();
+    try {
+      const target = path.join(dir, 'OUTPUT.md');
+      const tpl = path.join(dir, 'block.tpl');
+      // Template has lots of trailing whitespace
+      fs.writeFileSync(tpl, '## Hi\nbody\n\n\n   \n', 'utf8');
+      injectAppendToFile(target, tpl, '## Hi');
+      const content = fs.readFileSync(target, 'utf8');
+      // Created from trimStart: no leading \n, trailing \n appended
+      assert.match(content, /^## Hi\nbody\n$/);
+    } finally {
+      cleanup(dir);
+    }
   });
 });

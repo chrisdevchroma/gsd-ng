@@ -656,6 +656,86 @@ function cmdValidateConsistency(cwd) {
   );
 }
 
+// Default cliInvoker used by checkVerifyIssueTrackerLinks. Returns null because
+// the current W015/W016 stub body does not actually invoke a CLI yet — issue
+// state checks are deferred to real platform checks. Tests can pass any
+// function-shaped invoker to verify the seam exists.
+function defaultIssueCliInvoker() {
+  return null;
+}
+
+// W015/W016 issue-tracker link check: extracted helper accepting a cliInvoker
+// parameter so tests can inject a stub. Replaces the prior GSD_TEST_MODE
+// env-hook gate. Returns early when itConfig.platform is unset.
+function checkVerifyIssueTrackerLinks(
+  itConfig,
+  dirs,
+  addIssue,
+  cliInvoker = defaultIssueCliInvoker,
+) {
+  if (!itConfig || !itConfig.platform) return;
+  const { todosPending, todosCompleted } = dirs || {};
+  if (!todosPending || !todosCompleted) return;
+
+  // W015: Completed todos with open external issues
+  // Performance guard: only check todos completed in last 30 days
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
+  let completedTodoFiles = [];
+  try {
+    completedTodoFiles = fs
+      .readdirSync(todosCompleted)
+      .filter((f) => f.endsWith('.md'));
+  } catch (_e) {
+    /* dir may not exist */
+  }
+
+  for (const file of completedTodoFiles) {
+    try {
+      const content = fs.readFileSync(path.join(todosCompleted, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.external_ref) continue;
+      // Skip todos completed more than 30 days ago
+      if (fm.completed && fm.completed < thirtyDaysAgo) continue;
+      // Issue state check via platform CLI would go here. Routed through
+      // cliInvoker so tests can stub the call without spawning real CLIs.
+      // Deferred to real platform check in live environments.
+      void cliInvoker;
+    } catch (_e) {
+      /* skip unreadable */
+    }
+  }
+
+  // W016: Closed external issues with open pending todos
+  let pendingTodoFiles = [];
+  try {
+    pendingTodoFiles = fs
+      .readdirSync(todosPending)
+      .filter((f) => f.endsWith('.md'));
+  } catch (_e) {
+    /* dir may not exist */
+  }
+
+  for (const file of pendingTodoFiles) {
+    try {
+      const content = fs.readFileSync(path.join(todosPending, file), 'utf-8');
+      const fm = extractFrontmatter(content);
+      if (!fm || !fm.external_ref) continue;
+      // Issue state check via platform CLI would go here. Routed through
+      // cliInvoker so tests can stub the call without spawning real CLIs.
+      // Deferred to real platform check in live environments.
+      void cliInvoker;
+    } catch (_e) {
+      /* skip */
+    }
+  }
+
+  // addIssue accepted but unused at present (issues only added once a real
+  // CLI is wired in). Ref to satisfy lint/no-unused.
+  void addIssue;
+}
+
 function cmdValidateHealth(cwd, options) {
   // Guard: detect if CWD is the home directory (likely accidental)
   const resolved = path.resolve(cwd);
@@ -1121,76 +1201,21 @@ function cmdValidateHealth(cwd, options) {
 
   // ─── Check 15: Completed todos with open external issues (platform-gated) ─
   // ─── Check 16: Closed external issues with open pending todos (platform-gated) ─
-  // W015/W016 only run when issue_tracker.platform is configured and not in GSD_TEST_MODE
-  if (!process.env.GSD_TEST_MODE) {
-    // Load config to check for issue_tracker.platform
-    let w1516Config = {};
-    try {
-      if (fs.existsSync(configPath)) {
-        w1516Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      }
-    } catch (_e) {}
-    const itConfig = w1516Config.issue_tracker || {};
-
-    if (itConfig.platform) {
-      // W015: Completed todos with open external issues
-      // Performance guard: only check todos completed in last 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-      let completedTodoFiles = [];
-      try {
-        completedTodoFiles = fs
-          .readdirSync(completedTodosDir)
-          .filter((f) => f.endsWith('.md'));
-      } catch (_e) {
-        /* dir may not exist */
-      }
-
-      for (const file of completedTodoFiles) {
-        try {
-          const content = fs.readFileSync(
-            path.join(completedTodosDir, file),
-            'utf-8',
-          );
-          const fm = extractFrontmatter(content);
-          if (!fm || !fm.external_ref) continue;
-          // Skip todos completed more than 30 days ago
-          if (fm.completed && fm.completed < thirtyDaysAgo) continue;
-          // Issue state check via platform CLI would go here.
-          // Deferred to real platform check in live environments.
-          // In non-test mode without actual CLI available, skip silently.
-        } catch (_e) {
-          /* skip unreadable */
-        }
-      }
-
-      // W016: Closed external issues with open pending todos
-      let pendingTodoFiles = [];
-      try {
-        pendingTodoFiles = fs
-          .readdirSync(pendingTodosDir)
-          .filter((f) => f.endsWith('.md'));
-      } catch (_e) {
-        /* dir may not exist */
-      }
-
-      for (const file of pendingTodoFiles) {
-        try {
-          const content = fs.readFileSync(
-            path.join(pendingTodosDir, file),
-            'utf-8',
-          );
-          const fm = extractFrontmatter(content);
-          if (!fm || !fm.external_ref) continue;
-          // Issue state check via platform CLI would go here.
-          // Deferred to real platform check in live environments.
-        } catch (_e) {
-          /* skip */
-        }
-      }
+  // Load config to check for issue_tracker.platform; helper runs unconditionally
+  // and returns early when itConfig.platform is unset (replaces the prior
+  // GSD_TEST_MODE env-hook gate).
+  let w1516Config = {};
+  try {
+    if (fs.existsSync(configPath)) {
+      w1516Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     }
-  }
+  } catch (_e) {}
+  const itConfig = w1516Config.issue_tracker || {};
+  checkVerifyIssueTrackerLinks(
+    itConfig,
+    { todosPending: pendingTodosDir, todosCompleted: completedTodosDir },
+    addIssue,
+  );
 
   // ─── Check 17: Phase-linked todos without matching phase (pure filesystem) ─
   // ─── Check 18: Completed phases with unclosed phase-linked todos ──────────
@@ -1684,4 +1709,5 @@ module.exports = {
   cmdVerifyKeyLinks,
   cmdValidateConsistency,
   cmdValidateHealth,
+  checkVerifyIssueTrackerLinks,
 };

@@ -1,9 +1,5 @@
 /**
  * Unit tests for gsd-ng/bin/lib/effort-sync.cjs
- *
- * RED STATE: these tests require the `effort-sync.cjs` module which is
- * created in Plan 02. Running this file BEFORE Plan 02 lands MUST fail with
- * MODULE_NOT_FOUND — that is the intended Nyquist gate.
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');

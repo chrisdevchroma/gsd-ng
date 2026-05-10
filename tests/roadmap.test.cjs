@@ -6,7 +6,13 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, createTempGitProject, cleanup, resolveTmpDir } = require('./helpers.cjs');
+const {
+  runGsdTools,
+  createTempProject,
+  createTempGitProject,
+  cleanup,
+  resolveTmpDir,
+} = require('./helpers.cjs');
 
 describe('roadmap get-phase command', () => {
   let tmpDir;
@@ -35,7 +41,7 @@ Some description here.
 ### Phase 2: API
 **Goal:** Build REST API
 **Plans:** 3 plans
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -45,7 +51,11 @@ Some description here.
     assert.strictEqual(output.found, true, 'phase should be found');
     assert.strictEqual(output.phase_number, '1', 'phase number correct');
     assert.strictEqual(output.phase_name, 'Foundation', 'phase name extracted');
-    assert.strictEqual(output.goal, 'Set up project infrastructure', 'goal extracted');
+    assert.strictEqual(
+      output.goal,
+      'Set up project infrastructure',
+      'goal extracted',
+    );
   });
 
   test('returns not found for missing phase', () => {
@@ -55,7 +65,7 @@ Some description here.
 
 ### Phase 1: Foundation
 **Goal:** Set up project
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 5 --json', tmpDir);
@@ -75,7 +85,7 @@ Some description here.
 
 ### Phase 2.1: Hotfix
 **Goal:** Emergency fix
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 2.1 --json', tmpDir);
@@ -102,16 +112,25 @@ This phase covers:
 
 ### Phase 2: Build
 **Goal:** Build features
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.ok(output.section.includes('Database setup'), 'section includes description');
-    assert.ok(output.section.includes('CI/CD pipeline'), 'section includes all bullets');
-    assert.ok(!output.section.includes('Phase 2'), 'section does not include next phase');
+    assert.ok(
+      output.section.includes('Database setup'),
+      'section includes description',
+    );
+    assert.ok(
+      output.section.includes('CI/CD pipeline'),
+      'section includes all bullets',
+    );
+    assert.ok(
+      !output.section.includes('Phase 2'),
+      'section does not include next phase',
+    );
   });
 
   test('handles missing ROADMAP.md gracefully', () => {
@@ -120,7 +139,11 @@ This phase covers:
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, false, 'should return not found');
-    assert.strictEqual(output.error, 'ROADMAP.md not found', 'should explain why');
+    assert.strictEqual(
+      output.error,
+      'ROADMAP.md not found',
+      'should explain why',
+    );
   });
 
   test('accepts ## phase headers (two hashes)', () => {
@@ -134,16 +157,24 @@ This phase covers:
 
 ## Phase 2: API
 **Goal:** Build REST API
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.found, true, 'phase with ## header should be found');
+    assert.strictEqual(
+      output.found,
+      true,
+      'phase with ## header should be found',
+    );
     assert.strictEqual(output.phase_name, 'Foundation', 'phase name extracted');
-    assert.strictEqual(output.goal, 'Set up project infrastructure', 'goal extracted');
+    assert.strictEqual(
+      output.goal,
+      'Set up project infrastructure',
+      'goal extracted',
+    );
   });
 
   test('detects malformed ROADMAP with summary list but no detail sections', () => {
@@ -155,7 +186,7 @@ This phase covers:
 
 - [ ] **Phase 1: Foundation** - Set up project
 - [ ] **Phase 2: API** - Build REST API
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -163,7 +194,11 @@ This phase covers:
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, false, 'phase should not be found');
-    assert.strictEqual(output.error, 'malformed_roadmap', 'should identify malformed roadmap');
+    assert.strictEqual(
+      output.error,
+      'malformed_roadmap',
+      'should identify malformed roadmap',
+    );
     assert.ok(output.message.includes('missing'), 'should explain the issue');
   });
 });
@@ -194,7 +229,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
 ### Phase 2: Build
 **Goal:** Build features
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -202,7 +237,11 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.strictEqual(output.depends_on, 'Phase 44', 'depends_on should be extracted');
+    assert.strictEqual(
+      output.depends_on,
+      'Phase 44',
+      'depends_on should be extracted',
+    );
   });
 
   test('returns depends_on as null when no Depends on line is present', () => {
@@ -215,7 +254,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
 ### Phase 2: Build
 **Goal:** Build features
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -223,7 +262,11 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.strictEqual(output.depends_on, null, 'depends_on should be null when absent');
+    assert.strictEqual(
+      output.depends_on,
+      null,
+      'depends_on should be null when absent',
+    );
   });
 
   test('returns source_todos when Source Todos line is present', () => {
@@ -237,7 +280,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
 ### Phase 2: Build
 **Goal:** Build features
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -245,10 +288,15 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.ok(output.source_todos !== null && output.source_todos !== undefined, 'source_todos should not be null');
     assert.ok(
-      output.source_todos.includes('2026-03-29-discuss-phase-parent-phase-gap-detection.md'),
-      `source_todos should contain the filename, got: ${output.source_todos}`
+      output.source_todos !== null && output.source_todos !== undefined,
+      'source_todos should not be null',
+    );
+    assert.ok(
+      output.source_todos.includes(
+        '2026-03-29-discuss-phase-parent-phase-gap-detection.md',
+      ),
+      `source_todos should contain the filename, got: ${output.source_todos}`,
     );
   });
 
@@ -262,7 +310,7 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
 ### Phase 2: Build
 **Goal:** Build features
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -270,14 +318,17 @@ describe('roadmap get-phase depends_on and source_todos', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.strictEqual(output.source_todos, null, 'source_todos should be null when absent');
+    assert.strictEqual(
+      output.source_todos,
+      null,
+      'source_todos should be null when absent',
+    );
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // phase next-decimal command
 // ─────────────────────────────────────────────────────────────────────────────
-
 
 describe('roadmap analyze command', () => {
   let tmpDir;
@@ -311,7 +362,7 @@ describe('roadmap analyze command', () => {
 
 ### Phase 3: Features
 **Goal:** Build core features
-`
+`,
     );
 
     // Create phase dirs with varying completion
@@ -329,9 +380,20 @@ describe('roadmap analyze command', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.phase_count, 3, 'should find 3 phases');
-    assert.ok(output.phases[0].disk_status.startsWith('complete'), 'phase 1 complete');
-    assert.strictEqual(output.phases[1].disk_status, 'planned', 'phase 2 planned');
-    assert.strictEqual(output.phases[2].disk_status, 'no_directory', 'phase 3 no directory');
+    assert.ok(
+      output.phases[0].disk_status.startsWith('complete'),
+      'phase 1 complete',
+    );
+    assert.strictEqual(
+      output.phases[1].disk_status,
+      'planned',
+      'phase 2 planned',
+    );
+    assert.strictEqual(
+      output.phases[2].disk_status,
+      'no_directory',
+      'phase 3 no directory',
+    );
     assert.strictEqual(output.completed_phases, 1, '1 phase complete');
     assert.strictEqual(output.total_plans, 2, '2 total plans');
     assert.strictEqual(output.total_summaries, 1, '1 total summary');
@@ -351,7 +413,7 @@ describe('roadmap analyze command', () => {
 ### Phase 2: Build
 **Goal:** Build features
 **Depends on:** Phase 1
-`
+`,
     );
 
     const result = runGsdTools('roadmap analyze --json', tmpDir);
@@ -379,7 +441,7 @@ describe('roadmap analyze command', () => {
 
 ### Phase 2: API
 **Goal:** Build REST API
-`
+`,
     );
 
     const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
@@ -392,9 +454,21 @@ describe('roadmap analyze command', () => {
 
     const output = JSON.parse(result.output);
     assert.ok(output.next_phase !== null, 'next_phase should not be null');
-    assert.strictEqual(typeof output.next_phase, 'object', 'next_phase should be an object');
-    assert.strictEqual(output.next_phase.number, '2', 'next_phase.number should be "2"');
-    assert.strictEqual(output.next_phase.name, 'API', 'next_phase.name should be "API"');
+    assert.strictEqual(
+      typeof output.next_phase,
+      'object',
+      'next_phase should be an object',
+    );
+    assert.strictEqual(
+      output.next_phase.number,
+      '2',
+      'next_phase.number should be "2"',
+    );
+    assert.strictEqual(
+      output.next_phase.name,
+      'API',
+      'next_phase.name should be "API"',
+    );
   });
 });
 
@@ -420,7 +494,7 @@ describe('roadmap analyze disk status variants', () => {
 
 ### Phase 1: Exploration
 **Goal:** Research the domain
-`
+`,
     );
 
     const p1 = path.join(tmpDir, '.planning', 'phases', '01-exploration');
@@ -431,8 +505,16 @@ describe('roadmap analyze disk status variants', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.phases[0].disk_status, 'researched', 'disk_status should be researched');
-    assert.strictEqual(output.phases[0].has_research, true, 'has_research should be true');
+    assert.strictEqual(
+      output.phases[0].disk_status,
+      'researched',
+      'disk_status should be researched',
+    );
+    assert.strictEqual(
+      output.phases[0].has_research,
+      true,
+      'has_research should be true',
+    );
   });
 
   test('returns discussed status for phase dir with only CONTEXT.md', () => {
@@ -442,7 +524,7 @@ describe('roadmap analyze disk status variants', () => {
 
 ### Phase 1: Discussion
 **Goal:** Gather context
-`
+`,
     );
 
     const p1 = path.join(tmpDir, '.planning', 'phases', '01-discussion');
@@ -453,8 +535,16 @@ describe('roadmap analyze disk status variants', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.phases[0].disk_status, 'discussed', 'disk_status should be discussed');
-    assert.strictEqual(output.phases[0].has_context, true, 'has_context should be true');
+    assert.strictEqual(
+      output.phases[0].disk_status,
+      'discussed',
+      'disk_status should be discussed',
+    );
+    assert.strictEqual(
+      output.phases[0].has_context,
+      true,
+      'has_context should be true',
+    );
   });
 
   test('returns empty status for phase dir with no recognized files', () => {
@@ -464,7 +554,7 @@ describe('roadmap analyze disk status variants', () => {
 
 ### Phase 1: Empty
 **Goal:** Nothing yet
-`
+`,
     );
 
     const p1 = path.join(tmpDir, '.planning', 'phases', '01-empty');
@@ -474,7 +564,11 @@ describe('roadmap analyze disk status variants', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.phases[0].disk_status, 'empty', 'disk_status should be empty');
+    assert.strictEqual(
+      output.phases[0].disk_status,
+      'empty',
+      'disk_status should be empty',
+    );
   });
 });
 
@@ -507,19 +601,36 @@ describe('roadmap analyze milestone extraction', () => {
 
 ### Phase 2: Coverage
 **Goal:** Add coverage
-`
+`,
     );
 
     const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.ok(Array.isArray(output.milestones), 'milestones should be an array');
+    assert.ok(
+      Array.isArray(output.milestones),
+      'milestones should be an array',
+    );
     assert.strictEqual(output.milestones.length, 2, 'should find 2 milestones');
-    assert.strictEqual(output.milestones[0].version, 'v1.0', 'first milestone version');
-    assert.ok(output.milestones[0].heading.includes('v1.0'), 'first milestone heading contains v1.0');
-    assert.strictEqual(output.milestones[1].version, 'v1.1', 'second milestone version');
-    assert.ok(output.milestones[1].heading.includes('v1.1'), 'second milestone heading contains v1.1');
+    assert.strictEqual(
+      output.milestones[0].version,
+      'v1.0',
+      'first milestone version',
+    );
+    assert.ok(
+      output.milestones[0].heading.includes('v1.0'),
+      'first milestone heading contains v1.0',
+    );
+    assert.strictEqual(
+      output.milestones[1].version,
+      'v1.1',
+      'second milestone version',
+    );
+    assert.ok(
+      output.milestones[1].heading.includes('v1.1'),
+      'second milestone heading contains v1.1',
+    );
   });
 });
 
@@ -548,16 +659,25 @@ describe('roadmap analyze missing phase details', () => {
 
 ### Phase 2: API
 **Goal:** Build REST API
-`
+`,
     );
 
     const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.ok(Array.isArray(output.missing_phase_details), 'missing_phase_details should be an array');
-    assert.ok(output.missing_phase_details.includes('1'), 'phase 1 should be in missing details');
-    assert.ok(!output.missing_phase_details.includes('2'), 'phase 2 should not be in missing details');
+    assert.ok(
+      Array.isArray(output.missing_phase_details),
+      'missing_phase_details should be an array',
+    );
+    assert.ok(
+      output.missing_phase_details.includes('1'),
+      'phase 1 should be in missing details',
+    );
+    assert.ok(
+      !output.missing_phase_details.includes('2'),
+      'phase 2 should not be in missing details',
+    );
   });
 
   test('returns null when all checklist phases have detail sections', () => {
@@ -573,14 +693,18 @@ describe('roadmap analyze missing phase details', () => {
 
 ### Phase 2: API
 **Goal:** Build REST API
-`
+`,
     );
 
     const result = runGsdTools('roadmap analyze --json', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.missing_phase_details, null, 'missing_phase_details should be null');
+    assert.strictEqual(
+      output.missing_phase_details,
+      null,
+      'missing_phase_details should be null',
+    );
   });
 });
 
@@ -613,7 +737,7 @@ describe('roadmap get-phase success criteria', () => {
 
 ### Phase 2: Other
 **Goal:** Other goal
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -621,11 +745,27 @@ describe('roadmap get-phase success criteria', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.ok(Array.isArray(output.success_criteria), 'success_criteria should be an array');
-    assert.strictEqual(output.success_criteria.length, 3, 'should have 3 criteria');
-    assert.ok(output.success_criteria[0].includes('First criterion'), 'first criterion matches');
-    assert.ok(output.success_criteria[1].includes('Second criterion'), 'second criterion matches');
-    assert.ok(output.success_criteria[2].includes('Third criterion'), 'third criterion matches');
+    assert.ok(
+      Array.isArray(output.success_criteria),
+      'success_criteria should be an array',
+    );
+    assert.strictEqual(
+      output.success_criteria.length,
+      3,
+      'should have 3 criteria',
+    );
+    assert.ok(
+      output.success_criteria[0].includes('First criterion'),
+      'first criterion matches',
+    );
+    assert.ok(
+      output.success_criteria[1].includes('Second criterion'),
+      'second criterion matches',
+    );
+    assert.ok(
+      output.success_criteria[2].includes('Third criterion'),
+      'third criterion matches',
+    );
   });
 
   test('returns empty array when no success criteria present', () => {
@@ -635,7 +775,7 @@ describe('roadmap get-phase success criteria', () => {
 
 ### Phase 1: Simple
 **Goal:** No criteria here
-`
+`,
     );
 
     const result = runGsdTools('roadmap get-phase 1 --json', tmpDir);
@@ -643,8 +783,15 @@ describe('roadmap get-phase success criteria', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, true, 'phase should be found');
-    assert.ok(Array.isArray(output.success_criteria), 'success_criteria should be an array');
-    assert.strictEqual(output.success_criteria.length, 0, 'should have empty criteria');
+    assert.ok(
+      Array.isArray(output.success_criteria),
+      'success_criteria should be an array',
+    );
+    assert.strictEqual(
+      output.success_criteria.length,
+      0,
+      'should have empty criteria',
+    );
   });
 });
 
@@ -665,10 +812,19 @@ describe('roadmap update-plan-progress command', () => {
 
   test('missing phase number returns error', () => {
     const result = runGsdTools('roadmap update-plan-progress', tmpDir);
-    assert.strictEqual(result.success, false, 'should fail without phase number');
+    assert.strictEqual(
+      result.success,
+      false,
+      'should fail without phase number',
+    );
     // Arg validation layer fires before the handler, producing a "Too few arguments" error
-    const hasError = result.error.includes('Too few arguments') || result.error.includes('phase number required');
-    assert.ok(hasError, `error should mention missing phase number, got: ${result.error}`);
+    const hasError =
+      result.error.includes('Too few arguments') ||
+      result.error.includes('phase number required');
+    assert.ok(
+      hasError,
+      `error should mention missing phase number, got: ${result.error}`,
+    );
   });
 
   test('nonexistent phase returns error', () => {
@@ -678,12 +834,19 @@ describe('roadmap update-plan-progress command', () => {
 
 ### Phase 1: Test
 **Goal:** Test goal
-`
+`,
     );
 
     const result = runGsdTools('roadmap update-plan-progress 99', tmpDir);
-    assert.strictEqual(result.success, false, 'should fail for nonexistent phase');
-    assert.ok(result.error.includes('not found'), 'error should mention not found');
+    assert.strictEqual(
+      result.success,
+      false,
+      'should fail for nonexistent phase',
+    );
+    assert.ok(
+      result.error.includes('not found'),
+      'error should mention not found',
+    );
   });
 
   test('no plans found returns updated false', () => {
@@ -693,7 +856,7 @@ describe('roadmap update-plan-progress command', () => {
 
 ### Phase 1: Test
 **Goal:** Test goal
-`
+`,
     );
 
     // Create phase dir with only a context file (no plans)
@@ -706,7 +869,10 @@ describe('roadmap update-plan-progress command', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false, 'should not update');
-    assert.ok(output.reason.includes('No plans'), 'reason should mention no plans');
+    assert.ok(
+      output.reason.includes('No plans'),
+      'reason should mention no plans',
+    );
     assert.strictEqual(output.plan_count, 0, 'plan_count should be 0');
   });
 
@@ -724,7 +890,7 @@ describe('roadmap update-plan-progress command', () => {
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Test | v1.0 | 0/2 | Planned | - |
-`
+`,
     );
 
     // Create phase dir with 2 plans, 1 summary
@@ -741,12 +907,22 @@ describe('roadmap update-plan-progress command', () => {
     assert.strictEqual(output.updated, true, 'should update');
     assert.strictEqual(output.plan_count, 2, 'plan_count should be 2');
     assert.strictEqual(output.summary_count, 1, 'summary_count should be 1');
-    assert.strictEqual(output.status, 'In Progress', 'status should be In Progress');
+    assert.strictEqual(
+      output.status,
+      'In Progress',
+      'status should be In Progress',
+    );
     assert.strictEqual(output.complete, false, 'should not be complete');
 
     // Verify file was actually modified
-    const roadmapContent = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
-    assert.ok(roadmapContent.includes('1/2'), 'roadmap should contain updated plan count');
+    const roadmapContent = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
+    assert.ok(
+      roadmapContent.includes('1/2'),
+      'roadmap should contain updated plan count',
+    );
   });
 
   test('updates progress and checks checkbox on completion', () => {
@@ -765,7 +941,7 @@ describe('roadmap update-plan-progress command', () => {
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Test | v1.0 | 0/1 | Planned | - |
-`
+`,
     );
 
     // Create phase dir with 1 plan, 1 summary (complete)
@@ -783,10 +959,19 @@ describe('roadmap update-plan-progress command', () => {
     assert.strictEqual(output.status, 'Complete', 'status should be Complete');
 
     // Verify file was actually modified
-    const roadmapContent = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmapContent = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
     assert.ok(roadmapContent.includes('[x]'), 'checkbox should be checked');
-    assert.ok(roadmapContent.includes('completed'), 'should contain completion date text');
-    assert.ok(roadmapContent.includes('1/1'), 'roadmap should contain updated plan count');
+    assert.ok(
+      roadmapContent.includes('completed'),
+      'should contain completion date text',
+    );
+    assert.ok(
+      roadmapContent.includes('1/1'),
+      'roadmap should contain updated plan count',
+    );
   });
 
   test('missing ROADMAP.md returns updated false', () => {
@@ -801,7 +986,10 @@ describe('roadmap update-plan-progress command', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false, 'should not update');
-    assert.ok(output.reason.includes('ROADMAP.md not found'), 'reason should mention missing ROADMAP.md');
+    assert.ok(
+      output.reason.includes('ROADMAP.md not found'),
+      'reason should mention missing ROADMAP.md',
+    );
   });
 
   test('preserves Milestone column in 5-column progress table', () => {
@@ -817,7 +1005,10 @@ describe('roadmap update-plan-progress command', () => {
 |-------|-----------|----------------|--------|-----------|
 | 50. Build | v2.0 | 0/1 | Planned |  |
 `;
-    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent);
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapContent,
+    );
 
     const p50 = path.join(tmpDir, '.planning', 'phases', '50-build');
     fs.mkdirSync(p50, { recursive: true });
@@ -827,13 +1018,26 @@ describe('roadmap update-plan-progress command', () => {
     const result = runGsdTools('roadmap update-plan-progress 50', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
     const rowMatch = roadmap.match(/^\|[^\n]*50\. Build[^\n]*$/m);
     assert.ok(rowMatch, 'table row should exist');
-    const cells = rowMatch[0].split('|').slice(1, -1).map(c => c.trim());
+    const cells = rowMatch[0]
+      .split('|')
+      .slice(1, -1)
+      .map((c) => c.trim());
     assert.strictEqual(cells.length, 5, 'should have 5 columns');
-    assert.strictEqual(cells[1], 'v2.0', 'Milestone column should be preserved');
-    assert.ok(cells[3].includes('Complete'), 'Status column should show Complete');
+    assert.strictEqual(
+      cells[1],
+      'v2.0',
+      'Milestone column should be preserved',
+    );
+    assert.ok(
+      cells[3].includes('Complete'),
+      'Status column should show Complete',
+    );
   });
 
   test('marks completed plan checkboxes', () => {
@@ -853,7 +1057,10 @@ describe('roadmap update-plan-progress command', () => {
 |-------|---------------|--------|-----------|
 | 50. Build | 0/2 | Planned |  |
 `;
-    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmapContent);
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      roadmapContent,
+    );
 
     const p50 = path.join(tmpDir, '.planning', 'phases', '50-build');
     fs.mkdirSync(p50, { recursive: true });
@@ -865,11 +1072,18 @@ describe('roadmap update-plan-progress command', () => {
     const result = runGsdTools('roadmap update-plan-progress 50', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
-    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
-    assert.ok(roadmap.includes('[x] 50-01-PLAN.md') || roadmap.includes('[x] 50-01'),
-      'completed plan checkbox should be marked');
-    assert.ok(roadmap.includes('[ ] 50-02-PLAN.md') || roadmap.includes('[ ] 50-02'),
-      'incomplete plan checkbox should remain unchecked');
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
+    assert.ok(
+      roadmap.includes('[x] 50-01-PLAN.md') || roadmap.includes('[x] 50-01'),
+      'completed plan checkbox should be marked',
+    );
+    assert.ok(
+      roadmap.includes('[ ] 50-02-PLAN.md') || roadmap.includes('[ ] 50-02'),
+      'incomplete plan checkbox should remain unchecked',
+    );
   });
 });
 
@@ -900,7 +1114,7 @@ status: testing
 ---
 
 # Project State
-`
+`,
     );
 
     fs.writeFileSync(
@@ -926,7 +1140,7 @@ status: testing
 ### Phase 3: Polish
 **Goal**: Final polish
 **Requirements**: NONE
-`
+`,
     );
 
     // Create phase dirs for disk status detection
@@ -938,15 +1152,22 @@ status: testing
     const p2 = path.join(tmpDir, '.planning', 'phases', '02-features');
     fs.mkdirSync(p2, { recursive: true });
 
-    const result = runGsdTools(['roadmap', 'analyze', '--current', '--json'], tmpDir);
+    const result = runGsdTools(
+      ['roadmap', 'analyze', '--current', '--json'],
+      tmpDir,
+    );
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
     // When filtered by current phase (2), only phase 2 should be in phases array
-    assert.strictEqual(output.phases.length, 1, 'should return only 1 phase (current phase)');
+    assert.strictEqual(
+      output.phases.length,
+      1,
+      'should return only 1 phase (current phase)',
+    );
     assert.ok(
       output.phases[0].number === '2' || output.phases[0].name === 'Features',
-      `phase should be phase 2 / Features, got: ${JSON.stringify(output.phases[0])}`
+      `phase should be phase 2 / Features, got: ${JSON.stringify(output.phases[0])}`,
     );
   });
 
@@ -961,7 +1182,7 @@ status: testing
 ---
 
 # Project State
-`
+`,
     );
 
     fs.writeFileSync(
@@ -976,14 +1197,21 @@ status: testing
 
 ### Phase 3: Polish
 **Goal**: Final polish
-`
+`,
     );
 
-    const result = runGsdTools(['roadmap', 'analyze', '--current', '--json'], tmpDir);
+    const result = runGsdTools(
+      ['roadmap', 'analyze', '--current', '--json'],
+      tmpDir,
+    );
     assert.ok(result.success, `Command should succeed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.phase_count, 3, 'should return all 3 phases when no current_phase in frontmatter');
+    assert.strictEqual(
+      output.phase_count,
+      3,
+      'should return all 3 phases when no current_phase in frontmatter',
+    );
   });
 });
 
@@ -994,8 +1222,10 @@ status: testing
 describe('format contract tests — lineage and D10/D11 chain', () => {
   // Helper: count balanced tags
   function tagsBalanced(content, tagName) {
-    const openCount = (content.match(new RegExp(`<${tagName}>`, 'g')) || []).length;
-    const closeCount = (content.match(new RegExp(`</${tagName}>`, 'g')) || []).length;
+    const openCount = (content.match(new RegExp(`<${tagName}>`, 'g')) || [])
+      .length;
+    const closeCount = (content.match(new RegExp(`</${tagName}>`, 'g')) || [])
+      .length;
     return openCount === closeCount && openCount > 0;
   }
 
@@ -1013,10 +1243,14 @@ describe('format contract tests — lineage and D10/D11 chain', () => {
   });
 
   test('D10 regex extracts install.js from decision text', () => {
-    const text = 'Update installer: install.js must stop copying standalone baseline files';
+    const text =
+      'Update installer: install.js must stop copying standalone baseline files';
     const matches = text.match(D10_REGEX);
     assert.ok(matches, 'should find matches');
-    assert.ok(matches.includes('install.js'), `should contain install.js, got: ${JSON.stringify(matches)}`);
+    assert.ok(
+      matches.includes('install.js'),
+      `should contain install.js, got: ${JSON.stringify(matches)}`,
+    );
   });
 
   test('D10 regex extracts paths with directories from decision text', () => {
@@ -1024,8 +1258,8 @@ describe('format contract tests — lineage and D10/D11 chain', () => {
     const matches = text.match(D10_REGEX);
     assert.ok(matches, 'should find matches');
     assert.ok(
-      matches.some(m => m.includes('roadmap.cjs')),
-      `should contain roadmap.cjs, got: ${JSON.stringify(matches)}`
+      matches.some((m) => m.includes('roadmap.cjs')),
+      `should contain roadmap.cjs, got: ${JSON.stringify(matches)}`,
     );
   });
 
@@ -1033,14 +1267,18 @@ describe('format contract tests — lineage and D10/D11 chain', () => {
     const text = 'Use depth 1 only for lineage traversal';
     const matches = text.match(D10_REGEX);
     // "1" has no extension, "depth" no extension — no file path matches expected
-    assert.strictEqual(matches, null, `should return null, got: ${JSON.stringify(matches)}`);
+    assert.strictEqual(
+      matches,
+      null,
+      `should return null, got: ${JSON.stringify(matches)}`,
+    );
   });
 
   test('canonical ref paths are valid relative paths (no absolute, no URLs)', () => {
     const refs = [
       'gsd-ng/agents/gsd-plan-checker.md',
       '.planning/phases/44-cli/44-CONTEXT.md',
-      'gsd-ng/workflows/discuss-phase.md'
+      'gsd-ng/workflows/discuss-phase.md',
     ];
     for (const ref of refs) {
       assert.ok(!path.isAbsolute(ref), `${ref} should be relative`);
@@ -1061,28 +1299,49 @@ describe('format contract tests — lineage and D10/D11 chain', () => {
     const regex = /\*\*Requirements\*\*:\s*([^\n]+)/i;
     const section = '**Requirements:** HOOK-01, HOOK-02';
     const m = section.match(regex);
-    assert.strictEqual(m, null, 'should NOT match **Requirements:** (colon inside bold)');
+    assert.strictEqual(
+      m,
+      null,
+      'should NOT match **Requirements:** (colon inside bold)',
+    );
   });
 
   test('Requirements bracket stripping removes outer brackets', () => {
     const raw = '[REQ-01, REQ-02, REQ-03]';
-    const stripped = raw.trim().replace(/^\[(.*)\]$/, '$1').trim();
+    const stripped = raw
+      .trim()
+      .replace(/^\[(.*)\]$/, '$1')
+      .trim();
     assert.strictEqual(stripped, 'REQ-01, REQ-02, REQ-03');
   });
 
   test('Requirements without brackets passes through unchanged', () => {
     const raw = 'HOOK-01, HOOK-02';
-    const stripped = raw.trim().replace(/^\[(.*)\]$/, '$1').trim();
+    const stripped = raw
+      .trim()
+      .replace(/^\[(.*)\]$/, '$1')
+      .trim();
     assert.strictEqual(stripped, 'HOOK-01, HOOK-02');
   });
 
   test('createTempGitProject scaffolds CONTEXT.md when contextContent provided', () => {
-    const content = '<lineage>\n## Parent\n</lineage>\n<decisions>\n- Use install.js\n</decisions>';
+    const content =
+      '<lineage>\n## Parent\n</lineage>\n<decisions>\n- Use install.js\n</decisions>';
     const tmpDir = createTempGitProject({ contextContent: content });
     try {
-      const ctxPath = path.join(tmpDir, '.planning', 'phases', 'test-phase', 'test-CONTEXT.md');
+      const ctxPath = path.join(
+        tmpDir,
+        '.planning',
+        'phases',
+        'test-phase',
+        'test-CONTEXT.md',
+      );
       assert.ok(fs.existsSync(ctxPath), 'test-CONTEXT.md should exist');
-      assert.strictEqual(fs.readFileSync(ctxPath, 'utf8'), content, 'content should match');
+      assert.strictEqual(
+        fs.readFileSync(ctxPath, 'utf8'),
+        content,
+        'content should match',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -1103,27 +1362,47 @@ describe('roadmap get-phase --default flag', () => {
   });
 
   test('returns default value when ROADMAP.md not found', () => {
-    const result = runGsdTools(['roadmap', 'get-phase', '1', '--default', '{}'], tmpDir);
-    assert.ok(result.success, `Command should exit 0 with --default, got: ${result.error}`);
-    assert.strictEqual(result.output, '{}', `Expected "{}", got: ${result.output}`);
+    const result = runGsdTools(
+      ['roadmap', 'get-phase', '1', '--default', '{}'],
+      tmpDir,
+    );
+    assert.ok(
+      result.success,
+      `Command should exit 0 with --default, got: ${result.error}`,
+    );
+    assert.strictEqual(
+      result.output,
+      '{}',
+      `Expected "{}", got: ${result.output}`,
+    );
   });
 
   test('returns default value when phase not found', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`
+      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`,
     );
-    const result = runGsdTools(['roadmap', 'get-phase', '99', '--default', '{}'], tmpDir);
+    const result = runGsdTools(
+      ['roadmap', 'get-phase', '99', '--default', '{}'],
+      tmpDir,
+    );
     assert.ok(result.success, `Command should exit 0 with --default`);
-    assert.strictEqual(result.output, '{}', `Expected "{}", got: ${result.output}`);
+    assert.strictEqual(
+      result.output,
+      '{}',
+      `Expected "{}", got: ${result.output}`,
+    );
   });
 
   test('returns actual phase data when phase found (default unused)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      `# Roadmap\n\n### Phase 1: Auth\n**Goal:** Build auth\n`
+      `# Roadmap\n\n### Phase 1: Auth\n**Goal:** Build auth\n`,
     );
-    const result = runGsdTools(['roadmap', 'get-phase', '1', '--default', '{}', '--json'], tmpDir);
+    const result = runGsdTools(
+      ['roadmap', 'get-phase', '1', '--default', '{}', '--json'],
+      tmpDir,
+    );
     assert.ok(result.success, 'Command should succeed');
     const parsed = JSON.parse(result.output);
     assert.strictEqual(parsed.found, true, 'Should find phase 1');
@@ -1132,12 +1411,19 @@ describe('roadmap get-phase --default flag', () => {
   test('preserves found:false when no --default and phase not found', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`
+      `# Roadmap\n\n### Phase 1: Test\n**Goal:** Test goal\n`,
     );
-    const result = runGsdTools(['roadmap', 'get-phase', '99', '--json'], tmpDir);
+    const result = runGsdTools(
+      ['roadmap', 'get-phase', '99', '--json'],
+      tmpDir,
+    );
     assert.ok(result.success, 'Command should exit 0');
     const parsed = JSON.parse(result.output);
-    assert.strictEqual(parsed.found, false, 'Should return found:false without --default');
+    assert.strictEqual(
+      parsed.found,
+      false,
+      'Should return found:false without --default',
+    );
   });
 });
 
@@ -1166,7 +1452,11 @@ describe('getPhaseCompletionStatus helper', () => {
     fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
     const result = getPhaseCompletionStatus(tmpDir);
     assert.strictEqual(result.isComplete, true, 'isComplete should be true');
-    assert.strictEqual(result.status, 'complete (unverified)', 'status should be complete (unverified)');
+    assert.strictEqual(
+      result.status,
+      'complete (unverified)',
+      'status should be complete (unverified)',
+    );
   });
 
   test('3 plans 3 summaries VERIFICATION.md with status: passed returns complete (verified)', () => {
@@ -1176,10 +1466,17 @@ describe('getPhaseCompletionStatus helper', () => {
     fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
     fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
     fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
-    fs.writeFileSync(path.join(tmpDir, '01-VERIFICATION.md'), '---\nstatus: passed\n---\n# Verification');
+    fs.writeFileSync(
+      path.join(tmpDir, '01-VERIFICATION.md'),
+      '---\nstatus: passed\n---\n# Verification',
+    );
     const result = getPhaseCompletionStatus(tmpDir);
     assert.strictEqual(result.isComplete, true, 'isComplete should be true');
-    assert.strictEqual(result.status, 'complete (verified)', 'status should be complete (verified)');
+    assert.strictEqual(
+      result.status,
+      'complete (verified)',
+      'status should be complete (verified)',
+    );
   });
 
   test('3 plans 3 summaries VERIFICATION.md with status: gaps_found returns complete (unverified)', () => {
@@ -1189,10 +1486,17 @@ describe('getPhaseCompletionStatus helper', () => {
     fs.writeFileSync(path.join(tmpDir, '01-01-SUMMARY.md'), '# Summary');
     fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
     fs.writeFileSync(path.join(tmpDir, '01-03-SUMMARY.md'), '# Summary');
-    fs.writeFileSync(path.join(tmpDir, '01-VERIFICATION.md'), '---\nstatus: gaps_found\n---\n# Verification');
+    fs.writeFileSync(
+      path.join(tmpDir, '01-VERIFICATION.md'),
+      '---\nstatus: gaps_found\n---\n# Verification',
+    );
     const result = getPhaseCompletionStatus(tmpDir);
     assert.strictEqual(result.isComplete, true, 'isComplete should be true');
-    assert.strictEqual(result.status, 'complete (unverified)', 'status should be complete (unverified) for non-passed');
+    assert.strictEqual(
+      result.status,
+      'complete (unverified)',
+      'status should be complete (unverified) for non-passed',
+    );
   });
 
   test('3 plans 2 summaries returns in_progress', () => {
@@ -1203,21 +1507,129 @@ describe('getPhaseCompletionStatus helper', () => {
     fs.writeFileSync(path.join(tmpDir, '01-02-SUMMARY.md'), '# Summary');
     const result = getPhaseCompletionStatus(tmpDir);
     assert.strictEqual(result.isComplete, false, 'isComplete should be false');
-    assert.strictEqual(result.status, 'in_progress', 'status should be in_progress');
+    assert.strictEqual(
+      result.status,
+      'in_progress',
+      'status should be in_progress',
+    );
   });
 
   test('0 plans returns not_started', () => {
     // tmpDir exists but has no PLAN files
     const result = getPhaseCompletionStatus(tmpDir);
     assert.strictEqual(result.isComplete, false, 'isComplete should be false');
-    assert.strictEqual(result.status, 'not_started', 'status should be not_started');
+    assert.strictEqual(
+      result.status,
+      'not_started',
+      'status should be not_started',
+    );
   });
 
   test('non-existent directory returns not_started', () => {
-    const result = getPhaseCompletionStatus(path.join(resolveTmpDir(), 'gsd-nonexistent-dir-' + Date.now()));
+    const result = getPhaseCompletionStatus(
+      path.join(resolveTmpDir(), 'gsd-nonexistent-dir-' + Date.now()),
+    );
     assert.strictEqual(result.isComplete, false, 'isComplete should be false');
-    assert.strictEqual(result.status, 'not_started', 'status should be not_started');
+    assert.strictEqual(
+      result.status,
+      'not_started',
+      'status should be not_started',
+    );
   });
 });
 
+// ─── roadmap.cjs branch coverage residuals (60-11) ───────────────────────
+describe('roadmap.cjs residuals (60-11)', () => {
+  let tmpDir;
 
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // cmdRoadmapGetPhase: phase appears in summary list (-[ ] **Phase X**) but
+  // detail section is missing AND a defaultValue is supplied → output default
+  test('roadmap get-phase: missing detail with --default returns default', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '## v1.0 — milestone',
+        '',
+        '- [ ] **Phase 9: orphan-summary**',
+        '',
+      ].join('\n'),
+    );
+    const r = runGsdTools(
+      ['roadmap', 'get-phase', '9', '--default', 'fallback-string'],
+      tmpDir,
+    );
+    assert.ok(r.success, r.error);
+    assert.match(r.output, /fallback-string/);
+  });
+
+  // cmdRoadmapGetPhase: triggers the catch path by replacing ROADMAP.md with a directory
+  // (readFileSync throws EISDIR) — verifies the error wrapper at line 133-134.
+  test('roadmap get-phase: ROADMAP.md is a directory triggers read error', () => {
+    const roadmapPath = path.join(tmpDir, '.planning', 'ROADMAP.md');
+    if (fs.existsSync(roadmapPath)) fs.rmSync(roadmapPath);
+    fs.mkdirSync(roadmapPath, { recursive: true });
+    const r = runGsdTools(['roadmap', 'get-phase', '1'], tmpDir);
+    assert.ok(!r.success);
+    assert.match(r.error, /Failed to read ROADMAP\.md/);
+  });
+
+  // cmdRoadmapAnalyze: ROADMAP marks phase complete [x] but disk shows in_progress
+  // → diskStatus becomes 'complete (unverified)'.
+  test('roadmap analyze: ROADMAP [x] overrides incomplete disk status', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '## v1.0 — milestone',
+        '',
+        '- [x] **Phase 5: shipped-elsewhere**',
+        '',
+        '#### Phase 5: shipped-elsewhere',
+        '',
+        '**Goal:** done outside GSD',
+        '',
+      ].join('\n'),
+    );
+    // Phase-5 disk has a PLAN but no SUMMARY — would normally be in_progress
+    const phaseDir = path.join(
+      tmpDir,
+      '.planning',
+      'phases',
+      '05-shipped-elsewhere',
+    );
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '05-PLAN.md'), '---\n---\n');
+    const r = runGsdTools(['roadmap', 'analyze', '--json'], tmpDir);
+    assert.ok(r.success, r.error);
+    const parsed = JSON.parse(r.output);
+    const phase5 = (parsed.phases || []).find((p) => p.number === '5');
+    assert.ok(phase5, 'phase 5 should be present in analysis');
+    assert.match(phase5.disk_status || '', /complete \(unverified\)/);
+  });
+
+  // cmdRoadmapUpdatePlanProgress: missing phase argument → error path
+  test('roadmap update-plan-progress: missing phase number errors', () => {
+    const { spawnSync } = require('node:child_process');
+    const r = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `const m = require(${JSON.stringify(path.resolve('gsd-ng/bin/lib/roadmap.cjs'))});m.cmdRoadmapUpdatePlanProgress(${JSON.stringify(tmpDir)}, '');`,
+      ],
+      { encoding: 'utf-8' },
+    );
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stderr, /phase number required/);
+  });
+});
