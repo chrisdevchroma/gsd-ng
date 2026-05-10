@@ -153,25 +153,13 @@ If `.planning/STATE.md` exists:
 # NEW_TODO_FILE is the filename just created (e.g., "2026-03-29-my-new-todo.md")
 # EXISTING_TODO_FOR_LINK is the similar todo found during duplicate check (basename only)
 
-# Set related: on the new todo (fresh file, no existing related: field)
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$NEW_TODO_FILE" --field related --value "[\"$EXISTING_TODO_FOR_LINK\"]"
+# Append to related: on the new todo (creates the array if missing)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$NEW_TODO_FILE" --field related --value "$EXISTING_TODO_FOR_LINK"
 
-# Append to related: on the existing todo (may already have related: entries)
-EXISTING_RELATED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --default "")
-UPDATED_RELATED=$(node -e "
-  const existing = process.argv[1];
-  const newFile = process.argv[2];
-  try {
-    const v = existing ? JSON.parse(existing) : [];
-    const arr = Array.isArray(v) ? v : (v ? [v] : []);
-    if (!arr.includes(newFile)) arr.push(newFile);
-    console.log(JSON.stringify(arr));
-  } catch { console.log(JSON.stringify([newFile])); }
-" "$EXISTING_RELATED" "$NEW_TODO_FILE")
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --value "$UPDATED_RELATED"
+# Append to related: on the existing todo (dedupe-aware; coerces scalar/missing to array)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$EXISTING_TODO_FOR_LINK" --field related --value "$NEW_TODO_FILE"
 ```
 
 Log: `Linked: $NEW_TODO_FILE <-> $EXISTING_TODO_FOR_LINK`

@@ -289,39 +289,15 @@ AskUserQuestion(
 )
 ```
 
-5. For each selected todo (not "None of these"), set `related:` bidirectionally using the safe read-append-write pattern:
+5. For each selected todo (not "None of these"), set `related:` bidirectionally using the dedupe-aware array-append helper:
 ```bash
 # Append selected todo filename to source todo's related: field
-SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
-UPDATED_SOURCE=$(node -e "
-  const existing = process.argv[1];
-  const newFile = process.argv[2];
-  try {
-    const v = existing ? JSON.parse(existing) : [];
-    const arr = Array.isArray(v) ? v : (v ? [v] : []);
-    if (!arr.includes(newFile)) arr.push(newFile);
-    console.log(JSON.stringify(arr));
-  } catch { console.log(JSON.stringify([newFile])); }
-" "$SOURCE_RELATED_RAW" "$SELECTED_FILE")
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$SELECTED_FILE"
 
 # Append source todo filename to selected todo's related: field (backlink)
-SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SELECTED_FILE" --field related --default "")
-UPDATED_SELECTED=$(node -e "
-  const existing = process.argv[1];
-  const newFile = process.argv[2];
-  try {
-    const v = existing ? JSON.parse(existing) : [];
-    const arr = Array.isArray(v) ? v : (v ? [v] : []);
-    if (!arr.includes(newFile)) arr.push(newFile);
-    console.log(JSON.stringify(arr));
-  } catch { console.log(JSON.stringify([newFile])); }
-" "$SELECTED_RELATED_RAW" "$SOURCE_TODO")
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$SOURCE_TODO"
 ```
 
 Log: `Linked related: $SOURCE_TODO <-> $SELECTED_FILE`

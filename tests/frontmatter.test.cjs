@@ -17,7 +17,11 @@ const {
   spliceFrontmatter,
   parseMustHavesBlock,
   FRONTMATTER_SCHEMAS,
+  cmdFrontmatterArrayAppend,
 } = require('../gsd-ng/bin/lib/frontmatter.cjs');
+const fs = require('fs');
+const path = require('path');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 // ─── extractFrontmatter ─────────────────────────────────────────────────────
 
@@ -988,6 +992,87 @@ describe('frontmatter.cjs residuals (60-11)', () => {
       assert.strictEqual(r.status, 1);
       assert.match(r.stderr, /file and schema required/);
     });
+  });
+});
+
+// ─── cmdFrontmatterArrayAppend ──────────────────────────────────────────────
+
+describe('cmdFrontmatterArrayAppend', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'fm-arr-append-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeFile(name, content) {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, content);
+    return p;
+  }
+
+  function readFm(p) {
+    return extractFrontmatter(fs.readFileSync(p, 'utf-8'));
+  }
+
+  test('creates a new array when the field is missing', () => {
+    const p = writeFile('t.md', '---\ntitle: foo\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md']);
+  });
+
+  test('coerces scalar to array before appending', () => {
+    const p = writeFile('t.md', '---\nrelated: existing.md\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'new.md');
+    assert.deepStrictEqual(readFm(p).related, ['existing.md', 'new.md']);
+  });
+
+  test('dedupes — does not append if value already present', () => {
+    const p = writeFile(
+      't.md',
+      '---\nrelated:\n  - a.md\n  - b.md\n---\nbody\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md']);
+  });
+
+  test('appends to existing array', () => {
+    const p = writeFile(
+      't.md',
+      '---\nrelated:\n  - a.md\n  - b.md\n---\nbody\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'c.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md', 'c.md']);
+  });
+
+  test('treats empty-string field as missing', () => {
+    const p = writeFile('empty.md', '---\nrelated: ""\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md']);
+  });
+
+  test('preserves other frontmatter fields and body', () => {
+    const p = writeFile(
+      't.md',
+      '---\ntitle: foo\ntype: todo\n---\nThis is the body\nmore lines\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    const fm = readFm(p);
+    assert.strictEqual(fm.title, 'foo');
+    assert.strictEqual(fm.type, 'todo');
+    assert.deepStrictEqual(fm.related, ['a.md']);
+    const content = fs.readFileSync(p, 'utf-8');
+    assert.match(content, /This is the body/);
+    assert.match(content, /more lines/);
+  });
+
+  test('absolute file path works regardless of cwd argument', () => {
+    const p = writeFile('t.md', '---\nrelated: a.md\n---\nbody\n');
+    cmdFrontmatterArrayAppend('/somewhere/else', p, 'related', 'b.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md']);
   });
 });
 
