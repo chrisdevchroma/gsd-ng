@@ -53,6 +53,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `defaults.cjs` and `template-processor.cjs` with shared AST safety injection
 - `init-get` CLI command with `gsd-tools` dispatch, replacing all `node -e` one-liners
 - `init-valid` guard with self-recovery block across 26 workflows
+- `frontmatter array-append <file> --field <k> --value <v>` CLI subcommand — dedupe-aware append into a YAML array field with scalar/missing/array coercion. Replaces the hand-rolled `frontmatter get` + inline `node -e` (JSON.parse + Array coerce + dedupe + re-emit) + `frontmatter set` pattern at three call sites in `add-todo.md` and `discuss-phase.md` (related-todo bidirectional link sync)
 
 #### CI / release infrastructure
 - Release pipeline hardening, CI guardrails, and supply chain security — SHA-pinned third-party actions, OIDC trusted publisher, build attestations, validate-release.sh gating tag-vs-package-version drift, prepare-release workflow that bumps version + stamps CHANGELOG + tags atomically

@@ -383,6 +383,62 @@ function cmdFrontmatterMerge(cwd, filePath, data) {
   output({ merged: true, fields: Object.keys(mergeData) }, 'true');
 }
 
+/**
+ * Append a value to a YAML array field in frontmatter, with idempotent
+ * dedupe and scalar-to-array coercion.
+ *
+ * Handles three input shapes for the existing field:
+ *   missing / null / empty string  -> treated as empty array
+ *   scalar string                  -> coerced to [scalar] before append
+ *   array                          -> appended in place
+ *
+ * If `value` is already present in the array, the file is rewritten anyway
+ * (idempotent), and the output reports `appended: false` so callers can
+ * detect no-op runs. Use case: bidirectional related: link sync in
+ * add-todo and discuss-phase, which otherwise require a hand-rolled
+ * JSON.parse + Array coerce + dedupe + re-emit dance per call site.
+ */
+function cmdFrontmatterArrayAppend(cwd, filePath, field, value) {
+  if (!filePath || !field || value === undefined) {
+    error('file, field, and value required');
+  }
+  const fieldCheck = validateFieldName(field);
+  if (!fieldCheck.valid) {
+    error(`Invalid field name: ${fieldCheck.error}`);
+  }
+  if (!path.isAbsolute(filePath)) {
+    const pathCheck = validatePath(filePath, cwd);
+    if (!pathCheck.safe) {
+      error(`Invalid file path: ${pathCheck.error}`);
+    }
+  }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
+  if (!fs.existsSync(fullPath)) {
+    output({ error: 'File not found', path: filePath });
+    return;
+  }
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  const fm = extractFrontmatter(content);
+  let arr;
+  if (fm[field] === undefined || fm[field] === null || fm[field] === '') {
+    arr = [];
+  } else if (Array.isArray(fm[field])) {
+    arr = fm[field].slice();
+  } else {
+    arr = [fm[field]];
+  }
+  const added = !arr.includes(value);
+  if (added) {
+    arr.push(value);
+  }
+  fm[field] = arr;
+  const newContent = spliceFrontmatter(content, fm);
+  fs.writeFileSync(fullPath, newContent, 'utf-8');
+  output({ appended: added, field, value, length: arr.length }, 'true');
+}
+
 function cmdFrontmatterValidate(cwd, filePath, schemaName) {
   if (!filePath || !schemaName) {
     error('file and schema required');
@@ -420,4 +476,5 @@ module.exports = {
   cmdFrontmatterSet,
   cmdFrontmatterMerge,
   cmdFrontmatterValidate,
+  cmdFrontmatterArrayAppend,
 };

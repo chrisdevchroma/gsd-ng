@@ -108,6 +108,8 @@
  *     --data '{json}'
  *   frontmatter validate <file>        Validate required fields
  *     --schema plan|summary|verification
+ *   frontmatter array-append <file>    Dedupe-append value to a YAML array field
+ *     --field k --value v              (coerces missing/scalar/array; idempotent)
  *
  * Verification Suite:
  *   verify plan-structure <file>       Check PLAN.md structure + tasks
@@ -267,7 +269,7 @@ const SUBCOMMANDS = {
     'rebuild-frontmatter',
   ],
   template: ['select', 'fill'],
-  frontmatter: ['get', 'set', 'merge', 'validate'],
+  frontmatter: ['get', 'set', 'merge', 'validate', 'array-append'],
   verify: [
     'plan-structure',
     'phase-completeness',
@@ -367,6 +369,10 @@ const ARG_SCHEMAS = {
     set: { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
     merge: { positional: { min: 1, max: 1 }, flags: ['--data'] },
     validate: { positional: { min: 1, max: 1 }, flags: ['--schema'] },
+    'array-append': {
+      positional: { min: 1, max: 1 },
+      flags: ['--field', '--value'],
+    },
   },
   verify: {
     'plan-structure': { positional: { min: 1, max: 1 }, flags: [] },
@@ -1304,6 +1310,15 @@ async function main() {
           cwd,
           file,
           schemaIdx !== -1 ? args[schemaIdx + 1] : null,
+        );
+      } else if (subcommand === 'array-append') {
+        const fieldIdx = args.indexOf('--field');
+        const valueIdx = args.indexOf('--value');
+        frontmatter.cmdFrontmatterArrayAppend(
+          cwd,
+          file,
+          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
+          valueIdx !== -1 ? args[valueIdx + 1] : undefined,
         );
       } else {
         const suggestions = suggestSubcommand(subcommand, 'frontmatter');
