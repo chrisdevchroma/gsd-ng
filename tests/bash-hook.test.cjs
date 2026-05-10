@@ -32,8 +32,6 @@ const {
   parseBashPattern,
   loadMergedSettings,
   decide,
-  detectForcedPromptPattern,
-  hasNonQuantifierBraces,
   extractWrappedCommand,
   WRAPPER_COMMANDS,
   _skipShellValue,
@@ -1153,38 +1151,17 @@ describe('BASH-HOOK-SUBSHELL: $() and backtick contents are checked independentl
     );
   });
 
-  test('echo $(git status) is DENIED by forced-prompt pre-check (CC expansion guard)', () => {
-    // Even with both echo and git allowlisted, the new pre-check denies $(...)
-    // because Claude Code's expansion guard always prompts on it. The deny
-    // surfaces a suggestion to the agent so it rewrites without expansion.
+  test('echo $(git status) is ALLOWED when both echo and git are allowlisted', () => {
+    // The hook decomposes the subshell and checks each sub-command against
+    // the allowlist. With both echo and git allowed, the command auto-approves.
+    // (Claude Code's harness has no built-in $() guard — verified empirically;
+    // see archive/60.1-mechanical-refactors-false-premise for the false-claim
+    // history.)
     const settings = {
       permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] },
     };
     const result = decide('echo $(git status)', settings);
-    assert.equal(result.decision, 'deny');
-    assert.ok(
-      /expansion guard/i.test(result.reason),
-      'reason should explain the expansion-guard rationale',
-    );
-    assert.ok(
-      /GSD_HOOK_ALLOW_EXPANSION/.test(result.reason),
-      'reason should advertise the escape-hatch env var',
-    );
-  });
-
-  test('echo $(git status) is ALLOWED when GSD_HOOK_ALLOW_EXPANSION=1 escape hatch is set', () => {
-    const settings = {
-      permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] },
-    };
-    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
-    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
-    try {
-      const result = decide('echo $(git status)', settings);
-      assert.equal(result.decision, 'allow');
-    } finally {
-      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
-      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
-    }
+    assert.equal(result.decision, 'allow');
   });
 
   test('extractSubshells handles ) inside quotes in $()', () => {
@@ -1232,237 +1209,6 @@ describe('BASH-HOOK-SUBSHELL: $() and backtick contents are checked independentl
       'allow',
       'must not auto-approve when subshell has unallowed commands past quoted )',
     );
-  });
-});
-
-// ── detectForcedPromptPattern ────────────────────────────────────────────────
-
-describe('BASH-HOOK-FORCED-PROMPT: detectForcedPromptPattern', () => {
-  test('flags $(...) command substitution', () => {
-    const result = detectForcedPromptPattern('echo $(date)');
-    assert.ok(result, 'must flag $(...)');
-    assert.match(result.pattern, /\$\(\.\.\.\)/);
-    assert.match(result.snippet, /\$\(date\)/);
-  });
-
-  test('flags backtick command substitution', () => {
-    const result = detectForcedPromptPattern('echo `pwd`');
-    assert.ok(result, 'must flag backticks');
-    assert.match(result.pattern, /backtick/);
-  });
-
-  test('flags ${VAR:-default} parameter expansion', () => {
-    const result = detectForcedPromptPattern('cd "${TMPDIR:-/tmp}"');
-    assert.ok(result, 'must flag :-');
-    assert.match(result.pattern, /parameter expansion/);
-    assert.match(result.snippet, /TMPDIR:-/);
-  });
-
-  test('flags ${VAR:+alt}, ${VAR:?err}, ${VAR:=assign} variants', () => {
-    assert.ok(detectForcedPromptPattern('echo "${X:+set}"'), ':+ should flag');
-    assert.ok(
-      detectForcedPromptPattern('echo "${X:?missing}"'),
-      ':? should flag',
-    );
-    assert.ok(
-      detectForcedPromptPattern('echo "${X:=default}"'),
-      ':= should flag',
-    );
-  });
-
-  test('does NOT flag plain $VAR', () => {
-    assert.equal(detectForcedPromptPattern('echo $HOME'), null);
-    assert.equal(detectForcedPromptPattern('cd $PWD'), null);
-  });
-
-  test('does NOT flag ${VAR} without operator', () => {
-    assert.equal(detectForcedPromptPattern('echo ${HOME}/file'), null);
-  });
-
-  test('does NOT flag special vars $$, $!, $?', () => {
-    assert.equal(detectForcedPromptPattern('echo $$'), null);
-    assert.equal(detectForcedPromptPattern('echo $!'), null);
-    assert.equal(detectForcedPromptPattern('echo $?'), null);
-  });
-
-  test("does NOT flag '$(...)' inside single quotes (literal text)", () => {
-    assert.equal(detectForcedPromptPattern("echo '$(literal)'"), null);
-  });
-
-  test("does NOT flag '`...`' inside single quotes (literal text)", () => {
-    assert.equal(detectForcedPromptPattern("echo '`literal`'"), null);
-  });
-
-  test('DOES flag $(...) inside double quotes (expansion happens)', () => {
-    assert.ok(detectForcedPromptPattern('echo "$(date)"'));
-  });
-
-  test('escape hatch GSD_HOOK_ALLOW_EXPANSION=1 disables detection', () => {
-    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
-    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
-    try {
-      assert.equal(detectForcedPromptPattern('echo $(date)'), null);
-      assert.equal(detectForcedPromptPattern('cd "${TMPDIR:-/tmp}"'), null);
-      assert.equal(detectForcedPromptPattern('echo `pwd`'), null);
-    } finally {
-      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
-      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
-    }
-  });
-
-  test('returns null for empty/non-string input', () => {
-    assert.equal(detectForcedPromptPattern(''), null);
-    assert.equal(detectForcedPromptPattern(null), null);
-    assert.equal(detectForcedPromptPattern(undefined), null);
-  });
-
-  test('decide() returns deny with helpful suggestion when forced-prompt pattern detected', () => {
-    const settings = { permissions: { allow: ['Bash(cat:*)'], deny: [] } };
-    const result = decide('cat "$(echo /tmp/foo)"', settings);
-    assert.equal(result.decision, 'deny');
-    assert.match(result.reason, /expansion guard/i);
-    assert.match(result.reason, /Run the inner command in a prior Bash call/);
-    assert.match(result.reason, /GSD_HOOK_ALLOW_EXPANSION/);
-  });
-
-  // Regression: backslash-escaped expansions outside quotes are literal text in
-  // bash, not real command substitution / parameter expansion. The detector
-  // previously skipped escape handling outside quotes and falsely flagged them.
-  test('does NOT flag \\$(...) escaped command substitution outside quotes', () => {
-    assert.equal(detectForcedPromptPattern('echo \\$(date)'), null);
-    assert.equal(detectForcedPromptPattern('printf %s \\$(date)'), null);
-  });
-
-  test('does NOT flag \\` escaped backticks outside quotes', () => {
-    assert.equal(detectForcedPromptPattern('echo \\`pwd\\`'), null);
-  });
-
-  test('does NOT flag \\${...} escaped parameter expansion outside quotes', () => {
-    assert.equal(detectForcedPromptPattern('echo \\${TMPDIR:-/tmp}'), null);
-  });
-
-  test('still flags real expansion adjacent to escaped backslash (\\\\$(...))', () => {
-    // `\\$(date)` = literal backslash followed by REAL command substitution
-    assert.ok(detectForcedPromptPattern('echo \\\\$(date)'));
-  });
-});
-
-// ── hasNonQuantifierBraces: regex-quantifier carve-out ──────────────────────
-
-describe('BASH-HOOK-QUANTIFIER: hasNonQuantifierBraces', () => {
-  test('returns false for {N,M} regex quantifier', () => {
-    assert.equal(hasNonQuantifierBraces("'foo{0,80}bar'"), false);
-  });
-
-  test('returns false for {N} single number', () => {
-    assert.equal(hasNonQuantifierBraces("'a{42}'"), false);
-  });
-
-  test('returns false for {,M} max-only', () => {
-    assert.equal(hasNonQuantifierBraces("'x{,5}'"), false);
-  });
-
-  test('returns false for {N,} min-only', () => {
-    assert.equal(hasNonQuantifierBraces("'x{5,}'"), false);
-  });
-
-  test('returns false for empty {} (harmless)', () => {
-    assert.equal(hasNonQuantifierBraces("'x{}y'"), false);
-  });
-
-  test('returns true for awk inline script', () => {
-    assert.equal(hasNonQuantifierBraces("'{print $1}'"), true);
-  });
-
-  test('returns true for embedded JSON', () => {
-    assert.equal(hasNonQuantifierBraces('\'{"k":"v"}\''), true);
-  });
-
-  test('returns true for find/template placeholders', () => {
-    assert.equal(hasNonQuantifierBraces("'{name}'"), true);
-  });
-
-  test('returns true for brace expansion {a,b,c}', () => {
-    assert.equal(hasNonQuantifierBraces("'{a,b,c}'"), true);
-  });
-
-  test('returns true for unbalanced { with no matching }', () => {
-    assert.equal(hasNonQuantifierBraces("'{unclosed'"), true);
-  });
-
-  test('regex quantifier inside grep does NOT trigger forced-prompt detection', () => {
-    assert.equal(
-      detectForcedPromptPattern("grep -E 'foo{0,80}bar' /tmp/x"),
-      null,
-    );
-    assert.equal(detectForcedPromptPattern("sed -E 's/x{2,5}/y/' file"), null);
-  });
-
-  test('decide() ALLOWS regex quantifiers when grep is allowlisted', () => {
-    const settings = { permissions: { allow: ['Bash(grep:*)'], deny: [] } };
-    const result = decide("grep -E 'foo{0,80}bar' /tmp/x", settings);
-    assert.equal(result.decision, 'allow');
-  });
-
-  test('decide() still DENIES awk inline scripts (regex carve-out is precise)', () => {
-    const settings = { permissions: { allow: ['Bash(awk:*)'], deny: [] } };
-    const result = decide("awk '{print $1}' /tmp/x", settings);
-    assert.equal(result.decision, 'deny');
-  });
-});
-
-// ── detectForcedPromptPattern: obfuscation pattern (single-quoted braces) ───
-
-describe('BASH-HOOK-OBFUSCATION: single-quoted brace detection', () => {
-  test("flags awk '{...}' inline scripts", () => {
-    const result = detectForcedPromptPattern("awk '{print $1}' /tmp/foo");
-    assert.ok(result, 'must flag single-quoted braces');
-    assert.match(result.pattern, /obfuscation/);
-    assert.match(result.suggestion, /awk -f|jq -f|--data-file=/);
-  });
-
-  test('flags echo \'{"json":1}\' embedded JSON args', () => {
-    const result = detectForcedPromptPattern('echo \'{"key":"val"}\'');
-    assert.ok(result, 'must flag single-quoted JSON');
-  });
-
-  test("flags find . -name '{name}' brace patterns", () => {
-    const result = detectForcedPromptPattern("find . -name '{name}'");
-    assert.ok(result, 'must flag single-quoted brace patterns');
-  });
-
-  test('does NOT flag single-quoted strings WITHOUT braces', () => {
-    assert.equal(detectForcedPromptPattern("jq '.foo.bar' /tmp/data"), null);
-    assert.equal(detectForcedPromptPattern("grep 'pattern' /tmp/file"), null);
-    assert.equal(
-      detectForcedPromptPattern("sed 's/old/new/g' /tmp/file"),
-      null,
-    );
-  });
-
-  test('does NOT flag braces OUTSIDE single quotes', () => {
-    // ${VAR} without operator is fine (caught by other guards if needed,
-    // but plain braces in command text are not obfuscation).
-    assert.equal(detectForcedPromptPattern('echo ${HOME}'), null);
-  });
-
-  test('decide() denies obfuscation pattern with workaround suggestion', () => {
-    const settings = { permissions: { allow: ['Bash(awk:*)'], deny: [] } };
-    const result = decide("awk '{print $1}' /tmp/foo", settings);
-    assert.equal(result.decision, 'deny');
-    assert.match(result.reason, /obfuscation/);
-    assert.match(result.reason, /Write tool/);
-  });
-
-  test('escape hatch GSD_HOOK_ALLOW_EXPANSION=1 disables obfuscation detection', () => {
-    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
-    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
-    try {
-      assert.equal(detectForcedPromptPattern("awk '{print $1}'"), null);
-    } finally {
-      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
-      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
-    }
   });
 });
 

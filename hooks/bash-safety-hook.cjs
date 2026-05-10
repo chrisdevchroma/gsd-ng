@@ -1340,211 +1340,11 @@ function loadMergedSettings(envOverride) {
   };
 }
 
-// ── hasNonQuantifierBraces ───────────────────────────────────────────────────
-/**
- * Returns true if `segment` contains a `{...}` pair whose body is NOT a
- * regex quantifier. Used by the obfuscation detector to avoid flagging
- * legitimate regex usage like `grep -E '{0,80}'` or `sed -E 's/x{2,5}/y/'`.
- *
- * Quantifier shapes accepted (NOT flagged):
- *   {N}        — exact count, e.g. {42}
- *   {N,}       — min only
- *   {,M}       — max only (POSIX BRE allows it; some engines don't)
- *   {N,M}      — range
- *   {}         — empty (unusual but harmless)
- *
- * Anything else inside the braces → flag:
- *   {print $1}  awk program
- *   {"k": "v"}  JSON
- *   {name}      find/template placeholder
- *   {a,b,c}     brace expansion (could be obfuscation; conservatively flag)
- *
- * Also flags an unbalanced `{` with no matching `}` (covers truncation /
- * suspicious construction).
- *
- * @param {string} segment - String to inspect (typically a single-quoted segment incl. quotes)
- * @returns {boolean}
- */
-function hasNonQuantifierBraces(segment) {
-  for (let i = 0; i < segment.length; i++) {
-    if (segment[i] !== '{') continue;
-    const close = segment.indexOf('}', i + 1);
-    if (close < 0) return true; // unbalanced {
-    const body = segment.slice(i + 1, close);
-    // Quantifier body: zero or more digits, an optional single comma, zero or more digits
-    if (!/^\d*,?\d*$/.test(body)) return true;
-  }
-  return false;
-}
-
 // ── decide ────────────────────────────────────────────────────────────────────
-// ── detectForcedPromptPattern ────────────────────────────────────────────────
-/**
- * Detect bash patterns that trigger Claude Code's expansion / obfuscation
- * guards. Those guards run independently of the allowlist + hook decision —
- * even when this hook returns `permissionDecision: allow`, Claude Code still
- * surfaces a permission prompt to the user when these patterns appear.
- *
- * Returning `decision: deny` from the hook short-circuits the prompt and
- * passes the reason text back to the agent as a tool error. The agent reads
- * the suggestion and rewrites the command without the expansion, so the
- * user is never interrupted.
- *
- * Patterns detected:
- *   Outside single quotes (since `'$(...)'` content is literal text):
- *     - `$(...)` command substitution
- *     - Backtick command substitution
- *     - `${VAR:-default}` / `${VAR:+...}` / `${VAR:?...}` / `${VAR:=...}`
- *       parameter-expansion-with-operator
- *
- *   Single-quoted strings containing `{` or `}` — Claude Code's obfuscation
- *   guard fires on these (typical patterns: `awk '{print $1}'`, embedded
- *   JSON like `echo '{"key":"val"}'`, find `'{name}'`, etc.). False positives
- *   on legit inline awk/jq scripts are an accepted cost — the workaround
- *   (write the script/JSON to a temp file with the Write tool, use `-f` /
- *   `--from-file` / `--data-file=`) is straightforward.
- *
- * Plain `$VAR`, `${VAR}` (no operator), special vars (`$$`, `$!`, `$?`),
- * and array indexing (`${arr[0]}`) are NOT flagged — they don't trigger
- * Claude Code's guard.
- *
- * Escape hatch: set GSD_HOOK_ALLOW_EXPANSION=1 to skip this check entirely.
- *
- * @param {string} command - Raw bash command (may be compound)
- * @returns {null | { pattern: string, snippet: string, suggestion: string }}
- */
-function detectForcedPromptPattern(command) {
-  if (process.env.GSD_HOOK_ALLOW_EXPANSION === '1') return null;
-  if (typeof command !== 'string' || command.length === 0) return null;
-
-  let inSingle = false;
-  let inDouble = false;
-  let singleStart = -1;
-
-  for (let i = 0; i < command.length; i++) {
-    const c = command[i];
-
-    if (!inDouble && c === "'") {
-      if (!inSingle) {
-        inSingle = true;
-        singleStart = i;
-      } else {
-        // Closing single quote — check if the just-closed segment had
-        // suspicious brace contents. Pure-numeric/comma brace bodies
-        // (regex quantifiers like `{0,80}`, `{42}`, `{,5}`, `{5,}`) are
-        // NOT obfuscation — they're standard regex syntax used with
-        // grep -E, sed -E, find -regex, etc. Anything else inside the
-        // braces (letters, quotes, $, spaces, JSON keys, awk programs)
-        // → flag as obfuscation.
-        const segment = command.slice(singleStart, i + 1);
-        if (hasNonQuantifierBraces(segment)) {
-          const snippet =
-            segment.length > 60 ? segment.slice(0, 57) + "...'" : segment;
-          return {
-            pattern: 'single-quoted braces (obfuscation guard)',
-            snippet,
-            suggestion:
-              "Claude Code's obfuscation guard always prompts on single-quoted " +
-              'strings containing { or } with non-quantifier contents (awk/jq/find ' +
-              'inline scripts, embedded JSON-as-arg). Workarounds: write the script to ' +
-              'a temp file with the Write tool and use `awk -f /tmp/s.awk` / ' +
-              '`jq -f /tmp/f.jq`; for JSON args, write to a temp file and use ' +
-              '`--data-file=/tmp/d.json` (or use the Write tool to create the target ' +
-              'file directly instead of `cat > file <<EOF`).',
-          };
-        }
-        inSingle = false;
-        singleStart = -1;
-      }
-      continue;
-    }
-    if (!inSingle && c === '"') {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (c === '\\' && inDouble && i + 1 < command.length) {
-      i++; // skip escaped char inside double quotes
-      continue;
-    }
-    if (inSingle) continue;
-
-    // Backslash escape outside quotes — `\$(date)`, `` \`pwd\` ``, `\${X}`
-    // are literal text in bash, NOT command substitution. Skip both the
-    // backslash and the escaped char so the next iteration doesn't see the
-    // dollar/backtick/brace and falsely flag.
-    if (c === '\\' && i + 1 < command.length) {
-      i++;
-      continue;
-    }
-
-    // Backtick command substitution
-    if (c === '`') {
-      const end = command.indexOf('`', i + 1);
-      const snippet = command.slice(
-        i,
-        end > 0 ? end + 1 : Math.min(command.length, i + 20),
-      );
-      return {
-        pattern: 'backtick command substitution',
-        snippet,
-        suggestion:
-          "Claude Code's expansion guard always prompts on backticks. " +
-          'Run the inner command in a prior Bash call and inline the literal output, ' +
-          "or use a temp file (write the value with a heredoc that uses <<'EOF', then read it).",
-      };
-    }
-
-    // $(...) command substitution
-    if (c === '$' && command[i + 1] === '(') {
-      // Find matching close paren — naive (no nested-paren tracking, but good enough for snippet)
-      const end = command.indexOf(')', i + 2);
-      const snippet = command.slice(
-        i,
-        end > 0 ? end + 1 : Math.min(command.length, i + 30),
-      );
-      return {
-        pattern: '$(...) command substitution',
-        snippet,
-        suggestion:
-          "Claude Code's expansion guard always prompts on $(...). " +
-          'Run the inner command in a prior Bash call and inline the literal output. ' +
-          'Example: instead of `git -C "$(git rev-parse --show-toplevel)" status`, ' +
-          'first call `git rev-parse --show-toplevel` to get the path, then call `git -C /actual/path status`.',
-      };
-    }
-
-    // ${VAR:-default} / ${VAR:+...} / ${VAR:?...} / ${VAR:=...} parameter expansion
-    if (c === '$' && command[i + 1] === '{') {
-      const end = command.indexOf('}', i + 2);
-      if (end > 0) {
-        const expr = command.slice(i + 2, end);
-        // Operators: :- (default), :+ (alt), :? (error), := (assign-default)
-        if (/:[-+?=]/.test(expr)) {
-          return {
-            pattern: '${VAR:-default} parameter expansion',
-            snippet: command.slice(i, end + 1),
-            suggestion:
-              "Claude Code's expansion guard always prompts on ${VAR:-default} (and :+, :?, := variants). " +
-              'Use plain $VAR (and ensure the variable is set in your shell), or pre-resolve to a literal value. ' +
-              'Example: instead of `cd "${TMPDIR:-/tmp}"`, just use `cd /tmp` (or `cd "$TMPDIR"` if you know it is set).',
-          };
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
 /**
  * Make an allow/deny/passthrough decision for a bash command.
  *
  * Algorithm:
- *   0. Pre-check: forced-prompt patterns ($()/backticks/${VAR:-default})
- *      — Claude Code's expansion guard always prompts on these. Deny early
- *        with a clear suggestion so the agent rewrites without expansion
- *        instead of forcing an interactive prompt.
- *      — Skipped when GSD_HOOK_ALLOW_EXPANSION=1.
  *   1. Decompose command into sub-commands
  *   2. For each sub-command: check deny patterns FIRST (deny-first)
  *   3. If any sub-command matches deny -> return {decision: 'deny', reason}
@@ -1561,19 +1361,6 @@ function decide(command, settings) {
     (settings && settings.permissions && settings.permissions.allow) || [];
   const denyPatterns =
     (settings && settings.permissions && settings.permissions.deny) || [];
-
-  // ── Step 0: Forced-prompt pre-check ──────────────────────────────────────
-  const forced = detectForcedPromptPattern(command);
-  if (forced) {
-    return {
-      decision: 'deny',
-      reason:
-        `Command uses ${forced.pattern} (in "${forced.snippet}"), which triggers ` +
-        `Claude Code's expansion guard and forces a permission prompt regardless of allowlist. ` +
-        `${forced.suggestion} ` +
-        `(Bypass: set GSD_HOOK_ALLOW_EXPANSION=1 in this hook's environment.)`,
-    };
-  }
 
   const subCommands = decomposeCommand(command);
 
@@ -1723,8 +1510,6 @@ module.exports = {
   commandMatchesPattern,
   loadMergedSettings,
   decide,
-  detectForcedPromptPattern,
-  hasNonQuantifierBraces,
   HEREDOC_START_RE,
   WRAPPER_COMMANDS,
   _skipShellValue,
