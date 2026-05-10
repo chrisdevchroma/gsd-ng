@@ -14,14 +14,15 @@ Read all files referenced by the invoking prompt's execution_context before star
 Gather todo data from CLI:
 
 ```bash
+mkdir -p $TMPDIR
 AREA_FILTER=""
 if [[ -n "$ARGUMENTS" ]]; then AREA_FILTER="$ARGUMENTS"; fi
-TODOS_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" list-todos $AREA_FILTER)
-RECURRING_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" recurring-due)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" list-todos $AREA_FILTER > $TMPDIR/check-todos-todos.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" recurring-due > $TMPDIR/check-todos-recurring.json
 PENDING_DIR=".planning/todos/pending"
 ```
 
-Parse `TODOS_JSON`: extract `count` and `todos` array.
+Read `$TMPDIR/check-todos-todos.json`: extract `count` and `todos` array. Read `$TMPDIR/check-todos-recurring.json` for the recurring todos due.
 
 If `count` is 0 and recurring count is 0:
 ```
@@ -123,12 +124,19 @@ Mark the recommended option by placing it FIRST in the options list and appendin
 
 ```bash
 # Read context percentage from statusline bridge file
-SESSION_ID=$(echo "$ARGUMENTS" | grep -oP '(?<=session_id=)\S+' 2>/dev/null || echo "")
+mkdir -p $TMPDIR
+echo "$ARGUMENTS" > $TMPDIR/check-todos-args.txt
+grep -oP '(?<=session_id=)\S+' $TMPDIR/check-todos-args.txt > $TMPDIR/check-todos-session.txt 2>/dev/null || true
+SESSION_ID=""
+if [ -s $TMPDIR/check-todos-session.txt ]; then read SESSION_ID < $TMPDIR/check-todos-session.txt; fi
 CONTEXT_PCT=0
 if [[ -n "$SESSION_ID" ]]; then
   BRIDGE_FILE="/tmp/claude-ctx-${SESSION_ID}.json"
   if [[ -f "$BRIDGE_FILE" ]]; then
-    CONTEXT_PCT=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('$BRIDGE_FILE','utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}")
+    # TODO(60.1-PATTERN-G): see Plan 08 catalog — statusline bridge file is Claude-specific
+    # and advisory; defaults to 0 if file missing or malformed. Single caller, narrow scope.
+    node -e "try{const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}" "$BRIDGE_FILE" > $TMPDIR/check-todos-pct.txt
+    read CONTEXT_PCT < $TMPDIR/check-todos-pct.txt
   fi
 fi
 ```

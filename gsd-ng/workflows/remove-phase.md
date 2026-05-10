@@ -29,17 +29,18 @@ Exit.
 Load phase operation context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${target}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${target}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${target}" > $TMPDIR/remove-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/remove-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${target}" > $TMPDIR/remove-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/remove-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract: `phase_found`, `phase_dir`, `phase_number`, `commit_docs`, `roadmap_exists`.
+Read `$TMPDIR/remove-phase-init.json` and extract: `phase_found`, `phase_dir`, `phase_number`, `commit_docs`, `roadmap_exists`.
 
 Also read STATE.md and ROADMAP.md content for parsing current position.
 </step>
@@ -86,13 +87,13 @@ Wait for confirmation.
 **Delegate the entire removal operation to gsd-tools:**
 
 ```bash
-RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase remove "${target}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase remove "${target}" > $TMPDIR/remove-phase-result.json
 ```
 
 If the phase has executed plans (SUMMARY.md files), gsd-tools will error. Use `--force` only if the user confirms:
 
 ```bash
-RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase remove "${target}" --force)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase remove "${target}" --force > $TMPDIR/remove-phase-result.json
 ```
 
 The CLI handles:
@@ -102,7 +103,7 @@ The CLI handles:
 - Updating ROADMAP.md (removing section, renumbering all phase references, updating dependencies)
 - Updating STATE.md (decrementing phase count)
 
-Extract from result: `removed`, `directory_deleted`, `renamed_directories`, `renamed_files`, `roadmap_updated`, `state_updated`.
+Read `$TMPDIR/remove-phase-result.json` and extract: `removed`, `directory_deleted`, `renamed_directories`, `renamed_files`, `roadmap_updated`, `state_updated`.
 </step>
 
 <step name="commit">

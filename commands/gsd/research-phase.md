@@ -34,23 +34,25 @@ Normalize phase input in step 1 before any directory lookups.
 ## 0. Initialize Context
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "$ARGUMENTS")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "$ARGUMENTS" > $TMPDIR/research-phase-cmd-init.json
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`.
+Extract from `$TMPDIR/research-phase-cmd-init.json`: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`.
 
 Resolve researcher model:
 ```bash
-RESEARCHER_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-phase-researcher)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-phase-researcher > $TMPDIR/research-phase-cmd-researcher-model.txt
+read RESEARCHER_MODEL < $TMPDIR/research-phase-cmd-researcher-model.txt
 ```
 
 ## 1. Validate Phase
 
 ```bash
-PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${phase_number}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${phase_number}" > $TMPDIR/research-phase-cmd-phase-info.json
 ```
 
-**If `found` is false:** Error and exit. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
+**If `found` is false:** Error and exit. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from `$TMPDIR/research-phase-cmd-phase-info.json`.
 
 ## 2. Check Existing Research
 

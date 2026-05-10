@@ -17,17 +17,41 @@ Read all files referenced by the invoking prompt's execution_context before star
 Load all context in one call (paths only to minimize orchestrator context):
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE" > $TMPDIR/plan-phase-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/plan-phase-init.json 2>/dev/null || {
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE" > $TMPDIR/plan-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/plan-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
-fi
+}
 ```
 
 Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_enabled`, `plan_checker_enabled`, `nyquist_validation_enabled`, `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `plan_count`, `planning_exists`, `roadmap_exists`, `phase_req_ids`.
+
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json planning_exists > $TMPDIR/plan-phase-planning_exists.txt
+read PLANNING_EXISTS < $TMPDIR/plan-phase-planning_exists.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json phase_dir > $TMPDIR/plan-phase-phase_dir.txt
+read PHASE_DIR < $TMPDIR/plan-phase-phase_dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json phase_number > $TMPDIR/plan-phase-phase_number.txt
+read PHASE_NUMBER < $TMPDIR/plan-phase-phase_number.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json phase_name > $TMPDIR/plan-phase-phase_name.txt
+read PHASE_NAME < $TMPDIR/plan-phase-phase_name.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json padded_phase > $TMPDIR/plan-phase-padded_phase.txt
+read PADDED_PHASE < $TMPDIR/plan-phase-padded_phase.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json phase_slug > $TMPDIR/plan-phase-phase_slug.txt
+read PHASE_SLUG < $TMPDIR/plan-phase-phase_slug.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json has_research > $TMPDIR/plan-phase-has_research.txt
+read HAS_RESEARCH < $TMPDIR/plan-phase-has_research.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json research_enabled > $TMPDIR/plan-phase-research_enabled.txt
+read RESEARCH_ENABLED < $TMPDIR/plan-phase-research_enabled.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json plan_checker_enabled > $TMPDIR/plan-phase-plan_checker_enabled.txt
+read PLAN_CHECKER_ENABLED < $TMPDIR/plan-phase-plan_checker_enabled.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json commit_docs > $TMPDIR/plan-phase-commit_docs.txt
+read COMMIT_DOCS < $TMPDIR/plan-phase-commit_docs.txt
+```
 
 **File paths (for <files_to_read> blocks):** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`, `verification_path`, `uat_path`. These are null if files don't exist.
 
@@ -43,7 +67,7 @@ Extract `--prd <filepath>` from $ARGUMENTS. If present, set PRD_FILE to the file
 
 **If `phase_found` is false:** Validate phase exists in ROADMAP.md. If valid, create the directory using `phase_slug` and `padded_phase` from init:
 ```bash
-mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
+mkdir -p ".planning/phases/${PADDED_PHASE}-${PHASE_SLUG}"
 ```
 
 **Existing artifacts from init:** `has_research`, `has_plans`, `plan_count`.
@@ -51,7 +75,8 @@ mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
 ## 3. Validate Phase
 
 ```bash
-PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE" > $TMPDIR/plan-phase-phase_info.txt
+read PHASE_INFO < $TMPDIR/plan-phase-phase_info.txt
 ```
 
 **If `found` is false:** Error with available phases. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
@@ -64,7 +89,8 @@ PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${
 
 1. Read the PRD file:
 ```bash
-PRD_CONTENT=$(cat "$PRD_FILE" 2>/dev/null)
+cat "$PRD_FILE" 2>/dev/null > $TMPDIR/plan-phase-prd_content.txt
+read PRD_CONTENT < $TMPDIR/plan-phase-prd_content.txt
 if [ -z "$PRD_CONTENT" ]; then
   echo "Error: PRD file not found: $PRD_FILE"
   exit 1
@@ -153,7 +179,7 @@ Use full relative paths. Group by topic area.]
 
 5. Commit:
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(${padded_phase}): generate context from PRD" --files "${phase_dir}/${padded_phase}-CONTEXT.md"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(${PADDED_PHASE}): generate context from PRD" --files "${PHASE_DIR}/${PADDED_PHASE}-CONTEXT.md"
 ```
 
 6. Set `context_content` to the generated CONTEXT.md content and continue to step 5 (Handle Research).
@@ -166,9 +192,14 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(${padded_phase}): gen
 
 Check `context_path` from init JSON.
 
-If `context_path` is not null, display: `Using phase context from: ${context_path}`
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json context_path > $TMPDIR/plan-phase-context_path.txt
+read CONTEXT_PATH < $TMPDIR/plan-phase-context_path.txt
+```
 
-**If `context_path` is null (no CONTEXT.md exists):**
+If `CONTEXT_PATH` is not null/empty, display: `Using phase context from: ${CONTEXT_PATH}`
+
+**If `CONTEXT_PATH` is null/empty (no CONTEXT.md exists):**
 
 Use AskUserQuestion:
 - header: "No context"
@@ -188,7 +219,8 @@ When discuss-phase is skipped, scan pending todos for keyword overlap with the p
 
 Read the phase goal:
 ```bash
-PHASE_GOAL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick goal --default "" 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE" --pick goal --default "" > $TMPDIR/plan-phase-phase_goal.txt 2>/dev/null
+read PHASE_GOAL < $TMPDIR/plan-phase-phase_goal.txt
 ```
 
 If `$PHASE_GOAL` is empty or `ls .planning/todos/pending/*.md 2>/dev/null` returns no files, skip silently and continue to step 5.
@@ -220,7 +252,7 @@ AskUserQuestion(
 
 For each selected todo (not "None of these"):
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$SELECTED_FILE" --field phase --value "${PHASE}"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$SELECTED_FILE" --field phase --value "$PHASE"
 ```
 
 Log: `Linked todo: $SELECTED_FILE -> Phase ${PHASE}`
@@ -229,7 +261,7 @@ Log: `Linked todo: $SELECTED_FILE -> Phase ${PHASE}`
 
 For each linked todo in auto mode:
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "${PHASE}"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set ".planning/todos/pending/$FILE" --field phase --value "$PHASE"
 ```
 
 Continue to step 5.
@@ -249,7 +281,8 @@ Display banner:
 ```
 
 ```bash
-PHASE_DESC=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE" > $TMPDIR/plan-phase-phase_desc.txt
+read PHASE_DESC < $TMPDIR/plan-phase-phase_desc.txt
 ```
 
 Gap research prompt:
@@ -336,7 +369,8 @@ Display banner:
 ### Spawn gsd-phase-researcher
 
 ```bash
-PHASE_DESC=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE" > $TMPDIR/plan-phase-phase_desc2.txt
+read PHASE_DESC < $TMPDIR/plan-phase-phase_desc2.txt
 ```
 
 Research prompt:
@@ -415,8 +449,10 @@ test -f "${PHASE_DIR}/${PADDED_PHASE}-VALIDATION.md" && echo "VALIDATION_CREATED
 > Skip if `workflow.ui_phase` is explicitly `false` AND `workflow.ui_safety_gate` is explicitly `false` in `.planning/config.json`. If keys are absent, treat as enabled.
 
 ```bash
-UI_PHASE_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_phase --default "true")
-UI_GATE_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_safety_gate --default "true")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_phase --default "true" > $TMPDIR/plan-phase-ui_phase_cfg.txt
+read UI_PHASE_CFG < $TMPDIR/plan-phase-ui_phase_cfg.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_safety_gate --default "true" > $TMPDIR/plan-phase-ui_gate_cfg.txt
+read UI_GATE_CFG < $TMPDIR/plan-phase-ui_gate_cfg.txt
 ```
 
 **If both are `false`:** Skip to step 6.
@@ -424,7 +460,8 @@ UI_GATE_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.
 Check if phase has frontend indicators:
 
 ```bash
-PHASE_SECTION=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE" > $TMPDIR/plan-phase-phase_section.txt 2>/dev/null
+read PHASE_SECTION < $TMPDIR/plan-phase-phase_section.txt
 echo "$PHASE_SECTION" | grep -iE "UI|interface|frontend|component|layout|page|screen|view|form|dashboard|widget" > /dev/null 2>&1
 HAS_UI=$?
 ```
@@ -433,7 +470,8 @@ HAS_UI=$?
 
 Check for existing UI-SPEC:
 ```bash
-UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
+ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1 > $TMPDIR/plan-phase-ui_spec_file.txt
+read UI_SPEC_FILE < $TMPDIR/plan-phase-ui_spec_file.txt
 ```
 
 **If UI-SPEC.md found:** Set `UI_SPEC_PATH=$UI_SPEC_FILE`. Display: `Using UI design contract: ${UI_SPEC_PATH}`
@@ -463,14 +501,22 @@ ls "${PHASE_DIR}"/*-PLAN.md 2>/dev/null
 Extract from INIT JSON:
 
 ```bash
-STATE_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" state_path)
-ROADMAP_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" roadmap_path)
-REQUIREMENTS_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" requirements_path)
-RESEARCH_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" research_path)
-VERIFICATION_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" verification_path)
-UAT_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" uat_path)
-CONTEXT_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" context_path)
-GAP_RESEARCH_PATH=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" gap_research_path)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json state_path > $TMPDIR/plan-phase-state_path.txt
+read STATE_PATH < $TMPDIR/plan-phase-state_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json roadmap_path > $TMPDIR/plan-phase-roadmap_path.txt
+read ROADMAP_PATH < $TMPDIR/plan-phase-roadmap_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json requirements_path > $TMPDIR/plan-phase-requirements_path.txt
+read REQUIREMENTS_PATH < $TMPDIR/plan-phase-requirements_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json research_path > $TMPDIR/plan-phase-research_path.txt
+read RESEARCH_PATH < $TMPDIR/plan-phase-research_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json verification_path > $TMPDIR/plan-phase-verification_path.txt
+read VERIFICATION_PATH < $TMPDIR/plan-phase-verification_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json uat_path > $TMPDIR/plan-phase-uat_path.txt
+read UAT_PATH < $TMPDIR/plan-phase-uat_path.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json context_path > $TMPDIR/plan-phase-context_path2.txt
+read CONTEXT_PATH < $TMPDIR/plan-phase-context_path2.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-phase-init.json gap_research_path > $TMPDIR/plan-phase-gap_research_path.txt
+read GAP_RESEARCH_PATH < $TMPDIR/plan-phase-gap_research_path.txt
 ```
 
 ## 7.5. Verify Nyquist Artifacts
@@ -485,7 +531,8 @@ Also skip if all of the following are true:
 In that no-research path, Nyquist artifacts are **not required** for this run.
 
 ```bash
-VALIDATION_EXISTS=$(ls "${PHASE_DIR}"/*-VALIDATION.md 2>/dev/null | head -1)
+ls "${PHASE_DIR}"/*-VALIDATION.md 2>/dev/null | head -1 > $TMPDIR/plan-phase-validation_exists.txt
+read VALIDATION_EXISTS < $TMPDIR/plan-phase-validation_exists.txt
 ```
 
 If missing and Nyquist is still enabled/applicable — ask user:
@@ -711,8 +758,10 @@ Check for auto-advance trigger:
    ```
 3. Read both the chain flag and user preference:
    ```bash
-   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
-   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/plan-phase-auto_chain.txt
+   read AUTO_CHAIN < $TMPDIR/plan-phase-auto_chain.txt
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false" > $TMPDIR/plan-phase-auto_cfg.txt
+   read AUTO_CFG < $TMPDIR/plan-phase-auto_cfg.txt
    ```
 
 **If `--auto` flag present OR `AUTO_CHAIN` is true OR `AUTO_CFG` is true:**

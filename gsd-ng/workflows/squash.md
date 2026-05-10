@@ -34,17 +34,18 @@ Display results and STOP.
 Load phase context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}" > $TMPDIR/squash-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/squash-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}" > $TMPDIR/squash-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/squash-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract PHASE_NUMBER, PHASE_NAME, PHASE_SLUG, TARGET_BRANCH, REMOTE from init JSON.
+Read `$TMPDIR/squash-init.json` and extract PHASE_NUMBER, PHASE_NAME, PHASE_SLUG, TARGET_BRANCH, REMOTE from init JSON.
 </step>
 
 <step name="select_strategy">
@@ -68,10 +69,11 @@ AskUserQuestion with options: "single", "per-plan", "logical"
 Always show dry run first:
 
 ```bash
-PREVIEW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} --dry-run)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} --dry-run > $TMPDIR/squash-preview.json
 ```
 
-Display the preview showing which commits will be grouped and what messages will be used.
+Read `$TMPDIR/squash-preview.json` to display the preview showing which commits will be grouped and what messages will be used.
 
 For 'logical' strategy: present the commit list and ask the user to specify groupings before proceeding. Parse user groupings, then use 'single' strategy applied to each group.
 
@@ -89,10 +91,11 @@ If "abort": STOP.
 Execute the squash:
 
 ```bash
-RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} ${ALLOW_STABLE_FLAG})
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" squash ${PHASE} --strategy ${STRATEGY} ${ALLOW_STABLE_FLAG} > $TMPDIR/squash-result.json
 ```
 
-Display the result including backup tag name.
+Read `$TMPDIR/squash-result.json` to display the result including backup tag name.
 </step>
 
 <step name="offer_push">
@@ -105,9 +108,13 @@ Push squashed branch with --force-with-lease?
 
 If yes:
 ```bash
-GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field git_cwd)
-PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field remote)
-BRANCH=$(git -C "$GIT_CWD" branch --show-current)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field git_cwd > $TMPDIR/squash-git-cwd.txt
+read GIT_CWD < $TMPDIR/squash-git-cwd.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context --field remote > $TMPDIR/squash-remote.txt
+read PUSH_REMOTE < $TMPDIR/squash-remote.txt
+git -C "$GIT_CWD" branch --show-current > $TMPDIR/squash-branch.txt
+read BRANCH < $TMPDIR/squash-branch.txt
 git -C "$GIT_CWD" push --force-with-lease "$PUSH_REMOTE" "$BRANCH"
 ```
 </step>

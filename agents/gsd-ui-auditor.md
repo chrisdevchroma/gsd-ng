@@ -82,11 +82,16 @@ This gate runs unconditionally on every audit. The .gitignore ensures screenshot
 ## Screenshot Capture (CLI only — no MCP, no persistent browser)
 
 ```bash
-# Check for running dev server
-DEV_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
+# Check for running dev server — redirect-then-read with fallback (Pattern E)
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 > $TMPDIR/ui-auditor-dev-status.txt 2>/dev/null || printf "000" > $TMPDIR/ui-auditor-dev-status.txt
+read DEV_STATUS < $TMPDIR/ui-auditor-dev-status.txt
+[ -z "$DEV_STATUS" ] && DEV_STATUS="000"
 
 if [ "$DEV_STATUS" = "200" ]; then
-  SCREENSHOT_DIR=".planning/ui-reviews/${PADDED_PHASE}-$(date +%Y%m%d-%H%M%S)"
+  # Compose timestamped screenshot dir — redirect-then-read for date (Pattern E)
+  date +%Y%m%d-%H%M%S > $TMPDIR/ui-auditor-stamp.txt
+  read STAMP < $TMPDIR/ui-auditor-stamp.txt
+  SCREENSHOT_DIR=".planning/ui-reviews/${PADDED_PHASE}-${STAMP}"
   mkdir -p "$SCREENSHOT_DIR"
 
   # Desktop

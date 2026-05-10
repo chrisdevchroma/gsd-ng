@@ -74,10 +74,12 @@ function detectWorkspaceType(cwd) {
   // 1. Check for git submodules
   if (fs.existsSync(path.join(cwd, '.gitmodules'))) {
     const submodulePaths = parseSubmodulePaths(path.join(cwd, '.gitmodules'));
+    const submodulePathsSummary = submodulePaths.join(', ') || 'none';
     return {
       type: 'submodule',
       signal: '.gitmodules',
       submodule_paths: submodulePaths,
+      submodule_paths_summary: submodulePathsSummary,
     };
   }
 
@@ -87,6 +89,7 @@ function detectWorkspaceType(cwd) {
       type: 'monorepo',
       signal: 'pnpm-workspace.yaml',
       submodule_paths: [],
+      submodule_paths_summary: 'none',
     };
   }
 
@@ -100,6 +103,7 @@ function detectWorkspaceType(cwd) {
           type: 'monorepo',
           signal: 'package.json#workspaces',
           submodule_paths: [],
+          submodule_paths_summary: 'none',
         };
       }
     } catch {
@@ -108,7 +112,12 @@ function detectWorkspaceType(cwd) {
   }
 
   // 4. Default: standalone
-  return { type: 'standalone', signal: null, submodule_paths: [] };
+  return {
+    type: 'standalone',
+    signal: null,
+    submodule_paths: [],
+    submodule_paths_summary: 'none',
+  };
 }
 
 // ─── Memory section generation ────────────────────────────────────────────────
@@ -227,6 +236,7 @@ function generateMemoryMd(cwd) {
     groups[groupName].push({ filename, description });
   }
 
+  /* c8 ignore next 3 — unreachable: groups is populated by the loop above whenever files.length > 0, which is already guarded earlier */
   if (Object.keys(groups).length === 0) {
     return '';
   }
@@ -434,6 +444,7 @@ function resolveGitContext(cwd) {
       {};
     // Merged: global git fields as base, per-submodule overrides on top
     configSubmodule = { ...globalGit, ...perSubmodule };
+    /* c8 ignore next 3 — unreachable: parsedConfig is plain JSON.parse output; property access on .git/.submodules cannot throw without internal mocking */
   } catch {
     // Defaults — parsedConfig is empty when config missing or malformed
   }

@@ -308,12 +308,20 @@ Verified patterns from official sources:
 Orchestrator provides: phase number/name, description/goal, requirements, constraints, output path.
 - Phase requirement IDs (e.g., AUTH-01, AUTH-02) — the specific requirements this phase MUST address
 
-Load phase context using init command:
+Load phase context using init command (Pattern A — redirect-to-file, then init-get-from-file for each field):
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}" > $TMPDIR/phase-researcher-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/phase-researcher-init.json phase_dir > $TMPDIR/phase-researcher-phase-dir.txt
+read phase_dir < $TMPDIR/phase-researcher-phase-dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/phase-researcher-init.json padded_phase > $TMPDIR/phase-researcher-padded.txt
+read padded_phase < $TMPDIR/phase-researcher-padded.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/phase-researcher-init.json phase_number > $TMPDIR/phase-researcher-num.txt
+read phase_number < $TMPDIR/phase-researcher-num.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/phase-researcher-init.json commit_docs > $TMPDIR/phase-researcher-commit-docs.txt
+read commit_docs < $TMPDIR/phase-researcher-commit-docs.txt
 ```
 
-Extract from init JSON: `phase_dir`, `padded_phase`, `phase_number`, `commit_docs`.
+Extracted fields from the init JSON: `phase_dir`, `padded_phase`, `phase_number`, `commit_docs`.
 
 Also read `.planning/config.json` — include Validation Architecture section in RESEARCH.md unless `workflow.nyquist_validation` is explicitly `false`. If the key is absent or `true`, include the section.
 

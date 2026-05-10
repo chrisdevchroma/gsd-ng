@@ -829,15 +829,18 @@ ls .planning/debug/*.md 2>/dev/null | grep -v resolved
 Check if the prompt/description contains `--todo-file`:
 ```bash
 ORIGIN_TODO_FILE=""
-# Extract --todo-file value from the debug description/prompt
+# Extract --todo-file value from the debug description/prompt — redirect-then-read (Pattern E)
 if echo "$DESCRIPTION" | grep -q -- '--todo-file'; then
-  ORIGIN_TODO_FILE=$(echo "$DESCRIPTION" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
-  DESCRIPTION=$(echo "$DESCRIPTION" | sed 's/--todo-file [^ ]*//' | xargs)
+  printf "%s" "$DESCRIPTION" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p' > $TMPDIR/debugger-origin-todo-file.txt
+  read ORIGIN_TODO_FILE < $TMPDIR/debugger-origin-todo-file.txt || ORIGIN_TODO_FILE=""
+  printf "%s" "$DESCRIPTION" | sed 's/--todo-file [^ ]*//' | xargs > $TMPDIR/debugger-description.txt
+  read DESCRIPTION < $TMPDIR/debugger-description.txt || DESCRIPTION=""
 fi
 
 ORIGIN_TODO_TITLE=""
 if [[ -n "$ORIGIN_TODO_FILE" ]]; then
-  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+  grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' > $TMPDIR/debugger-origin-todo-title.txt || true
+  read ORIGIN_TODO_TITLE < $TMPDIR/debugger-origin-todo-title.txt || ORIGIN_TODO_TITLE=""
 fi
 ```
 
@@ -1031,7 +1034,7 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 **Check planning config using state load (commit_docs is available from the output):**
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load > $TMPDIR/debugger-init.json
 # commit_docs is in the JSON output
 ```
 
@@ -1093,7 +1096,8 @@ Perform lightweight verification: does the Resolution section's root_cause and f
 **In auto mode** (goal: find_and_fix with auto-close):
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/debugger-auto-cfg.txt
+read AUTO_CFG < $TMPDIR/debugger-auto-cfg.txt
 ```
 
 If `$AUTO_CFG` is `"true"` AND lightweight verification passes:
@@ -1128,63 +1132,78 @@ Set `ORIGIN_CLOSED=true` after origin todo is closed (either auto or interactive
 Fire when `$ORIGIN_TODO_FILE` is set AND `$ORIGIN_CLOSED` is `true`.
 
 **Step 1 — Read outbound links from origin todo (now in completed/):**
+
+Outbound links are written to `$TMPDIR/debugger-related-outbound.txt` (one filename per line, possibly empty).
+
 ```bash
-RELATED_OUTBOUND=""
+: > $TMPDIR/debugger-related-outbound.txt
 if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   # Origin was just closed — check completed/ first, then pending/ as fallback
   ORIGIN_PATH=".planning/todos/completed/$ORIGIN_TODO_FILE"
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
-  if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "" > $TMPDIR/debugger-related-outbound.txt
+  # Drop literal "null" if helper returned it
+  grep -v '^null$' $TMPDIR/debugger-related-outbound.txt > $TMPDIR/debugger-related-outbound-2.txt || true
+  mv $TMPDIR/debugger-related-outbound-2.txt $TMPDIR/debugger-related-outbound.txt
 fi
 ```
 
 **Step 2 — Scan all pending todos for inbound links to origin:**
+
+Inbound links are written to `$TMPDIR/debugger-related-inbound.txt` (one basename per line).
+
 ```bash
-RELATED_INBOUND=""
+: > $TMPDIR/debugger-related-inbound.txt
 PENDING_DIR=".planning/todos/pending"
 if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   for TODO_FILE in "$PENDING_DIR"/*.md; do
     [[ -f "$TODO_FILE" ]] || continue
-    TODO_BASENAME=$(basename "$TODO_FILE")
+    basename "$TODO_FILE" > $TMPDIR/debugger-todo-basename.txt
+    read TODO_BASENAME < $TMPDIR/debugger-todo-basename.txt
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
     if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --default "" 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
-      RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
+      printf "%s\n" "$TODO_BASENAME" >> $TMPDIR/debugger-related-inbound.txt
     fi
   done
 fi
 ```
 
 **Step 3 — Deduplicate and filter (only pending/ files):**
+
+Combined unique list goes to `$TMPDIR/debugger-related-all.txt`.
+
 ```bash
-RELATED_ALL=""
-if [[ -n "$RELATED_OUTBOUND" ]] || [[ -n "$RELATED_INBOUND" ]]; then
-  RELATED_ALL=$(printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
-    [[ -z "$REL_FILE" ]] && continue
-    [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
-    if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
-      echo "$REL_FILE"
-    fi
-  done)
+: > $TMPDIR/debugger-related-all.txt
+if [[ -s $TMPDIR/debugger-related-outbound.txt ]] || [[ -s $TMPDIR/debugger-related-inbound.txt ]]; then
+  cat $TMPDIR/debugger-related-outbound.txt $TMPDIR/debugger-related-inbound.txt 2>/dev/null \
+    | sort -u \
+    | while read -r REL_FILE; do
+        [[ -z "$REL_FILE" ]] && continue
+        [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
+        if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
+          echo "$REL_FILE"
+        fi
+      done > $TMPDIR/debugger-related-all.txt
 fi
 ```
 
 **Step 4 — Present for closure (auto or interactive):**
 
-If `$RELATED_ALL` is non-empty:
+If `$TMPDIR/debugger-related-all.txt` is non-empty:
 
 **Auto mode:**
 ```bash
 if [[ "$AUTO_CFG" == "true" ]]; then
-  printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
+  while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
-    REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+    grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"' > $TMPDIR/debugger-rel-title.txt || true
+    read REL_TITLE < $TMPDIR/debugger-rel-title.txt || REL_TITLE=""
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after debug resolution" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"
-  done
+  done < $TMPDIR/debugger-related-all.txt
 fi
 ```
 

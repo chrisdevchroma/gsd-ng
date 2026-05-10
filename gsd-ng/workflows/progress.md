@@ -12,40 +12,70 @@ Read all files referenced by the invoking prompt's execution_context before star
 Gather all data from CLI in minimal calls:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init progress)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init progress > $TMPDIR/progress-init.json
+if ! node "./.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/progress-init.json 2>/dev/null; then
+  node "./.claude/gsd-ng/bin/gsd-tools.cjs" init progress > $TMPDIR/progress-init.json
+  if ! node "./.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/progress-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract from INIT JSON: `project_exists`, `roadmap_exists`, `state_exists`, `current_phase`, `next_phase`, `milestone_version`, `completed_count`, `phase_count`, `paused_at`, `state_path`, `roadmap_path`, `project_path`.
-
-If `project_exists` is false: "No planning structure found. Run {{COMMAND_PREFIX}}new-project to start." Exit.
-If ROADMAP.md missing but PROJECT.md exists: Go to **Route F** (between milestones).
+Extract fields from `$TMPDIR/progress-init.json` using `init-get-from-file` (one call per field, output redirected to a temp file, then read into a shell var with the `read` builtin):
 
 ```bash
-ROADMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze)
-
-STATE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot)
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json project_exists > $TMPDIR/progress-project_exists.txt
+read PROJECT_EXISTS < $TMPDIR/progress-project_exists.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json roadmap_exists > $TMPDIR/progress-roadmap_exists.txt
+read ROADMAP_EXISTS < $TMPDIR/progress-roadmap_exists.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json state_exists > $TMPDIR/progress-state_exists.txt
+read STATE_EXISTS < $TMPDIR/progress-state_exists.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json current_phase > $TMPDIR/progress-current_phase.txt
+read CURRENT_PHASE < $TMPDIR/progress-current_phase.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json next_phase > $TMPDIR/progress-next_phase.txt
+read NEXT_PHASE < $TMPDIR/progress-next_phase.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json milestone_version > $TMPDIR/progress-milestone_version.txt
+read MILESTONE_VERSION < $TMPDIR/progress-milestone_version.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json completed_count > $TMPDIR/progress-completed_count.txt
+read COMPLETED_COUNT < $TMPDIR/progress-completed_count.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json phase_count > $TMPDIR/progress-phase_count.txt
+read PHASE_COUNT < $TMPDIR/progress-phase_count.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json paused_at > $TMPDIR/progress-paused_at.txt
+read PAUSED_AT < $TMPDIR/progress-paused_at.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json state_path > $TMPDIR/progress-state_path.txt
+read STATE_PATH < $TMPDIR/progress-state_path.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json roadmap_path > $TMPDIR/progress-roadmap_path.txt
+read ROADMAP_PATH < $TMPDIR/progress-roadmap_path.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/progress-init.json project_path > $TMPDIR/progress-project_path.txt
+read PROJECT_PATH < $TMPDIR/progress-project_path.txt
 ```
 
-All structured data is now in INIT, ROADMAP, and STATE JSON variables. No manual file reading or parsing needed.
+If `$PROJECT_EXISTS` is `false`: "No planning structure found. Run {{COMMAND_PREFIX}}new-project to start." Exit.
+If ROADMAP.md missing but PROJECT.md exists: Go to **Route F** (between milestones).
+
+Capture roadmap and state snapshots to files — no command-substitution capture, the workflow reads the JSON directly off disk when it needs a field:
+
+```bash
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze > $TMPDIR/progress-roadmap.json
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot > $TMPDIR/progress-state.json
+```
+
+All structured data is now in `$TMPDIR/progress-init.json`, `$TMPDIR/progress-roadmap.json`, and `$TMPDIR/progress-state.json`. Read fields out with `init-get-from-file` (or `frontmatter get` for `.md`-based fallbacks) — no command-substitution capture needed.
 </step>
 
 <step name="recent">
 Find the 2-3 most recent SUMMARY.md files and extract one-liners:
 
 ```bash
-RECENT_SUMMARIES=$(ls -t .planning/phases/*/*-SUMMARY.md 2>/dev/null | head -3)
+ls -t .planning/phases/*/*-SUMMARY.md 2>/dev/null | head -3 > $TMPDIR/progress-recent-summaries.txt
 ```
 
-For each summary file, extract the one-liner:
+Read `$TMPDIR/progress-recent-summaries.txt` line-by-line and, for each path, extract the one-liner:
+
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields one_liner
 ```
 </step>
 
@@ -63,7 +93,8 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract <path> --fields on
 
 ```bash
 # Get formatted progress bar
-PROGRESS_BAR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" progress bar)
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" progress bar > $TMPDIR/progress-bar.txt
+read PROGRESS_BAR < $TMPDIR/progress-bar.txt
 ```
 
 Present:

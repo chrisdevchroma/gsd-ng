@@ -44,10 +44,11 @@ When a milestone completes:
 **Use `roadmap analyze` for comprehensive readiness check:**
 
 ```bash
-ROADMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze > $TMPDIR/complete-milestone-roadmap.json
 ```
 
-This returns all phases with plan/summary counts and disk status. Use this to verify:
+Read `$TMPDIR/complete-milestone-roadmap.json` — it contains all phases with plan/summary counts and disk status. Use this to verify:
 - Which phases belong to this milestone?
 - All phases complete (all plans have summaries)? Check `disk_status === 'complete'` for each.
 - `progress_percent` should be 100%.
@@ -371,8 +372,11 @@ Update `.planning/ROADMAP.md` — group completed milestone phases:
 **Delegate archival to gsd-tools:**
 
 ```bash
-ARCHIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" milestone complete "v[X.Y]" --name "[Milestone Name]")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" milestone complete "v[X.Y]" --name "[Milestone Name]" > $TMPDIR/complete-milestone-archive.json
 ```
+
+Read `$TMPDIR/complete-milestone-archive.json` to extract `version`, `date`, `phases`, `plans`, `tasks`, `accomplishments`, `archived`.
 
 The CLI handles:
 - Creating `.planning/milestones/` directory
@@ -381,8 +385,6 @@ The CLI handles:
 - Moving audit file to milestones if it exists
 - Creating/appending MILESTONES.md entry with accomplishments from SUMMARY.md files
 - Updating STATE.md (status, last activity)
-
-Extract from result: `version`, `date`, `phases`, `plans`, `tasks`, `accomplishments`, `archived`.
 
 Verify: `✅ Milestone archived to .planning/milestones/`
 
@@ -532,10 +534,11 @@ Check branching strategy and offer merge options.
 Use `init milestone-op` for context, or load config directly:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op > $TMPDIR/complete-milestone-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/complete-milestone-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op > $TMPDIR/complete-milestone-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/complete-milestone-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
@@ -543,33 +546,42 @@ fi
 ```
 
 ```bash
-# Load git config for branch handling (read from $INIT so per-submodule overrides apply)
-BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy 2>/dev/null)
-TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch 2>/dev/null)
-COMMIT_DOCS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" commit_docs 2>/dev/null)
+# Load git config for branch handling (read from init JSON so per-submodule overrides apply)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json branching_strategy > $TMPDIR/complete-milestone-branching-strategy.txt 2>/dev/null
+read BRANCHING_STRATEGY < $TMPDIR/complete-milestone-branching-strategy.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json target_branch > $TMPDIR/complete-milestone-target-branch.txt 2>/dev/null
+read TARGET_BRANCH < $TMPDIR/complete-milestone-target-branch.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json commit_docs > $TMPDIR/complete-milestone-commit-docs.txt 2>/dev/null
+read COMMIT_DOCS < $TMPDIR/complete-milestone-commit-docs.txt
 ```
 
 Note: `config-get` returns the value directly as a scalar string by default. If the key doesn't exist (old config without git section), the `|| echo` fallback provides the default.
 
 Extract `branching_strategy`, `phase_branch_template`, `milestone_branch_template`, `target_branch`, and `commit_docs` from init JSON.
 
-**Submodule-aware routing:** Extract submodule context from `$INIT`:
+**Submodule-aware routing:** Extract submodule context from the init JSON:
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active 2>/dev/null)
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd 2>/dev/null)
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json submodule_is_active > $TMPDIR/complete-milestone-submod-active.txt 2>/dev/null
+read SUBMODULE_IS_ACTIVE < $TMPDIR/complete-milestone-submod-active.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json submodule_git_cwd > $TMPDIR/complete-milestone-submod-cwd.txt 2>/dev/null
+read SUBMODULE_GIT_CWD < $TMPDIR/complete-milestone-submod-cwd.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json submodule_ambiguous > $TMPDIR/complete-milestone-submod-ambig.txt 2>/dev/null
+read SUBMODULE_AMBIGUOUS < $TMPDIR/complete-milestone-submod-ambig.txt
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branch routing cannot be determined. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths 2>/dev/null)
-  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | jq 'length' 2>/dev/null || echo 0)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json ambiguous_paths > $TMPDIR/complete-milestone-ambig-paths.json 2>/dev/null
+  jq 'length' $TMPDIR/complete-milestone-ambig-paths.json > $TMPDIR/complete-milestone-ambig-count.txt 2>/dev/null || echo 0 > $TMPDIR/complete-milestone-ambig-count.txt
+  read AMBIGUOUS_COUNT < $TMPDIR/complete-milestone-ambig-count.txt
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
-    PATH1=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[0] // ""' 2>/dev/null)
-    PATH2=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[1] // ""' 2>/dev/null)
+    jq -r '.[0] // ""' $TMPDIR/complete-milestone-ambig-paths.json > $TMPDIR/complete-milestone-path1.txt 2>/dev/null
+    read PATH1 < $TMPDIR/complete-milestone-path1.txt
+    jq -r '.[1] // ""' $TMPDIR/complete-milestone-ambig-paths.json > $TMPDIR/complete-milestone-path2.txt 2>/dev/null
+    read PATH2 < $TMPDIR/complete-milestone-path2.txt
     AskUserQuestion(
       question="Multiple submodules have changes. Which submodule(s) should be branched?",
       options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
@@ -579,12 +591,12 @@ if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
   else
     # 3+ ambiguous paths: text list + binary choice
     echo "Multiple submodules have changes:"
-    echo "$AMBIGUOUS_PATHS" | jq -r '.[] | "  - " + .' 2>/dev/null
+    jq -r '.[] | "  - " + .' $TMPDIR/complete-milestone-ambig-paths.json 2>/dev/null
     AskUserQuestion(
       question="Multiple submodules have uncommitted changes. How should branching proceed?",
       options=["Branch all of them", "Skip branching"]
     )
-    # If "Branch all of them": loop gitcmd over all paths in AMBIGUOUS_PATHS
+    # If "Branch all of them": loop gitcmd over all paths in $TMPDIR/complete-milestone-ambig-paths.json
     # If "Skip branching": skip to git_tag
   fi
 fi
@@ -606,7 +618,8 @@ fi
 ```bash
 # Effective target branch: use submodule target branch when in submodule context
 if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
-  SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch 2>/dev/null)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/complete-milestone-init.json submodule_target_branch > $TMPDIR/complete-milestone-submod-target-branch.txt 2>/dev/null
+  read SUBMODULE_TARGET_BRANCH < $TMPDIR/complete-milestone-submod-target-branch.txt
   EFFECTIVE_TARGET_BRANCH="$SUBMODULE_TARGET_BRANCH"
 else
   EFFECTIVE_TARGET_BRANCH="$TARGET_BRANCH"
@@ -618,16 +631,32 @@ fi
 
 **For "phase" strategy:**
 
+The branch prefix is everything before the first `{` placeholder in `$PHASE_BRANCH_TEMPLATE` (e.g. `gsd/phase-{phase}-{slug}` → `gsd/phase-`). Use a sed program written to a file so the inline single-quoted braces never appear in the bash command itself:
+
 ```bash
-BRANCH_PREFIX=$(echo "$PHASE_BRANCH_TEMPLATE" | sed 's/{.*//')
-PHASE_BRANCHES=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ')
+mkdir -p $TMPDIR
+printf "%s\n" "s/[{].*//" > $TMPDIR/complete-milestone-strip-placeholder.sed
+echo "$PHASE_BRANCH_TEMPLATE" | sed -f $TMPDIR/complete-milestone-strip-placeholder.sed > $TMPDIR/complete-milestone-branch-prefix.txt
+read BRANCH_PREFIX < $TMPDIR/complete-milestone-branch-prefix.txt
+printf "%s\n" "s/^\\*//" > $TMPDIR/complete-milestone-strip-star.sed
+gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed -f $TMPDIR/complete-milestone-strip-star.sed | tr -d ' ' > $TMPDIR/complete-milestone-phase-branches.txt
+PHASE_BRANCHES=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  if [ -z "$PHASE_BRANCHES" ]; then PHASE_BRANCHES="$line"; else PHASE_BRANCHES="$PHASE_BRANCHES $line"; fi
+done < $TMPDIR/complete-milestone-phase-branches.txt
 ```
 
 **For "milestone" strategy:**
 
 ```bash
-BRANCH_PREFIX=$(echo "$MILESTONE_BRANCH_TEMPLATE" | sed 's/{.*//')
-MILESTONE_BRANCH=$(gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed 's/^\*//' | tr -d ' ' | head -1)
+mkdir -p $TMPDIR
+printf "%s\n" "s/[{].*//" > $TMPDIR/complete-milestone-strip-placeholder.sed
+echo "$MILESTONE_BRANCH_TEMPLATE" | sed -f $TMPDIR/complete-milestone-strip-placeholder.sed > $TMPDIR/complete-milestone-mbranch-prefix.txt
+read BRANCH_PREFIX < $TMPDIR/complete-milestone-mbranch-prefix.txt
+printf "%s\n" "s/^\\*//" > $TMPDIR/complete-milestone-strip-star.sed
+gitcmd branch --list "${BRANCH_PREFIX}*" 2>/dev/null | sed -f $TMPDIR/complete-milestone-strip-star.sed | tr -d ' ' | head -1 > $TMPDIR/complete-milestone-milestone-branch.txt
+read MILESTONE_BRANCH < $TMPDIR/complete-milestone-milestone-branch.txt
 ```
 
 **If no branches found:** Skip to git_tag.
@@ -651,7 +680,8 @@ AskUserQuestion with options: Squash merge (Recommended), Merge with history, De
 **Squash merge:**
 
 ```bash
-CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd branch --show-current > $TMPDIR/complete-milestone-current-branch.txt
+read CURRENT_BRANCH < $TMPDIR/complete-milestone-current-branch.txt
 gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
@@ -708,7 +738,8 @@ gitcmd checkout "$CURRENT_BRANCH"
 **Merge with history:**
 
 ```bash
-CURRENT_BRANCH=$(gitcmd branch --show-current)
+gitcmd branch --show-current > $TMPDIR/complete-milestone-current-branch.txt
+read CURRENT_BRANCH < $TMPDIR/complete-milestone-current-branch.txt
 gitcmd checkout "$EFFECTIVE_TARGET_BRANCH"
 
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
@@ -787,16 +818,18 @@ fi
 **Read versioning scheme from config:**
 
 ```bash
-VERSIONING_SCHEME=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.versioning_scheme --default "semver")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.versioning_scheme --default "semver" > $TMPDIR/complete-milestone-versioning-scheme.txt
+read VERSIONING_SCHEME < $TMPDIR/complete-milestone-versioning-scheme.txt
 ```
 
 **Auto-derive bump level from milestone commit types, then confirm with user:**
 
 ```bash
-BUMP_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --scheme "$VERSIONING_SCHEME")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --scheme "$VERSIONING_SCHEME" > $TMPDIR/complete-milestone-bump-result.json
 ```
 
-Parse `version`, `previous`, `level`, `scheme` from result JSON.
+Read `$TMPDIR/complete-milestone-bump-result.json` and parse `version`, `previous`, `level`, `scheme`.
 
 Present to user:
 
@@ -809,16 +842,19 @@ Override? (enter to accept, or type: major / minor / patch)
 If user provides override level:
 
 ```bash
-BUMP_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --level {override} --scheme "$VERSIONING_SCHEME")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" version-bump --level {override} --scheme "$VERSIONING_SCHEME" > $TMPDIR/complete-milestone-bump-result.json
 ```
 
 **Generate CHANGELOG.md entries from all SUMMARY.md files:**
 
 ```bash
-NEW_VERSION="$BUMP_RESULT"
-TODAY=$(date +%Y-%m-%d)
-CHANGELOG_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-changelog "$NEW_VERSION" --date "$TODAY")
+# NEW_VERSION should be set to the version field parsed from $TMPDIR/complete-milestone-bump-result.json
+date +%Y-%m-%d > $TMPDIR/complete-milestone-today.txt
+read TODAY < $TMPDIR/complete-milestone-today.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-changelog "$NEW_VERSION" --date "$TODAY" > $TMPDIR/complete-milestone-changelog-result.json
 ```
+
+Read `$TMPDIR/complete-milestone-changelog-result.json` for the changelog generation result.
 
 Present changelog preview:
 

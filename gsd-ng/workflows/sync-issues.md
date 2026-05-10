@@ -15,10 +15,11 @@ Read all files referenced by the invoking prompt's execution_context before star
 Detect configured platform:
 
 ```bash
-PLATFORM=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform)
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs detect-platform > $TMPDIR/sync-issues-platform.json
 ```
 
-Parse JSON for `platform`, `cli_installed`, `cli_install_url`.
+Read `$TMPDIR/sync-issues-platform.json` and parse JSON for `platform`, `cli_installed`, `cli_install_url`.
 
 If `platform` is null or `cli_installed` is false:
 ```
@@ -37,7 +38,9 @@ Exit.
 Check issue tracker configuration:
 
 ```bash
-AUTO_SYNC=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --default "true")
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs config-get issue_tracker.auto_sync --default "true" > $TMPDIR/sync-issues-auto-sync.txt
+read AUTO_SYNC < $TMPDIR/sync-issues-auto-sync.txt
 ```
 
 Read `issue_tracker.default_action` and `issue_tracker.comment_style` too. Display current config.
@@ -47,10 +50,11 @@ Read `issue_tracker.default_action` and `issue_tracker.comment_style` too. Displ
 Scan for external references:
 
 ```bash
-REFS=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-list-refs)
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs issue-list-refs > $TMPDIR/sync-issues-refs.json
 ```
 
-If `count` is 0:
+Read `$TMPDIR/sync-issues-refs.json`. If `count` is 0:
 ```
 No external issue references found in REQUIREMENTS.md or todo frontmatter.
 
@@ -77,10 +81,11 @@ External Issue References:
 Execute sync:
 
 ```bash
-SYNC=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-sync)
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs issue-sync > $TMPDIR/sync-issues-sync.json
 ```
 
-Parse JSON for `synced`, `conflicts`, `skipped`.
+Read `$TMPDIR/sync-issues-sync.json` and parse JSON for `synced`, `conflicts`, `skipped`.
 
 Display outbound results:
 ```

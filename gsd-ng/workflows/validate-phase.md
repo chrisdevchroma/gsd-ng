@@ -13,21 +13,24 @@ Audit Nyquist validation gaps for a completed phase. Generate missing tests. Upd
 ## 0. Initialize
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/validate-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/validate-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/validate-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/validate-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`.
+Read `$TMPDIR/validate-phase-init.json` and parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`.
 
 ```bash
-AUDITOR_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-nyquist-auditor)
-NYQUIST_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.nyquist_validation)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-nyquist-auditor > $TMPDIR/validate-phase-auditor-model.txt
+read AUDITOR_MODEL < $TMPDIR/validate-phase-auditor-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.nyquist_validation > $TMPDIR/validate-phase-nyquist-cfg.txt
+read NYQUIST_CFG < $TMPDIR/validate-phase-nyquist-cfg.txt
 ```
 
 If `NYQUIST_CFG` is `false`: exit with "Nyquist validation is disabled. Enable via {{COMMAND_PREFIX}}settings."
@@ -37,8 +40,15 @@ Display banner: `GSD > VALIDATE PHASE {N}: {name}`
 ## 1. Detect Input State
 
 ```bash
-VALIDATION_FILE=$(ls "${PHASE_DIR}"/*-VALIDATION.md 2>/dev/null | head -1)
-SUMMARY_FILES=$(ls "${PHASE_DIR}"/*-SUMMARY.md 2>/dev/null)
+mkdir -p $TMPDIR
+ls "${PHASE_DIR}"/*-VALIDATION.md 2>/dev/null | head -1 > $TMPDIR/validate-phase-validation-file.txt
+read VALIDATION_FILE < $TMPDIR/validate-phase-validation-file.txt || VALIDATION_FILE=""
+ls "${PHASE_DIR}"/*-SUMMARY.md 2>/dev/null > $TMPDIR/validate-phase-summary-files.txt
+SUMMARY_FILES=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  if [ -z "$SUMMARY_FILES" ]; then SUMMARY_FILES="$line"; else SUMMARY_FILES="$SUMMARY_FILES"$'\n'"$line"; fi
+done < $TMPDIR/validate-phase-summary-files.txt
 ```
 
 - **State A** (`VALIDATION_FILE` non-empty): Audit existing
@@ -93,10 +103,14 @@ Call AskUserQuestion with gap table and options:
 ## 5. Spawn gsd-nyquist-auditor
 
 ```bash
-WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type)
-WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
-SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs detect-workspace --field type > $TMPDIR/validate-phase-workspace-type.txt
+read WORKSPACE_TYPE < $TMPDIR/validate-phase-workspace-type.txt
+node ./.claude/gsd-ng/bin/gsd-tools.cjs detect-workspace --field submodule_paths_summary > $TMPDIR/validate-phase-submodule-paths.txt
+read SUBMODULE_PATHS < $TMPDIR/validate-phase-submodule-paths.txt
+git rev-parse --show-toplevel 2>/dev/null > $TMPDIR/validate-phase-project-root.txt || pwd > $TMPDIR/validate-phase-project-root.txt
+read PROJECT_ROOT < $TMPDIR/validate-phase-project-root.txt
+[ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="."
 ```
 
 ```

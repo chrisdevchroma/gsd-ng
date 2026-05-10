@@ -15,10 +15,11 @@ Read all files referenced by the invoking prompt's execution_context before star
 Detect configured platform:
 
 ```bash
-PLATFORM=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform)
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs detect-platform > $TMPDIR/import-issue-platform.json
 ```
 
-Parse JSON. If platform unavailable or CLI not installed, display warning and exit (same as sync-issues):
+Read `$TMPDIR/import-issue-platform.json`. If platform unavailable or CLI not installed, display warning and exit (same as sync-issues):
 ```
 Issue tracker import requires a platform CLI tool.
 
@@ -46,11 +47,12 @@ Ask for issue number:
 - "Enter the issue number to import (e.g., 42):"
 
 ```bash
-RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number})
+mkdir -p $TMPDIR
+node ./.claude/gsd-ng/bin/gsd-tools.cjs issue-import {platform} {number} > $TMPDIR/import-issue-result.json
 IMPORT_EXIT=$?
 ```
 
-If `IMPORT_EXIT` is non-zero and the output contains `[SECURITY]`, proceed to the `security_gate` step before displaying results. Otherwise, parse JSON for `imported`, `todo_file`, `title`, `external_ref`, `commented`.
+If `IMPORT_EXIT` is non-zero and `$TMPDIR/import-issue-result.json` contains `[SECURITY]`, proceed to the `security_gate` step before displaying results. Otherwise, read `$TMPDIR/import-issue-result.json` and parse JSON for `imported`, `todo_file`, `title`, `external_ref`, `commented`.
 
 Display result (on success):
 ```
@@ -113,7 +115,7 @@ Display matching issues as a numbered list. Use AskUserQuestion to confirm:
 
 For each selected issue, call:
 ```bash
-node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" issue-import {platform} {number}
+node ./.claude/gsd-ng/bin/gsd-tools.cjs issue-import {platform} {number}
 ```
 
 If any import fails with `[SECURITY]`, pause bulk import and present the `security_gate` step for that issue. User may choose "Review and override" (re-run with `--force-unsafe`) or "Cancel import" to skip that issue and continue with the rest.

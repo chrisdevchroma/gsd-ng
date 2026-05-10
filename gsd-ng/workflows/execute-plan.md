@@ -17,17 +17,18 @@ Read config.json for planning behavior settings.
 Load execution context (paths only to minimize orchestrator context):
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}" > $TMPDIR/execute-plan-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/execute-plan-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}" > $TMPDIR/execute-plan-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/execute-plan-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract from init JSON: `executor_model`, `commit_docs`, `phase_dir`, `phase_number`, `plans`, `summaries`, `incomplete_plans`, `state_path`, `config_path`.
+Read `$TMPDIR/execute-plan-init.json` and extract: `executor_model`, `commit_docs`, `phase_dir`, `phase_number`, `plans`, `summaries`, `incomplete_plans`, `state_path`, `config_path`.
 
 If `.planning/` missing: error.
 </step>
@@ -42,7 +43,8 @@ ls .planning/phases/XX-name/*-SUMMARY.md 2>/dev/null | sort
 Find first PLAN without matching SUMMARY. Decimal phases supported (`01.1-hotfix/`):
 
 ```bash
-PHASE=$(echo "$PLAN_PATH" | grep -oE '[0-9]+(\.[0-9]+)?-[0-9]+')
+echo "$PLAN_PATH" | grep -oE '[0-9]+(\.[0-9]+)?-[0-9]+' > $TMPDIR/execute-plan-phase.txt
+read PHASE < $TMPDIR/execute-plan-phase.txt
 # config settings can be fetched via gsd-tools config-get if needed
 ```
 
@@ -57,8 +59,11 @@ Present plan identification, wait for confirmation.
 
 <step name="record_start_time">
 ```bash
-PLAN_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-PLAN_START_EPOCH=$(date +%s)
+mkdir -p $TMPDIR
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $TMPDIR/execute-plan-start-time.txt
+read PLAN_START_TIME < $TMPDIR/execute-plan-start-time.txt
+date +%s > $TMPDIR/execute-plan-start-epoch.txt
+read PLAN_START_EPOCH < $TMPDIR/execute-plan-start-epoch.txt
 ```
 </step>
 
@@ -86,12 +91,14 @@ Fresh context per subagent preserves peak quality. Main context stays lean.
 
 <step name="init_agent_tracking">
 ```bash
+mkdir -p $TMPDIR
 if [ ! -f .planning/agent-history.json ]; then
-  echo '{"version":"1.0","max_entries":50,"entries":[]}' > .planning/agent-history.json
+  printf '%s\n' "{\"version\":\"1.0\",\"max_entries\":50,\"entries\":[]}" > $TMPDIR/execute-plan-agent-history-seed.json
+  cp $TMPDIR/execute-plan-agent-history-seed.json .planning/agent-history.json
 fi
 rm -f .planning/current-agent-id.txt
 if [ -f .planning/current-agent-id.txt ]; then
-  INTERRUPTED_ID=$(cat .planning/current-agent-id.txt)
+  read INTERRUPTED_ID < .planning/current-agent-id.txt
   echo "Found interrupted agent: $INTERRUPTED_ID"
 fi
 ```
@@ -285,7 +292,8 @@ git add src/types/user.ts
 
 **5. Record hash:**
 ```bash
-TASK_COMMIT=$(git rev-parse --short HEAD)
+git rev-parse --short HEAD > $TMPDIR/execute-plan-task-commit.txt
+read TASK_COMMIT < $TMPDIR/execute-plan-task-commit.txt
 TASK_COMMITS+=("Task ${TASK_NUM}: ${TASK_COMMIT}")
 ```
 
@@ -329,7 +337,9 @@ If verification fails:
 
 **Check if node repair is enabled** (default: on):
 ```bash
-NODE_REPAIR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.node_repair --default "true")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.node_repair --default "true" > $TMPDIR/execute-plan-node-repair.txt
+read NODE_REPAIR < $TMPDIR/execute-plan-node-repair.txt
 ```
 
 If `NODE_REPAIR` is `true`: invoke `@./.claude/gsd-ng/workflows/node-repair.md` with:
@@ -345,15 +355,18 @@ If `NODE_REPAIR` is `false` OR repair returns ESCALATE: STOP. Present: "Verifica
 
 <step name="record_completion_time">
 ```bash
-PLAN_END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-PLAN_END_EPOCH=$(date +%s)
+mkdir -p $TMPDIR
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $TMPDIR/execute-plan-end-time.txt
+read PLAN_END_TIME < $TMPDIR/execute-plan-end-time.txt
+date +%s > $TMPDIR/execute-plan-end-epoch.txt
+read PLAN_END_EPOCH < $TMPDIR/execute-plan-end-epoch.txt
 
-DURATION_SEC=$(( PLAN_END_EPOCH - PLAN_START_EPOCH ))
-DURATION_MIN=$(( DURATION_SEC / 60 ))
+(( DURATION_SEC = PLAN_END_EPOCH - PLAN_START_EPOCH )) || true
+(( DURATION_MIN = DURATION_SEC / 60 )) || true
 
 if [[ $DURATION_MIN -ge 60 ]]; then
-  HRS=$(( DURATION_MIN / 60 ))
-  MIN=$(( DURATION_MIN % 60 ))
+  (( HRS = DURATION_MIN / 60 )) || true
+  (( MIN = DURATION_MIN % 60 )) || true
   DURATION="${HRS}h ${MIN}m"
 else
   DURATION="${DURATION_MIN} min"
@@ -405,7 +418,7 @@ From SUMMARY: Extract decisions and add to STATE.md:
 
 ```bash
 # Add each decision from SUMMARY key-decisions
-# Prefer file inputs for shell-safe text (preserves `$`, `*`, etc. exactly)
+# Prefer file inputs for shell-safe text (preserves dollar/asterisk/etc. exactly)
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state add-decision \
   --phase "${PHASE}" --summary-file "${DECISION_TEXT_FILE}" --rationale-file "${RATIONALE_FILE}"
 
@@ -461,8 +474,11 @@ After the metadata commit, create a lightweight tag at HEAD. These tags survive 
 ```bash
 # Create lightweight tag at plan completion commit
 # Zero-pad plan number for consistent sorting
-PLAN_PADDED=$(printf "%02d" "$PLAN")
-PHASE_TAG_SAFE=$(echo "$PHASE" | tr '/' '-')
+mkdir -p $TMPDIR
+printf "%02d" "$PLAN" > $TMPDIR/execute-plan-plan-padded.txt
+read PLAN_PADDED < $TMPDIR/execute-plan-plan-padded.txt
+echo "$PHASE" | tr '/' '-' > $TMPDIR/execute-plan-phase-tag-safe.txt
+read PHASE_TAG_SAFE < $TMPDIR/execute-plan-phase-tag-safe.txt
 PLAN_COMPLETION_TAG="gsd/phase-${PHASE_TAG_SAFE}/plan-${PLAN_PADDED}"
 git tag "$PLAN_COMPLETION_TAG" HEAD 2>/dev/null || true
 echo "Tagged: $PLAN_COMPLETION_TAG"
@@ -475,7 +491,9 @@ Tags are idempotent — re-running a plan that was already tagged silently succe
 If .planning/codebase/ doesn't exist: skip.
 
 ```bash
-FIRST_TASK=$(git log --oneline --grep="feat({phase}-{plan}):" --grep="fix({phase}-{plan}):" --grep="test({phase}-{plan}):" --reverse | head -1 | cut -d' ' -f1)
+mkdir -p $TMPDIR
+git log --oneline --grep="feat({phase}-{plan}):" --grep="fix({phase}-{plan}):" --grep="test({phase}-{plan}):" --reverse | head -1 | cut -d' ' -f1 > $TMPDIR/execute-plan-first-task.txt
+read FIRST_TASK < $TMPDIR/execute-plan-first-task.txt
 git diff --name-only ${FIRST_TASK}^..HEAD 2>/dev/null
 ```
 

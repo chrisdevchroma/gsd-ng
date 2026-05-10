@@ -919,3 +919,519 @@ describe('Phase 55 — effort sync wiring', () => {
     assert.strictEqual(cfg.model_profile, 'balanced', 'config must be untouched by rejected set');
   });
 });
+
+// ─── branch-coverage uplift for config.cjs ───────────────────────────────────
+//
+// These tests target the uncovered branches enumerated in the per-file gap
+// analysis: ensureConfigFile error paths, the depth->granularity migration
+// in ~/.gsd/defaults.json, malformed-defaults catch, setConfigValue read/write
+// failure paths, cmdConfigGet defaultValue branches (no-config / non-object
+// intermediate / undefined leaf), and cmdConfigSetModelProfile validation.
+//
+// Most tests use OS-level file/permission manipulation in temp dirs (chmod
+// to force EACCES, write a regular file at a directory path to force ENOTDIR)
+// rather than mocking node:fs internals — matches the no-internal-mocking
+// policy from CONTEXT.md and the helpers convention.
+
+describe('ensureConfigFile error paths', () => {
+  test('mkdirSync throws when .planning parent is read-only (EACCES)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-'));
+    fs.chmodSync(tmpDir, 0o555);
+    try {
+      const result = runGsdTools(['config-ensure-section'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Failed to create \.planning directory/,
+        `Expected mkdirSync error in stderr, got: ${result.stderr}`,
+      );
+    } finally {
+      fs.chmodSync(tmpDir, 0o755);
+      cleanup(tmpDir);
+    }
+  });
+
+  test('writeFileSync errors when .planning path exists as a regular file (ENOTDIR)', () => {
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-test-'));
+    // Place a file at the path .planning/ would occupy. fs.existsSync returns
+    // true (so mkdirSync is skipped at L102), then writeFileSync fails at L162.
+    fs.writeFileSync(path.join(tmpDir, '.planning'), 'i am a file, not a directory');
+    try {
+      const result = runGsdTools(['config-ensure-section'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Failed to create config\.json/,
+        `Expected writeFileSync error in stderr, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});
+
+describe('global defaults.json depth-to-granularity migration', () => {
+  test('migrates depth=standard to granularity=standard and rewrites defaults.json', () => {
+    const tmpDir = createTempProject();
+    // Remove the auto-created planning dir's .planning marker so ensureConfigFile creates fresh.
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpHome, '.gsd', 'defaults.json'),
+      JSON.stringify({ depth: 'standard' }),
+    );
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      assert.ok(result.success, `Command failed: ${result.error}`);
+
+      // defaults.json should be rewritten with granularity, depth removed.
+      const after = JSON.parse(
+        fs.readFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), 'utf-8'),
+      );
+      assert.ok(!('depth' in after), 'depth should be removed from defaults.json');
+      assert.strictEqual(after.granularity, 'standard');
+
+      // Newly created config.json should pick up the migrated granularity value.
+      const config = readConfig(tmpDir);
+      assert.strictEqual(config.granularity, 'standard');
+    } finally {
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+
+  test('migrates depth=quick to granularity=coarse via the value mapping', () => {
+    const tmpDir = createTempProject();
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpHome, '.gsd', 'defaults.json'),
+      JSON.stringify({ depth: 'quick' }),
+    );
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      assert.ok(result.success, `Command failed: ${result.error}`);
+
+      const after = JSON.parse(
+        fs.readFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), 'utf-8'),
+      );
+      assert.strictEqual(after.granularity, 'coarse', 'quick should map to coarse');
+    } finally {
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+
+  test('preserves unknown depth value via the fallback (depthToGranularity[depth] || depth)', () => {
+    const tmpDir = createTempProject();
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    // 'verbose' is not a key in {quick, standard, comprehensive} — exercises the
+    // `|| userDefaults.depth` fallback when the value isn't in the migration table.
+    fs.writeFileSync(
+      path.join(tmpHome, '.gsd', 'defaults.json'),
+      JSON.stringify({ depth: 'verbose' }),
+    );
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      assert.ok(result.success, `Command failed: ${result.error}`);
+
+      const after = JSON.parse(
+        fs.readFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), 'utf-8'),
+      );
+      assert.strictEqual(after.granularity, 'verbose', 'unknown depth should pass through unchanged');
+    } finally {
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+
+  test('swallows write failure when migrating defaults.json on a read-only file', () => {
+    const tmpDir = createTempProject();
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    const homeGsd = path.join(tmpHome, '.gsd');
+    fs.mkdirSync(homeGsd, { recursive: true });
+    const defaultsPath = path.join(homeGsd, 'defaults.json');
+    fs.writeFileSync(defaultsPath, JSON.stringify({ depth: 'standard' }));
+    // Read-only directory blocks the rewrite (writeFileSync of an existing file
+    // requires write permission on the parent dir to replace via tmp+rename in
+    // some node implementations; on Linux the open(O_TRUNC) needs file write
+    // permission). Make the FILE read-only so writeFileSync fails inside the
+    // migration's `try { fs.writeFileSync(globalDefaultsPath, ...) } catch {}`.
+    fs.chmodSync(defaultsPath, 0o444);
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      // Migration's catch is empty — the write failure is silently swallowed and
+      // ensureConfigFile still creates config.json with the migrated value in memory.
+      assert.ok(
+        result.success,
+        `Command should succeed despite read-only defaults.json: ${result.error}`,
+      );
+      const config = readConfig(tmpDir);
+      assert.strictEqual(config.granularity, 'standard');
+    } finally {
+      fs.chmodSync(defaultsPath, 0o644);
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+
+  test('skips migration when depth and granularity are both present', () => {
+    const tmpDir = createTempProject();
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    const original = { depth: 'standard', granularity: 'fine' };
+    fs.writeFileSync(
+      path.join(tmpHome, '.gsd', 'defaults.json'),
+      JSON.stringify(original),
+    );
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      assert.ok(result.success, `Command failed: ${result.error}`);
+
+      // defaults.json untouched — both keys still present.
+      const after = JSON.parse(
+        fs.readFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), 'utf-8'),
+      );
+      assert.deepStrictEqual(after, original);
+    } finally {
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+
+  test('falls back to defaults when global defaults.json is malformed JSON', () => {
+    const tmpDir = createTempProject();
+    fs.rmSync(path.join(tmpDir, '.planning', 'config.json'), { force: true });
+
+    const tmpHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.gsd'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.gsd', 'defaults.json'), 'NOT_VALID_JSON{{{');
+
+    try {
+      const result = runGsdTools(['config-ensure-section', '--json'], tmpDir, { HOME: tmpHome });
+      assert.ok(
+        result.success,
+        `Command should succeed despite malformed defaults: ${result.error}`,
+      );
+      const config = readConfig(tmpDir);
+      assert.strictEqual(typeof config.model_profile, 'string', 'should fall through to hardcoded defaults');
+      assert.ok('workflow' in config, 'workflow defaults should still be applied');
+    } finally {
+      cleanup(tmpDir);
+      cleanup(tmpHome);
+    }
+  });
+});
+
+describe('setConfigValue error paths', () => {
+  test('errors when config.json is unreadable JSON', () => {
+    const tmpDir = createTempProject();
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), 'NOT_VALID_JSON{{{');
+    try {
+      const result = runGsdTools(['config-set', 'mode', 'interactive'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Failed to read config\.json/,
+        `Expected read-failure error, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('errors when writeFileSync fails on read-only config.json', () => {
+    const tmpDir = createTempProject();
+    runGsdTools(['config-ensure-section'], tmpDir);
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.chmodSync(configPath, 0o444);
+    try {
+      const result = runGsdTools(['config-set', 'mode', 'interactive'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Failed to write config\.json/,
+        `Expected write-failure error, got: ${result.stderr}`,
+      );
+    } finally {
+      fs.chmodSync(configPath, 0o644);
+      cleanup(tmpDir);
+    }
+  });
+
+  test('creates intermediate object when nested key path traverses missing segments', () => {
+    const tmpDir = createTempProject();
+    // Empty config (no nested objects yet)
+    writeConfig(tmpDir, {});
+    try {
+      const result = runGsdTools(['config-set', 'workflow.research', 'false'], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const config = readConfig(tmpDir);
+      assert.strictEqual(typeof config.workflow, 'object');
+      assert.strictEqual(config.workflow.research, false);
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('replaces non-object intermediate when setting deeper key', () => {
+    const tmpDir = createTempProject();
+    // workflow is a primitive — setConfigValue should overwrite with {}.
+    writeConfig(tmpDir, { workflow: 'oops' });
+    try {
+      const result = runGsdTools(['config-set', 'workflow.research', 'true'], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const config = readConfig(tmpDir);
+      assert.strictEqual(typeof config.workflow, 'object');
+      assert.strictEqual(config.workflow.research, true);
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});
+
+describe('cmdConfigGet defaultValue and traversal branches', () => {
+  test('returns defaultValue when config.json does not exist', () => {
+    const tmpDir = createTempProject();
+    // No config.json at all
+    try {
+      const result = runGsdTools(['config-get', 'mode', '--default', 'interactive'], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      assert.strictEqual(result.output.trim(), 'interactive');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('errors when corrupt config.json triggers JSON.parse catch (not the No-config re-throw)', () => {
+    const tmpDir = createTempProject();
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), 'NOT_VALID_JSON{{{');
+    try {
+      const result = runGsdTools(['config-get', 'mode'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Failed to read config\.json/,
+        `Expected read-failure error, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('returns defaultValue when intermediate key in path is a non-object primitive', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, { workflow: 'not-an-object' });
+    try {
+      const result = runGsdTools(
+        ['config-get', 'workflow.research.deep', '--default', 'fallback'],
+        tmpDir,
+      );
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      assert.strictEqual(result.output.trim(), 'fallback');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('errors when intermediate key in path is non-object and no default is given', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, { workflow: 'not-an-object' });
+    try {
+      const result = runGsdTools(['config-get', 'workflow.research.deep'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Key not found: workflow\.research\.deep/,
+        `Expected Key not found error, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('returns defaultValue when leaf key is undefined in the existing config', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, { workflow: { research: true } });
+    try {
+      const result = runGsdTools(
+        ['config-get', 'workflow.nonexistent', '--default', 'mydefault'],
+        tmpDir,
+      );
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      assert.strictEqual(result.output.trim(), 'mydefault');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('emits deprecation warning on stderr for git.submodule.workspace_branch (with value present)', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, { git: { submodule: { workspace_branch: 'develop' } } });
+    try {
+      const result = runGsdTools(['config-get', 'git.submodule.workspace_branch'], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      assert.match(
+        result.stderr,
+        /git\.submodule\.workspace_branch is deprecated/,
+        `Expected deprecation warning on stderr, got: ${result.stderr}`,
+      );
+      assert.strictEqual(result.output.trim(), 'develop');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('errors when invoked with no key path (direct invocation, bypassing CLI validateArgs)', () => {
+    // validateArgs in gsd-tools.cjs blocks empty positional args before dispatch,
+    // so the !keyPath guard inside cmdConfigGet is unreachable through the CLI.
+    // Spawn a child that requires the lib directly and lets process.exit fire safely.
+    const { spawnSync } = require('child_process');
+    const libPath = path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'config.cjs');
+    const r = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `const c = require(${JSON.stringify(libPath)}); c.cmdConfigGet('/tmp/__nope__', undefined, undefined);`,
+      ],
+      { encoding: 'utf-8' },
+    );
+    assert.strictEqual(r.status, 1, `Expected exit 1, got ${r.status}. stderr: ${r.stderr}`);
+    assert.match(
+      r.stderr,
+      /Usage: config-get <key\.path>/,
+      `Expected usage error, got: ${r.stderr}`,
+    );
+  });
+});
+
+describe('cmdConfigGet copilot runtime profile/effort gating', () => {
+  test('strips effort_overrides.* keys with --default on copilot runtime', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, {
+      runtime: 'copilot',
+      effort_overrides: { 'gsd-executor': 'high' },
+    });
+    try {
+      const result = runGsdTools(
+        ['config-get', 'effort_overrides.gsd-executor', '--default', 'medium'],
+        tmpDir,
+      );
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      assert.strictEqual(result.output.trim(), 'medium');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('strips model_overrides.* keys (errors without default) on copilot runtime', () => {
+    const tmpDir = createTempProject();
+    writeConfig(tmpDir, {
+      runtime: 'copilot',
+      model_overrides: { 'gsd-executor': 'opus' },
+    });
+    try {
+      const result = runGsdTools(['config-get', 'model_overrides.gsd-executor'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Key not found: model_overrides\.gsd-executor/,
+        `Expected Key not found, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});
+
+describe('cmdConfigSetModelProfile validation and normalization', () => {
+  test('errors with usage hint when invoked with no profile (direct invocation)', () => {
+    // validateArgs blocks the missing-arg case at the CLI dispatcher, so the
+    // !profile guard is unreachable through gsd-tools. Spawn a child to hit it.
+    const { spawnSync } = require('child_process');
+    const libPath = path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'config.cjs');
+    const r = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `const c = require(${JSON.stringify(libPath)}); c.cmdConfigSetModelProfile('/tmp/__nope__', undefined);`,
+      ],
+      { encoding: 'utf-8' },
+    );
+    assert.strictEqual(r.status, 1, `Expected exit 1, got ${r.status}. stderr: ${r.stderr}`);
+    assert.match(
+      r.stderr,
+      /Usage: config-set-model-profile/,
+      `Expected usage error, got: ${r.stderr}`,
+    );
+  });
+
+  test('rejects an unknown profile string with the valid-profiles list', () => {
+    const tmpDir = createTempProject();
+    runGsdTools(['config-ensure-section'], tmpDir);
+    try {
+      const result = runGsdTools(['config-set-model-profile', 'invalid-profile-xyz'], tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(
+        result.stderr,
+        /Invalid profile 'invalid-profile-xyz'/,
+        `Expected invalid-profile error, got: ${result.stderr}`,
+      );
+      assert.match(
+        result.stderr,
+        /quality, balanced, budget/,
+        `Expected valid-profiles list in error, got: ${result.stderr}`,
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('normalizes uppercase profile via toLowerCase().trim() and writes lowercase', () => {
+    const tmpDir = createTempProject();
+    try {
+      // Mixed-case + leading space exercises both lowerCase and trim.
+      const result = runGsdTools(['config-set-model-profile', '  QUALITY  '], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const config = readConfig(tmpDir);
+      assert.strictEqual(config.model_profile, 'quality');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test("falls back to 'balanced' previousProfile when config has no model_profile key", () => {
+    const tmpDir = createTempProject();
+    // Hand-write a config without model_profile so the setConfigValue read
+    // returns previousValue=undefined, exercising the `previousValue || 'balanced'`
+    // fallback. ensureConfigFile sees the existing file and returns early.
+    writeConfig(tmpDir, { commit_docs: false });
+    try {
+      const result = runGsdTools(['config-set-model-profile', 'quality', '--json'], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const out = JSON.parse(result.output);
+      assert.strictEqual(out.previousProfile, 'balanced');
+      // And the new profile is written through.
+      const config = readConfig(tmpDir);
+      assert.strictEqual(config.model_profile, 'quality');
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});

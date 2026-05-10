@@ -122,17 +122,18 @@ Never proceed with an empty answer.
 Phase number from argument (required).
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}" > $TMPDIR/discuss-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/discuss-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE}" > $TMPDIR/discuss-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/discuss-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `has_verification`, `plan_count`, `roadmap_exists`, `planning_exists`.
+Read `$TMPDIR/discuss-phase-init.json` and parse: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `has_verification`, `plan_count`, `roadmap_exists`, `planning_exists`.
 
 **If `phase_found` is false:**
 ```
@@ -201,7 +202,9 @@ If "Cancel": Exit workflow.
 
 Read the phase goal from ROADMAP.md for this phase:
 ```bash
-PHASE_GOAL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick goal --default "" 2>/dev/null)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick goal --default "" > $TMPDIR/discuss-phase-goal.txt 2>/dev/null
+read PHASE_GOAL < $TMPDIR/discuss-phase-goal.txt || PHASE_GOAL=""
 ```
 
 If `$PHASE_GOAL` is empty, skip silently and continue to load_prior_context.
@@ -262,13 +265,16 @@ In **interactive mode**:
 
 1. Find the source todo for this phase by checking ROADMAP.md:
 ```bash
-SOURCE_TODO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick source_todos --default "" 2>/dev/null)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick source_todos --default "" > $TMPDIR/discuss-phase-source-todo.txt 2>/dev/null
+read SOURCE_TODO < $TMPDIR/discuss-phase-source-todo.txt || SOURCE_TODO=""
 ```
 
 2. If `$SOURCE_TODO` is non-empty, read its existing `related:` field:
 ```bash
-EXISTING_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --default "" > $TMPDIR/discuss-phase-existing-related.txt
+read EXISTING_RELATED_RAW < $TMPDIR/discuss-phase-existing-related.txt || EXISTING_RELATED_RAW=""
 ```
 
 3. From the phase: linking candidates above (1-3 todos that were evaluated), filter for any that:
@@ -289,39 +295,15 @@ AskUserQuestion(
 )
 ```
 
-5. For each selected todo (not "None of these"), set `related:` bidirectionally using the safe read-append-write pattern:
+5. For each selected todo (not "None of these"), set `related:` bidirectionally using the dedupe-aware `frontmatter array-append` helper:
 ```bash
 # Append selected todo filename to source todo's related: field
-SOURCE_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --default "")
-UPDATED_SOURCE=$(node -e "
-  const existing = process.argv[1];
-  const newFile = process.argv[2];
-  try {
-    const v = existing ? JSON.parse(existing) : [];
-    const arr = Array.isArray(v) ? v : (v ? [v] : []);
-    if (!arr.includes(newFile)) arr.push(newFile);
-    console.log(JSON.stringify(arr));
-  } catch { console.log(JSON.stringify([newFile])); }
-" "$SOURCE_RELATED_RAW" "$SELECTED_FILE")
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$UPDATED_SOURCE"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$SOURCE_TODO" --field related --value "$SELECTED_FILE"
 
 # Append source todo filename to selected todo's related: field (backlink)
-SELECTED_RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-  ".planning/todos/pending/$SELECTED_FILE" --field related --default "")
-UPDATED_SELECTED=$(node -e "
-  const existing = process.argv[1];
-  const newFile = process.argv[2];
-  try {
-    const v = existing ? JSON.parse(existing) : [];
-    const arr = Array.isArray(v) ? v : (v ? [v] : []);
-    if (!arr.includes(newFile)) arr.push(newFile);
-    console.log(JSON.stringify(arr));
-  } catch { console.log(JSON.stringify([newFile])); }
-" "$SELECTED_RELATED_RAW" "$SOURCE_TODO")
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter set \
-  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$UPDATED_SELECTED"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter array-append \
+  ".planning/todos/pending/$SELECTED_FILE" --field related --value "$SOURCE_TODO"
 ```
 
 Log: `Linked related: $SOURCE_TODO <-> $SELECTED_FILE`
@@ -335,15 +317,18 @@ Read project-level and prior phase context to avoid re-asking decided questions 
 **Step 1: Read project-level files**
 ```bash
 # Core project files
+mkdir -p $TMPDIR
 cat .planning/PROJECT.md 2>/dev/null
 cat .planning/REQUIREMENTS.md 2>/dev/null
-STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current > $TMPDIR/discuss-phase-state-snapshot.json
 ```
+
+Read `$TMPDIR/discuss-phase-state-snapshot.json` for the state snapshot.
 
 Extract from these:
 - **PROJECT.md** — Vision, principles, non-negotiables, user preferences
 - **REQUIREMENTS.md** — Acceptance criteria, constraints, must-haves vs nice-to-haves
-- **STATE_SNAPSHOT JSON** — Current progress (`current_phase`, `current_plan`, `status`), decisions, blockers, session notes
+- **state snapshot JSON** — Current progress (`current_phase`, `current_plan`, `status`), decisions, blockers, session notes
 
 **Step 2: Read all prior CONTEXT.md files**
 ```bash
@@ -447,16 +432,12 @@ Extract the `Requirements:` field from the phase's ROADMAP.md section (available
 
 ```bash
 # Fetch phase data once for requirements and lineage analysis
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --json 2>/dev/null)
-REQUIREMENTS=$(node -e "
-  const data = process.argv[1];
-  try {
-    const r = JSON.parse(data);
-    const m = (r.section||'').match(/\*\*Requirements\*\*:\s*([^\n]+)/i);
-    const requirements = m ? m[1].trim().replace(/^\[(.*)\]$/, '\$1').trim() : '';
-    console.log(requirements);
-  } catch { console.log(''); }
-" "$PHASE_DATA")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --json > $TMPDIR/discuss-phase-data.json 2>/dev/null
+# TODO(60.1-PATTERN-G): see Plan 08 catalog — regex-extract Requirements line from freeform ROADMAP section body.
+# Single caller, narrow scope (advisory output only).
+node "$HOME/.claude/gsd-ng/bin/lib/discuss-phase-helpers.cjs" extract-requirements "$TMPDIR/discuss-phase-data.json" > $TMPDIR/discuss-phase-requirements.txt 2>/dev/null || true
+read REQUIREMENTS < $TMPDIR/discuss-phase-requirements.txt 2>/dev/null || REQUIREMENTS=""
 
 if [ -z "$REQUIREMENTS" ] || [ "$REQUIREMENTS" = "TBD" ]; then
   echo "Advisory: No requirement IDs mapped for Phase ${PHASE}. Consider adding them to REQUIREMENTS.md and referencing in the ROADMAP.md Requirements field. Example: add FEAT-${PHASE}-01 to REQUIREMENTS.md and set **Requirements**: FEAT-${PHASE}-01 in the ROADMAP.md phase entry."
@@ -468,29 +449,32 @@ This is NOT a hard block — the workflow continues to lineage analysis and gray
 4. **Lineage resolution** — Trace the `Depends on:` chain (depth 1 only) to surface parent phase constraints as pre-answered items.
 
 ```bash
-# Get depends_on from current phase (requires Plan 01's roadmap.cjs changes)
-DEPENDS_ON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick depends_on --default "" 2>/dev/null)
+# Get depends_on from current phase (requires Plan 01 roadmap.cjs changes from earlier waves)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick depends_on --default "" > $TMPDIR/discuss-phase-depends-on.txt 2>/dev/null
+read DEPENDS_ON < $TMPDIR/discuss-phase-depends-on.txt || DEPENDS_ON=""
 
 # If empty: skip silently (no message, no note in CONTEXT.md)
 if [ -n "$DEPENDS_ON" ]; then
-  # Extract parent phase numbers (depth 1 only — direct parents)
-  PARENT_PHASES=$(node -e "
-    const d = process.argv[1];
-    const matches=[...d.matchAll(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)];
-    console.log(matches.map(m=>m[1]).join('\n'));
-  " "$DEPENDS_ON")
+  # Extract parent phase numbers (depth 1 only — direct parents).
+  # TODO(60.1-PATTERN-G): see Plan 08 catalog — regex-match Phase N patterns out of freeform Depends on text.
+  echo "$DEPENDS_ON" > $TMPDIR/discuss-phase-depends-on-input.txt
+  node "$HOME/.claude/gsd-ng/bin/lib/discuss-phase-helpers.cjs" extract-parents "$TMPDIR/discuss-phase-depends-on-input.txt" > $TMPDIR/discuss-phase-parent-phases.txt 2>/dev/null || true
 
   # For each parent: fetch goal + success_criteria
-  for PARENT_PHASE in $PARENT_PHASES; do
-    PARENT_FOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PARENT_PHASE" --pick found --default "false" 2>/dev/null)
+  while IFS= read -r PARENT_PHASE; do
+    [ -z "$PARENT_PHASE" ] && continue
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PARENT_PHASE" --pick found --default "false" > $TMPDIR/discuss-phase-parent-found.txt 2>/dev/null
+    read PARENT_FOUND < $TMPDIR/discuss-phase-parent-found.txt || PARENT_FOUND="false"
     # Skip silently if parent not found (common for prior milestones)
     if [ "$PARENT_FOUND" = "true" ]; then
       # Extract parent goal and success_criteria
       # Summarize to 2-3 bullets most relevant to current phase domain
       # Surface as pre-answered constraints (skip gray area discussion)
       # Add parent's CONTEXT.md to canonical_refs accumulator
+      :
     fi
-  done
+  done < $TMPDIR/discuss-phase-parent-phases.txt
 fi
 ```
 
@@ -907,10 +891,12 @@ Check for auto-advance trigger:
    ```bash
    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard sync-chain "$ARGUMENTS" 2>/dev/null
    ```
-3. Read both the chain flag and user preference:
+3. Read both the chain flag and user preference (Pattern A: redirect-then-read; literal defaults baked):
    ```bash
-   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
-   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false > $TMPDIR/auto-chain.txt
+   read AUTO_CHAIN < $TMPDIR/auto-chain.txt
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default false > $TMPDIR/auto-cfg.txt
+   read AUTO_CFG < $TMPDIR/auto-cfg.txt
    ```
 
 **If `--auto` flag present AND `AUTO_CHAIN` is not true:** Persist chain flag to config (handles direct `--auto` usage without new-project):

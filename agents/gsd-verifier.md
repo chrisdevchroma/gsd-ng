@@ -121,7 +121,8 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json > $TMPDIR/verifier-phase-data.json
+read PHASE_DATA < $TMPDIR/verifier-phase-data.json
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -164,7 +165,8 @@ For each truth:
 Use gsd-tools for artifact verification against must_haves in PLAN frontmatter:
 
 ```bash
-ARTIFACT_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH" > $TMPDIR/verifier-artifact-result.json
+read ARTIFACT_RESULT < $TMPDIR/verifier-artifact-result.json
 ```
 
 Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
@@ -185,11 +187,14 @@ For each artifact in result:
 **For wiring verification (Level 3)**, check imports/usage manually for artifacts that pass Levels 1-2:
 
 ```bash
+# search_path is provided by the caller — defensive default applied with [ -z ] (Pattern D)
+[ -z "$search_path" ] && search_path="src/"
+
 # Import check
-grep -r "import.*$artifact_name" "${search_path:-src/}" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l
+grep -r "import.*$artifact_name" "$search_path" --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l
 
 # Usage check (beyond imports)
-grep -r "$artifact_name" "${search_path:-src/}" --include="*.ts" --include="*.tsx" 2>/dev/null | grep -v "import" | wc -l
+grep -r "$artifact_name" "$search_path" --include="*.ts" --include="*.tsx" 2>/dev/null | grep -v "import" | wc -l
 ```
 
 **Wiring status:**
@@ -213,7 +218,8 @@ Key links are critical connections. If broken, the goal fails even with all arti
 Use gsd-tools for key link verification against must_haves in PLAN frontmatter:
 
 ```bash
-LINKS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH" > $TMPDIR/verifier-links-result.json
+read LINKS_RESULT < $TMPDIR/verifier-links-result.json
 ```
 
 Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
@@ -294,13 +300,18 @@ If REQUIREMENTS.md maps additional IDs to this phase that don't appear in ANY pl
 Identify files modified in this phase from SUMMARY.md key-files section, or extract commits and verify:
 
 ```bash
-# Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
+# Option 1: Extract from SUMMARY frontmatter — redirect-then-read (Pattern E)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files > $TMPDIR/verifier-summary-files.json
+read SUMMARY_FILES < $TMPDIR/verifier-summary-files.json
 
 # Option 2: Verify commits exist (if commit hashes documented)
-COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-SUMMARY.md | head -10)
+grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-SUMMARY.md | head -10 > $TMPDIR/verifier-commit-hashes.txt
+# Read into a single space-separated COMMIT_HASHES string for argv pass-through
+tr '\n' ' ' < $TMPDIR/verifier-commit-hashes.txt > $TMPDIR/verifier-commit-hashes-line.txt
+read COMMIT_HASHES < $TMPDIR/verifier-commit-hashes-line.txt || COMMIT_HASHES=""
 if [ -n "$COMMIT_HASHES" ]; then
-  COMMITS_VALID=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES > $TMPDIR/verifier-commits-valid.json
+  read COMMITS_VALID < $TMPDIR/verifier-commits-valid.json
 fi
 
 # Fallback: grep for files
@@ -348,40 +359,45 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 Check if this phase has a source todo linked via ROADMAP.md:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json --default "{}")
-SOURCE_TODO=$(echo "$PHASE_DATA" | jq -r '.source_todos // empty')
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json --default "{}" > $TMPDIR/verifier-phase-data2.json
+read PHASE_DATA < $TMPDIR/verifier-phase-data2.json
+jq -r '.source_todos // empty' $TMPDIR/verifier-phase-data2.json > $TMPDIR/verifier-source-todo.txt
+read SOURCE_TODO < $TMPDIR/verifier-source-todo.txt || SOURCE_TODO=""
 ```
 
 If `$SOURCE_TODO` is non-empty, read its `related:` field:
 
 ```bash
-RELATED_RAW=""
+# RELATED list is collected in a file (one filename per line, possibly empty).
+: > $TMPDIR/verifier-related-list.txt
 # Check pending/ first, then completed/
 for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
   if [[ -f "$DIR/$SOURCE_TODO" ]]; then
-    RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-      "$DIR/$SOURCE_TODO" --field related --format newline --default "")
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      "$DIR/$SOURCE_TODO" --field related --format newline --default "" > $TMPDIR/verifier-related-list.txt
     break
   fi
 done
-RELATED_LIST="$RELATED_RAW"
 ```
 
 Check each related todo:
 
 ```bash
-# For each related filename, check if it exists in pending/ (still open work)
-UNADDRESSED_TODOS=$(printf '%s\n' "$RELATED_LIST" | while IFS= read -r related_file; do
+# For each related filename, check if it exists in pending/ (still open work).
+# Output rows are written to $TMPDIR/verifier-unaddressed-todos.txt (markdown table rows).
+: > $TMPDIR/verifier-unaddressed-todos.txt
+while IFS= read -r related_file; do
   [[ -z "$related_file" ]] && continue
   if [[ -f ".planning/todos/pending/$related_file" ]]; then
-    TITLE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
-      ".planning/todos/pending/$related_file" --field title --default "(no title)")
-    printf '| %s | %s | pending |\n' "$related_file" "$TITLE"
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      ".planning/todos/pending/$related_file" --field title --default "(no title)" > $TMPDIR/verifier-rel-title.txt
+    read TITLE < $TMPDIR/verifier-rel-title.txt || TITLE="(no title)"
+    printf '| %s | %s | pending |\n' "$related_file" "$TITLE" >> $TMPDIR/verifier-unaddressed-todos.txt
   fi
-done)
+done < $TMPDIR/verifier-related-list.txt
 ```
 
-If `$UNADDRESSED_TODOS` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.
+If `$TMPDIR/verifier-unaddressed-todos.txt` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.
 
 ```markdown
 ### Related Todo Warnings

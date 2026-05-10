@@ -24,10 +24,11 @@ Exit workflow.
 Validate phase exists in roadmap:
 
 ```bash
-PHASE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" > $TMPDIR/list-phase-assumptions-phase.json
 ```
 
-Parse JSON for: `found`, `phase_number`, `phase_name`, `goal`, `success_criteria`, `section`.
+Read `$TMPDIR/list-phase-assumptions-phase.json` and parse for: `found`, `phase_number`, `phase_name`, `goal`, `success_criteria`, `section`.
 
 **If `found` is false:**
 

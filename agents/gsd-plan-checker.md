@@ -551,12 +551,20 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 
 ## Step 1: Load Context
 
-Load phase operation context:
+Load phase operation context (Pattern A + B):
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/plan-checker-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-checker-init.json phase_dir > $TMPDIR/plan-checker-phase-dir.txt
+read phase_dir < $TMPDIR/plan-checker-phase-dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-checker-init.json phase_number > $TMPDIR/plan-checker-phase-number.txt
+read phase_number < $TMPDIR/plan-checker-phase-number.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-checker-init.json has_plans > $TMPDIR/plan-checker-has-plans.txt
+read has_plans < $TMPDIR/plan-checker-has-plans.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/plan-checker-init.json plan_count > $TMPDIR/plan-checker-plan-count.txt
+read plan_count < $TMPDIR/plan-checker-plan-count.txt
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
+Extracted fields from the init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
 
 Orchestrator provides CONTEXT.md content in the verification prompt. If provided, parse for locked decisions, discretion areas, deferred ideas.
 
@@ -577,8 +585,8 @@ Use gsd-tools to validate plan structure:
 ```bash
 for plan in "$PHASE_DIR"/*-PLAN.md; do
   echo "=== $plan ==="
-  PLAN_STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$plan")
-  echo "$PLAN_STRUCTURE"
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$plan" > $TMPDIR/plan-checker-plan-structure.json
+  cat $TMPDIR/plan-checker-plan-structure.json
 done
 ```
 
@@ -595,7 +603,8 @@ Map errors/warnings to verification dimensions:
 Extract must_haves from each plan using gsd-tools:
 
 ```bash
-MUST_HAVES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_PATH" --field must_haves)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_PATH" --field must_haves > $TMPDIR/plan-checker-must-haves.txt
+read MUST_HAVES < $TMPDIR/plan-checker-must-haves.txt
 ```
 
 Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
@@ -640,7 +649,8 @@ For each requirement: find covering task(s), verify action is specific, flag gap
 Use gsd-tools plan-structure verification (already run in Step 2):
 
 ```bash
-PLAN_STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH" > $TMPDIR/plan-checker-structure.json
+read PLAN_STRUCTURE < $TMPDIR/plan-checker-structure.json
 ```
 
 The `tasks` array in the result shows each task's completeness:

@@ -100,17 +100,22 @@ For each phase's exports, verify they're imported and used.
 check_export_used() {
   local export_name="$1"
   local source_phase="$2"
-  local search_path="${3:-src/}"
+  local search_path="$3"
+  [ -z "$search_path" ] && search_path="src/"
 
-  # Find imports
-  local imports=$(grep -r "import.*$export_name" "$search_path" \
-    --include="*.ts" --include="*.tsx" 2>/dev/null | \
-    grep -v "$source_phase" | wc -l)
+  # Find imports — redirect-then-read via $TMPDIR (Pattern E + B)
+  grep -r "import.*$export_name" "$search_path" \
+    --include="*.ts" --include="*.tsx" 2>/dev/null \
+    | grep -v "$source_phase" | wc -l > $TMPDIR/integration-checker-imports.txt
+  local imports
+  read imports < $TMPDIR/integration-checker-imports.txt
 
   # Find usage (not just import)
-  local uses=$(grep -r "$export_name" "$search_path" \
-    --include="*.ts" --include="*.tsx" 2>/dev/null | \
-    grep -v "import" | grep -v "$source_phase" | wc -l)
+  grep -r "$export_name" "$search_path" \
+    --include="*.ts" --include="*.tsx" 2>/dev/null \
+    | grep -v "import" | grep -v "$source_phase" | wc -l > $TMPDIR/integration-checker-uses.txt
+  local uses
+  read uses < $TMPDIR/integration-checker-uses.txt
 
   if [ "$imports" -gt 0 ] && [ "$uses" -gt 0 ]; then
     echo "CONNECTED ($imports imports, $uses uses)"
@@ -138,14 +143,16 @@ Check that API routes have consumers.
 ```bash
 # Next.js App Router
 find src/app/api -name "route.ts" 2>/dev/null | while read route; do
-  # Extract route path from file path
-  path=$(echo "$route" | sed 's|src/app/api||' | sed 's|/route.ts||')
+  # Extract route path from file path — redirect-then-read (Pattern E)
+  printf "%s" "$route" | sed 's|src/app/api||' | sed 's|/route.ts||' > $TMPDIR/integration-checker-route-path.txt
+  read path < $TMPDIR/integration-checker-route-path.txt
   echo "/api$path"
 done
 
 # Next.js Pages Router
 find src/pages/api -name "*.ts" 2>/dev/null | while read route; do
-  path=$(echo "$route" | sed 's|src/pages/api||' | sed 's|\.ts||')
+  printf "%s" "$route" | sed 's|src/pages/api||' | sed 's|\.ts||' > $TMPDIR/integration-checker-route-path.txt
+  read path < $TMPDIR/integration-checker-route-path.txt
   echo "/api$path"
 done
 ```
@@ -155,18 +162,26 @@ done
 ```bash
 check_api_consumed() {
   local route="$1"
-  local search_path="${2:-src/}"
+  local search_path="$2"
+  [ -z "$search_path" ] && search_path="src/"
 
-  # Search for fetch/axios calls to this route
-  local fetches=$(grep -r "fetch.*['\"]$route\|axios.*['\"]$route" "$search_path" \
-    --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l)
+  # Search for fetch/axios calls to this route — redirect-then-read
+  grep -r "fetch.*['\"]$route\|axios.*['\"]$route" "$search_path" \
+    --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l > $TMPDIR/integration-checker-fetches.txt
+  local fetches
+  read fetches < $TMPDIR/integration-checker-fetches.txt
 
   # Also check for dynamic routes (replace [id] with pattern)
-  local dynamic_route=$(echo "$route" | sed 's/\[.*\]/.*/g')
-  local dynamic_fetches=$(grep -r "fetch.*['\"]$dynamic_route\|axios.*['\"]$dynamic_route" "$search_path" \
-    --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l)
+  printf "%s" "$route" | sed 's/\[.*\]/.*/g' > $TMPDIR/integration-checker-dynroute.txt
+  local dynamic_route
+  read dynamic_route < $TMPDIR/integration-checker-dynroute.txt
+  grep -r "fetch.*['\"]$dynamic_route\|axios.*['\"]$dynamic_route" "$search_path" \
+    --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l > $TMPDIR/integration-checker-dynfetches.txt
+  local dynamic_fetches
+  read dynamic_fetches < $TMPDIR/integration-checker-dynfetches.txt
 
-  local total=$((fetches + dynamic_fetches))
+  local total=0
+  (( total = fetches + dynamic_fetches )) || true
 
   if [ "$total" -gt 0 ]; then
     echo "CONSUMED ($total calls)"
@@ -196,11 +211,15 @@ grep -r -l "$protected_patterns" src/ --include="*.tsx" 2>/dev/null
 check_auth_protection() {
   local file="$1"
 
-  # Check for auth hooks/context usage
-  local has_auth=$(grep -E "useAuth|useSession|getCurrentUser|isAuthenticated" "$file" 2>/dev/null)
+  # Check for auth hooks/context usage — redirect-then-read
+  grep -E "useAuth|useSession|getCurrentUser|isAuthenticated" "$file" 2>/dev/null > $TMPDIR/integration-checker-has-auth.txt || true
+  local has_auth
+  read has_auth < $TMPDIR/integration-checker-has-auth.txt || has_auth=""
 
   # Check for redirect on no auth
-  local has_redirect=$(grep -E "redirect.*login|router.push.*login|navigate.*login" "$file" 2>/dev/null)
+  grep -E "redirect.*login|router.push.*login|navigate.*login" "$file" 2>/dev/null > $TMPDIR/integration-checker-has-redirect.txt || true
+  local has_redirect
+  read has_redirect < $TMPDIR/integration-checker-has-redirect.txt || has_redirect=""
 
   if [ -n "$has_auth" ] || [ -n "$has_redirect" ]; then
     echo "PROTECTED"
@@ -222,23 +241,31 @@ Derive flows from milestone goals and trace through codebase.
 verify_auth_flow() {
   echo "=== Auth Flow ==="
 
-  # Step 1: Login form exists
-  local login_form=$(grep -r -l "login\|Login" src/ --include="*.tsx" 2>/dev/null | head -1)
+  # Step 1: Login form exists — redirect-then-read
+  grep -r -l "login\|Login" src/ --include="*.tsx" 2>/dev/null | head -1 > $TMPDIR/integration-checker-login-form.txt || true
+  local login_form
+  read login_form < $TMPDIR/integration-checker-login-form.txt || login_form=""
   [ -n "$login_form" ] && echo "✓ Login form: $login_form" || echo "✗ Login form: MISSING"
 
   # Step 2: Form submits to API
   if [ -n "$login_form" ]; then
-    local submits=$(grep -E "fetch.*auth|axios.*auth|/api/auth" "$login_form" 2>/dev/null)
+    grep -E "fetch.*auth|axios.*auth|/api/auth" "$login_form" 2>/dev/null > $TMPDIR/integration-checker-submits.txt || true
+    local submits
+    read submits < $TMPDIR/integration-checker-submits.txt || submits=""
     [ -n "$submits" ] && echo "✓ Submits to API" || echo "✗ Form doesn't submit to API"
   fi
 
   # Step 3: API route exists
-  local api_route=$(find src -path "*api/auth*" -name "*.ts" 2>/dev/null | head -1)
+  find src -path "*api/auth*" -name "*.ts" 2>/dev/null | head -1 > $TMPDIR/integration-checker-api-route.txt || true
+  local api_route
+  read api_route < $TMPDIR/integration-checker-api-route.txt || api_route=""
   [ -n "$api_route" ] && echo "✓ API route: $api_route" || echo "✗ API route: MISSING"
 
   # Step 4: Redirect after success
   if [ -n "$login_form" ]; then
-    local redirect=$(grep -E "redirect|router.push|navigate" "$login_form" 2>/dev/null)
+    grep -E "redirect|router.push|navigate" "$login_form" 2>/dev/null > $TMPDIR/integration-checker-auth-redirect.txt || true
+    local redirect
+    read redirect < $TMPDIR/integration-checker-auth-redirect.txt || redirect=""
     [ -n "$redirect" ] && echo "✓ Redirects after login" || echo "✗ No redirect after login"
   fi
 }
@@ -254,30 +281,42 @@ verify_data_flow() {
 
   echo "=== Data Flow: $component → $api_route ==="
 
-  # Step 1: Component exists
-  local comp_file=$(find src -name "*$component*" -name "*.tsx" 2>/dev/null | head -1)
+  # Step 1: Component exists — redirect-then-read
+  find src -name "*$component*" -name "*.tsx" 2>/dev/null | head -1 > $TMPDIR/integration-checker-comp-file.txt || true
+  local comp_file
+  read comp_file < $TMPDIR/integration-checker-comp-file.txt || comp_file=""
   [ -n "$comp_file" ] && echo "✓ Component: $comp_file" || echo "✗ Component: MISSING"
 
   if [ -n "$comp_file" ]; then
     # Step 2: Fetches data
-    local fetches=$(grep -E "fetch|axios|useSWR|useQuery" "$comp_file" 2>/dev/null)
+    grep -E "fetch|axios|useSWR|useQuery" "$comp_file" 2>/dev/null > $TMPDIR/integration-checker-data-fetches.txt || true
+    local fetches
+    read fetches < $TMPDIR/integration-checker-data-fetches.txt || fetches=""
     [ -n "$fetches" ] && echo "✓ Has fetch call" || echo "✗ No fetch call"
 
     # Step 3: Has state for data
-    local has_state=$(grep -E "useState|useQuery|useSWR" "$comp_file" 2>/dev/null)
+    grep -E "useState|useQuery|useSWR" "$comp_file" 2>/dev/null > $TMPDIR/integration-checker-has-state.txt || true
+    local has_state
+    read has_state < $TMPDIR/integration-checker-has-state.txt || has_state=""
     [ -n "$has_state" ] && echo "✓ Has state" || echo "✗ No state for data"
 
-    # Step 4: Renders data
-    local renders=$(grep -E "\{.*$data_var.*\}|\{$data_var\." "$comp_file" 2>/dev/null)
+    # Step 4: Renders data — pattern uses data_var inside grep -E args; redirect-then-read
+    grep -E "\{.*$data_var.*\}|\{$data_var\." "$comp_file" 2>/dev/null > $TMPDIR/integration-checker-renders.txt || true
+    local renders
+    read renders < $TMPDIR/integration-checker-renders.txt || renders=""
     [ -n "$renders" ] && echo "✓ Renders data" || echo "✗ Doesn't render data"
   fi
 
   # Step 5: API route exists and returns data
-  local route_file=$(find src -path "*$api_route*" -name "*.ts" 2>/dev/null | head -1)
+  find src -path "*$api_route*" -name "*.ts" 2>/dev/null | head -1 > $TMPDIR/integration-checker-route-file.txt || true
+  local route_file
+  read route_file < $TMPDIR/integration-checker-route-file.txt || route_file=""
   [ -n "$route_file" ] && echo "✓ API route: $route_file" || echo "✗ API route: MISSING"
 
   if [ -n "$route_file" ]; then
-    local returns_data=$(grep -E "return.*json|res.json" "$route_file" 2>/dev/null)
+    grep -E "return.*json|res.json" "$route_file" 2>/dev/null > $TMPDIR/integration-checker-returns-data.txt || true
+    local returns_data
+    read returns_data < $TMPDIR/integration-checker-returns-data.txt || returns_data=""
     [ -n "$returns_data" ] && echo "✓ API returns data" || echo "✗ API doesn't return data"
   fi
 }
@@ -292,23 +331,33 @@ verify_form_flow() {
 
   echo "=== Form Flow: $form_component → $api_route ==="
 
-  local form_file=$(find src -name "*$form_component*" -name "*.tsx" 2>/dev/null | head -1)
+  find src -name "*$form_component*" -name "*.tsx" 2>/dev/null | head -1 > $TMPDIR/integration-checker-form-file.txt || true
+  local form_file
+  read form_file < $TMPDIR/integration-checker-form-file.txt || form_file=""
 
   if [ -n "$form_file" ]; then
     # Step 1: Has form element
-    local has_form=$(grep -E "<form|onSubmit" "$form_file" 2>/dev/null)
+    grep -E "<form|onSubmit" "$form_file" 2>/dev/null > $TMPDIR/integration-checker-has-form.txt || true
+    local has_form
+    read has_form < $TMPDIR/integration-checker-has-form.txt || has_form=""
     [ -n "$has_form" ] && echo "✓ Has form" || echo "✗ No form element"
 
     # Step 2: Handler calls API
-    local calls_api=$(grep -E "fetch.*$api_route|axios.*$api_route" "$form_file" 2>/dev/null)
+    grep -E "fetch.*$api_route|axios.*$api_route" "$form_file" 2>/dev/null > $TMPDIR/integration-checker-calls-api.txt || true
+    local calls_api
+    read calls_api < $TMPDIR/integration-checker-calls-api.txt || calls_api=""
     [ -n "$calls_api" ] && echo "✓ Calls API" || echo "✗ Doesn't call API"
 
     # Step 3: Handles response
-    local handles_response=$(grep -E "\.then|await.*fetch|setError|setSuccess" "$form_file" 2>/dev/null)
+    grep -E "\.then|await.*fetch|setError|setSuccess" "$form_file" 2>/dev/null > $TMPDIR/integration-checker-handles.txt || true
+    local handles_response
+    read handles_response < $TMPDIR/integration-checker-handles.txt || handles_response=""
     [ -n "$handles_response" ] && echo "✓ Handles response" || echo "✗ Doesn't handle response"
 
     # Step 4: Shows feedback
-    local shows_feedback=$(grep -E "error|success|loading|isLoading" "$form_file" 2>/dev/null)
+    grep -E "error|success|loading|isLoading" "$form_file" 2>/dev/null > $TMPDIR/integration-checker-feedback.txt || true
+    local shows_feedback
+    read shows_feedback < $TMPDIR/integration-checker-feedback.txt || shows_feedback=""
     [ -n "$shows_feedback" ] && echo "✓ Shows feedback" || echo "✗ No user feedback"
   fi
 }

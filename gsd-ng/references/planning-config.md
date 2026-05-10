@@ -64,14 +64,18 @@ Configuration options for `.planning/` directory behavior.
 
 ```bash
 # Commit with automatic commit_docs + gitignore checks:
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update state" --files .planning/STATE.md
+node ./.claude/gsd-ng/bin/gsd-tools.cjs commit "docs: update state" --files .planning/STATE.md
 
-# Load config via state load (returns JSON):
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-# commit_docs is available in the JSON output
+# Load config via state load (writes JSON to a file, no command substitution):
+node ./.claude/gsd-ng/bin/gsd-tools.cjs state load > $TMPDIR/planning-config-state.json
+# commit_docs is available in the JSON file:
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/planning-config-state.json commit_docs > $TMPDIR/planning-config-commit-docs.txt
+read COMMIT_DOCS < $TMPDIR/planning-config-commit-docs.txt
 
-# Or use init commands which include commit_docs:
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "1")
+# Or use init commands which include commit_docs as a flat top-level field:
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init execute-phase "1" > $TMPDIR/planning-config-init-exec.json
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/planning-config-init-exec.json commit_docs > $TMPDIR/planning-config-init-commit-docs.txt
+read COMMIT_DOCS < $TMPDIR/planning-config-init-commit-docs.txt
 # commit_docs is included in all init command outputs
 ```
 
@@ -80,7 +84,7 @@ INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "1")
 **Commit via CLI (handles checks automatically):**
 
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update state" --files .planning/STATE.md
+node ./.claude/gsd-ng/bin/gsd-tools.cjs commit "docs: update state" --files .planning/STATE.md
 ```
 
 The CLI checks `commit_docs` config and gitignore status internally — no manual conditionals needed.
@@ -189,32 +193,45 @@ To use uncommitted mode:
 
 **Checking the config:**
 
-Use `init execute-phase` which returns all config as JSON:
+Use `init execute-phase` which returns all config as JSON written to a file:
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "1")
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init execute-phase "1" > $TMPDIR/planning-config-branching-init.json
 # JSON output includes: branching_strategy, phase_branch_template, milestone_branch_template
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/planning-config-branching-init.json branching_strategy > $TMPDIR/planning-config-branching.txt
+read BRANCHING_STRATEGY < $TMPDIR/planning-config-branching.txt
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/planning-config-branching-init.json phase_branch_template > $TMPDIR/planning-config-pbt.txt
+read PHASE_BRANCH_TEMPLATE < $TMPDIR/planning-config-pbt.txt
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/planning-config-branching-init.json milestone_branch_template > $TMPDIR/planning-config-mbt.txt
+read MILESTONE_BRANCH_TEMPLATE < $TMPDIR/planning-config-mbt.txt
 ```
 
-Or use `state load` for the config values:
+Or use `state load` for the same fields:
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-# Parse branching_strategy, phase_branch_template, milestone_branch_template from JSON
+node ./.claude/gsd-ng/bin/gsd-tools.cjs state load > $TMPDIR/planning-config-state-branch.json
+# Read branching_strategy, phase_branch_template, milestone_branch_template
+# from the JSON file with init-get-from-file (one read call per field).
 ```
 
 **Branch creation:**
 
+Use `generate-slug` for the slug computation (replaces the `echo|tr|sed` pipeline) and `sed -e` directly on a known template (no capture needed for the substitution result — pipe straight into `git checkout`):
+
 ```bash
 # For phase strategy
 if [ "$BRANCHING_STRATEGY" = "phase" ]; then
-  PHASE_SLUG=$(echo "$PHASE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
-  BRANCH_NAME=$(echo "$PHASE_BRANCH_TEMPLATE" | sed "s/{phase}/$PADDED_PHASE/g" | sed "s/{slug}/$PHASE_SLUG/g")
+  node ./.claude/gsd-ng/bin/gsd-tools.cjs generate-slug "$PHASE_NAME" > $TMPDIR/planning-config-phase-slug.txt
+  read PHASE_SLUG < $TMPDIR/planning-config-phase-slug.txt
+  printf '%s' "$PHASE_BRANCH_TEMPLATE" | sed -e "s/{phase}/$PADDED_PHASE/g" -e "s/{slug}/$PHASE_SLUG/g" > $TMPDIR/planning-config-phase-branch.txt
+  read BRANCH_NAME < $TMPDIR/planning-config-phase-branch.txt
   git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME"
 fi
 
 # For milestone strategy
 if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
-  MILESTONE_SLUG=$(echo "$MILESTONE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
-  BRANCH_NAME=$(echo "$MILESTONE_BRANCH_TEMPLATE" | sed "s/{milestone}/$MILESTONE_VERSION/g" | sed "s/{slug}/$MILESTONE_SLUG/g")
+  node ./.claude/gsd-ng/bin/gsd-tools.cjs generate-slug "$MILESTONE_NAME" > $TMPDIR/planning-config-milestone-slug.txt
+  read MILESTONE_SLUG < $TMPDIR/planning-config-milestone-slug.txt
+  printf '%s' "$MILESTONE_BRANCH_TEMPLATE" | sed -e "s/{milestone}/$MILESTONE_VERSION/g" -e "s/{slug}/$MILESTONE_SLUG/g" > $TMPDIR/planning-config-milestone-branch.txt
+  read BRANCH_NAME < $TMPDIR/planning-config-milestone-branch.txt
   git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME"
 fi
 ```

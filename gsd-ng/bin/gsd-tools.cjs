@@ -103,6 +103,8 @@
  * Frontmatter CRUD:
  *   frontmatter get <file> [--field k] Extract frontmatter as JSON
  *   frontmatter set <file> --field k   Update single frontmatter field
+ *   frontmatter array-append <file> --field k --value v
+ *                                       Append v to array field (dedupe; coerce scalar to array)
  *     --value jsonVal
  *   frontmatter merge <file>           Merge JSON into frontmatter
  *     --data '{json}'
@@ -209,6 +211,7 @@ const ALL_COMMANDS = [
   'config-set-model-profile',
   'config-get',
   'init-get',
+  'init-get-from-file',
   'history-digest',
   'phases',
   'roadmap',
@@ -267,7 +270,7 @@ const SUBCOMMANDS = {
     'rebuild-frontmatter',
   ],
   template: ['select', 'fill'],
-  frontmatter: ['get', 'set', 'merge', 'validate'],
+  frontmatter: ['get', 'set', 'merge', 'validate', 'array-append'],
   verify: [
     'plan-structure',
     'phase-completeness',
@@ -297,7 +300,7 @@ const SUBCOMMANDS = {
     'map-codebase',
     'progress',
   ],
-  guard: ['sync-chain', 'init-valid'],
+  guard: ['sync-chain', 'init-valid', 'init-valid-file'],
   test: ['capture-baseline', 'compare-baseline'],
 };
 
@@ -367,6 +370,10 @@ const ARG_SCHEMAS = {
     set: { positional: { min: 1, max: 1 }, flags: ['--field', '--value'] },
     merge: { positional: { min: 1, max: 1 }, flags: ['--data'] },
     validate: { positional: { min: 1, max: 1 }, flags: ['--schema'] },
+    'array-append': {
+      positional: { min: 1, max: 1 },
+      flags: ['--field', '--value'],
+    },
   },
   verify: {
     'plan-structure': { positional: { min: 1, max: 1 }, flags: [] },
@@ -431,6 +438,7 @@ const ARG_SCHEMAS = {
   guard: {
     // sync-chain omitted: takes a raw freeform arguments string, not discrete flags
     'init-valid': { positional: { min: 1, max: 1 }, flags: [] },
+    'init-valid-file': { positional: { min: 1, max: 1 }, flags: [] },
   },
   test: {
     'capture-baseline': { positional: { min: 2, max: 2 }, flags: [] },
@@ -1305,6 +1313,15 @@ async function main() {
           file,
           schemaIdx !== -1 ? args[schemaIdx + 1] : null,
         );
+      } else if (subcommand === 'array-append') {
+        const fieldIdx = args.indexOf('--field');
+        const valueIdx = args.indexOf('--value');
+        frontmatter.cmdFrontmatterArrayAppend(
+          cwd,
+          file,
+          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
+          valueIdx !== -1 ? args[valueIdx + 1] : undefined,
+        );
       } else {
         const suggestions = suggestSubcommand(subcommand, 'frontmatter');
         if (
@@ -1424,6 +1441,11 @@ async function main() {
 
     case 'init-get': {
       init.cmdInitGet(args[1], args[2]);
+      break;
+    }
+
+    case 'init-get-from-file': {
+      init.cmdInitGetFromFile(args[1], args[2]);
       break;
     }
 
@@ -2142,6 +2164,8 @@ async function main() {
         guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '));
       } else if (subcommand === 'init-valid') {
         guard.cmdGuardInitValid(args[2]);
+      } else if (subcommand === 'init-valid-file') {
+        guard.cmdGuardInitValidFile(args[2]);
       } else {
         const suggestions = suggestSubcommand(subcommand, 'guard');
         if (

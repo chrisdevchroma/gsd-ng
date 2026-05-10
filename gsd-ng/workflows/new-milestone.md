@@ -100,10 +100,11 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: start milestone v[X.
 ## 7. Load Context and Resolve Models
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-milestone)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-milestone)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-milestone > $TMPDIR/new-milestone-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/new-milestone-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-milestone > $TMPDIR/new-milestone-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/new-milestone-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi

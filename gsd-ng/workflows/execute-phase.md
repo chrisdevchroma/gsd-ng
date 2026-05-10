@@ -16,19 +16,47 @@ Read STATE.md before any operation to load project context.
 Load all context in one call:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "$PHASE_ARG" > $TMPDIR/execute-phase-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/execute-phase-init.json 2>/dev/null || {
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "$PHASE_ARG" > $TMPDIR/execute-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/execute-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
-fi
+}
 ```
 
 Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `target_branch`, `auto_push`, `remote`, `review_branch_template`, `pr_draft`, `platform`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
 
-Store as shell variables: `BRANCHING_STRATEGY`, `BRANCH_NAME`, `TARGET_BRANCH`, `AUTO_PUSH`, `REMOTE`.
+Store as shell variables:
+
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json branching_strategy > $TMPDIR/execute-phase-branching_strategy.txt
+read BRANCHING_STRATEGY < $TMPDIR/execute-phase-branching_strategy.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json branch_name > $TMPDIR/execute-phase-branch_name.txt
+read BRANCH_NAME < $TMPDIR/execute-phase-branch_name.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json target_branch > $TMPDIR/execute-phase-target_branch.txt
+read TARGET_BRANCH < $TMPDIR/execute-phase-target_branch.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json auto_push > $TMPDIR/execute-phase-auto_push.txt
+read AUTO_PUSH < $TMPDIR/execute-phase-auto_push.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json remote > $TMPDIR/execute-phase-remote.txt
+read REMOTE < $TMPDIR/execute-phase-remote.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json phase_found > $TMPDIR/execute-phase-phase_found.txt
+read PHASE_FOUND < $TMPDIR/execute-phase-phase_found.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json plan_count > $TMPDIR/execute-phase-plan_count.txt
+read PLAN_COUNT < $TMPDIR/execute-phase-plan_count.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json state_exists > $TMPDIR/execute-phase-state_exists.txt
+read STATE_EXISTS < $TMPDIR/execute-phase-state_exists.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json phase_dir > $TMPDIR/execute-phase-phase_dir.txt
+read PHASE_DIR < $TMPDIR/execute-phase-phase_dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json phase_number > $TMPDIR/execute-phase-phase_number.txt
+read PHASE_NUMBER < $TMPDIR/execute-phase-phase_number.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json phase_name > $TMPDIR/execute-phase-phase_name.txt
+read PHASE_NAME < $TMPDIR/execute-phase-phase_name.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json parallelization > $TMPDIR/execute-phase-parallelization.txt
+read PARALLELIZATION < $TMPDIR/execute-phase-parallelization.txt
+```
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
@@ -47,24 +75,35 @@ Check `branching_strategy` from init:
 
 **"none":** Skip, continue on current branch.
 
-**Submodule-aware routing:** Before performing any git branch operations, extract submodule context from `$INIT` (already loaded in the initialize step):
+**Submodule-aware routing:** Before performing any git branch operations, extract submodule context from the init JSON (already loaded in the initialize step):
 
 ```bash
-SUBMODULE_IS_ACTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_is_active 2>/dev/null)
-SUBMODULE_GIT_CWD=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_git_cwd 2>/dev/null)
-SUBMODULE_TARGET_BRANCH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_target_branch 2>/dev/null)
-SUBMODULE_AMBIGUOUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_ambiguous 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_is_active > $TMPDIR/execute-phase-submodule_is_active.txt
+read SUBMODULE_IS_ACTIVE < $TMPDIR/execute-phase-submodule_is_active.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_git_cwd > $TMPDIR/execute-phase-submodule_git_cwd.txt
+read SUBMODULE_GIT_CWD < $TMPDIR/execute-phase-submodule_git_cwd.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_target_branch > $TMPDIR/execute-phase-submodule_target_branch.txt
+read SUBMODULE_TARGET_BRANCH < $TMPDIR/execute-phase-submodule_target_branch.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_ambiguous > $TMPDIR/execute-phase-submodule_ambiguous.txt
+read SUBMODULE_AMBIGUOUS < $TMPDIR/execute-phase-submodule_ambiguous.txt
 ```
 
 **Ambiguity guard:** If `$SUBMODULE_AMBIGUOUS` is `"true"`, multiple submodules have changes and branching cannot be reliably routed. Ask the user to select which submodule(s) to branch:
 
 ```bash
 if [ "$SUBMODULE_AMBIGUOUS" = "true" ]; then
-  AMBIGUOUS_PATHS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" ambiguous_paths 2>/dev/null)
-  AMBIGUOUS_COUNT=$(echo "$AMBIGUOUS_PATHS" | jq 'length' 2>/dev/null || echo 0)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json ambiguous_paths > $TMPDIR/execute-phase-ambiguous_paths.txt
+  read AMBIGUOUS_PATHS < $TMPDIR/execute-phase-ambiguous_paths.txt
+  AMBIGUOUS_COUNT=0
+  if [ -n "$AMBIGUOUS_PATHS" ]; then
+    echo "$AMBIGUOUS_PATHS" | jq 'length' 2>/dev/null > $TMPDIR/execute-phase-ambiguous_count.txt || echo 0 > $TMPDIR/execute-phase-ambiguous_count.txt
+    read AMBIGUOUS_COUNT < $TMPDIR/execute-phase-ambiguous_count.txt
+  fi
   if [ "$AMBIGUOUS_COUNT" -le 2 ] && [ "$AMBIGUOUS_COUNT" -gt 0 ]; then
-    PATH1=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[0] // ""' 2>/dev/null)
-    PATH2=$(echo "$AMBIGUOUS_PATHS" | jq -r '.[1] // ""' 2>/dev/null)
+    echo "$AMBIGUOUS_PATHS" | jq -r '.[0] // ""' 2>/dev/null > $TMPDIR/execute-phase-path1.txt
+    read PATH1 < $TMPDIR/execute-phase-path1.txt
+    echo "$AMBIGUOUS_PATHS" | jq -r '.[1] // ""' 2>/dev/null > $TMPDIR/execute-phase-path2.txt
+    read PATH2 < $TMPDIR/execute-phase-path2.txt
     AskUserQuestion(
       question="Multiple submodules have changes. Which submodule(s) should be branched?",
       options=["$PATH1", "$PATH2", "All of them", "Skip branching"]
@@ -127,7 +166,7 @@ Report: "Found {plan_count} plans in {phase_dir} ({incomplete_count} incomplete)
 
 **Update STATE.md for phase start:**
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state begin-phase --phase "${PHASE_NUMBER}" --name "${PHASE_NAME}" --plans "${PLAN_COUNT}"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state begin-phase --phase "$PHASE_NUMBER" --name "$PHASE_NAME" --plans "$PLAN_COUNT"
 ```
 This updates Status, Last Activity, Current focus, Current Position, and plan counts in STATE.md so frontmatter and body text reflect the active phase immediately.
 </step>
@@ -137,9 +176,18 @@ Discover test commands via CLI and capture per-directory baselines. Supports sta
 
 ```bash
 # Discover test commands (config override or workspace-aware auto-detect)
-DISCOVERED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" discover-test-command)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" discover-test-command > $TMPDIR/execute-phase-discovered.txt
+read DISCOVERED < $TMPDIR/execute-phase-discovered.txt
 
-ENTRY_COUNT=$(node -e "console.log(JSON.parse(process.argv[1]).length)" "$DISCOVERED")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json phase_dir > $TMPDIR/execute-phase-phasedir2.txt
+read PHASE_DIR_2 < $TMPDIR/execute-phase-phasedir2.txt
+
+ENTRY_COUNT=0
+if [ -n "$DISCOVERED" ]; then
+  node -e "console.log(JSON.parse(process.argv[1]).length)" "$DISCOVERED" > $TMPDIR/execute-phase-entry_count.txt 2>/dev/null
+  read ENTRY_COUNT < $TMPDIR/execute-phase-entry_count.txt
+fi
+
 if [[ "$ENTRY_COUNT" -eq 0 ]]; then
   echo "No test command found — skipping test baseline capture"
 fi
@@ -148,7 +196,7 @@ if [[ "$ENTRY_COUNT" -gt 0 ]]; then
   BASELINE_FILE="${PHASE_DIR}/${PHASE_NUMBER}-test-baseline.json"
   echo "Capturing test baselines for $ENTRY_COUNT directory(ies)..."
 
-  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" test capture-baseline "$DISCOVERED" "$BASELINE_FILE"
+  node "./.claude/gsd-ng/bin/gsd-tools.cjs" test capture-baseline "$DISCOVERED" "$BASELINE_FILE"
 fi
 ```
 
@@ -159,7 +207,8 @@ Store `$DISCOVERED`, `$ENTRY_COUNT`, and `$BASELINE_FILE` for use in the pre-UAT
 Load plan inventory with wave grouping in one call:
 
 ```bash
-PLAN_INDEX=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase-plan-index "${PHASE_NUMBER}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase-plan-index "$PHASE_NUMBER" > $TMPDIR/execute-phase-plan_index.txt
+read PLAN_INDEX < $TMPDIR/execute-phase-plan_index.txt
 ```
 
 Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objective`, `files_modified`, `task_count`, `has_summary`), `waves` (map of wave number → plan IDs), `incomplete`, `has_checkpoints`.
@@ -217,10 +266,12 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    Resolve workspace topology for agent context injection:
    ```bash
-   WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type)
-   WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
-   SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
-   PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+   node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type > $TMPDIR/execute-phase-workspace_type.txt
+   read WORKSPACE_TYPE < $TMPDIR/execute-phase-workspace_type.txt
+   node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field submodule_paths_summary > $TMPDIR/execute-phase-submodule_paths.txt
+   read SUBMODULE_PATHS < $TMPDIR/execute-phase-submodule_paths.txt
+   pwd > $TMPDIR/execute-phase-project_root.txt
+   read PROJECT_ROOT < $TMPDIR/execute-phase-project_root.txt
    ```
 
    ```
@@ -281,10 +332,13 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    - **Breakout check** — compare committed files against plan's `files_modified`:
      ```bash
      PLAN_FILE="{phase_dir}/{plan_file}"
-     FILES_MODIFIED=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_FILE" --field files_modified 2>/dev/null)
+     node "./.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$PLAN_FILE" --field files_modified > $TMPDIR/execute-phase-files_modified.txt 2>/dev/null
+     read FILES_MODIFIED < $TMPDIR/execute-phase-files_modified.txt
 
+     BREAKOUT_RESULT=""
      if [[ -n "$FILES_MODIFIED" ]]; then
-       BREAKOUT_RESULT=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" breakout-check --plan "{phase}-{plan}" --declared-files "$FILES_MODIFIED" 2>/dev/null)
+       node "./.claude/gsd-ng/bin/gsd-tools.cjs" breakout-check --plan "{phase}-{plan}" --declared-files "$FILES_MODIFIED" > $TMPDIR/execute-phase-breakout_result.txt 2>/dev/null
+       read BREAKOUT_RESULT < $TMPDIR/execute-phase-breakout_result.txt
      fi
      ```
      - If `BREAKOUT_RESULT` is `warning`: log in wave completion output — "Note: executor modified files outside declared scope: {list}". Continue execution.
@@ -329,8 +383,10 @@ Plans with `autonomous: false` require user interaction.
 
 Read auto-advance config (chain flag + user preference):
 ```bash
-AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/execute-phase-auto_chain.txt
+read AUTO_CHAIN < $TMPDIR/execute-phase-auto_chain.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false" > $TMPDIR/execute-phase-auto_cfg.txt
+read AUTO_CFG < $TMPDIR/execute-phase-auto_cfg.txt
 ```
 
 When executor returns a checkpoint AND (`AUTO_CHAIN` is `"true"` OR `AUTO_CFG` is `"true"`):
@@ -400,29 +456,36 @@ if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BR
   # Route push to correct repository
   if [ "$SUBMODULE_IS_ACTIVE" = "true" ] && [ "$SUBMODULE_AMBIGUOUS" != "true" ] && [ -n "$SUBMODULE_GIT_CWD" ]; then
     GIT_CWD="${SUBMODULE_GIT_CWD}"
-    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote 2>/dev/null)
-    SUBMODULE_REMOTE_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" submodule_remote_url 2>/dev/null)
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_remote > $TMPDIR/execute-phase-push_remote.txt
+    read PUSH_REMOTE < $TMPDIR/execute-phase-push_remote.txt
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json submodule_remote_url > $TMPDIR/execute-phase-submodule_remote_url.txt
+    read SUBMODULE_REMOTE_URL < $TMPDIR/execute-phase-submodule_remote_url.txt
   else
     GIT_CWD="."
-    PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote 2>/dev/null)
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/execute-phase-init.json remote > $TMPDIR/execute-phase-push_remote2.txt
+    read PUSH_REMOTE < $TMPDIR/execute-phase-push_remote2.txt
     SUBMODULE_REMOTE_URL=""
   fi
   AMBIGUOUS="${SUBMODULE_AMBIGUOUS}"
 ```
 
-**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from `$INIT` and list them. Skip the push. Do not proceed.
+**Ambiguous check:** If `$AMBIGUOUS` is `"true"`, warn the user that multiple submodules have changes — extract `ambiguous_paths` from the init JSON and list them. Skip the push. Do not proceed.
 
 **SSH pre-push check:**
 
 ```bash
-  SSH_CHECK=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --default true)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get git.ssh_check --default true > $TMPDIR/execute-phase-ssh_check.txt
+  read SSH_CHECK < $TMPDIR/execute-phase-ssh_check.txt
   if [ "$SSH_CHECK" = "true" ] && [ -n "$SUBMODULE_REMOTE_URL" ]; then
-    SSH_STATUS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status)
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field status > $TMPDIR/execute-phase-ssh_status.txt
+    read SSH_STATUS < $TMPDIR/execute-phase-ssh_status.txt
     if [ "$SSH_STATUS" != "ok" ] && [ "$SSH_STATUS" != "not_required" ]; then
-      SSH_MSG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message)
+      node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" ssh-check "$SUBMODULE_REMOTE_URL" --field message > $TMPDIR/execute-phase-ssh_msg.txt
+      read SSH_MSG < $TMPDIR/execute-phase-ssh_msg.txt
       echo "WARNING: SSH check failed — $SSH_MSG"
       # Also check for SSH signing
-      GPG_FORMAT=$(git -C "$GIT_CWD" config gpg.format 2>/dev/null || echo "")
+      git -C "$GIT_CWD" config gpg.format > $TMPDIR/execute-phase-gpg_format.txt 2>/dev/null || echo "" > $TMPDIR/execute-phase-gpg_format.txt
+      read GPG_FORMAT < $TMPDIR/execute-phase-gpg_format.txt
       if [ "$GPG_FORMAT" = "ssh" ]; then
         echo "NOTE: gpg.format=ssh detected — your signing key also needs to be loaded in the SSH agent."
       fi
@@ -434,10 +497,11 @@ if [ "$AUTO_PUSH" = "true" ] && [ "$BRANCHING_STRATEGY" != "none" ] && [ -n "$BR
   echo "Pushing $BRANCH_NAME to $PUSH_REMOTE..."
 
   # Push with upstream tracking (safe to use -u unconditionally — git ignores it when upstream exists)
-  PUSH_OUT=$(git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$BRANCH_NAME" 2>&1)
+  git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$BRANCH_NAME" > $TMPDIR/execute-phase-push_out.txt 2>&1
   PUSH_EXIT=$?
 
   if [ $PUSH_EXIT -ne 0 ]; then
+    read PUSH_OUT < $TMPDIR/execute-phase-push_out.txt
     echo "Warning: Push to $PUSH_REMOTE failed: $PUSH_OUT"
     echo "Local commits are safe. Push manually: git -C \"$GIT_CWD\" push -u $PUSH_REMOTE $BRANCH_NAME"
   else
@@ -462,7 +526,8 @@ fi
 
 **2. Find parent UAT file:**
 ```bash
-PARENT_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PARENT_PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "$PARENT_PHASE" > $TMPDIR/execute-phase-parent_info.txt
+read PARENT_INFO < $TMPDIR/execute-phase-parent_info.txt
 # Extract directory from PARENT_INFO JSON, then find UAT file in that directory
 ```
 
@@ -504,7 +569,7 @@ Skip this step entirely if `$ENTRY_COUNT` is 0 (no test commands were discovered
 
 ```bash
 if [[ "$ENTRY_COUNT" -gt 0 ]]; then
-  node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" test compare-baseline "$DISCOVERED" "$BASELINE_FILE"
+  node "./.claude/gsd-ng/bin/gsd-tools.cjs" test compare-baseline "$DISCOVERED" "$BASELINE_FILE"
 fi
 ```
 
@@ -601,7 +666,8 @@ Gap closure cycle: `{{COMMAND_PREFIX}}plan-phase {X} --gaps` reads VERIFICATION.
 **Mark phase complete and update all tracking files:**
 
 ```bash
-COMPLETION=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase complete "${PHASE_NUMBER}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase complete "$PHASE_NUMBER" > $TMPDIR/execute-phase-completion.txt
+read COMPLETION < $TMPDIR/execute-phase-completion.txt
 ```
 
 The CLI handles:
@@ -622,13 +688,15 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(phase-{X}): complete 
 After phase completion is committed, check for external issue auto-sync:
 
 ```bash
-AUTO_SYNC=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --default true)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get issue_tracker.auto_sync --default true > $TMPDIR/execute-phase-auto_sync.txt
+read AUTO_SYNC < $TMPDIR/execute-phase-auto_sync.txt
 ```
 
 If `AUTO_SYNC` is `"true"` (string comparison — config-get returns raw string):
 
 ```bash
-SYNC_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" issue-sync "${PHASE_NUMBER}" --auto 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" issue-sync "$PHASE_NUMBER" --auto > $TMPDIR/execute-phase-sync_result.txt 2>/dev/null
+read SYNC_RESULT < $TMPDIR/execute-phase-sync_result.txt
 ```
 
 Parse SYNC_RESULT JSON. If `synced` array has entries, display:
@@ -650,7 +718,8 @@ If `AUTO_SYNC` is `"false"`: skip entirely, no output.
 <step name="incremental_remap">
 
 ```bash
-INCREMENTAL_REMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.incremental_remap --default "true")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.incremental_remap --default "true" > $TMPDIR/execute-phase-incremental_remap.txt
+read INCREMENTAL_REMAP < $TMPDIR/execute-phase-incremental_remap.txt
 ```
 
 If `[ "$INCREMENTAL_REMAP" != "true" ]`: skip this step silently and proceed to `offer_next`.
@@ -658,7 +727,8 @@ If `[ "$INCREMENTAL_REMAP" != "true" ]`: skip this step silently and proceed to 
 If `[ "$INCREMENTAL_REMAP" = "true" ]` (default): After phase completion is committed, trigger incremental codebase re-mapping if codebase docs exist:
 
 ```bash
-STALE_COUNT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count > $TMPDIR/execute-phase-stale_count.txt
+read STALE_COUNT < $TMPDIR/execute-phase-stale_count.txt
 ```
 
 If STALE_COUNT is 0: skip silently (no stale docs, nothing to update).
@@ -671,7 +741,8 @@ If STALE_COUNT > 0:
 
 Fetch the full stale doc list:
 ```bash
-STALE_JSON=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check > $TMPDIR/execute-phase-stale_json.txt
+read STALE_JSON < $TMPDIR/execute-phase-stale_json.txt
 ```
 
 For each stale doc in the `stale` array from STALE_JSON, spawn a `gsd-incremental-mapper` agent:
@@ -747,8 +818,10 @@ If `branching_strategy` is not `"none"` AND push succeeded (or `auto_push` is en
 1. Parse `--auto` flag from $ARGUMENTS
 2. Read both the chain flag and user preference (chain flag already synced in init step):
    ```bash
-   AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
-   AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/execute-phase-auto_chain2.txt
+   read AUTO_CHAIN < $TMPDIR/execute-phase-auto_chain2.txt
+   node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false" > $TMPDIR/execute-phase-auto_cfg2.txt
+   read AUTO_CFG < $TMPDIR/execute-phase-auto_cfg2.txt
    ```
 
 **If `--auto` flag present OR `AUTO_CHAIN` is true OR `AUTO_CFG` is true (AND verification passed with no gaps):**
@@ -786,7 +859,8 @@ Check if the phase was started with a `--todo-file` argument:
 ```bash
 ORIGIN_TODO_FILE=""
 if [[ "$ARGUMENTS" == *"--todo-file "* ]]; then
-  ORIGIN_TODO_FILE=$(echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
+  echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p' > $TMPDIR/execute-phase-origin_todo_file.txt
+  read ORIGIN_TODO_FILE < $TMPDIR/execute-phase-origin_todo_file.txt
 fi
 ```
 
@@ -804,21 +878,24 @@ Skip if `$ORIGIN_TODO_FILE` is empty or if the phase status is NOT `passed` (ver
 ```bash
 ORIGIN_TODO_TITLE=""
 if [[ -n "$ORIGIN_TODO_FILE" ]]; then
-  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+  grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' > $TMPDIR/execute-phase-origin_todo_title.txt
+  read ORIGIN_TODO_TITLE < $TMPDIR/execute-phase-origin_todo_title.txt
 fi
 ```
 
 **Verification gate:** Only offer closure when the VERIFICATION.md status is `passed`. If status is `gaps_found` or `halted`, do NOT offer closure — the todo's work is not complete.
 
 ```bash
-VERIFY_STATUS=$(grep "^status:" "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null | tail -1 | cut -d: -f2 | tr -d ' ')
+grep "^status:" "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null | tail -1 | cut -d: -f2 | tr -d ' ' > $TMPDIR/execute-phase-verify_status.txt
+read VERIFY_STATUS < $TMPDIR/execute-phase-verify_status.txt
 ```
 
 If `$VERIFY_STATUS` is `passed` AND `$ORIGIN_TODO_FILE` is set:
 
 **Auto mode:**
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false > $TMPDIR/execute-phase-auto_cfg3.txt
+read AUTO_CFG < $TMPDIR/execute-phase-auto_cfg3.txt
 ```
 
 If auto: close todo, log `[auto] Closed todo: $ORIGIN_TODO_TITLE`.
@@ -857,10 +934,15 @@ if [[ "$VERIFY_STATUS" == "passed" ]]; then
   if [[ -d "$PENDING_DIR" ]]; then
     for TODO_FILE in "$PENDING_DIR"/*.md; do
       [[ -f "$TODO_FILE" ]] || continue
-      TODO_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field phase --default "")
-      if [[ "$(echo "$TODO_PHASE" | tr -d '[:space:]')" == "${PHASE_NUMBER}" ]]; then
-        TODO_BASENAME=$(basename "$TODO_FILE")
-        TODO_TITLE=$(grep '^title:' "$TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+      node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field phase --default "" > $TMPDIR/execute-phase-todo_phase.txt
+      read TODO_PHASE < $TMPDIR/execute-phase-todo_phase.txt
+      echo "$TODO_PHASE" | tr -d '[:space:]' > $TMPDIR/execute-phase-todo_phase_clean.txt
+      read TODO_PHASE_CLEAN < $TMPDIR/execute-phase-todo_phase_clean.txt
+      if [[ "$TODO_PHASE_CLEAN" == "$PHASE_NUMBER" ]]; then
+        basename "$TODO_FILE" > $TMPDIR/execute-phase-todo_basename.txt
+        read TODO_BASENAME < $TMPDIR/execute-phase-todo_basename.txt
+        grep '^title:' "$TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"' > $TMPDIR/execute-phase-todo_title.txt
+        read TODO_TITLE < $TMPDIR/execute-phase-todo_title.txt
         PHASE_LINKED="${PHASE_LINKED}${TODO_BASENAME}|${TODO_TITLE}\n"
       fi
     done
@@ -872,7 +954,8 @@ If `$PHASE_LINKED` is non-empty (at least one phase-linked todo found):
 
 **Auto mode:**
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default false > $TMPDIR/execute-phase-auto_cfg4.txt
+read AUTO_CFG < $TMPDIR/execute-phase-auto_cfg4.txt
 ```
 
 If auto: for each phase-linked todo, close it and commit:
@@ -918,7 +1001,8 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS" == "passed" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/completed/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "" > $TMPDIR/execute-phase-related_outbound.txt
+  read RELATED_OUTBOUND < $TMPDIR/execute-phase-related_outbound.txt
   if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
@@ -930,7 +1014,8 @@ PENDING_DIR=".planning/todos/pending"
 if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$VERIFY_STATUS" == "passed" ]]; then
   for TODO_FILE in "$PENDING_DIR"/*.md; do
     [[ -f "$TODO_FILE" ]] || continue
-    TODO_BASENAME=$(basename "$TODO_FILE")
+    basename "$TODO_FILE" > $TMPDIR/execute-phase-todo_basename.txt
+    read TODO_BASENAME < $TMPDIR/execute-phase-todo_basename.txt
     # Skip the origin todo itself
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
     if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
@@ -945,13 +1030,14 @@ fi
 RELATED_ALL=""
 if [[ -n "$RELATED_OUTBOUND" ]] || [[ -n "$RELATED_INBOUND" ]]; then
   # Combine outbound + inbound, deduplicate, filter to files still in pending/
-  RELATED_ALL=$(printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
+  printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
     [[ -z "$REL_FILE" ]] && continue
     [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
     if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
       echo "$REL_FILE"
     fi
-  done)
+  done > $TMPDIR/execute-phase-related_all.txt
+  read RELATED_ALL < $TMPDIR/execute-phase-related_all.txt
 fi
 ```
 
@@ -964,7 +1050,8 @@ If `$RELATED_ALL` is non-empty:
 if [[ "$AUTO_CFG" == "true" ]]; then
   printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
-    REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+    grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"' > $TMPDIR/execute-phase-rel_title.txt
+    read REL_TITLE < $TMPDIR/execute-phase-rel_title.txt
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after phase completion" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"

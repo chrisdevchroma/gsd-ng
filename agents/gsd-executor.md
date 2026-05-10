@@ -30,10 +30,20 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 Load execution context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE}" > $TMPDIR/executor-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/executor-init.json executor_model > $TMPDIR/executor-model.txt
+read executor_model < $TMPDIR/executor-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/executor-init.json commit_docs > $TMPDIR/executor-commit-docs.txt
+read commit_docs < $TMPDIR/executor-commit-docs.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/executor-init.json phase_dir > $TMPDIR/executor-phase-dir.txt
+read phase_dir < $TMPDIR/executor-phase-dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/executor-init.json plans > $TMPDIR/executor-plans.txt
+read plans < $TMPDIR/executor-plans.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/executor-init.json incomplete_plans > $TMPDIR/executor-incomplete-plans.txt
+read incomplete_plans < $TMPDIR/executor-incomplete-plans.txt
 ```
 
-Extract from init JSON: `executor_model`, `commit_docs`, `phase_dir`, `plans`, `incomplete_plans`.
+Extracted fields from the init JSON: `executor_model`, `commit_docs`, `phase_dir`, `plans`, `incomplete_plans`.
 
 Also read STATE.md for position, decisions, blockers:
 ```bash
@@ -54,8 +64,10 @@ Parse: frontmatter (phase, plan, type, autonomous, wave, depends_on), objective,
 
 <step name="record_start_time">
 ```bash
-PLAN_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-PLAN_START_EPOCH=$(date +%s)
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $TMPDIR/executor-start-time.txt
+read PLAN_START_TIME < $TMPDIR/executor-start-time.txt
+date +%s > $TMPDIR/executor-start-epoch.txt
+read PLAN_START_EPOCH < $TMPDIR/executor-start-epoch.txt
 ```
 </step>
 
@@ -196,8 +208,10 @@ Do NOT continue reading. Analysis without action is a stuck signal.
 Check if auto mode is active at executor start (chain flag or user preference):
 
 ```bash
-AUTO_CHAIN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/executor-auto-chain.txt
+read AUTO_CHAIN < $TMPDIR/executor-auto-chain.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.auto_advance --default "false" > $TMPDIR/executor-auto-cfg.txt
+read AUTO_CFG < $TMPDIR/executor-auto-cfg.txt
 ```
 
 Auto mode is active if either `AUTO_CHAIN` or `AUTO_CFG` is `"true"`. Store the result for checkpoint handling below.
@@ -419,7 +433,7 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state record-session \
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap update-plan-progress "${PHASE_NUMBER}"
 
 # Mark completed requirements from PLAN.md frontmatter
-# Extract the `requirements` array from the plan's frontmatter, then mark each complete
+# Extract the requirements array from the plan's frontmatter, then mark each complete
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" requirements mark-complete ${REQ_IDS}
 ```
 

@@ -71,9 +71,9 @@ grep -E "fetch\(|axios\.|useSWR|useQuery|getServerSideProps|getStaticProps" "$co
 [ -f "$route_path" ]
 
 # Exports HTTP method handlers (Next.js App Router).
-# Expanded from `export (async )?(function|const) (GET|POST|PUT|PATCH|DELETE)` —
+# Expanded from "export (async )?(function|const) (GET|POST|PUT|PATCH|DELETE)" —
 # grouped alternation trips Claude Code's tree-sitter walker (#42085/#43713).
-# Omits 5 `export async const METHOD` combos (not valid JS).
+# Omits 5 "export async const METHOD" combos (not valid JS).
 grep -E "export function GET\(|export function POST\(|export function PUT\(|export function PATCH\(|export function DELETE\(|export async function GET\(|export async function POST\(|export async function PUT\(|export async function PATCH\(|export async function DELETE\(|export const GET[[:space:]]*=|export const POST[[:space:]]*=|export const PUT[[:space:]]*=|export const PATCH[[:space:]]*=|export const DELETE[[:space:]]*=" "$route_path"
 
 # Or Express-style handlers
@@ -181,7 +181,9 @@ grep -E "useState|useEffect|useCallback|useMemo|useRef|useContext" "$hook_path"
 grep -E "return \{|return \[" "$hook_path"
 
 # More than trivial length
-[ $(wc -l < "$hook_path") -gt 10 ]
+wc -l < "$hook_path" > $TMPDIR/verify-deep-hook-lines.txt
+read HOOK_LINES < $TMPDIR/verify-deep-hook-lines.txt
+[ "$HOOK_LINES" -gt 10 ]
 ```
 ```typescript
 // RED FLAGS - These are stubs:
@@ -330,7 +332,9 @@ check_exists() {
 # 2. Check for stub patterns
 check_stubs() {
   local file="$1"
-  local stubs=$(grep -c -E "TODO|FIXME|placeholder|not implemented" "$file" 2>/dev/null || echo 0)
+  local stubs
+  grep -c -E "TODO|FIXME|placeholder|not implemented" "$file" > $TMPDIR/verify-deep-stubs.txt 2>/dev/null || echo 0 > $TMPDIR/verify-deep-stubs.txt
+  read stubs < $TMPDIR/verify-deep-stubs.txt
   [ "$stubs" -gt 0 ] && echo "STUB_PATTERNS: $stubs in $file"
 }
 
@@ -346,8 +350,11 @@ check_substantive() {
   local file="$1"
   local min_lines="$2"
   local pattern="$3"
-  local lines=$(wc -l < "$file" 2>/dev/null || echo 0)
-  local has_pattern=$(grep -c -E "$pattern" "$file" 2>/dev/null || echo 0)
+  local lines has_pattern
+  wc -l < "$file" > $TMPDIR/verify-deep-lines.txt 2>/dev/null || echo 0 > $TMPDIR/verify-deep-lines.txt
+  read lines < $TMPDIR/verify-deep-lines.txt
+  grep -c -E "$pattern" "$file" > $TMPDIR/verify-deep-has-pattern.txt 2>/dev/null || echo 0 > $TMPDIR/verify-deep-has-pattern.txt
+  read has_pattern < $TMPDIR/verify-deep-has-pattern.txt
   [ "$lines" -ge "$min_lines" ] && [ "$has_pattern" -gt 0 ] && echo "SUBSTANTIVE: $file" || echo "THIN: $file ($lines lines, $has_pattern matches)"
 }
 ```

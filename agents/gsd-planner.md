@@ -919,10 +919,28 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "fix($PHASE): revise plans 
 Load planning context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "${PHASE}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "${PHASE}" > $TMPDIR/planner-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json planner_model > $TMPDIR/planner-planner-model.txt
+read planner_model < $TMPDIR/planner-planner-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json researcher_model > $TMPDIR/planner-researcher-model.txt
+read researcher_model < $TMPDIR/planner-researcher-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json checker_model > $TMPDIR/planner-checker-model.txt
+read checker_model < $TMPDIR/planner-checker-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json commit_docs > $TMPDIR/planner-commit-docs.txt
+read commit_docs < $TMPDIR/planner-commit-docs.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json research_enabled > $TMPDIR/planner-research-enabled.txt
+read research_enabled < $TMPDIR/planner-research-enabled.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json phase_dir > $TMPDIR/planner-phase-dir.txt
+read phase_dir < $TMPDIR/planner-phase-dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json phase_number > $TMPDIR/planner-phase-number.txt
+read phase_number < $TMPDIR/planner-phase-number.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json has_research > $TMPDIR/planner-has-research.txt
+read has_research < $TMPDIR/planner-has-research.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/planner-init.json has_context > $TMPDIR/planner-has-context.txt
+read has_context < $TMPDIR/planner-has-context.txt
 ```
 
-Extract from init JSON: `planner_model`, `researcher_model`, `checker_model`, `commit_docs`, `research_enabled`, `phase_dir`, `phase_number`, `has_research`, `has_context`.
+Extracted fields from the init JSON: `planner_model`, `researcher_model`, `checker_model`, `commit_docs`, `research_enabled`, `phase_dir`, `phase_number`, `has_research`, `has_context`.
 
 Also read STATE.md for position, decisions, blockers:
 ```bash
@@ -1128,7 +1146,8 @@ Include all frontmatter fields.
 Validate each created PLAN.md using gsd-tools:
 
 ```bash
-VALID=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter validate "$PLAN_PATH" --schema plan)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter validate "$PLAN_PATH" --schema plan > $TMPDIR/planner-valid.json
+read VALID < $TMPDIR/planner-valid.json
 ```
 
 Returns JSON: `{ valid, missing, present, schema }`
@@ -1141,7 +1160,8 @@ Required plan frontmatter fields:
 Also validate plan structure:
 
 ```bash
-STRUCTURE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify plan-structure "$PLAN_PATH" > $TMPDIR/planner-structure.json
+read STRUCTURE < $TMPDIR/planner-structure.json
 ```
 
 Returns JSON: `{ valid, errors, warnings, task_count, tasks }`

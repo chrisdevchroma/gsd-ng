@@ -11,21 +11,23 @@ Read all files referenced by the invoking prompt's execution_context before star
 ## 0. Initialize Milestone Context
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op > $TMPDIR/audit-milestone-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/audit-milestone-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init milestone-op > $TMPDIR/audit-milestone-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/audit-milestone-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`.
+Read `$TMPDIR/audit-milestone-init.json` and extract: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`.
 
 Resolve integration checker model:
 ```bash
-integration_checker_model=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-integration-checker)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-integration-checker > $TMPDIR/audit-milestone-integration_checker_model.txt
+read integration_checker_model < $TMPDIR/audit-milestone-integration_checker_model.txt
 ```
 
 ## 1. Determine Milestone Scope
@@ -46,9 +48,9 @@ For each phase directory, read the VERIFICATION.md:
 
 ```bash
 # For each phase, use find-phase to resolve the directory (handles archived phases)
-PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase 01)
-# Extract directory from JSON, then read VERIFICATION.md from that directory
-# Repeat for each phase number from ROADMAP.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase 01 > $TMPDIR/audit-milestone-phase-info.json
+# Read $TMPDIR/audit-milestone-phase-info.json, extract directory, then read VERIFICATION.md from that directory
+# Repeat for each phase number from ROADMAP.md (use a fresh tmp filename per iteration if scripted)
 ```
 
 From each VERIFICATION.md, extract:
@@ -139,7 +141,8 @@ For each REQ-ID, determine status using all three sources:
 Skip if `workflow.nyquist_validation` is explicitly `false` (absent = enabled).
 
 ```bash
-NYQUIST_CONFIG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.nyquist_validation 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.nyquist_validation 2>/dev/null > $TMPDIR/audit-milestone-nyquist.txt
+read NYQUIST_CONFIG < $TMPDIR/audit-milestone-nyquist.txt
 ```
 
 If `false`: skip entirely.

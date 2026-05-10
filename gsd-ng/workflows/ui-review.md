@@ -13,20 +13,22 @@ Retroactive 6-pillar visual audit of implemented frontend code. Standalone comma
 ## 0. Initialize
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/ui-review-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/ui-review-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/ui-review-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/ui-review-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `commit_docs`.
+Read `$TMPDIR/ui-review-init.json` and parse: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `commit_docs`.
 
 ```bash
-UI_AUDITOR_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-auditor)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-auditor > $TMPDIR/ui-review-auditor-model.txt
+read UI_AUDITOR_MODEL < $TMPDIR/ui-review-auditor-model.txt
 ```
 
 Display banner:
@@ -39,9 +41,17 @@ Display banner:
 ## 1. Detect Input State
 
 ```bash
-SUMMARY_FILES=$(ls "${PHASE_DIR}"/*-SUMMARY.md 2>/dev/null)
-UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
-UI_REVIEW_FILE=$(ls "${PHASE_DIR}"/*-UI-REVIEW.md 2>/dev/null | head -1)
+mkdir -p $TMPDIR
+ls "${PHASE_DIR}"/*-SUMMARY.md 2>/dev/null > $TMPDIR/ui-review-summary-files.txt
+SUMMARY_FILES=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  if [ -z "$SUMMARY_FILES" ]; then SUMMARY_FILES="$line"; else SUMMARY_FILES="$SUMMARY_FILES"$'\n'"$line"; fi
+done < $TMPDIR/ui-review-summary-files.txt
+ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1 > $TMPDIR/ui-review-spec-file.txt
+read UI_SPEC_FILE < $TMPDIR/ui-review-spec-file.txt || UI_SPEC_FILE=""
+ls "${PHASE_DIR}"/*-UI-REVIEW.md 2>/dev/null | head -1 > $TMPDIR/ui-review-review-file.txt
+read UI_REVIEW_FILE < $TMPDIR/ui-review-review-file.txt || UI_REVIEW_FILE=""
 ```
 
 **If `SUMMARY_FILES` empty:** Exit — "Phase {N} not executed. Run {{COMMAND_PREFIX}}execute-phase {N} first."

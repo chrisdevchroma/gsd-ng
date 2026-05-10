@@ -144,9 +144,16 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
         badPathFound = true;
         badFiles.push(fname);
       }
-      // Must produce fallback chain path in at least one file
-      // New pattern: "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/"
-      if (content.includes('${CLAUDE_PROJECT_DIR:-$(git rev-parse')) {
+      // Path-portability: install.js now emits plain `$CLAUDE_PROJECT_DIR/.claude/`
+      // for local installs. This is hook-safe (the bash-safety hook only flags
+      // `${VAR:-default}` operator forms, not plain `$VAR`) AND portable
+      // (one install works across worktrees, checkouts, colleague machines).
+      // The old assertion checked for `${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}`,
+      // which the bash-safety hook denies and which the path-portability sweep
+      // mechanically eliminated from source AND install.js emit. The sister
+      // assertion above covers the new emit pattern; this branch narrows to
+      // the home-dir guard.
+      if (content.includes('$CLAUDE_PROJECT_DIR/.claude/')) {
         goodPathFound = true;
       }
     }
@@ -159,7 +166,7 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
     );
     assert.ok(
       goodPathFound,
-      'install.js local install must produce fallback chain ${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)',
+      'install.js local install must produce plain $CLAUDE_PROJECT_DIR/.claude/ in workflow files (PATH-03 — see also PATH-PORTABILITY-01)',
     );
   } finally {
     cleanup(tmpDir);
@@ -202,6 +209,160 @@ test('PATH-04: install.js local install must not produce ./.claude/ paths in bas
       'install.js local install must not produce node "./.claude/ references in workflow files (PATH-04).\n' +
         'Offending files: ' +
         badFiles.join(', '),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// ── local install emits hook-safe + portable $CLAUDE_PROJECT_DIR (no baked absolute path) ──
+//
+// Path-portability: install.js:toHomePrefix and copyWithPathReplacement now
+// emit plain `$CLAUDE_PROJECT_DIR/.claude/` for local installs instead of
+// baking the literal absolute project root. This is hook-safe (the bash-safety
+// hook only flags `${VAR:-default}` operator forms) AND portable (one install
+// works across worktrees, checkouts, colleague machines without re-installing).
+
+test('PATH-PORTABILITY-01-EMITTED-VAR: local install deployed .md files contain plain $CLAUDE_PROJECT_DIR/.claude/ references', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-portab-emit-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (PATH-PORTABILITY-01)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
+    assert.ok(files.length > 0, 'workflows dir must contain .md files');
+
+    let cpdFound = false;
+    for (const fname of files) {
+      const content = fs.readFileSync(path.join(workflowsDir, fname), 'utf8');
+      if (content.includes('$CLAUDE_PROJECT_DIR/.claude/')) {
+        cpdFound = true;
+        break;
+      }
+    }
+
+    assert.ok(
+      cpdFound,
+      'expected at least one deployed .md file under .claude/gsd-ng/workflows/ ' +
+        'to contain plain "$CLAUDE_PROJECT_DIR/.claude/" — got none ' +
+        '(PATH-PORTABILITY-01-EMITTED-VAR).',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('PATH-PORTABILITY-02-NO-ABSOLUTE: local install deployed .md files contain zero literal absolute project root paths', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-portab-abs-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (PATH-PORTABILITY-02)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
+    assert.ok(files.length > 0, 'workflows dir must contain .md files');
+
+    // The "literal absolute project root" we want to ensure is NOT baked is
+    // `<tmpDir>/.claude/` — i.e. the cwd at install time. (Note: source files
+    // may legitimately contain other absolute paths like `/home/chris/...`
+    // for development-time tooling — those are scoped by Plan 60.1-03 and
+    // are NOT what this test guards against. We guard against install.js
+    // newly baking `<install-cwd>/.claude/` into deployed files.)
+    const bakedPrefix = tmpDir + '/.claude/';
+    const offenders = [];
+    for (const fname of files) {
+      const content = fs.readFileSync(path.join(workflowsDir, fname), 'utf8');
+      if (content.includes(bakedPrefix)) {
+        offenders.push(fname);
+      }
+    }
+
+    assert.strictEqual(
+      offenders.length,
+      0,
+      'install.js local install must not bake literal absolute path "' +
+        bakedPrefix +
+        '" into deployed .md files (PATH-PORTABILITY-02-NO-ABSOLUTE).\n' +
+        'Offending files: ' +
+        offenders.join(', '),
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('PATH-PORTABILITY-03-NO-LEGACY-SHIM: local install deployed .md files contain zero ${CLAUDE_PROJECT_DIR:- legacy shim instances', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-portab-shim-'));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'claude', '--local'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      'install must exit 0 (PATH-PORTABILITY-03)\nstderr: ' +
+        (result.stderr || ''),
+    );
+
+    const workflowsDir = path.join(tmpDir, '.claude', 'gsd-ng', 'workflows');
+    const files = fs.readdirSync(workflowsDir).filter((f) => f.endsWith('.md'));
+    assert.ok(files.length > 0, 'workflows dir must contain .md files');
+
+    // The legacy shim form `${CLAUDE_PROJECT_DIR:-$(...)}` was the pre-tg5
+    // emit pattern. Plans 02-06 cleared it from source; Plan 07's install.js
+    // change ensures it never gets emitted by toHomePrefix's
+    // `if (absoluteProjectRoot)` branch either. Both halves must hold.
+    const offenders = [];
+    for (const fname of files) {
+      const content = fs.readFileSync(path.join(workflowsDir, fname), 'utf8');
+      if (content.includes('${CLAUDE_PROJECT_DIR:-')) {
+        offenders.push(fname);
+      }
+    }
+
+    assert.strictEqual(
+      offenders.length,
+      0,
+      'install.js local install must not emit legacy ${CLAUDE_PROJECT_DIR:-...} shim ' +
+        'in deployed .md files (PATH-PORTABILITY-03-NO-LEGACY-SHIM).\n' +
+        'Offending files: ' +
+        offenders.join(', '),
     );
   } finally {
     cleanup(tmpDir);

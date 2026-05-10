@@ -34,10 +34,11 @@ Validate first argument is an integer.
 Load phase operation context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${after_phase}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${after_phase}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${after_phase}" > $TMPDIR/insert-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/insert-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${after_phase}" > $TMPDIR/insert-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/insert-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
@@ -55,7 +56,7 @@ Exit.
 **Delegate the phase insertion to gsd-tools:**
 
 ```bash
-RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase insert "${after_phase}" "${description}")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase insert "${after_phase}" "${description}" > $TMPDIR/insert-phase-result.json
 ```
 
 The CLI handles:
@@ -65,7 +66,7 @@ The CLI handles:
 - Creating the phase directory (`.planning/phases/{N.M}-{slug}/`)
 - Inserting the phase entry into ROADMAP.md after the target phase with (INSERTED) marker
 
-Extract from result: `phase_number`, `after_phase`, `name`, `slug`, `directory`.
+Read `$TMPDIR/insert-phase-result.json` and extract: `phase_number`, `after_phase`, `name`, `slug`, `directory`.
 </step>
 
 <step name="update_project_state">

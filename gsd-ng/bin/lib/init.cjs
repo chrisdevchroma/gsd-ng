@@ -1226,6 +1226,7 @@ const INIT_FIELD_DEFAULTS = {
   remote: DEFAULTS.remote,
   phase_branch_template: DEFAULTS.phase_branch_template,
   milestone_branch_template: DEFAULTS.milestone_branch_template,
+  model_profile: 'balanced',
   // numbers
   plan_count: 0,
   incomplete_count: 0,
@@ -1239,23 +1240,11 @@ const INIT_FIELD_DEFAULTS = {
   requirements_path: '.planning/REQUIREMENTS.md',
 };
 
-function cmdInitGet(jsonStr, fieldName) {
-  if (!fieldName) {
-    error('Usage: init-get <json> <field>');
-  }
-  let parsed = null;
-  if (jsonStr) {
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      // Malformed JSON — parsed remains null, will exit 1 below
-    }
-  }
-  // Empty string or malformed JSON — surface as failure, do not silently fall to defaults
-  if (parsed === null) {
-    error('init-get: invalid JSON input — $INIT may be empty or init failed');
-  }
-  // If parse succeeded, try to get the value
+// Private helper: shared field-extraction logic for cmdInitGet and
+// cmdInitGetFromFile. Once `parsed` is a non-null object (already validated
+// by the caller), this looks up `fieldName`, falls back to INIT_FIELD_DEFAULTS,
+// and finally returns null/empty for unknown fields.
+function _extractField(parsed, fieldName) {
   if (parsed !== null) {
     const value = parsed[fieldName];
     if (value !== undefined && value !== null) {
@@ -1281,6 +1270,54 @@ function cmdInitGet(jsonStr, fieldName) {
   output(null, '');
 }
 
+function cmdInitGet(jsonStr, fieldName) {
+  if (!fieldName) {
+    error('Usage: init-get <json> <field>');
+  }
+  let parsed = null;
+  if (jsonStr) {
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Malformed JSON — parsed remains null, will exit 1 below
+    }
+  }
+  // Empty string or malformed JSON — surface as failure, do not silently fall to defaults
+  if (parsed === null) {
+    error('init-get: invalid JSON input — $INIT may be empty or init failed');
+  }
+  _extractField(parsed, fieldName);
+}
+
+// File-based variant of cmdInitGet — reads init JSON from a file instead of
+// from a $(...) capture. Workflows can write `node ... init <op> > /tmp/init.json`
+// and then call `init-get-from-file /tmp/init.json <field>` without ever
+// needing command substitution (which Claude Code's expansion guard denies).
+function cmdInitGetFromFile(filePath, fieldName) {
+  if (!fieldName) {
+    error('Usage: init-get-from-file <path> <field>');
+  }
+  if (!filePath) {
+    error('Usage: init-get-from-file <path> <field>');
+  }
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    error('init-get-from-file: cannot read ' + filePath);
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    error('init-get-from-file: invalid JSON in ' + filePath);
+  }
+  if (parsed === null) {
+    error('init-get-from-file: invalid JSON in ' + filePath);
+  }
+  _extractField(parsed, fieldName);
+}
+
 module.exports = {
   cmdInitExecutePhase,
   cmdInitPlanPhase,
@@ -1295,5 +1332,6 @@ module.exports = {
   cmdInitMapCodebase,
   cmdInitProgress,
   cmdInitGet,
+  cmdInitGetFromFile,
   INIT_FIELD_DEFAULTS,
 };

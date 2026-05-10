@@ -28,10 +28,11 @@ Documents are reference material for Claude when planning/executing. Always incl
 Load codebase mapping context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase > $TMPDIR/map-codebase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/map-codebase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init map-codebase > $TMPDIR/map-codebase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/map-codebase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
@@ -49,7 +50,8 @@ Parse `$ARGUMENTS` for `--incremental` or `incremental` keyword.
 If `--incremental` flag is present:
 
 ```bash
-STALE_COUNT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" staleness-check --count > $TMPDIR/map-codebase-stale-count.txt
+read STALE_COUNT < $TMPDIR/map-codebase-stale-count.txt
 ```
 
 If STALE_COUNT is 0: output "All codebase docs are up-to-date. Nothing to update." and exit workflow.

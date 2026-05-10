@@ -20,17 +20,18 @@ Instantly restore full project context so "Where were we?" has an immediate, com
 Load all context in one call:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init resume)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init resume)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init resume > $TMPDIR/resume-project-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/resume-project-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init resume > $TMPDIR/resume-project-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/resume-project-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists`, `has_interrupted_agent`, `interrupted_agent_id`, `commit_docs`.
+Read `$TMPDIR/resume-project-init.json` and parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists`, `has_interrupted_agent`, `interrupted_agent_id`, `commit_docs`.
 
 **If `state_exists` is true:** Proceed to load_state
 **If `state_exists` is false but `roadmap_exists` or `project_exists` is true:** Offer to reconstruct STATE.md
@@ -42,11 +43,14 @@ Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_ex
 Read and parse state snapshot, then PROJECT.md:
 
 ```bash
-STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current > $TMPDIR/resume-project-state-snapshot.json
 cat .planning/PROJECT.md
 ```
 
-**From STATE_SNAPSHOT JSON extract:**
+Read `$TMPDIR/resume-project-state-snapshot.json` for the state snapshot.
+
+**From state snapshot JSON extract:**
 
 - **Project Reference**: Core value and current focus
 - **Current Position**: Phase X of Y (`current_phase`, `current_phase_name`), Plan A of B (`current_plan`), Status (`status`)

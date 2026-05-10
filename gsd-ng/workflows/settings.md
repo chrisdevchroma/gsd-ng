@@ -14,11 +14,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 Ensure config exists and load current state:
 
 ```bash
+mkdir -p $TMPDIR
 node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-ensure-section
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load > $TMPDIR/settings-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/settings-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load > $TMPDIR/settings-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/settings-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
@@ -272,9 +273,10 @@ AskUserQuestion([
 
 If user selected "Auto-detect (Recommended)", run platform detection:
 ```bash
-PLATFORM_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --json 2>/dev/null)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --json > $TMPDIR/settings-platform-result.json 2>/dev/null
 ```
-Extract the `platform` field from the JSON result. Store it for display in the confirmation table as `"Auto-detect ({detected_platform})"` or `"Auto-detect (not detected)"` if null. Config stores `platform: null` (auto-detect uses runtime detection, config only stores manual overrides).
+Read `$TMPDIR/settings-platform-result.json` and extract the `platform` field from the JSON result. Store it for display in the confirmation table as `"Auto-detect ({detected_platform})"` or `"Auto-detect (not detected)"` if null. Config stores `platform: null` (auto-detect uses runtime detection, config only stores manual overrides).
 
 Present close_state question:
 

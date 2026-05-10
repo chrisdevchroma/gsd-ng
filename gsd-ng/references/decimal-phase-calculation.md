@@ -6,7 +6,7 @@ Calculate the next decimal phase number for urgent insertions.
 
 ```bash
 # Get next decimal phase after phase 6
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal 6
+node ./.claude/gsd-ng/bin/gsd-tools.cjs phase next-decimal 6
 ```
 
 Output:
@@ -32,14 +32,17 @@ With existing decimals:
 ## Extract Values
 
 ```bash
-DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal "${AFTER_PHASE}" --pick next)
-BASE_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal "${AFTER_PHASE}" --pick base_phase)
+node ./.claude/gsd-ng/bin/gsd-tools.cjs phase next-decimal "${AFTER_PHASE}" --pick next > $TMPDIR/decimal-phase-next.txt
+read DECIMAL_PHASE < $TMPDIR/decimal-phase-next.txt
+node ./.claude/gsd-ng/bin/gsd-tools.cjs phase next-decimal "${AFTER_PHASE}" --pick base_phase > $TMPDIR/decimal-phase-base.txt
+read BASE_PHASE < $TMPDIR/decimal-phase-base.txt
 ```
 
-Or with flag:
+Or without `--pick` (default scalar output is the next decimal):
 ```bash
-DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal "${AFTER_PHASE}")
-# Returns just: 06.1
+node ./.claude/gsd-ng/bin/gsd-tools.cjs phase next-decimal "${AFTER_PHASE}" > $TMPDIR/decimal-phase-default.txt
+read DECIMAL_PHASE < $TMPDIR/decimal-phase-default.txt
+# DECIMAL_PHASE is just: 06.1
 ```
 
 ## Examples
@@ -56,7 +59,8 @@ DECIMAL_PHASE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase next-decimal
 Decimal phase directories use the full decimal number:
 
 ```bash
-SLUG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" generate-slug "$DESCRIPTION")
+node ./.claude/gsd-ng/bin/gsd-tools.cjs generate-slug "$DESCRIPTION" > $TMPDIR/decimal-phase-slug.txt
+read SLUG < $TMPDIR/decimal-phase-slug.txt
 PHASE_DIR=".planning/phases/${DECIMAL_PHASE}-${SLUG}"
 mkdir -p "$PHASE_DIR"
 ```

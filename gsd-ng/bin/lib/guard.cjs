@@ -1,4 +1,5 @@
 'use strict';
+const fs = require('fs');
 const { output, error } = require('./core.cjs');
 const { setConfigValue } = require('./config.cjs');
 
@@ -54,4 +55,52 @@ function cmdGuardInitValid(jsonStr) {
   output({ valid: true });
 }
 
-module.exports = { cmdGuardSyncChain, cmdGuardInitValid };
+/**
+ * Guard: init-valid-file — Same semantics as init-valid, but reads JSON from a
+ * file instead of from a $(...) capture. Used by workflows that have replaced
+ * `INIT=$(node ... init <op>)` with `node ... init <op> > /tmp/init.json`
+ * to avoid Claude Code's expansion-guard prompt on `$()`.
+ *
+ * Exits 0 if the file exists, is non-empty, and parses as valid JSON.
+ * Exits 1 with a clear error message otherwise.
+ *
+ * @param {string} filePath - Path to the JSON file to validate
+ */
+function cmdGuardInitValidFile(filePath) {
+  if (!filePath) {
+    error('guard init-valid-file: usage init-valid-file <path>');
+  }
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    error(
+      'guard init-valid-file: cannot read ' +
+        filePath +
+        ' — did the init command fail?',
+    );
+  }
+  if (!content || !content.trim()) {
+    error(
+      'guard init-valid-file: ' +
+        filePath +
+        ' is empty — did the init command fail?',
+    );
+  }
+  try {
+    JSON.parse(content);
+  } catch {
+    error(
+      'guard init-valid-file: ' +
+        filePath +
+        ' is not valid JSON — did the init command fail?',
+    );
+  }
+  output({ valid: true });
+}
+
+module.exports = {
+  cmdGuardSyncChain,
+  cmdGuardInitValid,
+  cmdGuardInitValidFile,
+};

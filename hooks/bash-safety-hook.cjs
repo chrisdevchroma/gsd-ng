@@ -1447,10 +1447,13 @@ function detectForcedPromptPattern(command) {
               "Claude Code's obfuscation guard always prompts on single-quoted " +
               'strings containing { or } with non-quantifier contents (awk/jq/find ' +
               'inline scripts, embedded JSON-as-arg). Workarounds: write the script to ' +
-              'a temp file with the Write tool and use `awk -f /tmp/s.awk` / ' +
-              '`jq -f /tmp/f.jq`; for JSON args, write to a temp file and use ' +
-              '`--data-file=/tmp/d.json` (or use the Write tool to create the target ' +
-              'file directly instead of `cat > file <<EOF`).',
+              'a temp file with the Write tool and use `awk -f $TMPDIR/s.awk` / ' +
+              '`jq -f $TMPDIR/f.jq`; for JSON args, write to a temp file and use ' +
+              '`--data-file=$TMPDIR/d.json` (or use the Write tool to create the target ' +
+              'file directly instead of `cat > file <<EOF`). For init/workspace JSON ' +
+              'field extraction, prefer `gsd-tools.cjs init-get-from-file <path> <field>` ' +
+              'or `detect-workspace --field <name>` — adding a new `--field` branch in ' +
+              '`lib/workspace.cjs` is preferred over inline `node -e`.',
           };
         }
         inSingle = false;
@@ -1490,7 +1493,11 @@ function detectForcedPromptPattern(command) {
         suggestion:
           "Claude Code's expansion guard always prompts on backticks. " +
           'Run the inner command in a prior Bash call and inline the literal output, ' +
-          "or use a temp file (write the value with a heredoc that uses <<'EOF', then read it).",
+          "or use a temp file (write the value with a heredoc that uses <<'EOF', then read it). " +
+          'NOTE: backticks in BASH COMMENTS inside a workflow ```bash block are scanned ' +
+          'too — replace with plain text. For init JSON field extraction, use ' +
+          '`gsd-tools.cjs init-get-from-file <path> <field>` instead of ' +
+          '`INIT=`node ... init`; FIELD=`node ... init-get $INIT field`` patterns.',
       };
     }
 
@@ -1507,9 +1514,15 @@ function detectForcedPromptPattern(command) {
         snippet,
         suggestion:
           "Claude Code's expansion guard always prompts on $(...). " +
-          'Run the inner command in a prior Bash call and inline the literal output. ' +
-          'Example: instead of `git -C "$(git rev-parse --show-toplevel)" status`, ' +
-          'first call `git rev-parse --show-toplevel` to get the path, then call `git -C /actual/path status`.',
+          'Common patterns: (a) capture into a file: `cmd > $TMPDIR/out.txt; ' +
+          'read VAR < $TMPDIR/out.txt`; (b) for init JSON: ' +
+          '`gsd-tools.cjs init <op> > $TMPDIR/init.json` then ' +
+          '`init-get-from-file $TMPDIR/init.json <field> > $TMPDIR/<field>.txt; ' +
+          'read VAR < $TMPDIR/<field>.txt`; (c) for workspace JSON: ' +
+          '`gsd-tools.cjs detect-workspace --field <name>`; (d) to validate ' +
+          'captured init JSON: `gsd-tools.cjs guard init-valid-file <path>`. ' +
+          'Note: `$((arith))` is collateral damage of this check — use ' +
+          '`(( arith )) || true` (no leading $).',
       };
     }
 
@@ -1526,7 +1539,12 @@ function detectForcedPromptPattern(command) {
             suggestion:
               "Claude Code's expansion guard always prompts on ${VAR:-default} (and :+, :?, := variants). " +
               'Use plain $VAR (and ensure the variable is set in your shell), or pre-resolve to a literal value. ' +
-              'Example: instead of `cd "${TMPDIR:-/tmp}"`, just use `cd /tmp` (or `cd "$TMPDIR"` if you know it is set).',
+              'Example: instead of `cd "${TMPDIR:-/tmp}"`, just use `cd "$TMPDIR"` (the Claude Code ' +
+              'sandbox always sets it; macOS exports it; on Linux without it the noisy failure is ' +
+              'preferable to silent wrong-dir fallback). For `${VAR:-$(cmd)}`, use redirect-then-read ' +
+              'into a temp file (`cmd > $TMPDIR/v.txt; read VAR < $TMPDIR/v.txt`) then ' +
+              '`[ -z "$VAR" ] && VAR=fallback`. Plain `${VAR}` (no operator) and `${arr[0]}` ' +
+              '(array index) are NOT denied — only the `:-`, `:+`, `:?`, `:=` operators.',
           };
         }
       }

@@ -28,17 +28,18 @@ Then verify each level against the actual codebase.
 Load phase operation context:
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/verify-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/verify-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}" > $TMPDIR/verify-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/verify-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `has_plans`, `plan_count`.
+Read `$TMPDIR/verify-phase-init.json` and extract: `phase_dir`, `phase_number`, `phase_name`, `has_plans`, `plan_count`.
 
 Then load phase details and list plans/summaries:
 ```bash
@@ -56,13 +57,14 @@ Extract **phase goal** from ROADMAP.md (the outcome to verify, not tasks) and **
 Use gsd-tools to extract must_haves from each PLAN:
 
 ```bash
+mkdir -p $TMPDIR
 for plan in "$PHASE_DIR"/*-PLAN.md; do
-  MUST_HAVES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$plan" --field must_haves)
-  echo "=== $plan ===" && echo "$MUST_HAVES"
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$plan" --field must_haves > $TMPDIR/verify-phase-must-haves.json
+  echo "=== $plan ===" && cat $TMPDIR/verify-phase-must-haves.json
 done
 ```
 
-Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
+Each iteration writes JSON: `{ truths: [...], artifacts: [...], key_links: [...] }` to `$TMPDIR/verify-phase-must-haves.json` for downstream consumption.
 
 Aggregate all must_haves across plans for phase-level verification.
 
@@ -71,10 +73,11 @@ Aggregate all must_haves across plans for phase-level verification.
 If no must_haves in frontmatter (MUST_HAVES returns error or empty), check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${phase_number}" --json)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${phase_number}" --json > $TMPDIR/verify-phase-data.json
 ```
 
-Parse the `success_criteria` array from the JSON output. If non-empty:
+Read `$TMPDIR/verify-phase-data.json` and parse the `success_criteria` array from the JSON output. If non-empty:
 1. Use each Success Criterion directly as a **truth** (they are already written as observable, testable behaviors)
 2. Derive **artifacts** (concrete file paths for each truth)
 3. Derive **key links** (critical wiring where stubs hide)
@@ -106,13 +109,14 @@ For each truth: identify supporting artifacts → check artifact status → chec
 Use gsd-tools for artifact verification against must_haves in each PLAN:
 
 ```bash
+mkdir -p $TMPDIR
 for plan in "$PHASE_DIR"/*-PLAN.md; do
-  ARTIFACT_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$plan")
-  echo "=== $plan ===" && echo "$ARTIFACT_RESULT"
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$plan" > $TMPDIR/verify-phase-artifacts.json
+  echo "=== $plan ===" && cat $TMPDIR/verify-phase-artifacts.json
 done
 ```
 
-Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
+Each iteration writes JSON to `$TMPDIR/verify-phase-artifacts.json`: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
 
 **Artifact status from result:**
 - `exists=false` → MISSING
@@ -138,13 +142,14 @@ WIRED = imported AND used. ORPHANED = exists but not imported/used.
 Use gsd-tools for key link verification against must_haves in each PLAN:
 
 ```bash
+mkdir -p $TMPDIR
 for plan in "$PHASE_DIR"/*-PLAN.md; do
-  LINKS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$plan")
-  echo "=== $plan ===" && echo "$LINKS_RESULT"
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$plan" > $TMPDIR/verify-phase-links.json
+  echo "=== $plan ===" && cat $TMPDIR/verify-phase-links.json
 done
 ```
 
-Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
+Each iteration writes JSON to `$TMPDIR/verify-phase-links.json`: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
 
 **Link status from result:**
 - `verified=true` → WIRED

@@ -67,7 +67,9 @@ Gap: Flow "View dashboard" broken at data fetch
 Find highest existing phase:
 ```bash
 # Get sorted phase list, extract last one
-HIGHEST=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phases list --pick "directories[-1]")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phases list --pick "directories[-1]" > $TMPDIR/plan-milestone-gaps-highest.txt
+read HIGHEST < $TMPDIR/plan-milestone-gaps-highest.txt
 ```
 
 New phases continue from there:

@@ -58,12 +58,14 @@ Key constraints:
 ## 0. Initialize Context
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load > $TMPDIR/debug-init.json
 ```
 
-Extract `commit_docs` from init JSON. Resolve debugger model:
+Extract `commit_docs` from `$TMPDIR/debug-init.json`. Resolve debugger model:
 ```bash
-debugger_model=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-debugger)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-debugger > $TMPDIR/debug-debugger-model.txt
+read debugger_model < $TMPDIR/debug-debugger-model.txt
 ```
 
 ## 1. Check Active Sessions
@@ -92,10 +94,21 @@ After all gathered, confirm ready to investigate.
 Resolve workspace topology, then fill prompt and spawn:
 
 ```bash
-WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
-WORKSPACE_TYPE=$(node -e "try{const w=JSON.parse(process.argv[1]);process.stdout.write(w.type||'standalone')}catch{process.stdout.write('standalone')}" "$WORKSPACE_JSON")
-SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+mkdir -p $TMPDIR
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type > $TMPDIR/debug-ws-type.txt
+read WORKSPACE_TYPE < $TMPDIR/debug-ws-type.txt
+[ -z "$WORKSPACE_TYPE" ] && WORKSPACE_TYPE="standalone"
+
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field submodule_paths_summary > $TMPDIR/debug-ws-subs.txt
+read SUBMODULE_PATHS < $TMPDIR/debug-ws-subs.txt
+[ -z "$SUBMODULE_PATHS" ] && SUBMODULE_PATHS="none"
+
+PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
+if [ -z "$PROJECT_ROOT" ]; then
+  git rev-parse --show-toplevel > $TMPDIR/debug-root.txt 2>/dev/null || true
+  [ -s $TMPDIR/debug-root.txt ] && read PROJECT_ROOT < $TMPDIR/debug-root.txt
+  [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$PWD"
+fi
 ```
 
 ```markdown

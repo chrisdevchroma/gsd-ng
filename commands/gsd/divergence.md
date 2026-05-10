@@ -17,8 +17,10 @@ Show upstream divergence status and manage per-commit triage decisions. Tracks w
 Run the divergence command:
 
 ```bash
-GSD_TOOLS="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs"
-RESULT=$(node "$GSD_TOOLS" divergence)
+mkdir -p $TMPDIR
+GSD_TOOLS="./.claude/gsd-ng/bin/gsd-tools.cjs"
+node "$GSD_TOOLS" divergence > $TMPDIR/divergence-result.json
+read RESULT < $TMPDIR/divergence-result.json || RESULT=""
 ```
 
 Parse JSON output. If `status` is `no_upstream`, inform user they need to add an upstream remote:

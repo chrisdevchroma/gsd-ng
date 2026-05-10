@@ -12,10 +12,11 @@ Read all files referenced by the invoking prompt's execution_context before star
 Retrieve the command list:
 
 ```bash
-HELP_OUTPUT=$(node "$GSD_TOOLS" help --json)
+mkdir -p $TMPDIR
+node "$GSD_TOOLS" help --json > $TMPDIR/help-output.json
 ```
 
-Parse the JSON output. The `commands` array contains objects with `name`, `description`, and `argument_hint` fields.
+Read `$TMPDIR/help-output.json` and parse it. The `commands` array contains objects with `name`, `description`, and `argument_hint` fields.
 </step>
 
 <step name="present_help">

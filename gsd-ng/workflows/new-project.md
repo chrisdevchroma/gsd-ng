@@ -48,17 +48,18 @@ The document should describe what you want to build.
 **MANDATORY FIRST STEP — Execute these checks before ANY user interaction:**
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project)
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project > $TMPDIR/new-project-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/new-project-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init new-project > $TMPDIR/new-project-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/new-project-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
+Read `$TMPDIR/new-project-init.json` and parse for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
 
 **If `project_exists` is true:** Error — project already initialized. Use `{{COMMAND_PREFIX}}progress`.
 
@@ -1028,10 +1029,11 @@ node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: create roadmap ([N] 
 **Detect workspace topology:**
 
 ```bash
-WS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace > $TMPDIR/new-project-ws.json
 ```
 
-Parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).
+Read `$TMPDIR/new-project-ws.json` and parse JSON: `type` (submodule|monorepo|standalone), `signal` (detection method).
 
 **Runtime-resolved targets (install-baked):**
 

@@ -9,7 +9,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { resolveTmpDir, cleanup } = require('./helpers.cjs');
+const { resolveTmpDir, cleanup, cleanupSubdir } = require('./helpers.cjs');
 
 const {
   loadConfig,
@@ -50,7 +50,7 @@ describe('loadConfig', () => {
   function writeConfig(obj) {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify(obj, null, 2)
+      JSON.stringify(obj, null, 2),
     );
   }
 
@@ -98,7 +98,7 @@ describe('loadConfig', () => {
   test('returns defaults when config.json contains invalid JSON', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      'not valid json {{{{'
+      'not valid json {{{{',
     );
     const config = loadConfig(tmpDir);
     assert.strictEqual(config.model_profile, 'balanced');
@@ -141,13 +141,18 @@ describe('resolveModelInternal', () => {
   function writeConfig(obj) {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify(obj, null, 2)
+      JSON.stringify(obj, null, 2),
     );
   }
 
   describe('model profile structural validation', () => {
     test('all known agents resolve to a valid string for each profile', () => {
-      const knownAgents = ['gsd-planner', 'gsd-executor', 'gsd-phase-researcher', 'gsd-codebase-mapper'];
+      const knownAgents = [
+        'gsd-planner',
+        'gsd-executor',
+        'gsd-phase-researcher',
+        'gsd-codebase-mapper',
+      ];
       const profiles = ['quality', 'balanced', 'budget'];
       const validValues = [null, 'sonnet', 'haiku', 'opus'];
 
@@ -157,7 +162,7 @@ describe('resolveModelInternal', () => {
           const result = resolveModelInternal(tmpDir, agent);
           assert.ok(
             validValues.includes(result),
-            `profile=${profile} agent=${agent} returned unexpected value: ${result}`
+            `profile=${profile} agent=${agent} returned unexpected value: ${result}`,
           );
         }
       }
@@ -193,7 +198,10 @@ describe('resolveModelInternal', () => {
   describe('edge cases', () => {
     test('returns sonnet for unknown agent type', () => {
       writeConfig({ model_profile: 'balanced' });
-      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-nonexistent'), 'sonnet');
+      assert.strictEqual(
+        resolveModelInternal(tmpDir, 'gsd-nonexistent'),
+        'sonnet',
+      );
     });
 
     test('defaults to balanced profile when model_profile missing', () => {
@@ -212,7 +220,8 @@ describe('escapeRegex', () => {
   });
 
   test('escapes all special regex characters', () => {
-    const input = '1.0 (alpha) [test] {ok} $100 ^start end$ a+b a*b a?b pipe|or back\\slash';
+    const input =
+      '1.0 (alpha) [test] {ok} $100 ^start end$ a+b a*b a?b pipe|or back\\slash';
     const result = escapeRegex(input);
     // Verify each special char is escaped
     assert.ok(result.includes('\\.'));
@@ -248,7 +257,10 @@ describe('generateSlugInternal', () => {
   });
 
   test('removes special characters', () => {
-    assert.strictEqual(generateSlugInternal('core.cjs Tests!'), 'core-cjs-tests');
+    assert.strictEqual(
+      generateSlugInternal('core.cjs Tests!'),
+      'core-cjs-tests',
+    );
   });
 
   test('trims leading and trailing hyphens', () => {
@@ -389,7 +401,7 @@ describe('getMilestoneInfo', () => {
   test('extracts version and name from roadmap', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\n## Roadmap v1.2: My Cool Project\n\nSome content'
+      '# Roadmap\n\n## Roadmap v1.2: My Cool Project\n\nSome content',
     );
     const info = getMilestoneInfo(tmpDir);
     assert.strictEqual(info.version, 'v1.2');
@@ -469,7 +481,7 @@ describe('getMilestoneInfo', () => {
   test('returns defaults when roadmap has no heading matches', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\nSome content without version headings'
+      '# Roadmap\n\nSome content without version headings',
     );
     const info = getMilestoneInfo(tmpDir);
     assert.strictEqual(info.version, 'v1.0');
@@ -579,7 +591,13 @@ describe('findPhaseInternal', () => {
 
   test('searches archived milestones when not in current', () => {
     // Create archived milestone structure (no current phase match)
-    const archiveDir = path.join(tmpDir, '.planning', 'milestones', 'v1.0-phases', '01-foundation');
+    const archiveDir = path.join(
+      tmpDir,
+      '.planning',
+      'milestones',
+      'v1.0-phases',
+      '01-foundation',
+    );
     fs.mkdirSync(archiveDir, { recursive: true });
     const result = findPhaseInternal(tmpDir, '1');
     assert.strictEqual(result.found, true);
@@ -607,7 +625,7 @@ describe('getRoadmapPhaseInternal', () => {
     // Also verify it works with a real roadmap (note: goal regex expects **Goal:** with colon inside bold)
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 1: Foundation\n**Goal:** Build the base\n'
+      '### Phase 1: Foundation\n**Goal:** Build the base\n',
     );
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.strictEqual(result.found, true);
@@ -618,7 +636,7 @@ describe('getRoadmapPhaseInternal', () => {
   test('extracts phase name and goal from roadmap', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 2: API Layer\n**Goal:** Create REST endpoints\n**Depends on**: Phase 1\n'
+      '### Phase 2: API Layer\n**Goal:** Create REST endpoints\n**Depends on**: Phase 1\n',
     );
     const result = getRoadmapPhaseInternal(tmpDir, '2');
     assert.strictEqual(result.phase_name, 'API Layer');
@@ -629,7 +647,7 @@ describe('getRoadmapPhaseInternal', () => {
     // **Goal**: (colon outside bold) is now supported alongside **Goal:**
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 1: Foundation\n**Goal**: Build the base\n'
+      '### Phase 1: Foundation\n**Goal**: Build the base\n',
     );
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.strictEqual(result.found, true);
@@ -645,7 +663,7 @@ describe('getRoadmapPhaseInternal', () => {
   test('returns null when phase not in roadmap', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 1: Foundation\n**Goal**: Build the base\n'
+      '### Phase 1: Foundation\n**Goal**: Build the base\n',
     );
     const result = getRoadmapPhaseInternal(tmpDir, '99');
     assert.strictEqual(result, null);
@@ -659,7 +677,7 @@ describe('getRoadmapPhaseInternal', () => {
   test('extracts full section text', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 1: Foundation\n**Goal**: Build the base\n**Requirements**: TEST-01\nSome details here\n\n### Phase 2: API\n**Goal**: REST\n'
+      '### Phase 1: Foundation\n**Goal**: Build the base\n**Requirements**: TEST-01\nSome details here\n\n### Phase 2: API\n**Goal**: REST\n',
     );
     const result = getRoadmapPhaseInternal(tmpDir, '1');
     assert.ok(result.section.includes('Phase 1: Foundation'));
@@ -698,13 +716,15 @@ describe('getMilestonePhaseFilter', () => {
         '',
         '### Phase 7: Polish',
         '**Goal:** Final polish',
-      ].join('\n')
+      ].join('\n'),
     );
 
     // Create phase dirs 1-7 on disk (leftover from previous milestones)
     for (let i = 1; i <= 7; i++) {
       const padded = String(i).padStart(2, '0');
-      fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', `${padded}-phase-${i}`));
+      fs.mkdirSync(
+        path.join(tmpDir, '.planning', 'phases', `${padded}-phase-${i}`),
+      );
     }
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -731,7 +751,7 @@ describe('getMilestonePhaseFilter', () => {
   test('returns pass-all filter when ROADMAP has no phase headings', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\nSome content without phases.\n'
+      '# Roadmap\n\nSome content without phases.\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -743,7 +763,7 @@ describe('getMilestonePhaseFilter', () => {
   test('handles letter-suffix phases (e.g. 3A)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 3A: Sub-feature\n**Goal:** Sub work\n'
+      '### Phase 3A: Sub-feature\n**Goal:** Sub work\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -756,7 +776,7 @@ describe('getMilestonePhaseFilter', () => {
   test('handles decimal phases (e.g. 5.1)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 5: Main\n**Goal:** Main work\n\n### Phase 5.1: Patch\n**Goal:** Patch work\n'
+      '### Phase 5: Main\n**Goal:** Main work\n\n### Phase 5.1: Patch\n**Goal:** Patch work\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -769,7 +789,7 @@ describe('getMilestonePhaseFilter', () => {
   test('returns false for non-phase directory names', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 1: Init\n**Goal:** Start\n'
+      '### Phase 1: Init\n**Goal:** Start\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -781,7 +801,7 @@ describe('getMilestonePhaseFilter', () => {
   test('phaseCount reflects ROADMAP phase count', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '### Phase 5: Auth\n### Phase 6: Dashboard\n### Phase 7: Polish\n'
+      '### Phase 5: Auth\n### Phase 6: Dashboard\n### Phase 7: Polish\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -796,7 +816,7 @@ describe('getMilestonePhaseFilter', () => {
   test('phaseCount is 0 when ROADMAP has no phase headings', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\nSome content.\n'
+      '# Roadmap\n\nSome content.\n',
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
@@ -816,17 +836,28 @@ describe('getMilestonePhaseFilter', () => {
         '',
         '### Phase 59: Runtime Sweep',
         '**Goal:** Sweep runtime references',
-      ].join('\n')
+      ].join('\n'),
     );
 
     const filter = getMilestonePhaseFilter(tmpDir);
 
     // Bullet-only entry for 60 must be recognized
-    assert.strictEqual(filter('60-test-coverage-uplift'), true, 'bullet-only Phase 60 should match');
+    assert.strictEqual(
+      filter('60-test-coverage-uplift'),
+      true,
+      'bullet-only Phase 60 should match',
+    );
     // Entry with Details header for 59 must also be recognized
-    assert.strictEqual(filter('59-runtime-sweep'), true, 'Phase 59 with Details header should still match');
+    assert.strictEqual(
+      filter('59-runtime-sweep'),
+      true,
+      'Phase 59 with Details header should still match',
+    );
     // phaseCount must include both phases
-    assert.ok(filter.phaseCount >= 2, `phaseCount should be >= 2, got ${filter.phaseCount}`);
+    assert.ok(
+      filter.phaseCount >= 2,
+      `phaseCount should be >= 2, got ${filter.phaseCount}`,
+    );
 
     // Also verify that a checked bullet (already-completed) is recognized
     fs.writeFileSync(
@@ -835,11 +866,15 @@ describe('getMilestonePhaseFilter', () => {
         '## Roadmap v3.0: Quality',
         '',
         '- [x] **Phase 60: Test Coverage Uplift**',
-      ].join('\n')
+      ].join('\n'),
     );
 
     const filter2 = getMilestonePhaseFilter(tmpDir);
-    assert.strictEqual(filter2('60-test-coverage-uplift'), true, 'checked bullet Phase 60 should also match');
+    assert.strictEqual(
+      filter2('60-test-coverage-uplift'),
+      true,
+      'checked bullet Phase 60 should also match',
+    );
   });
 });
 
@@ -857,72 +892,114 @@ describe('planningPaths', () => {
 
   test('state equals .planning/STATE.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.state, path.join('/project', '.planning', 'STATE.md'));
+    assert.strictEqual(
+      result.state,
+      path.join('/project', '.planning', 'STATE.md'),
+    );
   });
 
   test('roadmap equals .planning/ROADMAP.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.roadmap, path.join('/project', '.planning', 'ROADMAP.md'));
+    assert.strictEqual(
+      result.roadmap,
+      path.join('/project', '.planning', 'ROADMAP.md'),
+    );
   });
 
   test('config equals .planning/config.json', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.config, path.join('/project', '.planning', 'config.json'));
+    assert.strictEqual(
+      result.config,
+      path.join('/project', '.planning', 'config.json'),
+    );
   });
 
   test('requirements equals .planning/REQUIREMENTS.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.requirements, path.join('/project', '.planning', 'REQUIREMENTS.md'));
+    assert.strictEqual(
+      result.requirements,
+      path.join('/project', '.planning', 'REQUIREMENTS.md'),
+    );
   });
 
   test('phases equals .planning/phases', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.phases, path.join('/project', '.planning', 'phases'));
+    assert.strictEqual(
+      result.phases,
+      path.join('/project', '.planning', 'phases'),
+    );
   });
 
   test('todos equals .planning/todos', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.todos, path.join('/project', '.planning', 'todos'));
+    assert.strictEqual(
+      result.todos,
+      path.join('/project', '.planning', 'todos'),
+    );
   });
 
   test('todosPending equals .planning/todos/pending', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.todosPending, path.join('/project', '.planning', 'todos', 'pending'));
+    assert.strictEqual(
+      result.todosPending,
+      path.join('/project', '.planning', 'todos', 'pending'),
+    );
   });
 
   test('todosCompleted equals .planning/todos/completed', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.todosCompleted, path.join('/project', '.planning', 'todos', 'completed'));
+    assert.strictEqual(
+      result.todosCompleted,
+      path.join('/project', '.planning', 'todos', 'completed'),
+    );
   });
 
   test('codebase equals .planning/codebase', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.codebase, path.join('/project', '.planning', 'codebase'));
+    assert.strictEqual(
+      result.codebase,
+      path.join('/project', '.planning', 'codebase'),
+    );
   });
 
   test('divergence equals .planning/DIVERGENCE.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.divergence, path.join('/project', '.planning', 'DIVERGENCE.md'));
+    assert.strictEqual(
+      result.divergence,
+      path.join('/project', '.planning', 'DIVERGENCE.md'),
+    );
   });
 
   test('milestones equals .planning/milestones', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.milestones, path.join('/project', '.planning', 'milestones'));
+    assert.strictEqual(
+      result.milestones,
+      path.join('/project', '.planning', 'milestones'),
+    );
   });
 
   test('project equals .planning/PROJECT.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.project, path.join('/project', '.planning', 'PROJECT.md'));
+    assert.strictEqual(
+      result.project,
+      path.join('/project', '.planning', 'PROJECT.md'),
+    );
   });
 
   test('archive equals .planning/archive', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.archive, path.join('/project', '.planning', 'archive'));
+    assert.strictEqual(
+      result.archive,
+      path.join('/project', '.planning', 'archive'),
+    );
   });
 
   test('milestonesFile equals .planning/MILESTONES.md', () => {
     const result = planningPaths('/project');
-    assert.strictEqual(result.milestonesFile, path.join('/project', '.planning', 'MILESTONES.md'));
+    assert.strictEqual(
+      result.milestonesFile,
+      path.join('/project', '.planning', 'MILESTONES.md'),
+    );
   });
 
   test('works with different cwd values', () => {
@@ -943,28 +1020,52 @@ describe('extractCurrentMilestone', () => {
   });
 
   test('strips a single details block (archived milestone)', () => {
-    const content = '## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\n';
+    const content =
+      '## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\n';
     const result = extractCurrentMilestone(content);
     assert.ok(!result.includes('<details>'), 'should remove details block');
     assert.ok(!result.includes('old stuff'), 'should remove archived content');
-    assert.ok(result.includes('## v2.0'), 'should preserve current milestone heading');
+    assert.ok(
+      result.includes('## v2.0'),
+      'should preserve current milestone heading',
+    );
   });
 
   test('strips multiple details blocks', () => {
-    const content = '<details><summary>v0.9</summary>\nvery old\n</details>\n## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\nActive content\n';
+    const content =
+      '<details><summary>v0.9</summary>\nvery old\n</details>\n## v2.0\n### Phase 1\n<details><summary>v1.0</summary>\nold stuff\n</details>\nActive content\n';
     const result = extractCurrentMilestone(content);
-    assert.ok(!result.includes('<details>'), 'should remove all details blocks');
-    assert.ok(!result.includes('very old'), 'should remove first archived content');
-    assert.ok(!result.includes('old stuff'), 'should remove second archived content');
-    assert.ok(result.includes('Active content'), 'should preserve active content');
+    assert.ok(
+      !result.includes('<details>'),
+      'should remove all details blocks',
+    );
+    assert.ok(
+      !result.includes('very old'),
+      'should remove first archived content',
+    );
+    assert.ok(
+      !result.includes('old stuff'),
+      'should remove second archived content',
+    );
+    assert.ok(
+      result.includes('Active content'),
+      'should preserve active content',
+    );
   });
 
   test('is case-insensitive for DETAILS tags', () => {
-    const content = '## v2.0\n<DETAILS><summary>v1.0</summary>\nold stuff\n</DETAILS>\nCurrent content\n';
+    const content =
+      '## v2.0\n<DETAILS><summary>v1.0</summary>\nold stuff\n</DETAILS>\nCurrent content\n';
     const result = extractCurrentMilestone(content);
-    assert.ok(!result.includes('<DETAILS>'), 'should remove uppercase DETAILS block');
+    assert.ok(
+      !result.includes('<DETAILS>'),
+      'should remove uppercase DETAILS block',
+    );
     assert.ok(!result.includes('old stuff'), 'should remove archived content');
-    assert.ok(result.includes('Current content'), 'should preserve current content');
+    assert.ok(
+      result.includes('Current content'),
+      'should preserve current content',
+    );
   });
 });
 
@@ -972,9 +1073,13 @@ describe('extractCurrentMilestone', () => {
 
 describe('generateSlugInternal max length', () => {
   test('input exceeding 50 chars produces output <= 50 chars', () => {
-    const longInput = 'context-token-optimization-with-many-extra-words-that-make-it-very-long';
+    const longInput =
+      'context-token-optimization-with-many-extra-words-that-make-it-very-long';
     const result = generateSlugInternal(longInput);
-    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+    assert.ok(
+      result.length <= 50,
+      `slug length ${result.length} should be <= 50`,
+    );
   });
 
   test('short input is returned unchanged (no truncation)', () => {
@@ -992,9 +1097,13 @@ describe('generateSlugInternal max length', () => {
 
   test('word boundary preservation — slug does not end with a partial word fragment', () => {
     // 'context-token-optimizati...' would be a mid-word cut; result should end at a hyphen boundary
-    const longInput = 'context token optimization with many extra words that push it past fifty chars';
+    const longInput =
+      'context token optimization with many extra words that push it past fifty chars';
     const result = generateSlugInternal(longInput);
-    assert.ok(result.length <= 50, `slug length ${result.length} should be <= 50`);
+    assert.ok(
+      result.length <= 50,
+      `slug length ${result.length} should be <= 50`,
+    );
     // Should not end with a hyphen (trailing hyphen was stripped)
     assert.ok(!result.endsWith('-'), 'slug should not end with a hyphen');
   });
@@ -1002,14 +1111,21 @@ describe('generateSlugInternal max length', () => {
   test('custom maxLen parameter override works', () => {
     const input = 'this-is-a-long-description-for-feature-work';
     const result = generateSlugInternal(input, 20);
-    assert.ok(result.length <= 20, `slug length ${result.length} should be <= 20 with maxLen=20`);
+    assert.ok(
+      result.length <= 20,
+      `slug length ${result.length} should be <= 20 with maxLen=20`,
+    );
   });
 
   test('exact 50-char slug is not truncated', () => {
     // Build a string that produces exactly a 50-char slug
     const input = 'abcde-fghij-klmno-pqrst-uvwxy-12345'; // 35 chars already slug-safe
     const result = generateSlugInternal(input);
-    assert.strictEqual(result, input, 'exactly-50-or-under slug should be unchanged');
+    assert.strictEqual(
+      result,
+      input,
+      'exactly-50-or-under slug should be unchanged',
+    );
   });
 });
 
@@ -1022,11 +1138,11 @@ describe('output EPIPE handling', () => {
     const path_mod = require('path');
     const coreSrc = fs_mod.readFileSync(
       path_mod.join(__dirname, '../gsd-ng/bin/lib/core.cjs'),
-      'utf-8'
+      'utf-8',
     );
     assert.ok(
       coreSrc.includes("if (e.code !== 'EPIPE') throw e"),
-      'core.cjs output() should contain EPIPE guard: if (e.code !== \'EPIPE\') throw e'
+      "core.cjs output() should contain EPIPE guard: if (e.code !== 'EPIPE') throw e",
     );
   });
 });
@@ -1044,7 +1160,10 @@ describe('output() inline default and --file flag', () => {
     capturedOutput = '';
     origWriteSync = fs.writeSync;
     fs.writeSync = (fd, data) => {
-      if (fd === 1) { capturedOutput += data; return data.length; }
+      if (fd === 1) {
+        capturedOutput += data;
+        return data.length;
+      }
       return origWriteSync(fd, data);
     };
     // Ensure file output flag is off before each test
@@ -1058,7 +1177,10 @@ describe('output() inline default and --file flag', () => {
 
   test('small payload writes inline JSON to stdout', () => {
     output({ hello: 'world' });
-    assert.ok(!capturedOutput.startsWith('@file:'), `Expected inline JSON, got: ${capturedOutput.slice(0, 50)}`);
+    assert.ok(
+      !capturedOutput.startsWith('@file:'),
+      `Expected inline JSON, got: ${capturedOutput.slice(0, 50)}`,
+    );
     const parsed = JSON.parse(capturedOutput);
     assert.strictEqual(parsed.hello, 'world');
   });
@@ -1066,21 +1188,32 @@ describe('output() inline default and --file flag', () => {
   test('large payload (>50KB) writes inline JSON by default', () => {
     const bigObj = { data: 'x'.repeat(51000) };
     output(bigObj);
-    assert.ok(!capturedOutput.startsWith('@file:'), `Expected inline JSON, got @file: path`);
+    assert.ok(
+      !capturedOutput.startsWith('@file:'),
+      `Expected inline JSON, got @file: path`,
+    );
     const parsed = JSON.parse(capturedOutput);
-    assert.ok(parsed.data.length === 51000, 'Large payload data should be preserved');
+    assert.ok(
+      parsed.data.length === 51000,
+      'Large payload data should be preserved',
+    );
   });
 
   test('--file flag triggers @file: temp file output', () => {
     setFileOutput(true);
     output({ test: true });
-    assert.ok(capturedOutput.startsWith('@file:'), `Expected @file: prefix, got: ${capturedOutput.slice(0, 50)}`);
+    assert.ok(
+      capturedOutput.startsWith('@file:'),
+      `Expected @file: prefix, got: ${capturedOutput.slice(0, 50)}`,
+    );
     const tmpPath = capturedOutput.slice(6);
     const contents = fs.readFileSync(tmpPath, 'utf-8');
     const parsed = JSON.parse(contents);
     assert.strictEqual(parsed.test, true);
     // Clean up temp file
-    try { fs.unlinkSync(tmpPath); } catch {}
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {}
   });
 
   test('displayValue mode writes string directly', () => {
@@ -1090,8 +1223,16 @@ describe('output() inline default and --file flag', () => {
 
   test('setFileOutput exists and is exported (setResolveOutput does NOT exist)', () => {
     const coreExports = require('../gsd-ng/bin/lib/core.cjs');
-    assert.strictEqual(typeof coreExports.setFileOutput, 'function', 'setFileOutput should be exported');
-    assert.strictEqual(typeof coreExports.setResolveOutput, 'undefined', 'setResolveOutput should NOT be exported');
+    assert.strictEqual(
+      typeof coreExports.setFileOutput,
+      'function',
+      'setFileOutput should be exported',
+    );
+    assert.strictEqual(
+      typeof coreExports.setResolveOutput,
+      'undefined',
+      'setResolveOutput should NOT be exported',
+    );
   });
 });
 
@@ -1112,7 +1253,7 @@ describe('resolveEffortInternal', () => {
   function writeConfig(obj) {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify(obj, null, 2)
+      JSON.stringify(obj, null, 2),
     );
   }
 
@@ -1210,16 +1351,31 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-research-synthesizer');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'Expected null when resolved model is haiku (from profile)');
-    assert.strictEqual(captured, '', 'No warning should emit for profile-derived haiku (no explicit override)');
+    assert.strictEqual(
+      result,
+      null,
+      'Expected null when resolved model is haiku (from profile)',
+    );
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning should emit for profile-derived haiku (no explicit override)',
+    );
   });
 
   test('Test 10: returns null when model_overrides forces haiku (quality profile, gsd-planner)', () => {
-    writeConfig({ model_profile: 'quality', model_overrides: { 'gsd-planner': 'haiku' } });
+    writeConfig({
+      model_profile: 'quality',
+      model_overrides: { 'gsd-planner': 'haiku' },
+    });
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     stopStderrCapture();
-    assert.strictEqual(result, null, 'Expected null when model_overrides forces haiku');
+    assert.strictEqual(
+      result,
+      null,
+      'Expected null when model_overrides forces haiku',
+    );
   });
 
   test('Test 11: returns null AND emits warning when explicit effort_override + haiku model', () => {
@@ -1231,9 +1387,19 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'Expected null when effort override is ignored due to haiku model');
-    assert.ok(captured.includes('haiku'), `Warning should mention haiku, got: ${captured}`);
-    assert.ok(captured.includes('gsd-planner'), `Warning should mention gsd-planner, got: ${captured}`);
+    assert.strictEqual(
+      result,
+      null,
+      'Expected null when effort override is ignored due to haiku model',
+    );
+    assert.ok(
+      captured.includes('haiku'),
+      `Warning should mention haiku, got: ${captured}`,
+    );
+    assert.ok(
+      captured.includes('gsd-planner'),
+      `Warning should mention gsd-planner, got: ${captured}`,
+    );
   });
 
   test('Test 12: no warning when balanced profile (inherit effort, no explicit override)', () => {
@@ -1241,8 +1407,16 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'Expected null for balanced profile (inherit resolves to null)');
-    assert.strictEqual(captured, '', 'No warning for profile-derived effort (no explicit override)');
+    assert.strictEqual(
+      result,
+      null,
+      'Expected null for balanced profile (inherit resolves to null)',
+    );
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning for profile-derived effort (no explicit override)',
+    );
   });
 
   test('Test 13: profile=inherit (resolveModelInternal returns null) — no haiku skip, no crash', () => {
@@ -1254,7 +1428,11 @@ describe('resolveEffortInternal', () => {
     });
     const captured = stopStderrCapture();
     assert.strictEqual(result, null, 'Expected null when profile is inherit');
-    assert.strictEqual(captured, '', 'No warning when model resolves to null (not haiku)');
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning when model resolves to null (not haiku)',
+    );
   });
 
   test('Test 14: explicit override max + sonnet model — skip + warn (max requires opus)', () => {
@@ -1266,10 +1444,23 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-executor');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'max effort dropped because sonnet is not opus');
-    assert.ok(captured.includes('max'), `Warning should mention max, got: ${captured}`);
-    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
-    assert.ok(captured.includes('gsd-executor'), `Warning should mention agent, got: ${captured}`);
+    assert.strictEqual(
+      result,
+      null,
+      'max effort dropped because sonnet is not opus',
+    );
+    assert.ok(
+      captured.includes('max'),
+      `Warning should mention max, got: ${captured}`,
+    );
+    assert.ok(
+      captured.includes('opus'),
+      `Warning should mention opus requirement, got: ${captured}`,
+    );
+    assert.ok(
+      captured.includes('gsd-executor'),
+      `Warning should mention agent, got: ${captured}`,
+    );
   });
 
   test('Test 15: explicit override xhigh + sonnet model — skip + warn (xhigh requires opus)', () => {
@@ -1281,9 +1472,19 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-executor');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'xhigh effort dropped because sonnet is not opus');
-    assert.ok(captured.includes('xhigh'), `Warning should mention xhigh, got: ${captured}`);
-    assert.ok(captured.includes('opus'), `Warning should mention opus requirement, got: ${captured}`);
+    assert.strictEqual(
+      result,
+      null,
+      'xhigh effort dropped because sonnet is not opus',
+    );
+    assert.ok(
+      captured.includes('xhigh'),
+      `Warning should mention xhigh, got: ${captured}`,
+    );
+    assert.ok(
+      captured.includes('opus'),
+      `Warning should mention opus requirement, got: ${captured}`,
+    );
   });
 
   test('Test 16: profile-derived max + sonnet via model_overrides — silent skip, no warning', () => {
@@ -1296,8 +1497,16 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, null, 'profile-derived max effort dropped silently for sonnet model');
-    assert.strictEqual(captured, '', 'No warning for profile-derived skip (no explicit effort override)');
+    assert.strictEqual(
+      result,
+      null,
+      'profile-derived max effort dropped silently for sonnet model',
+    );
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning for profile-derived skip (no explicit effort override)',
+    );
   });
 
   test('Test 17: opus model + max effort — passes through (compatible)', () => {
@@ -1310,7 +1519,11 @@ describe('resolveEffortInternal', () => {
     const result = resolveEffortInternal(tmpDir, 'gsd-executor');
     const captured = stopStderrCapture();
     assert.strictEqual(result, 'max', 'max passes through when model is opus');
-    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning when model+effort are compatible',
+    );
   });
 
   test('Test 18: opus model + xhigh effort — passes through (compatible)', () => {
@@ -1322,8 +1535,16 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-executor');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, 'xhigh', 'xhigh passes through when model is opus');
-    assert.strictEqual(captured, '', 'No warning when model+effort are compatible');
+    assert.strictEqual(
+      result,
+      'xhigh',
+      'xhigh passes through when model is opus',
+    );
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning when model+effort are compatible',
+    );
   });
 
   test('Test 19: profile=inherit with explicit max override — no skip (model unknown)', () => {
@@ -1334,7 +1555,336 @@ describe('resolveEffortInternal', () => {
     startStderrCapture();
     const result = resolveEffortInternal(tmpDir, 'gsd-executor');
     const captured = stopStderrCapture();
-    assert.strictEqual(result, 'max', 'max passes through when model is unknown (inherit)');
-    assert.strictEqual(captured, '', 'No warning when model is unknown — cannot determine compatibility');
+    assert.strictEqual(
+      result,
+      'max',
+      'max passes through when model is unknown (inherit)',
+    );
+    assert.strictEqual(
+      captured,
+      '',
+      'No warning when model is unknown — cannot determine compatibility',
+    );
+  });
+});
+
+// ─── core.cjs branch/line residuals (60-11) ────────────────────────────────
+
+describe('core.cjs residuals (60-11)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-core-r-'));
+  });
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // reapStaleTempFiles: lines 70-77, 80-81 — exercise both directory and
+  // non-directory branches plus skip-if-not-stale and inner catch.
+  test('reapStaleTempFiles: removes stale directories matching prefix', () => {
+    const { reapStaleTempFiles } = require('../gsd-ng/bin/lib/core.cjs');
+    const sysTmp = resolveTmpDir();
+    const prefix = `gsd-test-reap-${Date.now()}-`;
+    const staleDir = path.join(sysTmp, prefix + 'old');
+    fs.mkdirSync(staleDir, { recursive: true });
+    fs.writeFileSync(path.join(staleDir, 'f'), 'x');
+    // Backdate mtime by 1h
+    const past = Date.now() / 1000 - 3600;
+    fs.utimesSync(staleDir, past, past);
+    // Run reaper with maxAgeMs=1ms (ensures stale)
+    reapStaleTempFiles(prefix, { maxAgeMs: 1 });
+    assert.ok(!fs.existsSync(staleDir));
+  });
+
+  test('reapStaleTempFiles: removes stale files (non-directory) when dirsOnly=false', () => {
+    const { reapStaleTempFiles } = require('../gsd-ng/bin/lib/core.cjs');
+    const sysTmp = resolveTmpDir();
+    const prefix = `gsd-test-reap-file-${Date.now()}-`;
+    const staleFile = path.join(sysTmp, prefix + 'stale.txt');
+    fs.writeFileSync(staleFile, 'x');
+    const past = Date.now() / 1000 - 3600;
+    fs.utimesSync(staleFile, past, past);
+    reapStaleTempFiles(prefix, { maxAgeMs: 1, dirsOnly: false });
+    assert.ok(!fs.existsSync(staleFile));
+  });
+
+  test('reapStaleTempFiles: skips non-stale entries', () => {
+    const { reapStaleTempFiles } = require('../gsd-ng/bin/lib/core.cjs');
+    const sysTmp = resolveTmpDir();
+    const prefix = `gsd-test-reap-fresh-${Date.now()}-`;
+    const freshDir = path.join(sysTmp, prefix + 'fresh');
+    fs.mkdirSync(freshDir, { recursive: true });
+    // Don't backdate — should be considered fresh
+    reapStaleTempFiles(prefix, { maxAgeMs: 60_000 });
+    assert.ok(fs.existsSync(freshDir));
+    cleanupSubdir(sysTmp, prefix + 'fresh');
+  });
+
+  test('reapStaleTempFiles: dirsOnly=true skips non-directory entries', () => {
+    const { reapStaleTempFiles } = require('../gsd-ng/bin/lib/core.cjs');
+    const sysTmp = resolveTmpDir();
+    const prefix = `gsd-test-reap-dirsonly-${Date.now()}-`;
+    const staleFile = path.join(sysTmp, prefix + 'stale.txt');
+    fs.writeFileSync(staleFile, 'x');
+    const past = Date.now() / 1000 - 3600;
+    fs.utimesSync(staleFile, past, past);
+    reapStaleTempFiles(prefix, { maxAgeMs: 1, dirsOnly: true });
+    // File should NOT be removed when dirsOnly=true
+    assert.ok(fs.existsSync(staleFile));
+    fs.unlinkSync(staleFile);
+  });
+
+  // searchPhaseInDir / findPhaseInternal catch arms (lines 452-453, 489-490)
+  test('searchPhaseInDir: returns null on readdirSync error (missing dir)', () => {
+    const { searchPhaseInDir } = require('../gsd-ng/bin/lib/core.cjs');
+    const r = searchPhaseInDir(
+      path.join(tmpDir, 'no-such-dir'),
+      '.planning/phases',
+      '01',
+    );
+    assert.strictEqual(r, null);
+  });
+
+  test('findPhaseInternal: returns null when phase not found anywhere', () => {
+    const { findPhaseInternal } = require('../gsd-ng/bin/lib/core.cjs');
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
+    const r = findPhaseInternal(tmpDir, '99');
+    assert.strictEqual(r, null);
+  });
+
+  test('findPhaseInternal: searches archived milestones when current not found', () => {
+    const { findPhaseInternal } = require('../gsd-ng/bin/lib/core.cjs');
+    const milestonesDir = path.join(
+      tmpDir,
+      '.planning',
+      'milestones',
+      'v1.0-phases',
+    );
+    fs.mkdirSync(path.join(milestonesDir, '05-archived'), { recursive: true });
+    fs.writeFileSync(
+      path.join(milestonesDir, '05-archived', '05-1-PLAN.md'),
+      '---\n---\n',
+    );
+    const r = findPhaseInternal(tmpDir, '5');
+    assert.ok(r);
+    assert.strictEqual(r.archived, 'v1.0');
+  });
+
+  test('findPhaseInternal: nullish phase returns null', () => {
+    const { findPhaseInternal } = require('../gsd-ng/bin/lib/core.cjs');
+    assert.strictEqual(findPhaseInternal(tmpDir, null), null);
+    assert.strictEqual(findPhaseInternal(tmpDir, ''), null);
+  });
+
+  test('findPhaseInternal: missing milestonesDir returns null', () => {
+    const { findPhaseInternal } = require('../gsd-ng/bin/lib/core.cjs');
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases'), { recursive: true });
+    // No milestones dir at all — early return
+    const r = findPhaseInternal(tmpDir, '99');
+    assert.strictEqual(r, null);
+  });
+
+  // replaceInCurrentMilestone with </details> close (lines 555-558)
+  test('replaceInCurrentMilestone: uses content after last </details>', () => {
+    const { replaceInCurrentMilestone } = require('../gsd-ng/bin/lib/core.cjs');
+    const before =
+      '<details>\n## Phase 1: foo\nold\n</details>\n\n## Phase 2: bar\nold-active';
+    const r = replaceInCurrentMilestone(before, /old-active/, 'new-active');
+    // Replacement happens AFTER the last </details>
+    assert.match(r, /new-active/);
+    // The </details> region remains untouched
+    assert.match(r, /old\n<\/details>/);
+  });
+
+  test('replaceInCurrentMilestone: no </details> falls back to plain replace', () => {
+    const { replaceInCurrentMilestone } = require('../gsd-ng/bin/lib/core.cjs');
+    const r = replaceInCurrentMilestone('plain content', /content/, 'replaced');
+    assert.match(r, /replaced/);
+  });
+
+  // getRoadmapPhaseInternal catch (lines 604-605)
+  test('getRoadmapPhaseInternal: malformed roadmap returns null gracefully', () => {
+    const { getRoadmapPhaseInternal } = require('../gsd-ng/bin/lib/core.cjs');
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    // Write malformed/empty roadmap — many regex branches return null
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), '');
+    const r = getRoadmapPhaseInternal(tmpDir, '99');
+    assert.strictEqual(r, null);
+  });
+
+  // getMilestoneInfo: in-progress milestone via 🚧 marker (lines 713-717)
+  test('getMilestoneInfo: parses in-progress milestone marker', () => {
+    const { getMilestoneInfo } = require('../gsd-ng/bin/lib/core.cjs');
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      '# Roadmap\n\n- 🚧 **v2.1 Belgium** — Phases 24-28 (in progress)\n',
+    );
+    const info = getMilestoneInfo(tmpDir);
+    assert.strictEqual(info.version, 'v2.1');
+    assert.strictEqual(info.name, 'Belgium');
+  });
+
+  // getPhaseCompletionStatus catch arms (lines 806-807, 833-834)
+  test('getPhaseCompletionStatus: returns not_started when phaseDir missing', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const r = getPhaseCompletionStatus(path.join(tmpDir, 'no-phase'));
+    assert.strictEqual(r.isComplete, false);
+    assert.strictEqual(r.status, 'not_started');
+  });
+
+  test('getPhaseCompletionStatus: complete (verified) when VERIFICATION.md status=passed', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const phaseDir = path.join(tmpDir, '01-x');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-1-PLAN.md'), '---\n---\n');
+    fs.writeFileSync(path.join(phaseDir, '01-1-SUMMARY.md'), '---\n---\n');
+    fs.writeFileSync(
+      path.join(phaseDir, '01-VERIFICATION.md'),
+      '---\nstatus: passed\n---\n',
+    );
+    const r = getPhaseCompletionStatus(phaseDir);
+    assert.strictEqual(r.isComplete, true);
+    assert.strictEqual(r.status, 'complete (verified)');
+  });
+
+  test('getPhaseCompletionStatus: complete (unverified) when no VERIFICATION.md', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const phaseDir = path.join(tmpDir, '01-x');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-1-PLAN.md'), '---\n---\n');
+    fs.writeFileSync(path.join(phaseDir, '01-1-SUMMARY.md'), '---\n---\n');
+    const r = getPhaseCompletionStatus(phaseDir);
+    assert.strictEqual(r.isComplete, true);
+    assert.strictEqual(r.status, 'complete (unverified)');
+  });
+
+  test('getPhaseCompletionStatus: in_progress when summaries < plans', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const phaseDir = path.join(tmpDir, '01-x');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-1-PLAN.md'), '---\n---\n');
+    fs.writeFileSync(path.join(phaseDir, '01-2-PLAN.md'), '---\n---\n');
+    fs.writeFileSync(path.join(phaseDir, '01-1-SUMMARY.md'), '---\n---\n');
+    const r = getPhaseCompletionStatus(phaseDir);
+    assert.strictEqual(r.status, 'in_progress');
+  });
+
+  test('getPhaseCompletionStatus: not_started when no plans', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const phaseDir = path.join(tmpDir, '01-x');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    const r = getPhaseCompletionStatus(phaseDir);
+    assert.strictEqual(r.status, 'not_started');
+  });
+
+  test('getPhaseCompletionStatus: complete (unverified) when VERIFICATION.md unreadable', () => {
+    const { getPhaseCompletionStatus } = require('../gsd-ng/bin/lib/core.cjs');
+    const phaseDir = path.join(tmpDir, '01-x');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-1-PLAN.md'), '---\n---\n');
+    fs.writeFileSync(path.join(phaseDir, '01-1-SUMMARY.md'), '---\n---\n');
+    // Create VERIFICATION.md as a directory — readFileSync throws → catch fires
+    fs.mkdirSync(path.join(phaseDir, '01-VERIFICATION.md'));
+    const r = getPhaseCompletionStatus(phaseDir);
+    assert.strictEqual(r.isComplete, true);
+    assert.strictEqual(r.status, 'complete (unverified)');
+  });
+
+  // loadConfig: depth-to-granularity migration writes the migration back
+  // to disk (file mutation) — verify by re-reading the JSON.
+  test('loadConfig: migrates "depth: quick" to "granularity: coarse" on disk', () => {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ depth: 'quick' }),
+    );
+    loadConfig(tmpDir);
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'),
+    );
+    assert.strictEqual(reloaded.granularity, 'coarse');
+    assert.ok(!('depth' in reloaded));
+  });
+
+  test('loadConfig: migrates "depth: standard" to "granularity: standard"', () => {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ depth: 'standard' }),
+    );
+    loadConfig(tmpDir);
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'),
+    );
+    assert.strictEqual(reloaded.granularity, 'standard');
+  });
+
+  test('loadConfig: migrates "depth: comprehensive" to "granularity: fine"', () => {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ depth: 'comprehensive' }),
+    );
+    loadConfig(tmpDir);
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'),
+    );
+    assert.strictEqual(reloaded.granularity, 'fine');
+  });
+
+  test('loadConfig: unknown depth value falls through to itself', () => {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ depth: 'unknown-value' }),
+    );
+    loadConfig(tmpDir);
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'),
+    );
+    assert.strictEqual(reloaded.granularity, 'unknown-value');
+  });
+
+  test('loadConfig: depth+granularity both present skips migration', () => {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ depth: 'quick', granularity: 'fine' }),
+    );
+    loadConfig(tmpDir);
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'),
+    );
+    // Granularity already set — depth NOT migrated; both kept
+    assert.strictEqual(reloaded.granularity, 'fine');
+    assert.strictEqual(reloaded.depth, 'quick');
+  });
+
+  // writeToTempFile: tmpdir-fallback path (109-114)
+  test('output() in JSON mode with file flag writes to tmp file', () => {
+    // Use spawnSync to invoke gsd-tools with --json --file flags so output()
+    // takes the writeToTempFile path
+    const r = require('child_process').spawnSync(
+      process.execPath,
+      [
+        path.resolve(
+          '/home/chris/Development/gsd-workspace/gsd-ng/gsd-ng/bin/gsd-tools.cjs',
+        ),
+        'current-timestamp',
+        '--json',
+        '--file',
+      ],
+      { encoding: 'utf-8' },
+    );
+    assert.strictEqual(r.status, 0);
+    // Output is "@file:/path/to/file"
+    assert.match(r.stdout, /^@file:/);
+    const filePath = r.stdout.trim().slice('@file:'.length);
+    assert.ok(fs.existsSync(filePath));
+    // Cleanup
+    try {
+      fs.unlinkSync(filePath);
+    } catch {}
   });
 });

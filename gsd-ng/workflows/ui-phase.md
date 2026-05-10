@@ -15,31 +15,35 @@ UI-SPEC.md locks spacing, typography, color, copywriting, and design system deci
 ## 1. Initialize
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE" > $TMPDIR/ui-phase-init.json
+if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/ui-phase-init.json 2>/dev/null; then
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init plan-phase "$PHASE" > $TMPDIR/ui-phase-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/ui-phase-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
 fi
 ```
 
-Parse JSON for: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_context`, `has_research`, `commit_docs`.
+Read `$TMPDIR/ui-phase-init.json` and parse JSON for: `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_context`, `has_research`, `commit_docs`.
 
 **File paths:** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`.
 
 Resolve UI agent models:
 
 ```bash
-UI_RESEARCHER_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-researcher)
-UI_CHECKER_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-checker)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-researcher > $TMPDIR/ui-phase-researcher-model.txt
+read UI_RESEARCHER_MODEL < $TMPDIR/ui-phase-researcher-model.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-checker > $TMPDIR/ui-phase-checker-model.txt
+read UI_CHECKER_MODEL < $TMPDIR/ui-phase-checker-model.txt
 ```
 
 Check config:
 
 ```bash
-UI_ENABLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_phase --default "true")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.ui_phase --default "true" > $TMPDIR/ui-phase-enabled.txt
+read UI_ENABLED < $TMPDIR/ui-phase-enabled.txt
 ```
 
 **If `UI_ENABLED` is `false`:**
@@ -55,10 +59,11 @@ Exit workflow.
 Extract phase number from $ARGUMENTS. If not provided, detect next unplanned phase.
 
 ```bash
-PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" > $TMPDIR/ui-phase-info.json
 ```
 
-**If `found` is false:** Error with available phases.
+Read `$TMPDIR/ui-phase-info.json`. **If `found` is false:** Error with available phases.
 
 ## 3. Check Prerequisites
 
@@ -80,7 +85,9 @@ Continue (non-blocking).
 ## 4. Check Existing UI-SPEC
 
 ```bash
-UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
+mkdir -p $TMPDIR
+ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1 > $TMPDIR/ui-phase-spec-file.txt
+read UI_SPEC_FILE < $TMPDIR/ui-phase-spec-file.txt || UI_SPEC_FILE=""
 ```
 
 **If exists:** Use AskUserQuestion:

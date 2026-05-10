@@ -14,10 +14,15 @@ From `$ARGUMENTS`:
 The `find-phase` command handles normalization and validation in one step:
 
 ```bash
-PHASE_INFO=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PHASE}")
+node ./.claude/gsd-ng/bin/gsd-tools.cjs find-phase "${PHASE}" --json > $TMPDIR/phase-arg-info.json
+# Read individual fields with init-get-from-file:
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/phase-arg-info.json found > $TMPDIR/phase-arg-found.txt
+read PHASE_FOUND < $TMPDIR/phase-arg-found.txt
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/phase-arg-info.json directory > $TMPDIR/phase-arg-dir.txt
+read PHASE_DIR < $TMPDIR/phase-arg-dir.txt
 ```
 
-Returns JSON with:
+The JSON file `$TMPDIR/phase-arg-info.json` contains:
 - `found`: true/false
 - `directory`: Full path to phase directory
 - `phase_number`: Normalized number (e.g., "06", "06.1")
@@ -27,16 +32,16 @@ Returns JSON with:
 
 ## Manual Normalization (Legacy)
 
-Zero-pad integer phases to 2 digits. Preserve decimal suffixes.
+Zero-pad integer phases to 2 digits. Preserve decimal suffixes. Use `printf -v` to assign without command substitution.
 
 ```bash
 # Normalize phase number
 if [[ "$PHASE" =~ ^[0-9]+$ ]]; then
   # Integer: 8 → 08
-  PHASE=$(printf "%02d" "$PHASE")
+  printf -v PHASE "%02d" "$PHASE"
 elif [[ "$PHASE" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
   # Decimal: 2.1 → 02.1
-  PHASE=$(printf "%02d.%s" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")
+  printf -v PHASE "%02d.%s" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
 fi
 ```
 
@@ -45,7 +50,8 @@ fi
 Use `roadmap get-phase` to validate phase exists:
 
 ```bash
-PHASE_FOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE}" --pick found)
+node ./.claude/gsd-ng/bin/gsd-tools.cjs roadmap get-phase "${PHASE}" --pick found > $TMPDIR/phase-arg-roadmap-found.txt
+read PHASE_FOUND < $TMPDIR/phase-arg-roadmap-found.txt
 if [ "$PHASE_FOUND" = "false" ]; then
   echo "ERROR: Phase ${PHASE} not found in roadmap"
   exit 1
@@ -54,8 +60,9 @@ fi
 
 ## Directory Lookup
 
-Use `find-phase` for directory lookup:
+Use `find-phase` for a quick directory-only lookup (default scalar output):
 
 ```bash
-PHASE_DIR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" find-phase "${PHASE}")
+node ./.claude/gsd-ng/bin/gsd-tools.cjs find-phase "${PHASE}" > $TMPDIR/phase-arg-dir-only.txt
+read PHASE_DIR < $TMPDIR/phase-arg-dir-only.txt
 ```

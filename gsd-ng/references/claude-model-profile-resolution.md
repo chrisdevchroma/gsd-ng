@@ -4,11 +4,15 @@ Resolve model profile once at the start of orchestration, then use it for all Ta
 
 ## Resolution Pattern
 
+Load state once, then read `model_profile` from the JSON file using `init-get-from-file`. The helper hoists `model_profile` to a top-level field and falls back to `"balanced"` when config is missing or the field is unset, so no inline default is needed.
+
 ```bash
-MODEL_PROFILE=$(cat .planning/config.json 2>/dev/null | grep -o '"model_profile"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || echo "balanced")
+node ./.claude/gsd-ng/bin/gsd-tools.cjs state load > $TMPDIR/model-profile-state.json
+node ./.claude/gsd-ng/bin/gsd-tools.cjs init-get-from-file $TMPDIR/model-profile-state.json model_profile > $TMPDIR/model-profile-value.txt
+read MODEL_PROFILE < $TMPDIR/model-profile-value.txt
 ```
 
-Default: `balanced` if not set or config missing.
+Default: `balanced` if not set or config missing (the helper handles this — `MODEL_PROFILE` is always populated).
 
 ## Lookup Table
 

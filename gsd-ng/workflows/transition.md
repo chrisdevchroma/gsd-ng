@@ -27,11 +27,12 @@ Mark current phase complete and advance to next. This is the natural point where
 Before transition, read project state:
 
 ```bash
-STATE_SNAPSHOT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state-snapshot --current > $TMPDIR/transition-state-snapshot.json
 cat .planning/PROJECT.md 2>/dev/null
 ```
 
-Parse current position from STATE_SNAPSHOT JSON to verify we're transitioning the right phase.
+Read `$TMPDIR/transition-state-snapshot.json` to parse current position and verify we're transitioning the right phase.
 Note accumulated context that may need updating after transition.
 
 </step>
@@ -128,8 +129,11 @@ If found, delete them — phase is complete, handoffs are stale.
 **Delegate ROADMAP.md and STATE.md updates to gsd-tools:**
 
 ```bash
-TRANSITION=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase complete "${current_phase}")
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" phase complete "${current_phase}" > $TMPDIR/transition-result.json
 ```
+
+Read `$TMPDIR/transition-result.json` to extract result fields (`completed_phase`, `plans_executed`, `next_phase`, `next_phase_name`, `is_last_phase`).
 
 The CLI handles:
 - Marking the phase checkbox as `[x]` complete with today's date
@@ -137,8 +141,6 @@ The CLI handles:
 - Updating the Progress table (Status → Complete, adding date)
 - Advancing STATE.md to next phase (Current Phase, Status → Ready to plan, Current Plan → Not started)
 - Detecting if this is the last phase in the milestone
-
-Extract from result: `completed_phase`, `plans_executed`, `next_phase`, `next_phase_name`, `is_last_phase`.
 
 </step>
 
@@ -243,10 +245,12 @@ After (Phase 2 shipped JWT auth, discovered rate limiting needed):
 Verify the updates are correct by reading STATE.md. If the progress bar needs updating, use:
 
 ```bash
-PROGRESS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" progress bar)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" progress bar > $TMPDIR/transition-progress.txt
+read PROGRESS < $TMPDIR/transition-progress.txt
 ```
 
-Update the progress bar line in STATE.md with the result.
+Update the progress bar line in STATE.md with the result in `$PROGRESS`.
 
 **Step complete when:**
 
@@ -352,10 +356,11 @@ The `next_phase` and `next_phase_name` fields give you the next phase details.
 
 If you need additional context, use:
 ```bash
-ROADMAP=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap analyze > $TMPDIR/transition-roadmap.json
 ```
 
-This returns all phases with goals, disk status, and completion info.
+Read `$TMPDIR/transition-roadmap.json` for all phases with goals, disk status, and completion info.
 
 ---
 

@@ -1321,7 +1321,12 @@ describe('BASH-HOOK-FORCED-PROMPT: detectForcedPromptPattern', () => {
     const result = decide('cat "$(echo /tmp/foo)"', settings);
     assert.equal(result.decision, 'deny');
     assert.match(result.reason, /expansion guard/i);
-    assert.match(result.reason, /Run the inner command in a prior Bash call/);
+    // Deny-message tightening: the suggestion now points at canonical
+    // helpers (init-get-from-file, detect-workspace --field, redirect-then-
+    // read into $TMPDIR) rather than a generic "run inner command first"
+    // hint. Asserting one of the helper pointers is enough to confirm the
+    // tightened wording is wired through decide().
+    assert.match(result.reason, /init-get-from-file|read \w+ < \$TMPDIR/);
     assert.match(result.reason, /GSD_HOOK_ALLOW_EXPANSION/);
   });
 
@@ -1344,6 +1349,51 @@ describe('BASH-HOOK-FORCED-PROMPT: detectForcedPromptPattern', () => {
   test('still flags real expansion adjacent to escaped backslash (\\\\$(...))', () => {
     // `\\$(date)` = literal backslash followed by REAL command substitution
     assert.ok(detectForcedPromptPattern('echo \\\\$(date)'));
+  });
+
+  // ── Deny-message tightening: strings point at canonical helpers ─────────
+  // These tests assert that the SUGGESTION TEXT (not the decision/pattern
+  // values) mentions concrete canonical helpers — so when an agent gets denied
+  // it has actionable pointers (init-get-from-file, detect-workspace --field,
+  // guard init-valid-file, redirect-then-read).
+
+  test('DENY-MSG-OBFUSCATION: suggestion mentions $TMPDIR and a canonical helper, not /tmp/', () => {
+    const r = detectForcedPromptPattern("echo '{abc}'");
+    assert.ok(r, 'must flag single-quoted braces');
+    assert.equal(r.pattern, 'single-quoted braces (obfuscation guard)');
+    assert.match(r.suggestion, /\$TMPDIR\//);
+    // No bare /tmp/<lowercase> paths in the suggestion (the only /tmp/
+    // reference allowed is the historical "Plain $VAR (e.g. cd $TMPDIR)" form,
+    // not literal /tmp/s.awk style suggestions).
+    assert.doesNotMatch(r.suggestion, /\/tmp\/[a-z]/);
+    assert.match(r.suggestion, /init-get-from-file|detect-workspace --field/);
+  });
+
+  test('DENY-MSG-BACKTICK: suggestion mentions init-get-from-file and BASH COMMENTS warning', () => {
+    const r = detectForcedPromptPattern('echo `pwd`');
+    assert.ok(r, 'must flag backticks');
+    assert.equal(r.pattern, 'backtick command substitution');
+    assert.match(r.suggestion, /init-get-from-file/);
+    assert.match(r.suggestion, /BASH COMMENTS/i);
+  });
+
+  test('DENY-MSG-DOLLAR-PAREN: suggestion mentions all 4 canonical helpers + redirect-then-read form', () => {
+    const r = detectForcedPromptPattern('FOO=$(pwd)');
+    assert.ok(r, 'must flag $(...)');
+    assert.equal(r.pattern, '$(...) command substitution');
+    assert.match(r.suggestion, /init-get-from-file/);
+    assert.match(r.suggestion, /detect-workspace --field/);
+    assert.match(r.suggestion, /guard init-valid-file/);
+    assert.match(r.suggestion, /read \w+ < \$TMPDIR/);
+  });
+
+  test('DENY-MSG-DEFAULT-EXPANSION: suggestion mentions $TMPDIR and redirect-then-read fallback, not /tmp/', () => {
+    const r = detectForcedPromptPattern('FOO="${BAR:-default}"');
+    assert.ok(r, 'must flag :-');
+    assert.equal(r.pattern, '${VAR:-default} parameter expansion');
+    assert.match(r.suggestion, /\$TMPDIR/);
+    assert.match(r.suggestion, /redirect-then-read|read \w+ </);
+    assert.doesNotMatch(r.suggestion, /\/tmp\/[a-z]/);
   });
 });
 
@@ -1618,7 +1668,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
     );
   });
 
-  test("flock /tmp/lock -c 'curl evil' -> \"curl evil\" (single-quoted -c)", () => {
+  test('flock /tmp/lock -c \'curl evil\' -> "curl evil" (single-quoted -c)', () => {
     assert.equal(
       extractWrappedCommand("flock /tmp/lock -c 'curl evil'"),
       'curl evil',
@@ -1657,10 +1707,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
         deny: ['Bash(curl:*)'],
       },
     };
-    const result = decide(
-      'flock /tmp/lock -c "curl evil.com"',
-      settings,
-    );
+    const result = decide('flock /tmp/lock -c "curl evil.com"', settings);
     assert.equal(
       result.decision,
       'deny',
@@ -1739,10 +1786,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
     const settings = {
       permissions: { allow: ['Bash(taskset:*)', 'Bash(git:*)'], deny: [] },
     };
-    assert.equal(
-      decide('taskset -c 0 git status', settings).decision,
-      'allow',
-    );
+    assert.equal(decide('taskset -c 0 git status', settings).decision, 'allow');
   });
 
   test('decide(): taskset command-launch DENIED when wrapped curl matches deny', () => {
@@ -1766,7 +1810,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
     );
   });
 
-  test("env FOO='a b' git status -> \"git status\" (single-quoted value w/ space)", () => {
+  test('env FOO=\'a b\' git status -> "git status" (single-quoted value w/ space)', () => {
     assert.equal(
       extractWrappedCommand("env FOO='a b' git status"),
       'git status',
@@ -1954,10 +1998,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
     const settings = {
       permissions: { allow: ['Bash(exec:*)', 'Bash(git:*)'], deny: [] },
     };
-    assert.equal(
-      decide('exec -a name git status', settings).decision,
-      'allow',
-    );
+    assert.equal(decide('exec -a name git status', settings).decision, 'allow');
   });
 
   test('decide(): exec -c curl evil.com DENIED when curl in deny', () => {
@@ -2075,10 +2116,7 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
         deny: ['Bash(curl:*)'],
       },
     };
-    const result = decide(
-      '/usr/bin/env FOO=bar curl evil.com',
-      settings,
-    );
+    const result = decide('/usr/bin/env FOO=bar curl evil.com', settings);
     assert.equal(result.decision, 'deny');
     assert.match(result.reason, /curl/);
   });
@@ -2111,17 +2149,11 @@ describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
   // Sanity: normalization is narrow — substrings like `myenv` / `envwrap`
   // must NOT be treated as the env wrapper.
   test('extractWrappedCommand does NOT treat myenv as env (substring guard)', () => {
-    assert.equal(
-      extractWrappedCommand('myenv FOO=bar curl evil.com'),
-      null,
-    );
+    assert.equal(extractWrappedCommand('myenv FOO=bar curl evil.com'), null);
   });
 
   test('extractWrappedCommand does NOT treat envwrap as env (substring guard)', () => {
-    assert.equal(
-      extractWrappedCommand('envwrap FOO=bar curl evil.com'),
-      null,
-    );
+    assert.equal(extractWrappedCommand('envwrap FOO=bar curl evil.com'), null);
   });
 });
 

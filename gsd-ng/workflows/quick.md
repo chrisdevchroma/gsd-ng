@@ -37,9 +37,11 @@ Parse `--todo-file` flag:
 ```bash
 ORIGIN_TODO_FILE=""
 if [[ "$ARGUMENTS" == *"--todo-file "* ]]; then
-  ORIGIN_TODO_FILE=$(echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
+  echo "$ARGUMENTS" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p' > $TMPDIR/quick-origin_todo_file.txt
+  read ORIGIN_TODO_FILE < $TMPDIR/quick-origin_todo_file.txt
   ARGUMENTS="${ARGUMENTS/--todo-file $ORIGIN_TODO_FILE/}"
-  ARGUMENTS=$(echo "$ARGUMENTS" | xargs)  # trim whitespace
+  echo "$ARGUMENTS" | xargs > $TMPDIR/quick-arguments_trimmed.txt
+  read ARGUMENTS < $TMPDIR/quick-arguments_trimmed.txt
 fi
 ```
 
@@ -47,7 +49,8 @@ If `$ORIGIN_TODO_FILE` is set, read the todo title for display later:
 ```bash
 ORIGIN_TODO_TITLE=""
 if [[ -n "$ORIGIN_TODO_FILE" ]]; then
-  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+  grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//' > $TMPDIR/quick-origin_todo_title.txt
+  read ORIGIN_TODO_TITLE < $TMPDIR/quick-origin_todo_title.txt
 fi
 ```
 
@@ -144,17 +147,31 @@ If `$VERIFY_MODE` only:
 **Step 2: Initialize**
 
 ```bash
-INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION")
-if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION" > $TMPDIR/quick-init.json
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/quick-init.json 2>/dev/null || {
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init quick "$DESCRIPTION" > $TMPDIR/quick-init.json
+  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/quick-init.json; then
     echo "Error: init failed twice. Check gsd-tools installation."
     exit 1
   fi
-fi
+}
 ```
 
 Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_model`, `commit_docs`, `quick_id`, `slug`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`.
+
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/quick-init.json roadmap_exists > $TMPDIR/quick-roadmap_exists.txt
+read ROADMAP_EXISTS < $TMPDIR/quick-roadmap_exists.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/quick-init.json quick_id > $TMPDIR/quick-quick_id.txt
+read QUICK_ID < $TMPDIR/quick-quick_id.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/quick-init.json slug > $TMPDIR/quick-slug.txt
+read SLUG < $TMPDIR/quick-slug.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/quick-init.json task_dir > $TMPDIR/quick-task_dir.txt
+read TASK_DIR < $TMPDIR/quick-task_dir.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/quick-init.json date > $TMPDIR/quick-date.txt
+read QUICK_DATE < $TMPDIR/quick-date.txt
+```
 
 **If `roadmap_exists` is false:** Error — Quick mode requires an active project with ROADMAP.md. Run `{{COMMAND_PREFIX}}new-project` first.
 
@@ -165,7 +182,7 @@ Quick tasks can run mid-phase - validation only checks ROADMAP.md exists, not ph
 **Step 3: Create task directory**
 
 ```bash
-mkdir -p "${task_dir}"
+mkdir -p "$TASK_DIR"
 ```
 
 ---
@@ -175,13 +192,13 @@ mkdir -p "${task_dir}"
 Create the directory for this quick task:
 
 ```bash
-QUICK_DIR=".planning/quick/${quick_id}-${slug}"
+QUICK_DIR=".planning/quick/${QUICK_ID}-${SLUG}"
 mkdir -p "$QUICK_DIR"
 ```
 
 Report to user:
 ```
-Creating quick task ${quick_id}: ${DESCRIPTION}
+Creating quick task ${QUICK_ID}: ${DESCRIPTION}
 Directory: ${QUICK_DIR}
 ```
 
@@ -262,10 +279,10 @@ Collect all decisions into `$DECISIONS`.
 
 **4.5d. Write CONTEXT.md**
 
-Write `${QUICK_DIR}/${quick_id}-CONTEXT.md` using the standard context template structure:
+Write `${QUICK_DIR}/${QUICK_ID}-CONTEXT.md` using the standard context template structure:
 
 ```markdown
-# Quick Task ${quick_id}: ${DESCRIPTION} - Context
+# Quick Task ${QUICK_ID}: ${DESCRIPTION} - Context
 
 **Gathered:** ${date}
 **Status:** Ready for planning
@@ -312,7 +329,7 @@ ${any_specs_adrs_or_docs_referenced_during_discussion}
 
 Note: Quick task CONTEXT.md omits `<code_context>` and `<deferred>` sections (no codebase scouting, no phase scope to defer to). Keep it lean. The `<canonical_refs>` section is included when external docs were referenced — omit it only if no external docs apply.
 
-Report: `Context captured: ${QUICK_DIR}/${quick_id}-CONTEXT.md`
+Report: `Context captured: ${QUICK_DIR}/${QUICK_ID}-CONTEXT.md`
 
 ---
 
@@ -338,13 +355,13 @@ Task(
 
 **Mode:** quick-task
 **Task:** ${DESCRIPTION}
-**Output:** ${QUICK_DIR}/${quick_id}-RESEARCH.md
+**Output:** ${QUICK_DIR}/${QUICK_ID}-RESEARCH.md
 
 <files_to_read>
 - .planning/STATE.md (Project state — what's already built)
 - .planning/PROJECT.md (Project context)
 - ./{{PROJECT_RULES_FILE}} (if exists — project-specific guidelines)
-${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-CONTEXT.md (User decisions — research should align with these)' : ''}
+${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + QUICK_ID + '-CONTEXT.md (User decisions — research should align with these)' : ''}
 </files_to_read>
 
 </research_context>
@@ -360,7 +377,7 @@ Do NOT produce a full domain survey. Target 1-2 pages of actionable findings.
 </focus>
 
 <output>
-Write research to: ${QUICK_DIR}/${quick_id}-RESEARCH.md
+Write research to: ${QUICK_DIR}/${QUICK_ID}-RESEARCH.md
 Use standard research format but keep it lean — skip sections that don't apply.
 Return: ## RESEARCH COMPLETE with file path
 </output>
@@ -372,8 +389,8 @@ Return: ## RESEARCH COMPLETE with file path
 ```
 
 After researcher returns:
-1. Verify research exists at `${QUICK_DIR}/${quick_id}-RESEARCH.md`
-2. Report: "Research complete: ${QUICK_DIR}/${quick_id}-RESEARCH.md"
+1. Verify research exists at `${QUICK_DIR}/${QUICK_ID}-RESEARCH.md`
+2. Report: "Research complete: ${QUICK_DIR}/${QUICK_ID}-RESEARCH.md"
 
 If research file not found, warn but continue: "Research agent did not produce output — proceeding to planning without research."
 
@@ -397,8 +414,8 @@ Task(
 <files_to_read>
 - .planning/STATE.md (Project State)
 - ./{{PROJECT_RULES_FILE}} (if exists — follow project-specific guidelines)
-${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-CONTEXT.md (User decisions — locked, do not revisit)' : ''}
-${RESEARCH_MODE ? '- ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md (Research findings — use to inform implementation choices)' : ''}
+${DISCUSS_MODE ? '- ' + QUICK_DIR + '/' + QUICK_ID + '-CONTEXT.md (User decisions — locked, do not revisit)' : ''}
+${RESEARCH_MODE ? '- ' + QUICK_DIR + '/' + QUICK_ID + '-RESEARCH.md (Research findings — use to inform implementation choices)' : ''}
 </files_to_read>
 
 **Project skills:** Check .claude/skills/ or .agents/skills/ directory (if either exists) — read SKILL.md files, plans should account for project skill rules
@@ -415,7 +432,7 @@ ${VERIFY_MODE ? '- Each task MUST have `files`, `action`, `verify`, `done` field
 </constraints>
 
 <output>
-Write plan to: ${QUICK_DIR}/${quick_id}-PLAN.md
+Write plan to: ${QUICK_DIR}/${QUICK_ID}-PLAN.md
 Return: ## PLANNING COMPLETE with plan path
 </output>
 ",
@@ -426,11 +443,11 @@ Return: ## PLANNING COMPLETE with plan path
 ```
 
 After planner returns:
-1. Verify plan exists at `${QUICK_DIR}/${quick_id}-PLAN.md`
+1. Verify plan exists at `${QUICK_DIR}/${QUICK_ID}-PLAN.md`
 2. Extract plan count (typically 1 for quick tasks)
-3. Report: "Plan created: ${QUICK_DIR}/${quick_id}-PLAN.md"
+3. Report: "Plan created: ${QUICK_DIR}/${QUICK_ID}-PLAN.md"
 
-If plan not found, error: "Planner failed to create ${quick_id}-PLAN.md"
+If plan not found, error: "Planner failed to create ${QUICK_ID}-PLAN.md"
 
 ---
 
@@ -455,7 +472,7 @@ Checker prompt:
 **Task Description:** ${DESCRIPTION}
 
 <files_to_read>
-- ${QUICK_DIR}/${quick_id}-PLAN.md (Plan to verify)
+- ${QUICK_DIR}/${QUICK_ID}-PLAN.md (Plan to verify)
 </files_to_read>
 
 **Scope:** This is a quick task, not a full phase. Skip checks that require a ROADMAP phase goal.
@@ -507,7 +524,7 @@ Revision prompt:
 **Mode:** quick-verify (revision)
 
 <files_to_read>
-- ${QUICK_DIR}/${quick_id}-PLAN.md (Existing plan)
+- ${QUICK_DIR}/${QUICK_ID}-PLAN.md (Existing plan)
 </files_to_read>
 
 **Checker issues:** ${structured_issues_from_checker}
@@ -545,16 +562,18 @@ Offer: 1) Force proceed, 2) Abort
 Spawn gsd-executor with plan reference:
 
 ```bash
-WORKSPACE_TYPE=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type)
-WORKSPACE_JSON=$(node "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace)
-SUBMODULE_PATHS=$(node -e "try{const w=JSON.parse(process.argv[1]);const p=w.submodule_paths||[];process.stdout.write(p.join(', ')||'none')}catch{process.stdout.write('none')}" "$WORKSPACE_JSON")
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field type > $TMPDIR/quick-workspace_type.txt
+read WORKSPACE_TYPE < $TMPDIR/quick-workspace_type.txt
+node "./.claude/gsd-ng/bin/gsd-tools.cjs" detect-workspace --field submodule_paths_summary > $TMPDIR/quick-submodule_paths.txt
+read SUBMODULE_PATHS < $TMPDIR/quick-submodule_paths.txt
+pwd > $TMPDIR/quick-project_root.txt
+read PROJECT_ROOT < $TMPDIR/quick-project_root.txt
 ```
 
 ```
 Task(
   prompt="
-Execute quick task ${quick_id}.
+Execute quick task ${QUICK_ID}.
 
 <workspace_context>
 Workspace type: ${WORKSPACE_TYPE}
@@ -567,7 +586,7 @@ Do NOT modify deployed copies (e.g., .claude/gsd-ng/) — always edit source fir
 </workspace_context>
 
 <files_to_read>
-- ${QUICK_DIR}/${quick_id}-PLAN.md (Plan)
+- ${QUICK_DIR}/${QUICK_ID}-PLAN.md (Plan)
 - .planning/STATE.md (Project state)
 - ./{{PROJECT_RULES_FILE}} (Project instructions, if exists)
 - .claude/skills/ or .agents/skills/ (Project skills, if either exists — list skills, read SKILL.md for each, follow relevant rules during implementation)
@@ -576,7 +595,7 @@ Do NOT modify deployed copies (e.g., .claude/gsd-ng/) — always edit source fir
 <constraints>
 - Execute all tasks in the plan
 - Commit each task atomically
-- Create summary at: ${QUICK_DIR}/${quick_id}-SUMMARY.md
+- Create summary at: ${QUICK_DIR}/${QUICK_ID}-SUMMARY.md
 - Do NOT update ROADMAP.md (quick tasks are separate from planned phases)
 </constraints>
 ",
@@ -587,13 +606,13 @@ Do NOT modify deployed copies (e.g., .claude/gsd-ng/) — always edit source fir
 ```
 
 After executor returns:
-1. Verify summary exists at `${QUICK_DIR}/${quick_id}-SUMMARY.md`
+1. Verify summary exists at `${QUICK_DIR}/${QUICK_ID}-SUMMARY.md`
 2. Extract commit hash from executor output
 3. Report completion status
 
 **Known Claude Code bug (classifyHandoffIfNeeded):** If executor reports "failed" with error `classifyHandoffIfNeeded is not defined`, this is a Claude Code runtime bug — not a real failure. Check if summary file exists and git log shows commits. If so, treat as successful.
 
-If summary not found, error: "Executor failed to create ${quick_id}-SUMMARY.md"
+If summary not found, error: "Executor failed to create ${QUICK_ID}-SUMMARY.md"
 
 Note: For quick tasks producing multiple plans (rare), spawn executors in parallel waves per execute-phase patterns.
 
@@ -619,10 +638,10 @@ Task directory: ${QUICK_DIR}
 Task goal: ${DESCRIPTION}
 
 <files_to_read>
-- ${QUICK_DIR}/${quick_id}-PLAN.md (Plan)
+- ${QUICK_DIR}/${QUICK_ID}-PLAN.md (Plan)
 </files_to_read>
 
-Check must_haves against actual codebase. Create VERIFICATION.md at ${QUICK_DIR}/${quick_id}-VERIFICATION.md.",
+Check must_haves against actual codebase. Create VERIFICATION.md at ${QUICK_DIR}/${QUICK_ID}-VERIFICATION.md.",
   subagent_type="gsd-verifier",
   model="{verifier_model}",
   description="Verify: ${DESCRIPTION}"
@@ -631,10 +650,9 @@ Check must_haves against actual codebase. Create VERIFICATION.md at ${QUICK_DIR}
 
 Read verification status:
 ```bash
-grep "^status:" "${QUICK_DIR}/${quick_id}-VERIFICATION.md" | cut -d: -f2 | tr -d ' '
+grep "^status:" "${QUICK_DIR}/${QUICK_ID}-VERIFICATION.md" | cut -d: -f2 | tr -d ' ' > $TMPDIR/quick-verify_status.txt
+read VERIFICATION_STATUS < $TMPDIR/quick-verify_status.txt
 ```
-
-Store as `$VERIFICATION_STATUS`.
 
 | Status | Action |
 |--------|--------|
@@ -680,19 +698,19 @@ Use `date` from init:
 
 **If `table_has_status` (from init JSON):**
 ```markdown
-| ${quick_id} | ${DESCRIPTION} | ${date} | ${commit_hash} | ${VERIFICATION_STATUS} | [${quick_id}-${slug}](./quick/${quick_id}-${slug}/) |
+| ${QUICK_ID} | ${DESCRIPTION} | ${QUICK_DATE} | ${commit_hash} | ${VERIFICATION_STATUS} | [${QUICK_ID}-${SLUG}](./quick/${QUICK_ID}-${SLUG}/) |
 ```
 
 **If NOT `table_has_status`:**
 ```markdown
-| ${quick_id} | ${DESCRIPTION} | ${date} | ${commit_hash} | [${quick_id}-${slug}](./quick/${quick_id}-${slug}/) |
+| ${QUICK_ID} | ${DESCRIPTION} | ${QUICK_DATE} | ${commit_hash} | [${QUICK_ID}-${SLUG}](./quick/${QUICK_ID}-${SLUG}/) |
 ```
 
 **7d. Update "Last activity" line:**
 
 Use `date` from init:
 ```
-Last activity: ${date} - Completed quick task ${quick_id}: ${DESCRIPTION}
+Last activity: ${QUICK_DATE} - Completed quick task ${QUICK_ID}: ${DESCRIPTION}
 ```
 
 Use Edit tool to make these changes atomically
@@ -704,20 +722,21 @@ Use Edit tool to make these changes atomically
 Stage and commit quick task artifacts:
 
 Build file list:
-- `${QUICK_DIR}/${quick_id}-PLAN.md`
-- `${QUICK_DIR}/${quick_id}-SUMMARY.md`
+- `${QUICK_DIR}/${QUICK_ID}-PLAN.md`
+- `${QUICK_DIR}/${QUICK_ID}-SUMMARY.md`
 - `.planning/STATE.md`
-- If `$DISCUSS_MODE` and context file exists: `${QUICK_DIR}/${quick_id}-CONTEXT.md`
-- If `$RESEARCH_MODE` and research file exists: `${QUICK_DIR}/${quick_id}-RESEARCH.md`
-- If `$VERIFY_MODE` and verification file exists: `${QUICK_DIR}/${quick_id}-VERIFICATION.md`
+- If `$DISCUSS_MODE` and context file exists: `${QUICK_DIR}/${QUICK_ID}-CONTEXT.md`
+- If `$RESEARCH_MODE` and research file exists: `${QUICK_DIR}/${QUICK_ID}-RESEARCH.md`
+- If `$VERIFY_MODE` and verification file exists: `${QUICK_DIR}/${QUICK_ID}-VERIFICATION.md`
 
 ```bash
-node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(quick-${quick_id}): ${DESCRIPTION}" --files ${file_list}
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs(quick-${QUICK_ID}): ${DESCRIPTION}" --files ${file_list}
 ```
 
 Get final commit hash:
 ```bash
-commit_hash=$(git rev-parse --short HEAD)
+git rev-parse --short HEAD > $TMPDIR/quick-commit_hash.txt
+read commit_hash < $TMPDIR/quick-commit_hash.txt
 ```
 
 Display completion output:
@@ -728,11 +747,11 @@ Display completion output:
 
 GSD > QUICK TASK COMPLETE (VERIFY MODE)
 
-Quick Task ${quick_id}: ${DESCRIPTION}
+Quick Task ${QUICK_ID}: ${DESCRIPTION}
 
-${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md' : ''}
-Summary: ${QUICK_DIR}/${quick_id}-SUMMARY.md
-Verification: ${QUICK_DIR}/${quick_id}-VERIFICATION.md (${VERIFICATION_STATUS})
+${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + QUICK_ID + '-RESEARCH.md' : ''}
+Summary: ${QUICK_DIR}/${QUICK_ID}-SUMMARY.md
+Verification: ${QUICK_DIR}/${QUICK_ID}-VERIFICATION.md (${VERIFICATION_STATUS})
 Commit: ${commit_hash}
 
 ---
@@ -746,10 +765,10 @@ Ready for next task: {{COMMAND_PREFIX}}quick
 
 GSD > QUICK TASK COMPLETE
 
-Quick Task ${quick_id}: ${DESCRIPTION}
+Quick Task ${QUICK_ID}: ${DESCRIPTION}
 
-${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + quick_id + '-RESEARCH.md' : ''}
-Summary: ${QUICK_DIR}/${quick_id}-SUMMARY.md
+${RESEARCH_MODE ? 'Research: ' + QUICK_DIR + '/' + QUICK_ID + '-RESEARCH.md' : ''}
+Summary: ${QUICK_DIR}/${QUICK_ID}-SUMMARY.md
 Commit: ${commit_hash}
 
 ---
@@ -779,7 +798,8 @@ Read the SUMMARY.md one-liner and the todo title. If they share keywords or the 
 **In auto mode** (check `AUTO_CFG`):
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false" > $TMPDIR/quick-auto_cfg.txt
+read AUTO_CFG < $TMPDIR/quick-auto_cfg.txt
 ```
 
 If `$AUTO_CFG` is `"true"`:
@@ -830,7 +850,8 @@ if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   if [[ ! -f "$ORIGIN_PATH" ]]; then
     ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
   fi
-  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "" > $TMPDIR/quick-related_outbound.txt
+  read RELATED_OUTBOUND < $TMPDIR/quick-related_outbound.txt
   if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
 fi
 ```
@@ -842,7 +863,8 @@ PENDING_DIR=".planning/todos/pending"
 if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
   for TODO_FILE in "$PENDING_DIR"/*.md; do
     [[ -f "$TODO_FILE" ]] || continue
-    TODO_BASENAME=$(basename "$TODO_FILE")
+    basename "$TODO_FILE" > $TMPDIR/quick-todo_basename.txt
+    read TODO_BASENAME < $TMPDIR/quick-todo_basename.txt
     [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
     if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
       RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
@@ -855,13 +877,14 @@ fi
 ```bash
 RELATED_ALL=""
 if [[ -n "$RELATED_OUTBOUND" ]] || [[ -n "$RELATED_INBOUND" ]]; then
-  RELATED_ALL=$(printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
+  printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
     [[ -z "$REL_FILE" ]] && continue
     [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
     if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
       echo "$REL_FILE"
     fi
-  done)
+  done > $TMPDIR/quick-related_all.txt
+  read RELATED_ALL < $TMPDIR/quick-related_all.txt
 fi
 ```
 
@@ -874,7 +897,8 @@ If `$RELATED_ALL` is non-empty:
 if [[ "$AUTO_CFG" == "true" ]]; then
   printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
     [[ -z "$REL_TODO" ]] && continue
-    REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+    grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"' > $TMPDIR/quick-rel_title.txt
+    read REL_TITLE < $TMPDIR/quick-rel_title.txt
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
     node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after quick task" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
     echo "[auto] Closed related todo: $REL_TITLE"
@@ -913,12 +937,12 @@ Note: `todo complete` triggers inline issue-sync automatically — no additional
 - [ ] Slug generated (lowercase, hyphens, max 40 chars)
 - [ ] Quick ID generated (YYMMDD-xxx format, 2s Base36 precision)
 - [ ] Directory created at `.planning/quick/YYMMDD-xxx-slug/`
-- [ ] (--discuss) Gray areas identified and presented, decisions captured in `${quick_id}-CONTEXT.md`
-- [ ] (--research) Research agent spawned, `${quick_id}-RESEARCH.md` created
-- [ ] `${quick_id}-PLAN.md` created by planner (honors CONTEXT.md decisions when --discuss, uses RESEARCH.md findings when --research)
+- [ ] (--discuss) Gray areas identified and presented, decisions captured in `${QUICK_ID}-CONTEXT.md`
+- [ ] (--research) Research agent spawned, `${QUICK_ID}-RESEARCH.md` created
+- [ ] `${QUICK_ID}-PLAN.md` created by planner (honors CONTEXT.md decisions when --discuss, uses RESEARCH.md findings when --research)
 - [ ] (--verify) Plan checker validates plan, revision loop capped at 2
-- [ ] `${quick_id}-SUMMARY.md` created by executor
-- [ ] (--verify) `${quick_id}-VERIFICATION.md` created by verifier
+- [ ] `${QUICK_ID}-SUMMARY.md` created by executor
+- [ ] (--verify) `${QUICK_ID}-VERIFICATION.md` created by verifier
 - [ ] STATE.md updated with quick task row (Status column when --verify)
 - [ ] Artifacts committed
 - [ ] (--todo-file) Origin todo tracked and closure offered at completion

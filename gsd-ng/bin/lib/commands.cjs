@@ -1433,6 +1433,54 @@ function parseExternalRef(refStr, defaultRepo) {
  * @param {Array} args - Arguments to spread into the platform operation function
  * @returns {{ success: boolean, data?: any, error?: string, dry_run?: boolean }}
  */
+/**
+ * Legacy back-compat shim used when GSD_TEST_MODE is set and no cliInvoker
+ * override is provided. Mirrors the old in-line mock that cmdIssueImport
+ * applied directly. Returns mock issue data for "view" calls and dry-run
+ * acknowledgments for write operations.
+ */
+function _legacyTestModeInvoker(platform, operation, args) {
+  if (operation === 'view') {
+    const number = args && args[0];
+    const labels = process.env.GSD_TEST_LABELS
+      ? JSON.parse(process.env.GSD_TEST_LABELS)
+      : [];
+    const iid = process.env.GSD_TEST_IID
+      ? parseInt(process.env.GSD_TEST_IID, 10)
+      : null;
+    return {
+      success: true,
+      data: {
+        number: iid || parseInt(String(number), 10),
+        iid: iid || null,
+        title: 'Test issue ' + number,
+        body: process.env.GSD_TEST_BODY || 'Test body',
+        labels: labels.map((l) => (typeof l === 'string' ? { name: l } : l)),
+        state: 'open',
+      },
+    };
+  }
+  // For write ops (close/comment/label/etc.) emulate the legacy GSD_TEST_MODE
+  // dry-run shape that invokeIssueCli used to return inline.
+  const platformCmds = ISSUE_COMMANDS[platform];
+  if (!platformCmds || !platformCmds[operation]) {
+    return {
+      success: false,
+      error: !platformCmds
+        ? `Unknown platform: ${platform}`
+        : `Unknown operation: ${operation}`,
+    };
+  }
+  const cmdSpec = platformCmds[operation](...args);
+  return {
+    success: true,
+    data: null,
+    dry_run: true,
+    cli: cmdSpec.cli,
+    args: cmdSpec.args,
+  };
+}
+
 function invokeIssueCli(platform, operation, args) {
   const { spawnSync } = require('child_process');
   const platformCmds = ISSUE_COMMANDS[platform];
@@ -1450,6 +1498,7 @@ function invokeIssueCli(platform, operation, args) {
       args: cmdSpec.args,
     };
   }
+  /* c8 ignore start — real-CLI branch: spawnSync against gh/glab/fj/tea binaries. Tested via cliInvoker injection seam in cmdIssueImport/cmdIssueSync. */
   const result = spawnSync(cmdSpec.cli, cmdSpec.args, {
     stdio: 'pipe',
     encoding: 'utf-8',
@@ -1468,6 +1517,7 @@ function invokeIssueCli(platform, operation, args) {
     parsed = result.stdout.trim();
   }
   return { success: true, data: parsed };
+  /* c8 ignore stop */
 }
 
 /**
@@ -2122,7 +2172,7 @@ const LABEL_AREA_MAP = {
  * @param {string|null} repo - Optional repo override
  * @returns {{ imported, todo_file, title, external_ref, commented }}
  */
-function cmdIssueImport(cwd, platform, number, repo) {
+function cmdIssueImport(cwd, platform, number, repo, _testOverrides) {
   loadConfig(cwd); // Ensure config is loaded (side-effects: migration)
   // Read issue_tracker config directly from config.json since loadConfig
   // returns a flat structured object and does not expose the raw issue_tracker section.
@@ -2138,31 +2188,18 @@ function cmdIssueImport(cwd, platform, number, repo) {
   const commentStyle = itConfig.comment_style || 'external';
   const commentOnImport = commentStyle === 'verbose';
 
+  // Resolve CLI invoker: explicit injection wins, then GSD_TEST_MODE shim, then real CLI.
+  const overrides = _testOverrides || {};
+  const cli =
+    overrides.cliInvoker ||
+    (process.env.GSD_TEST_MODE ? _legacyTestModeInvoker : invokeIssueCli);
+
   // Fetch issue details
-  let issueData;
-  if (process.env.GSD_TEST_MODE) {
-    // Use mock data in test mode; support optional label override via env
-    const labels = process.env.GSD_TEST_LABELS
-      ? JSON.parse(process.env.GSD_TEST_LABELS)
-      : [];
-    const iid = process.env.GSD_TEST_IID
-      ? parseInt(process.env.GSD_TEST_IID, 10)
-      : null;
-    issueData = {
-      number: iid || parseInt(String(number), 10),
-      iid: iid || null,
-      title: 'Test issue ' + number,
-      body: process.env.GSD_TEST_BODY || 'Test body',
-      labels: labels.map((l) => (typeof l === 'string' ? { name: l } : l)),
-      state: 'open',
-    };
-  } else {
-    const cliResult = invokeIssueCli(platform, 'view', [number, repo]);
-    if (!cliResult.success) {
-      error(`Failed to fetch issue ${platform}:${number}: ${cliResult.error}`);
-    }
-    issueData = cliResult.data || {};
+  const cliResult = cli(platform, 'view', [number, repo]);
+  if (!cliResult.success) {
+    error(`Failed to fetch issue ${platform}:${number}: ${cliResult.error}`);
   }
+  const issueData = cliResult.data || {};
 
   // Normalize GitLab iid to number
   if (issueData.iid && !issueData.number) {
@@ -2276,7 +2313,7 @@ function cmdIssueImport(cwd, platform, number, repo) {
       const importComment = buildImportComment(commentStyle, {
         todoFile: filename,
       });
-      invokeIssueCli(platform, 'comment', [issueNumber, repo, importComment]);
+      cli(platform, 'comment', [issueNumber, repo, importComment]);
       commented = true;
     } catch (_e) {
       // Skip on failure (Forgejo comment may not exist)
@@ -2383,16 +2420,14 @@ function getLatestCommitHash(cwd) {
  * @param {string} verifyLabel
  * @returns {boolean} true if label applied successfully
  */
-function applyVerifyLabel(platform, number, repo, verifyLabel) {
-  let result = invokeIssueCli(platform, 'label', [number, repo, verifyLabel]);
+function applyVerifyLabel(platform, number, repo, verifyLabel, _invoker) {
+  const cli = _invoker || invokeIssueCli;
+  let result = cli(platform, 'label', [number, repo, verifyLabel]);
   if (!result.success) {
     // Try to auto-create the label first, then retry
-    const createResult = invokeIssueCli(platform, 'label_create', [
-      repo,
-      verifyLabel,
-    ]);
+    const createResult = cli(platform, 'label_create', [repo, verifyLabel]);
     if (createResult.success) {
-      result = invokeIssueCli(platform, 'label', [number, repo, verifyLabel]);
+      result = cli(platform, 'label', [number, repo, verifyLabel]);
     }
     if (!result.success) {
       process.stderr.write(
@@ -2421,12 +2456,13 @@ function applyVerifyLabel(platform, number, repo, verifyLabel) {
  * @param {{ default_action?: string, comment_style?: string, close_state?: string, verify_label?: string }} itConfig
  * @returns {Array<{ ref: string, action: string, success: boolean, error?: string }>}
  */
-function syncSingleRef(refStr, commentContext, itConfig) {
+function syncSingleRef(refStr, commentContext, itConfig, _invoker) {
   const cfg = itConfig || {};
   const defaultAction = cfg.default_action || 'close';
   const commentStyle = cfg.comment_style || 'external';
   const closeState = cfg.close_state || 'close';
   const verifyLabel = cfg.verify_label || 'needs-verification';
+  const cli = _invoker || invokeIssueCli;
 
   const results = [];
   const refs = parseExternalRef(refStr, null);
@@ -2442,30 +2478,19 @@ function syncSingleRef(refStr, commentContext, itConfig) {
         ref.number,
         ref.repo,
         verifyLabel,
+        cli,
       );
       cliResult = { success: labeled, action: 'verify' };
     } else if (action === 'close' && closeState === 'verify_then_close') {
       // Apply verify label, then close
-      applyVerifyLabel(ref.platform, ref.number, ref.repo, verifyLabel);
+      applyVerifyLabel(ref.platform, ref.number, ref.repo, verifyLabel, cli);
       const supportsInlineComment =
         ref.platform === 'github' || ref.platform === 'forgejo';
       if (supportsInlineComment) {
-        cliResult = invokeIssueCli(ref.platform, 'close', [
-          ref.number,
-          ref.repo,
-          comment,
-        ]);
+        cliResult = cli(ref.platform, 'close', [ref.number, ref.repo, comment]);
       } else {
-        invokeIssueCli(ref.platform, 'comment', [
-          ref.number,
-          ref.repo,
-          comment,
-        ]);
-        cliResult = invokeIssueCli(ref.platform, 'close', [
-          ref.number,
-          ref.repo,
-          null,
-        ]);
+        cli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
+        cliResult = cli(ref.platform, 'close', [ref.number, ref.repo, null]);
       }
     } else if (action === 'close') {
       // Default close behavior (close_state=close or no config)
@@ -2475,29 +2500,13 @@ function syncSingleRef(refStr, commentContext, itConfig) {
       const supportsInlineComment =
         ref.platform === 'github' || ref.platform === 'forgejo';
       if (supportsInlineComment) {
-        cliResult = invokeIssueCli(ref.platform, 'close', [
-          ref.number,
-          ref.repo,
-          comment,
-        ]);
+        cliResult = cli(ref.platform, 'close', [ref.number, ref.repo, comment]);
       } else {
-        invokeIssueCli(ref.platform, 'comment', [
-          ref.number,
-          ref.repo,
-          comment,
-        ]);
-        cliResult = invokeIssueCli(ref.platform, 'close', [
-          ref.number,
-          ref.repo,
-          null,
-        ]);
+        cli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
+        cliResult = cli(ref.platform, 'close', [ref.number, ref.repo, null]);
       }
     } else {
-      cliResult = invokeIssueCli(ref.platform, 'comment', [
-        ref.number,
-        ref.repo,
-        comment,
-      ]);
+      cliResult = cli(ref.platform, 'comment', [ref.number, ref.repo, comment]);
     }
 
     results.push({
@@ -2510,8 +2519,16 @@ function syncSingleRef(refStr, commentContext, itConfig) {
   return results;
 }
 
-function cmdIssueSync(cwd, phase, options) {
+function cmdIssueSync(cwd, phase, options, _testOverrides) {
   const opts = options || {};
+  // Note: existing tests historically passed a 4th positional `true` as a
+  // legacy "verify state" flag that was always ignored. Treat truthy non-object
+  // 4th args as legacy and discard them so the cliInvoker seam stays clean.
+  const overrides =
+    _testOverrides && typeof _testOverrides === 'object' ? _testOverrides : {};
+  const cliInvoker =
+    overrides.cliInvoker ||
+    (process.env.GSD_TEST_MODE ? _legacyTestModeInvoker : invokeIssueCli);
   loadConfig(cwd); // Ensure config is loaded (side-effects: migration)
   // Read issue_tracker config directly from config.json since loadConfig
   // returns a flat structured object and does not expose the raw issue_tracker section.
@@ -2543,6 +2560,7 @@ function cmdIssueSync(cwd, phase, options) {
           row.externalRef,
           commentContext,
           itConfig,
+          cliInvoker,
         );
         synced.push(...refResults);
       } else if (row.externalRef && row.externalRef !== '-') {
@@ -2586,7 +2604,12 @@ function cmdIssueSync(cwd, phase, options) {
           );
         }
 
-        const refResults = syncSingleRef(refStr, commentContext, itConfig);
+        const refResults = syncSingleRef(
+          refStr,
+          commentContext,
+          itConfig,
+          cliInvoker,
+        );
         synced.push(...refResults);
       }
     } catch (_e) {
@@ -4516,6 +4539,88 @@ function detectInstallLocation(cwd) {
  * @param {{ dryRun: boolean, local: boolean, global: boolean }} options
  * @param {{ latestVersion: string|null, updateSource: string|null } | null} _testOverrides - Test injection
  */
+/**
+ * Internal helper: download GitHub release tarball, extract it, and run
+ * the bundled install.js. Extracted from cmdUpdate as a separate function
+ * so tests can inject a fake `execUpdate` via `_testOverrides.execUpdate`.
+ *
+ * @param {{ version: string, installFlag: string, url: string }} args
+ * @returns {{ success: boolean, error?: string }}
+ */
+/* c8 ignore start — network+filesystem ops: download tarball, extract via tar binary, exec install.js. Tested via execUpdate seam injection (cmdUpdate — execUpdate seam describe block). */
+function _downloadAndInstallTarball(args) {
+  const { installFlag, url: tarballUrl } = args;
+  const tmpExtractDir = path.join(os.tmpdir(), 'gsd-update-' + Date.now());
+  const tarballPath = path.join(tmpExtractDir, 'gsd-ng.tar.gz');
+  const extractDir = path.join(tmpExtractDir, 'extracted');
+
+  try {
+    fs.mkdirSync(tmpExtractDir, { recursive: true });
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    // Download tarball
+    const downloadScript = `
+      const https = require('https');
+      const http = require('http');
+      const fs = require('fs');
+      function download(url, dest, cb) {
+        const mod = url.startsWith('https') ? https : http;
+        const req = mod.get(url, { headers: { 'User-Agent': 'gsd-ng' }, timeout: 30000 }, function(res) {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.destroy(); return download(res.headers.location, dest, cb);
+          }
+          if (res.statusCode !== 200) { res.destroy(); return cb(new Error('HTTP ' + res.statusCode)); }
+          const file = fs.createWriteStream(dest);
+          res.pipe(file);
+          file.on('finish', function() { file.close(cb); });
+          file.on('error', cb);
+        });
+        req.on('error', cb);
+        req.setTimeout(30000, function() { req.destroy(new Error('download timeout')); });
+      }
+      download(process.argv[1], process.argv[2], function(err) {
+        if (err) { process.stderr.write('Download failed: ' + err.message + '\\n'); process.exit(1); }
+      });
+    `;
+    const dlResult = spawnSync(
+      'node',
+      ['-e', downloadScript, tarballUrl, tarballPath],
+      {
+        timeout: 60000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+    if (dlResult.status !== 0) throw new Error('Download failed');
+
+    // Extract tarball
+    const tarResult = spawnSync('tar', ['xzf', tarballPath, '-C', extractDir], {
+      stdio: 'pipe',
+    });
+    if (tarResult.status !== 0) throw new Error('Extract failed');
+
+    // Run install.js
+    const installResult = spawnSync(
+      'node',
+      [path.join(extractDir, 'bin', 'install.js'), installFlag],
+      {
+        stdio: 'inherit',
+        timeout: 120000,
+      },
+    );
+    if (installResult.status !== 0) throw new Error('Install failed');
+  } catch (e) {
+    try {
+      fs.rmSync(tmpExtractDir, { recursive: true, force: true });
+    } catch {}
+    return { success: false, error: e.message || 'unknown error' };
+  }
+  try {
+    fs.rmSync(tmpExtractDir, { recursive: true, force: true });
+  } catch {}
+  return { success: true };
+}
+/* c8 ignore stop */
+
 function cmdUpdate(cwd, options, _testOverrides) {
   const { dryRun = false } = options || {};
   const homeDir = process.env.GSD_TEST_HOME || os.homedir();
@@ -4526,6 +4631,7 @@ function cmdUpdate(cwd, options, _testOverrides) {
       _testOverrides = JSON.parse(process.env.GSD_UPDATE_TEST_OVERRIDES);
     } catch {}
   }
+  const overrides = _testOverrides || {};
 
   // 1. Detect install location
   const installInfo = detectInstallLocation(cwd);
@@ -4548,6 +4654,7 @@ function cmdUpdate(cwd, options, _testOverrides) {
     latestVersion = _testOverrides.latestVersion || null;
     updateSource = _testOverrides.updateSource || null;
   } else {
+    /* c8 ignore start — network: `npm view` + GitHub Releases API. Exercised via _testOverrides.latestVersion injection seam in cmdUpdate dryRun/already_current/ahead tests. */
     // Try npm first
     try {
       const npmResult = execSync('npm view gsd-ng version', {
@@ -4601,6 +4708,7 @@ function cmdUpdate(cwd, options, _testOverrides) {
         updateSource = 'github';
       }
     }
+    /* c8 ignore stop */
   }
 
   // If both sources unavailable
@@ -4643,8 +4751,10 @@ function cmdUpdate(cwd, options, _testOverrides) {
   // 5. Execute update
   const installFlag = isLocal ? '--local' : '--global';
 
-  // If GSD_TEST_DRY_EXECUTE is set, skip actual execution and return install_command for test verification
-  if (process.env.GSD_TEST_DRY_EXECUTE) {
+  // Dry-execute short-circuit: returns install_command without shelling out.
+  // Honors both `_testOverrides.dryExecute` (preferred) and the legacy
+  // GSD_TEST_DRY_EXECUTE env hook for back-compat with subprocess tests.
+  if (overrides.dryExecute || process.env.GSD_TEST_DRY_EXECUTE) {
     let installCommand;
     if (updateSource === 'npm') {
       installCommand = `npx -y gsd-ng@latest ${installFlag}`;
@@ -4661,6 +4771,7 @@ function cmdUpdate(cwd, options, _testOverrides) {
   }
 
   if (updateSource === 'npm') {
+    /* c8 ignore start — network: `npx -y gsd-ng@latest` shells out to npm. Exercised via dryExecute/GSD_TEST_DRY_EXECUTE short-circuit above (cmdUpdate dry-execute returns updated with install_command (npm) test). */
     try {
       execSync(`npx -y gsd-ng@latest ${installFlag}`, {
         stdio: 'inherit',
@@ -4672,81 +4783,22 @@ function cmdUpdate(cwd, options, _testOverrides) {
         message: 'Update failed: ' + (e.message || 'unknown error'),
       });
     }
+    /* c8 ignore stop */
   } else {
-    // GitHub path: download tarball, extract, run install.js
-    const tmpExtractDir = path.join(os.tmpdir(), 'gsd-update-' + Date.now());
-    const tarballPath = path.join(tmpExtractDir, 'gsd-ng.tar.gz');
-    const extractDir = path.join(tmpExtractDir, 'extracted');
-    const tarballUrl = `https://github.com/chrisdevchroma/gsd-ng/releases/download/${latestVersion}/gsd-ng.tar.gz`;
-
-    try {
-      fs.mkdirSync(tmpExtractDir, { recursive: true });
-      fs.mkdirSync(extractDir, { recursive: true });
-
-      // Download tarball
-      const downloadScript = `
-        const https = require('https');
-        const http = require('http');
-        const fs = require('fs');
-        function download(url, dest, cb) {
-          const mod = url.startsWith('https') ? https : http;
-          const req = mod.get(url, { headers: { 'User-Agent': 'gsd-ng' }, timeout: 30000 }, function(res) {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              res.destroy(); return download(res.headers.location, dest, cb);
-            }
-            if (res.statusCode !== 200) { res.destroy(); return cb(new Error('HTTP ' + res.statusCode)); }
-            const file = fs.createWriteStream(dest);
-            res.pipe(file);
-            file.on('finish', function() { file.close(cb); });
-            file.on('error', cb);
-          });
-          req.on('error', cb);
-          req.setTimeout(30000, function() { req.destroy(new Error('download timeout')); });
-        }
-        download(process.argv[1], process.argv[2], function(err) {
-          if (err) { process.stderr.write('Download failed: ' + err.message + '\\n'); process.exit(1); }
-        });
-      `;
-      const dlResult = spawnSync(
-        'node',
-        ['-e', downloadScript, tarballUrl, tarballPath],
-        {
-          timeout: 60000,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        },
-      );
-      if (dlResult.status !== 0) throw new Error('Download failed');
-
-      // Extract tarball
-      const tarResult = spawnSync(
-        'tar',
-        ['xzf', tarballPath, '-C', extractDir],
-        { stdio: 'pipe' },
-      );
-      if (tarResult.status !== 0) throw new Error('Extract failed');
-
-      // Run install.js
-      const installResult = spawnSync(
-        'node',
-        [path.join(extractDir, 'bin', 'install.js'), installFlag],
-        {
-          stdio: 'inherit',
-          timeout: 120000,
-        },
-      );
-      if (installResult.status !== 0) throw new Error('Install failed');
-    } catch (e) {
-      try {
-        fs.rmSync(tmpExtractDir, { recursive: true, force: true });
-      } catch {}
+    // GitHub path: download tarball, extract, run install.js (delegated to
+    // _downloadAndInstallTarball so tests can inject a fake execUpdate).
+    const exec = overrides.execUpdate || _downloadAndInstallTarball;
+    const execResult = exec({
+      version: latestVersion,
+      installFlag,
+      url: `https://github.com/chrisdevchroma/gsd-ng/releases/download/${latestVersion}/gsd-ng.tar.gz`,
+    });
+    if (execResult && execResult.success === false) {
       return output({
         status: 'error',
-        message: 'Update failed: ' + (e.message || 'unknown error'),
+        message: 'Update failed: ' + (execResult.error || 'unknown error'),
       });
     }
-    try {
-      fs.rmSync(tmpExtractDir, { recursive: true, force: true });
-    } catch {}
   }
 
   // 6. Clear update cache
@@ -4799,6 +4851,7 @@ module.exports = {
   cmdGenerateChangelog,
   ISSUE_COMMANDS,
   parseExternalRef,
+  parseRequirementsExternalRefs,
   invokeIssueCli,
   applyVerifyLabel,
   buildSyncComment,
@@ -4826,8 +4879,13 @@ module.exports = {
   cmdPingpongCheck,
   detectBreakout,
   cmdBreakoutCheck,
+  detectSingleDir,
+  normalizeTestCommandConfig,
+  resolveWorkspacePaths,
   discoverTestCommand,
   cmdCleanup,
+  detectInstallLocation,
   cmdUpdate,
+  _downloadAndInstallTarball,
   compareSemVer,
 };

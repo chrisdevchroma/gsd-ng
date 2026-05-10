@@ -23,7 +23,9 @@ Load execution context for the phase:
 PHASE_ARG="${ARGUMENTS%% *}"
 if [ -z "$PHASE_ARG" ]; then
   # Try to detect phase from STATE.md current position
-  PHASE_ARG=$(grep -oP 'Phase:\s*\K\d+' .planning/STATE.md 2>/dev/null | head -1)
+  grep -oP 'Phase:\s*\K\d+' .planning/STATE.md > $TMPDIR/create-pr-phase_arg.txt 2>/dev/null || echo "" > $TMPDIR/create-pr-phase_arg.txt
+  head -1 $TMPDIR/create-pr-phase_arg.txt > $TMPDIR/create-pr-phase_arg2.txt
+  read PHASE_ARG < $TMPDIR/create-pr-phase_arg2.txt
 fi
 
 # Detect quick-task slug shape: YYMMDD-XXX- (6 digits, hyphen, 3 alnum, hyphen, ...)
@@ -49,36 +51,43 @@ if [[ "$PHASE_ARG" =~ ^[0-9]{6}-[a-z0-9]{3}- ]]; then
       exit 1
     fi
   fi
-  ONE_LINER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$QUICK_SUMMARY" --fields one_liner --default "" --pick one_liner)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$QUICK_SUMMARY" --fields one_liner --default "" --pick one_liner > $TMPDIR/create-pr-one_liner.txt
+  read ONE_LINER < $TMPDIR/create-pr-one_liner.txt
   if [ -z "$ONE_LINER" ]; then
     echo "Note: No one_liner extracted from $QUICK_SUMMARY — using slug as title."
     ONE_LINER="$QUICK_SLUG"
   fi
 fi
 
+mkdir -p $TMPDIR
+
 if [ "$IS_QUICK_TASK" = "true" ]; then
   # Quick-task path: skip init execute-phase (it would crash on non-numeric arg).
   # Use git-context for submodule routing — it calls resolveGitContext directly.
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context 2>/dev/null || echo '{}')
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" git-context > $TMPDIR/create-pr-init.json 2>/dev/null || echo '{}' > $TMPDIR/create-pr-init.json
   # Remap git-context fields to the submodule_* naming that the routing block below expects.
   # git-context returns: is_submodule, git_cwd, remote, remote_url, ambiguous, target_branch, platform, cli, cli_installed, cli_install_url
-  INIT=$(node -e "
-    try {
-      const c = JSON.parse(process.argv[1]);
-      const out = Object.assign({}, c, {
-        submodule_is_active: c.is_submodule || false,
-        submodule_git_cwd: c.git_cwd || '.',
-        submodule_remote: c.remote || 'origin',
-        submodule_remote_url: c.remote_url || '',
-        submodule_target_branch: c.target_branch || 'main',
-        submodule_ambiguous: c.ambiguous || false,
-        branching_strategy: 'quick',
-        review_branch_template: '',
-        pr_draft: c.pr_draft !== undefined ? c.pr_draft : true,
-      });
-      process.stdout.write(JSON.stringify(out));
-    } catch(e) { process.stdout.write('{}'); }
-  " "$INIT")
+  # Write a remap script and run it to avoid inline node -e with single-quoted braces
+  cat > $TMPDIR/create-pr-remap.js << 'JSEOF'
+try {
+  const fs = require('fs');
+  const c = JSON.parse(fs.readFileSync(process.argv[1], 'utf-8'));
+  const out = Object.assign({}, c, {
+    submodule_is_active: c.is_submodule || false,
+    submodule_git_cwd: c.git_cwd || '.',
+    submodule_remote: c.remote || 'origin',
+    submodule_remote_url: c.remote_url || '',
+    submodule_target_branch: c.target_branch || 'main',
+    submodule_ambiguous: c.ambiguous || false,
+    branching_strategy: 'quick',
+    review_branch_template: '',
+    pr_draft: c.pr_draft !== undefined ? c.pr_draft : true,
+  });
+  process.stdout.write(JSON.stringify(out));
+} catch(e) { process.stdout.write('{}'); }
+JSEOF
+  node $TMPDIR/create-pr-remap.js $TMPDIR/create-pr-init.json > $TMPDIR/create-pr-init2.json
+  cp $TMPDIR/create-pr-init2.json $TMPDIR/create-pr-init.json
   # Phase-specific fields are not used in the quick-task path:
   BRANCHING_STRATEGY="quick"
   BRANCH_NAME=""
@@ -88,24 +97,32 @@ if [ "$IS_QUICK_TASK" = "true" ]; then
   PHASE_SLUG=""
   PHASE_DIR_NAME=""
 else
-  # Phase path (existing behavior — verbatim).
-  INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-  if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT" 2>/dev/null; then
-    INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "${PHASE_ARG}")
-    if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid "$INIT"; then
+  # Phase path (existing behavior).
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "$PHASE_ARG" > $TMPDIR/create-pr-init.json
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/create-pr-init.json 2>/dev/null || {
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init execute-phase "$PHASE_ARG" > $TMPDIR/create-pr-init.json
+    if ! node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" guard init-valid-file $TMPDIR/create-pr-init.json; then
       echo "Error: init failed twice. Check gsd-tools installation."
       exit 1
     fi
-  fi
-  # Extract phase fields (existing behavior).
-  BRANCHING_STRATEGY=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branching_strategy 2>/dev/null)
-  BRANCH_NAME=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" branch_name 2>/dev/null)
-  REVIEW_BRANCH_TEMPLATE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" review_branch_template 2>/dev/null)
-  PHASE_NUMBER=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" phase_number 2>/dev/null)
-  PHASE_NAME=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" phase_name 2>/dev/null)
-  PHASE_SLUG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" phase_slug 2>/dev/null)
-  PHASE_DIR=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" phase_dir 2>/dev/null)
-  PHASE_DIR_NAME=$(basename "$PHASE_DIR" 2>/dev/null)
+  }
+  # Extract phase fields.
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json branching_strategy > $TMPDIR/create-pr-branching_strategy.txt
+  read BRANCHING_STRATEGY < $TMPDIR/create-pr-branching_strategy.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json branch_name > $TMPDIR/create-pr-branch_name.txt
+  read BRANCH_NAME < $TMPDIR/create-pr-branch_name.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json review_branch_template > $TMPDIR/create-pr-review_branch_template.txt
+  read REVIEW_BRANCH_TEMPLATE < $TMPDIR/create-pr-review_branch_template.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json phase_number > $TMPDIR/create-pr-phase_number.txt
+  read PHASE_NUMBER < $TMPDIR/create-pr-phase_number.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json phase_name > $TMPDIR/create-pr-phase_name.txt
+  read PHASE_NAME < $TMPDIR/create-pr-phase_name.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json phase_slug > $TMPDIR/create-pr-phase_slug.txt
+  read PHASE_SLUG < $TMPDIR/create-pr-phase_slug.txt
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json phase_dir > $TMPDIR/create-pr-phase_dir.txt
+  read PHASE_DIR < $TMPDIR/create-pr-phase_dir.txt
+  basename "$PHASE_DIR" > $TMPDIR/create-pr-phase_dir_name.txt
+  read PHASE_DIR_NAME < $TMPDIR/create-pr-phase_dir_name.txt
 fi
 ```
 
@@ -119,25 +136,48 @@ Extract from init JSON (phase path); quick-task path sets these inline above:
 - `PHASE_SLUG` ← `phase_slug`
 - `PHASE_DIR_NAME` ← basename of `phase_dir`
 
-Resolve submodule-aware git routing from $INIT:
+Resolve submodule-aware git routing from the init JSON:
 
 ```bash
-# Read submodule fields from $INIT
-IS_SUBMODULE=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_is_active||false))}catch{process.stdout.write('false')}" "$INIT")
-GIT_CWD=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_git_cwd||'.')}catch{process.stdout.write('.')}" "$INIT")
-PUSH_REMOTE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" remote 2>/dev/null)
-PUSH_TARGET=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" target_branch 2>/dev/null); if [ -z "$PUSH_TARGET" ]; then PUSH_TARGET="main"; fi
-AMBIGUOUS=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(String(c.submodule_ambiguous||false))}catch{process.stdout.write('false')}" "$INIT")
-SUBMODULE_REMOTE_URL=$(node -e "try{const c=JSON.parse(process.argv[1]);process.stdout.write(c.submodule_remote_url||'')}catch{process.stdout.write('')}" "$INIT")
+# Read submodule fields from init JSON using a script to avoid inline node -e
+cat > $TMPDIR/create-pr-extract.js << 'JSEOF'
+try {
+  const fs = require('fs');
+  const field = process.argv[1];
+  const c = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'));
+  if (field === 'submodule_is_active') process.stdout.write(String(c.submodule_is_active || false));
+  else if (field === 'submodule_git_cwd') process.stdout.write(c.submodule_git_cwd || '.');
+  else if (field === 'submodule_ambiguous') process.stdout.write(String(c.submodule_ambiguous || false));
+  else if (field === 'submodule_remote_url') process.stdout.write(c.submodule_remote_url || '');
+} catch { process.stdout.write(''); }
+JSEOF
+node $TMPDIR/create-pr-extract.js submodule_is_active $TMPDIR/create-pr-init.json > $TMPDIR/create-pr-is_submodule.txt
+read IS_SUBMODULE < $TMPDIR/create-pr-is_submodule.txt
+node $TMPDIR/create-pr-extract.js submodule_git_cwd $TMPDIR/create-pr-init.json > $TMPDIR/create-pr-git_cwd.txt
+read GIT_CWD < $TMPDIR/create-pr-git_cwd.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json remote > $TMPDIR/create-pr-push_remote.txt
+read PUSH_REMOTE < $TMPDIR/create-pr-push_remote.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json target_branch > $TMPDIR/create-pr-push_target.txt
+read PUSH_TARGET < $TMPDIR/create-pr-push_target.txt
+if [ -z "$PUSH_TARGET" ]; then PUSH_TARGET="main"; fi
+node $TMPDIR/create-pr-extract.js submodule_ambiguous $TMPDIR/create-pr-init.json > $TMPDIR/create-pr-ambiguous.txt
+read AMBIGUOUS < $TMPDIR/create-pr-ambiguous.txt
+node $TMPDIR/create-pr-extract.js submodule_remote_url $TMPDIR/create-pr-init.json > $TMPDIR/create-pr-submodule_remote_url.txt
+read SUBMODULE_REMOTE_URL < $TMPDIR/create-pr-submodule_remote_url.txt
 
-# Platform: read from $INIT (per-submodule override applies), fall back to detect-platform
-PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" platform 2>/dev/null)
+# Platform: read from init JSON (per-submodule override applies), fall back to detect-platform
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json platform > $TMPDIR/create-pr-platform.txt
+read PLATFORM < $TMPDIR/create-pr-platform.txt
 if [ -z "$PLATFORM" ]; then
-  PLATFORM=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field platform > $TMPDIR/create-pr-platform2.txt
+  read PLATFORM < $TMPDIR/create-pr-platform2.txt
 fi
-CLI=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli)
-CLI_INSTALLED=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed)
-CLI_INSTALL_URL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli > $TMPDIR/create-pr-cli.txt
+read CLI < $TMPDIR/create-pr-cli.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_installed > $TMPDIR/create-pr-cli_installed.txt
+read CLI_INSTALLED < $TMPDIR/create-pr-cli_installed.txt
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" detect-platform --field cli_install_url > $TMPDIR/create-pr-cli_install_url.txt
+read CLI_INSTALL_URL < $TMPDIR/create-pr-cli_install_url.txt
 ```
 
 Use `$PUSH_REMOTE`, `$PUSH_TARGET`, and `$GIT_CWD` for all git and platform operations below instead of `$REMOTE` and `$TARGET_BRANCH`.
@@ -152,7 +192,8 @@ Parse flags:
 
 ```bash
 # Flag parsing
-PR_DRAFT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_draft 2>/dev/null)
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json pr_draft > $TMPDIR/create-pr-pr_draft.txt
+read PR_DRAFT < $TMPDIR/create-pr-pr_draft.txt
 
 if [[ "$ARGUMENTS" == *"--draft"* ]] && [[ "$ARGUMENTS" != *"--no-draft"* ]]; then
   PR_DRAFT="true"
@@ -206,7 +247,8 @@ No review branch, no squash. Open PR directly from current branch.
 
 ```bash
 if [ "$BRANCHING_STRATEGY" = "none" ]; then
-  CURRENT_BRANCH=$(git -C "$GIT_CWD" branch --show-current)
+  git -C "$GIT_CWD" branch --show-current > $TMPDIR/create-pr-current_branch.txt
+  read CURRENT_BRANCH < $TMPDIR/create-pr-current_branch.txt
   HEAD_BRANCH="$CURRENT_BRANCH"
   # Skip to build_pr_description — no review branch needed
 fi
@@ -236,21 +278,22 @@ if [ "$IS_QUICK_TASK" = "true" ]; then
   if [[ "$ARGUMENTS" =~ --type[[:space:]]+([a-z]+) ]]; then
     TYPE="${BASH_REMATCH[1]}"
   fi
-  TYPE_ALIAS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "${TYPE}")
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "$TYPE" > $TMPDIR/create-pr-type_alias.txt
+  read TYPE_ALIAS < $TMPDIR/create-pr-type_alias.txt
 else
   # Phase path: read phase goal from ROADMAP.md and infer type.
 
-  # **In `--auto` mode:** Default to `feature` when ambiguous.
+  # In --auto mode: Default to "feature" when ambiguous.
 
-  # **In interactive mode:**
+  # In interactive mode:
 
   # Read phase goal from ROADMAP.md. Infer type:
-  # - Goal contains "fix", "bug", "patch" -> suggest `fix` (branch prefix: `bugfix`)
-  # - Goal contains "refactor", "clean", "migrate" -> suggest `refactor`
-  # - Goal contains "chore", "config", "setup" -> suggest `chore`
-  # - Otherwise -> suggest `feat` (branch prefix: `feature`)
+  # - Goal contains "fix", "bug", "patch" -> suggest fix (branch prefix: bugfix)
+  # - Goal contains "refactor", "clean", "migrate" -> suggest refactor
+  # - Goal contains "chore", "config", "setup" -> suggest chore
+  # - Otherwise -> suggest feat (branch prefix: feature)
 
-  # If `--type` flag provided, use that directly.
+  # If --type flag provided, use that directly.
 
   # Ask user to confirm or override (in interactive mode only):
   #   Branch type for review branch: {suggested_type} (branch prefix: {alias})
@@ -258,7 +301,10 @@ else
 
   # Map the short type to its branch prefix alias using resolve-type-alias
   # e.g., TYPE=feat -> TYPE_ALIAS=feature
-  TYPE_ALIAS=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "${TYPE:-feat}")
+  TYPE_INPUT="$TYPE"
+  if [ -z "$TYPE_INPUT" ]; then TYPE_INPUT="feat"; fi
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-type-alias "$TYPE_INPUT" > $TMPDIR/create-pr-type_alias.txt
+  read TYPE_ALIAS < $TMPDIR/create-pr-type_alias.txt
 fi
 ```
 
@@ -275,16 +321,18 @@ if [ "$IS_QUICK_TASK" = "true" ]; then
   REVIEW_BRANCH="${TYPE_ALIAS}/${QUICK_SLUG}"
 else
   # Phase path: expand template (default: "{type}/{phase}-{slug}")
-  REVIEW_BRANCH=$(echo "$REVIEW_BRANCH_TEMPLATE" | \
+  echo "$REVIEW_BRANCH_TEMPLATE" | \
     sed "s/{type}/$TYPE_ALIAS/g" | \
     sed "s/{phase}/$PHASE_NUMBER/g" | \
-    sed "s/{slug}/$PHASE_SLUG/g")
+    sed "s/{slug}/$PHASE_SLUG/g" > $TMPDIR/create-pr-review_branch.txt
+  read REVIEW_BRANCH < $TMPDIR/create-pr-review_branch.txt
 fi
 ```
 
 Save the current work branch for later:
 ```bash
-CURRENT_BRANCH=$(git -C "$GIT_CWD" branch --show-current)
+git -C "$GIT_CWD" branch --show-current > $TMPDIR/create-pr-current_branch.txt
+read CURRENT_BRANCH < $TMPDIR/create-pr-current_branch.txt
 ```
 
 **Collision guard:** If the review branch name matches the current work branch, handle per mode to prevent data loss from `reset --hard`:
@@ -294,7 +342,7 @@ if [ "$REVIEW_BRANCH" = "$CURRENT_BRANCH" ]; then
     # Auto-suffix: append -2, -3, etc. until unique
     SUFFIX=2
     while [ "$REVIEW_BRANCH-$SUFFIX" = "$CURRENT_BRANCH" ] || git show-ref --verify --quiet "refs/heads/$REVIEW_BRANCH-$SUFFIX" 2>/dev/null; do
-      SUFFIX=$((SUFFIX + 1))
+      (( SUFFIX++ )) || true
     done
     REVIEW_BRANCH="$REVIEW_BRANCH-$SUFFIX"
     echo "Auto-suffixed review branch to '$REVIEW_BRANCH' to avoid collision with work branch."
@@ -326,15 +374,21 @@ git -C "$GIT_CWD" merge --squash "$CURRENT_BRANCH" 2>&1
 
 if [ "$IS_QUICK_TASK" = "true" ]; then
   # Quick-task squash message: subject = "<type>: <one_liner>", body = SUMMARY.md content
-  SQUASH_BODY=$(cat "$QUICK_SUMMARY")
-  git -C "$GIT_CWD" commit -m "$(printf "%s: %s\n\n%s" "$TYPE" "$ONE_LINER" "$SQUASH_BODY")"
+  cat "$QUICK_SUMMARY" > $TMPDIR/create-pr-squash_body.txt
+  read SQUASH_BODY < $TMPDIR/create-pr-squash_body.txt
+  printf "%s: %s\n\n%s" "$TYPE" "$ONE_LINER" "$SQUASH_BODY" > $TMPDIR/create-pr-squash_msg.txt
+  git -C "$GIT_CWD" commit -F $TMPDIR/create-pr-squash_msg.txt
 else
   # Phase path: build squash message from plan SUMMARYs glob
   SQUASH_MSG=""
-  for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-    ONE_LINER_PLAN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner)
+  for summary in .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md; do
+    [ -f "$summary" ] || continue
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner > $TMPDIR/create-pr-one_liner_plan.txt
+    read ONE_LINER_PLAN < $TMPDIR/create-pr-one_liner_plan.txt
     if [ -n "$ONE_LINER_PLAN" ]; then
-      PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
+      basename "$summary" > $TMPDIR/create-pr-summary_basename.txt
+      read SUMMARY_BASENAME < $TMPDIR/create-pr-summary_basename.txt
+      PLAN_ID="${SUMMARY_BASENAME%-SUMMARY.md}"
       SQUASH_MSG="${SQUASH_MSG}- ${PLAN_ID}: ${ONE_LINER_PLAN}\n"
     fi
   done
@@ -343,7 +397,8 @@ else
     SQUASH_MSG="Phase ${PHASE_NUMBER}: ${PHASE_NAME}"
   fi
 
-  git -C "$GIT_CWD" commit -m "$(printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}")"
+  printf "feat: Phase ${PHASE_NUMBER} - ${PHASE_NAME}\n\n${SQUASH_MSG}" > $TMPDIR/create-pr-phase_squash_msg.txt
+  git -C "$GIT_CWD" commit -F $TMPDIR/create-pr-phase_squash_msg.txt
 fi
 ```
 
@@ -359,19 +414,21 @@ Push the review branch (or current branch for none strategy) to remote:
 ```bash
 # For review branches, use --force-with-lease (squash rewrites history)
 if [ "$BRANCHING_STRATEGY" != "none" ]; then
-  PUSH_OUT=$(git -C "$GIT_CWD" push --force-with-lease -u "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
+  git -C "$GIT_CWD" push --force-with-lease -u "$PUSH_REMOTE" "$HEAD_BRANCH" > $TMPDIR/create-pr-push_out.txt 2>&1
 else
   # For none strategy, regular push with upstream tracking (safe to use -u unconditionally)
-  UPSTREAM=$(git -C "$GIT_CWD" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
+  git -C "$GIT_CWD" rev-parse --abbrev-ref --symbolic-full-name "@{u}" > $TMPDIR/create-pr-upstream.txt 2>/dev/null || echo "" > $TMPDIR/create-pr-upstream.txt
+  read UPSTREAM < $TMPDIR/create-pr-upstream.txt
   if [ -n "$UPSTREAM" ]; then
-    PUSH_OUT=$(git -C "$GIT_CWD" push "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
+    git -C "$GIT_CWD" push "$PUSH_REMOTE" "$HEAD_BRANCH" > $TMPDIR/create-pr-push_out.txt 2>&1
   else
-    PUSH_OUT=$(git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$HEAD_BRANCH" 2>&1)
+    git -C "$GIT_CWD" push -u "$PUSH_REMOTE" "$HEAD_BRANCH" > $TMPDIR/create-pr-push_out.txt 2>&1
   fi
 fi
 PUSH_EXIT=$?
 
 if [ $PUSH_EXIT -ne 0 ]; then
+  read PUSH_OUT < $TMPDIR/create-pr-push_out.txt
   echo "Error: Push failed — $PUSH_OUT"
   echo "Fix the issue and retry: {{COMMAND_PREFIX}}create-pr ${PHASE_ARG}"
   # Return to work branch before exiting
@@ -379,9 +436,9 @@ if [ $PUSH_EXIT -ne 0 ]; then
   exit 1
 fi
 
-if echo "$PUSH_OUT" | grep -q 'Bypassed rule violations'; then
+if grep -q 'Bypassed rule violations' $TMPDIR/create-pr-push_out.txt; then
   echo "Error: push bypassed required branch protection rules:"
-  echo "$PUSH_OUT" | grep -E '(Bypassed rule violations|^remote: -)' | sed 's/^/  /'
+  grep -E '(Bypassed rule violations|^remote: -)' $TMPDIR/create-pr-push_out.txt | sed 's/^/  /'
   exit 1
 fi
 ```
@@ -400,32 +457,23 @@ fi
 Build PR description.
 
 ```bash
-PR_BODY_FILE=$(mktemp)
+PR_BODY_FILE="$TMPDIR/create-pr-pr_body.txt"
+touch "$PR_BODY_FILE"
 
 if [ "$IS_QUICK_TASK" = "true" ]; then
   # Quick-task description: SUMMARY-derived. No template precedence chain
   # (a dedicated quick_pr_template config knob is deferred to a future phase).
-  cat > "$PR_BODY_FILE" << QTEMPLATE
-## Summary
-
-${ONE_LINER}
-
-$(cat "${QUICK_SUMMARY}")
-
-## Test Plan
-
-- [ ] Automated tests pass
-- [ ] Manual verification complete
-
----
-*Generated by GSD-NG from quick task ${QUICK_SLUG}*
-QTEMPLATE
+  # Build PR body by concatenating sections to avoid command substitution inside heredoc
+  printf "## Summary\n\n%s\n\n" "$ONE_LINER" > "$PR_BODY_FILE"
+  cat "${QUICK_SUMMARY}" >> "$PR_BODY_FILE"
+  printf "\n\n## Test Plan\n\n- [ ] Automated tests pass\n- [ ] Manual verification complete\n\n---\n*Generated by GSD-NG from quick task %s*\n" "$QUICK_SLUG" >> "$PR_BODY_FILE"
 
 else
   # Phase path: template precedence chain — user config > repo template > GSD default.
 
   # 1. Check user config template
-  PR_TEMPLATE_PATH=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get "$INIT" pr_template 2>/dev/null)
+  node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" init-get-from-file $TMPDIR/create-pr-init.json pr_template > $TMPDIR/create-pr-pr_template_path.txt
+  read PR_TEMPLATE_PATH < $TMPDIR/create-pr-pr_template_path.txt
 
   if [ -n "$PR_TEMPLATE_PATH" ] && [ -f "$PR_TEMPLATE_PATH" ]; then
     # User config template — copy and apply variable substitution below
@@ -447,25 +495,35 @@ else
   else
     # GSD default professional template
     # Extract phase goal using --pick
-    PHASE_OBJECTIVE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "${PHASE_NUMBER}" --pick goal --default "")
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUMBER" --pick goal --default "" > $TMPDIR/create-pr-phase_objective.txt
+    read PHASE_OBJECTIVE < $TMPDIR/create-pr-phase_objective.txt
 
     # Extract plan summaries
     PLAN_SUMMARIES=""
-    for summary in $(ls .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md 2>/dev/null | sort); do
-      ONE_LINER_PLAN=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner)
+    for summary in .planning/phases/${PHASE_DIR_NAME}/*-SUMMARY.md; do
+      [ -f "$summary" ] || continue
+      node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$summary" --fields one_liner --default "" --pick one_liner > $TMPDIR/create-pr-one_liner_plan.txt
+      read ONE_LINER_PLAN < $TMPDIR/create-pr-one_liner_plan.txt
       if [ -n "$ONE_LINER_PLAN" ]; then
-        PLAN_ID=$(basename "$summary" | sed 's/-SUMMARY.md//')
+        basename "$summary" > $TMPDIR/create-pr-summary_basename2.txt
+        read SUMMARY_BASENAME < $TMPDIR/create-pr-summary_basename2.txt
+        PLAN_ID="${SUMMARY_BASENAME%-SUMMARY.md}"
         PLAN_SUMMARIES="${PLAN_SUMMARIES}\n- **${PLAN_ID}**: ${ONE_LINER_PLAN}"
       fi
     done
 
+    # Use plain vars with explicit fallbacks to avoid parameter expansion in heredoc
+    PHASE_OBJECTIVE_DISPLAY="$PHASE_OBJECTIVE"
+    if [ -z "$PHASE_OBJECTIVE_DISPLAY" ]; then PHASE_OBJECTIVE_DISPLAY="Phase ${PHASE_NUMBER}: ${PHASE_NAME}"; fi
+    PLAN_SUMMARIES_DISPLAY="$PLAN_SUMMARIES"
+    if [ -z "$PLAN_SUMMARIES_DISPLAY" ]; then PLAN_SUMMARIES_DISPLAY="No plan summaries available."; fi
     cat > "$PR_BODY_FILE" << PRTEMPLATE
 ## Summary
 
-${PHASE_OBJECTIVE:-Phase ${PHASE_NUMBER}: ${PHASE_NAME}}
+${PHASE_OBJECTIVE_DISPLAY}
 
 ## Changes
-${PLAN_SUMMARIES:-No plan summaries available.}
+${PLAN_SUMMARIES_DISPLAY}
 
 ## Test Plan
 
@@ -478,10 +536,11 @@ PRTEMPLATE
   fi
 
   # Apply GSD variable substitution to whichever template was selected
+  PHASE_OBJ_SED="$PHASE_OBJECTIVE"
   sed -i \
     -e "s/{phase_name}/${PHASE_NAME}/g" \
     -e "s/{phase_number}/${PHASE_NUMBER}/g" \
-    -e "s/{phase_objective}/${PHASE_OBJECTIVE:-}/g" \
+    -e "s/{phase_objective}/${PHASE_OBJ_SED}/g" \
     "$PR_BODY_FILE"
 fi
 ```
@@ -546,41 +605,53 @@ fi
 
 case "$PLATFORM" in
   github)
-    PR_URL=$(gh pr create \
+    gh pr create \
       --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
       --body-file "$PR_BODY_FILE" \
-      $DRAFT_FLAG 2>&1)
+      $DRAFT_FLAG > $TMPDIR/create-pr-pr_url.txt 2>&1
     PR_EXIT=$?
+    read PR_URL < $TMPDIR/create-pr-pr_url.txt
     ;;
 
   gitlab)
-    PR_URL=$(glab mr create \
+    glab mr create \
       --target-branch "$PUSH_TARGET" \
       --source-branch "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
-      --description "$(cat "$PR_BODY_FILE")" \
-      $DRAFT_FLAG 2>&1)
+      --description-file "$PR_BODY_FILE" \
+      $DRAFT_FLAG > $TMPDIR/create-pr-pr_url.txt 2>&1
     PR_EXIT=$?
+    read PR_URL < $TMPDIR/create-pr-pr_url.txt
     ;;
 
   forgejo)
-    PR_URL=$(fj pr create \
+    PR_BODY_TEXT=""
+    if [ -f "$PR_BODY_FILE" ]; then
+      read -d '' PR_BODY_TEXT < "$PR_BODY_FILE" || true
+    fi
+    fj pr create \
       --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
-      --body "$(cat "$PR_BODY_FILE")" 2>&1)
+      --body "$PR_BODY_TEXT" > $TMPDIR/create-pr-pr_url.txt 2>&1
     PR_EXIT=$?
+    read PR_URL < $TMPDIR/create-pr-pr_url.txt
     ;;
 
   gitea)
-    PR_URL=$(tea pr create \
+    PR_BODY_TEXT=""
+    if [ -f "$PR_BODY_FILE" ]; then
+      read -d '' PR_BODY_TEXT < "$PR_BODY_FILE" || true
+    fi
+    tea pr create \
       --base "$PUSH_TARGET" \
       --head "$HEAD_BRANCH" \
       --title "$PR_TITLE" \
-      --description "$(cat "$PR_BODY_FILE")" 2>&1)
+      --description "$PR_BODY_TEXT" > $TMPDIR/create-pr-pr_url.txt 2>&1
     PR_EXIT=$?
+    read PR_URL < $TMPDIR/create-pr-pr_url.txt
     ;;
 
   *)

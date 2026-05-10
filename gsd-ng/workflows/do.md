@@ -26,7 +26,8 @@ Wait for response before continuing.
 **Check if project exists.**
 
 ```bash
-INIT=$(node "~/.claude/gsd-ng/bin/gsd-tools.cjs" state load 2>/dev/null)
+mkdir -p $TMPDIR
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load > $TMPDIR/do-state.json 2>/dev/null || true
 ```
 
 Track whether `.planning/` exists — some routes require it, others don't.

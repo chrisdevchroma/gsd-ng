@@ -410,6 +410,49 @@ function cmdFrontmatterValidate(cwd, filePath, schemaName) {
   );
 }
 
+function cmdFrontmatterArrayAppend(cwd, filePath, field, value) {
+  if (!filePath || !field || value === undefined) {
+    error('file, field, and value required');
+  }
+  const fieldCheck = validateFieldName(field);
+  if (!fieldCheck.valid) {
+    error(`Invalid field name: ${fieldCheck.error}`);
+  }
+  if (!path.isAbsolute(filePath)) {
+    const pathCheck = validatePath(filePath, cwd);
+    if (!pathCheck.safe) {
+      error(`Invalid file path: ${pathCheck.error}`);
+    }
+  }
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
+  if (!fs.existsSync(fullPath)) {
+    output({ error: 'File not found', path: filePath });
+    return;
+  }
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  const fm = extractFrontmatter(content);
+  // Coerce existing field to array (handles missing, scalar, or array)
+  let arr;
+  if (fm[field] === undefined || fm[field] === null || fm[field] === '') {
+    arr = [];
+  } else if (Array.isArray(fm[field])) {
+    arr = fm[field].slice();
+  } else {
+    arr = [fm[field]];
+  }
+  // Dedupe-append: only push if value is not already present
+  const added = !arr.includes(value);
+  if (added) {
+    arr.push(value);
+  }
+  fm[field] = arr;
+  const newContent = spliceFrontmatter(content, fm);
+  fs.writeFileSync(fullPath, newContent, 'utf-8');
+  output({ appended: added, field, value, length: arr.length }, 'true');
+}
+
 module.exports = {
   extractFrontmatter,
   reconstructFrontmatter,
@@ -420,4 +463,5 @@ module.exports = {
   cmdFrontmatterSet,
   cmdFrontmatterMerge,
   cmdFrontmatterValidate,
+  cmdFrontmatterArrayAppend,
 };
