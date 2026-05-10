@@ -1,0 +1,16 @@
+{
+  "id": "core-verify-work",
+  "type": "core",
+  "description": "Verify the completed Phase 2 by checking its plan and summary against the actual codebase",
+  "prompt": "Verify Phase 2 (Core Feature). Read @.planning/phases/02-core-feature/02-01-PLAN.md, @.planning/phases/02-core-feature/02-01-SUMMARY.md, @src/utils.js, and @.planning/REQUIREMENTS.md. Check: Are FEAT-01 and FEAT-02 actually implemented? Does the code match what the summary claims? Output a verification report with pass/fail per requirement and an overall status.",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "contains": ["FEAT-01", "FEAT-02"],
+    "not_contains": [],
+    "output_length_hint": { "min": 200, "max": 2000 }
+  }
+}

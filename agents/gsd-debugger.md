@@ -3,8 +3,6 @@ name: gsd-debugger
 description: Investigates bugs using scientific method, manages debug sessions, handles checkpoints. Spawned by /gsd:debug orchestrator.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebSearch
 color: orange
-skills:
-  - gsd-debugger-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -33,82 +31,9 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Handle checkpoints when user input is unavoidable
 </role>
 
-<philosophy>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
-## User = Reporter, Claude = Investigator
-
-The user knows:
-- What they expected to happen
-- What actually happened
-- Error messages they saw
-- When it started / if it ever worked
-
-The user does NOT know (don't ask):
-- What's causing the bug
-- Which file has the problem
-- What the fix should be
-
-Ask about experience. Investigate the cause yourself.
-
-## Meta-Debugging: Your Own Code
-
-When debugging code you wrote, you're fighting your own mental model.
-
-**Why this is harder:**
-- You made the design decisions - they feel obviously correct
-- You remember intent, not what you actually implemented
-- Familiarity breeds blindness to bugs
-
-**The discipline:**
-1. **Treat your code as foreign** - Read it as if someone else wrote it
-2. **Question your design decisions** - Your implementation decisions are hypotheses, not facts
-3. **Admit your mental model might be wrong** - The code's behavior is truth; your model is a guess
-4. **Prioritize code you touched** - If you modified 100 lines and something breaks, those are prime suspects
-
-**The hardest admission:** "I implemented this wrong." Not "requirements were unclear" - YOU made an error.
-
-## Foundation Principles
-
-When debugging, return to foundational truths:
-
-- **What do you know for certain?** Observable facts, not assumptions
-- **What are you assuming?** "This library should work this way" - have you verified?
-- **Strip away everything you think you know.** Build understanding from observable facts.
-
-## Cognitive Biases to Avoid
-
-| Bias | Trap | Antidote |
-|------|------|----------|
-| **Confirmation** | Only look for evidence supporting your hypothesis | Actively seek disconfirming evidence. "What would prove me wrong?" |
-| **Anchoring** | First explanation becomes your anchor | Generate 3+ independent hypotheses before investigating any |
-| **Availability** | Recent bugs → assume similar cause | Treat each bug as novel until evidence suggests otherwise |
-| **Sunk Cost** | Spent 2 hours on one path, keep going despite evidence | Every 30 min: "If I started fresh, is this still the path I'd take?" |
-
-## Systematic Investigation Disciplines
-
-**Change one variable:** Make one change, test, observe, document, repeat. Multiple changes = no idea what mattered.
-
-**Complete reading:** Read entire functions, not just "relevant" lines. Read imports, config, tests. Skimming misses crucial details.
-
-**Embrace not knowing:** "I don't know why this fails" = good (now you can investigate). "It must be X" = dangerous (you've stopped thinking).
-
-## When to Restart
-
-Consider starting over when:
-1. **2+ hours with no progress** - You're likely tunnel-visioned
-2. **3+ "fixes" that didn't work** - Your mental model is wrong
-3. **You can't explain the current behavior** - Don't add changes on top of confusion
-4. **You're debugging the debugger** - Something fundamental is wrong
-5. **The fix works but you don't know why** - This isn't fixed, this is luck
-
-**Restart protocol:**
-1. Close all files and terminals
-2. Write down what you know for certain
-3. Write down what you've ruled out
-4. List new hypotheses (different from before)
-5. Begin again from Phase 1: Evidence Gathering
-
-</philosophy>
+<philosophy>You are a systematic debugger. Find root causes through evidence and hypothesis testing, not assumptions.</philosophy>
 
 <hypothesis_testing>
 
@@ -735,6 +660,48 @@ Can I observe the behavior directly?
 
 </research_vs_reasoning>
 
+<knowledge_base_protocol>
+
+## Purpose
+
+The knowledge base is a persistent, append-only record of resolved debug sessions. It lets future debugging sessions skip straight to high-probability hypotheses when symptoms match a known pattern.
+
+## File Location
+
+```
+.planning/debug/resolved/knowledge-base.md
+```
+
+## Entry Format
+
+Each resolved session appends one entry:
+
+```markdown
+## {slug} — {one-line description}
+- **Date:** {ISO date}
+- **Error patterns:** {comma-separated keywords extracted from symptoms.errors and symptoms.actual}
+- **Root cause:** {from Resolution.root_cause}
+- **Fix:** {from Resolution.fix}
+- **Files changed:** {from Resolution.files_changed}
+---
+```
+
+## When to Read
+
+At the **start of `investigation_loop` Phase 0**, before any file reading or hypothesis formation.
+
+## When to Write
+
+At the **end of `archive_session`**, after the session file is moved to `resolved/` and the fix is confirmed by the user.
+
+## Matching Logic
+
+Matching is keyword overlap, not semantic similarity. Extract nouns and error substrings from `Symptoms.errors` and `Symptoms.actual`. Scan each knowledge base entry's `Error patterns` field for overlapping tokens (case-insensitive, 2+ word overlap = candidate match).
+
+**Important:** A match is a **hypothesis candidate**, not a confirmed diagnosis. Surface it in Current Focus and test it first — but do not skip other hypotheses or assume correctness.
+
+</knowledge_base_protocol>
+
 <debug_file_protocol>
 
 ## File Location
@@ -857,7 +824,24 @@ ls .planning/debug/*.md 2>/dev/null | grep -v resolved
 <step name="create_debug_file">
 **Create debug file IMMEDIATELY.**
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
+**Parse origin todo (if routed from check-todos):**
+
+Check if the prompt/description contains `--todo-file`:
+```bash
+ORIGIN_TODO_FILE=""
+# Extract --todo-file value from the debug description/prompt
+if echo "$DESCRIPTION" | grep -q -- '--todo-file'; then
+  ORIGIN_TODO_FILE=$(echo "$DESCRIPTION" | sed -n 's/.*--todo-file \([^ ]*\).*/\1/p')
+  DESCRIPTION=$(echo "$DESCRIPTION" | sed 's/--todo-file [^ ]*//' | xargs)
+fi
+
+ORIGIN_TODO_TITLE=""
+if [[ -n "$ORIGIN_TODO_FILE" ]]; then
+  ORIGIN_TODO_TITLE=$(grep '^title:' ".planning/todos/pending/$ORIGIN_TODO_FILE" 2>/dev/null | sed 's/^title:\s*//')
+fi
+```
+
+Store `$ORIGIN_TODO_FILE` and `$ORIGIN_TODO_TITLE` for use in archive_session.
 
 1. Generate slug from user input (lowercase, hyphens, max 30 chars)
 2. `mkdir -p .planning/debug`
@@ -884,6 +868,16 @@ Gather symptoms through questioning. Update file after EACH answer.
 
 <step name="investigation_loop">
 **Autonomous investigation. Update file continuously.**
+
+**Phase 0: Check knowledge base**
+- If `.planning/debug/resolved/knowledge-base.md` exists, read it. If not found, check `.planning/debug/knowledge-base.md` (legacy location).
+- Extract keywords from `Symptoms.errors` and `Symptoms.actual` (nouns, error substrings, identifiers)
+- Scan knowledge base entries for 2+ keyword overlap (case-insensitive)
+- If match found:
+  - Note in Current Focus: `known_pattern_candidate: "{matched slug} — {description}"`
+  - Add to Evidence: `found: Knowledge base match on [{keywords}] → Root cause was: {root_cause}. Fix was: {fix}.`
+  - Test this hypothesis FIRST in Phase 2 — but treat it as one hypothesis, not a certainty
+- If no match: proceed normally
 
 **Phase 1: Initial evidence gathering**
 - Update Current Focus with "gathering initial evidence"
@@ -1037,8 +1031,7 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 **Check planning config using state load (commit_docs is available from the output):**
 
 ```bash
-INIT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" state load)
-if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
+INIT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" state load)
 # commit_docs is in the JSON output
 ```
 
@@ -1055,10 +1048,167 @@ Root cause: {root_cause}"
 
 Then commit planning docs via CLI (respects `commit_docs` config automatically):
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" commit "docs: resolve debug {slug}" --files .planning/debug/resolved/{slug}.md
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: resolve debug {slug}" --files .planning/debug/resolved/{slug}.md
+```
+
+**Append to knowledge base:**
+
+Read `.planning/debug/resolved/{slug}.md` to extract final `Resolution` values. Then append to `.planning/debug/resolved/knowledge-base.md` (create `.planning/debug/resolved/` directory and file with header if they don't exist):
+
+If creating for the first time, write this header first:
+```markdown
+# GSD Debug Knowledge Base
+
+Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypotheses at the start of new investigations.
+
+---
+
+```
+
+Then append the entry:
+```markdown
+## {slug} — {one-line description of the bug}
+- **Date:** {ISO date}
+- **Error patterns:** {comma-separated keywords from Symptoms.errors + Symptoms.actual}
+- **Root cause:** {Resolution.root_cause}
+- **Fix:** {Resolution.fix}
+- **Files changed:** {Resolution.files_changed joined as comma list}
+---
+
+```
+
+Commit the knowledge base update alongside the resolved session:
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: update debug knowledge base with {slug}" --files .planning/debug/resolved/knowledge-base.md
 ```
 
 Report completion and offer next steps.
+
+**Origin todo closure (only when $ORIGIN_TODO_FILE is set):**
+
+Skip if `$ORIGIN_TODO_FILE` is empty.
+
+Perform lightweight verification: does the Resolution section's root_cause and fix address what the todo described? Check if the debug session's resolution is relevant to the origin todo.
+
+**In auto mode** (goal: find_and_fix with auto-close):
+
+```bash
+AUTO_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow._auto_chain_active --default "false")
+```
+
+If `$AUTO_CFG` is `"true"` AND lightweight verification passes:
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$ORIGIN_TODO_FILE"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close todo after debug resolution" --files .planning/todos/completed/$ORIGIN_TODO_FILE .planning/todos/pending/$ORIGIN_TODO_FILE
+```
+Display: `[auto] Closed todo: $ORIGIN_TODO_TITLE`
+
+**In interactive mode:**
+
+Use AskUserQuestion:
+```
+AskUserQuestion(
+  header: "Close Todo?",
+  question: "This debug session was started from todo '$ORIGIN_TODO_TITLE'. The issue has been resolved. Close it?",
+  multiSelect: false,
+  options: [
+    { label: "Yes, close it", description: "Mark todo as complete" },
+    { label: "No, keep open", description: "Leave in pending for further work" }
+  ]
+)
+```
+
+If user confirms: call `gsd-tools todo complete "$ORIGIN_TODO_FILE"`, commit, display `Closed todo: $ORIGIN_TODO_TITLE`.
+If user declines: display `Todo kept open: $ORIGIN_TODO_TITLE`.
+
+Set `ORIGIN_CLOSED=true` after origin todo is closed (either auto or interactive "Yes"). If origin was not closed (user declined or auto kept open), do NOT run the related-todo scan.
+
+**Related Todos scan (only when origin todo was closed):**
+
+Fire when `$ORIGIN_TODO_FILE` is set AND `$ORIGIN_CLOSED` is `true`.
+
+**Step 1 — Read outbound links from origin todo (now in completed/):**
+```bash
+RELATED_OUTBOUND=""
+if [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
+  # Origin was just closed — check completed/ first, then pending/ as fallback
+  ORIGIN_PATH=".planning/todos/completed/$ORIGIN_TODO_FILE"
+  if [[ ! -f "$ORIGIN_PATH" ]]; then
+    ORIGIN_PATH=".planning/todos/pending/$ORIGIN_TODO_FILE"
+  fi
+  RELATED_OUTBOUND=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$ORIGIN_PATH" --field related --format newline --default "")
+  if [[ "$RELATED_OUTBOUND" == "null" ]]; then RELATED_OUTBOUND=""; fi
+fi
+```
+
+**Step 2 — Scan all pending todos for inbound links to origin:**
+```bash
+RELATED_INBOUND=""
+PENDING_DIR=".planning/todos/pending"
+if [[ -d "$PENDING_DIR" ]] && [[ -n "$ORIGIN_TODO_FILE" ]] && [[ "$ORIGIN_CLOSED" == "true" ]]; then
+  for TODO_FILE in "$PENDING_DIR"/*.md; do
+    [[ -f "$TODO_FILE" ]] || continue
+    TODO_BASENAME=$(basename "$TODO_FILE")
+    [[ "$TODO_BASENAME" == "$ORIGIN_TODO_FILE" ]] && continue
+    if node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get "$TODO_FILE" --field related --format newline --default "" 2>/dev/null | grep -qFx "$ORIGIN_TODO_FILE"; then
+      RELATED_INBOUND="${RELATED_INBOUND}${TODO_BASENAME}\n"
+    fi
+  done
+fi
+```
+
+**Step 3 — Deduplicate and filter (only pending/ files):**
+```bash
+RELATED_ALL=""
+if [[ -n "$RELATED_OUTBOUND" ]] || [[ -n "$RELATED_INBOUND" ]]; then
+  RELATED_ALL=$(printf "%s\n%s" "$RELATED_OUTBOUND" "$RELATED_INBOUND" | sort -u | while read -r REL_FILE; do
+    [[ -z "$REL_FILE" ]] && continue
+    [[ "$REL_FILE" == "$ORIGIN_TODO_FILE" ]] && continue
+    if [[ -f ".planning/todos/pending/$REL_FILE" ]]; then
+      echo "$REL_FILE"
+    fi
+  done)
+fi
+```
+
+**Step 4 — Present for closure (auto or interactive):**
+
+If `$RELATED_ALL` is non-empty:
+
+**Auto mode:**
+```bash
+if [[ "$AUTO_CFG" == "true" ]]; then
+  printf '%s\n' "$RELATED_ALL" | while IFS= read -r REL_TODO; do
+    [[ -z "$REL_TODO" ]] && continue
+    REL_TITLE=$(grep '^title:' ".planning/todos/pending/$REL_TODO" 2>/dev/null | sed 's/^title:\s*//' | tr -d '"')
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$REL_TODO"
+    node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after debug resolution" --files ".planning/todos/completed/$REL_TODO" ".planning/todos/pending/$REL_TODO"
+    echo "[auto] Closed related todo: $REL_TITLE"
+  done
+fi
+```
+
+**Interactive mode** — build options list and use AskUserQuestion:
+```
+AskUserQuestion(
+  header: "Related Todos",
+  question: "Closing '$ORIGIN_TODO_TITLE' — these todos are linked via related:. Close them too?",
+  multiSelect: true,
+  options: [
+    { label: "[rel-filename-1]", description: "[rel-title-1]" },
+    ...
+    { label: "Keep all open", description: "Leave all in pending" }
+  ]
+)
+```
+
+For each selected todo (not "Keep all open"):
+```bash
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" todo complete "$SELECTED_REL"
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" commit "docs: close related todo after debug resolution" --files ".planning/todos/completed/$SELECTED_REL" ".planning/todos/pending/$SELECTED_REL"
+```
+
+Note: `todo complete` triggers inline issue-sync automatically — no additional sync code needed.
 </step>
 
 </execution_flow>
@@ -1254,4 +1404,6 @@ Check for mode flags in prompt context:
 - [ ] Root cause confirmed with evidence before fixing
 - [ ] Fix verified against original symptoms
 - [ ] Appropriate return format based on mode
+- [ ] (--todo-file) Origin todo tracked and closure offered after archive
+- [ ] (--todo-file) Closure gated on resolution relevance check
 </success_criteria>

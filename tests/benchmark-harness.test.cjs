@@ -1,0 +1,640 @@
+'use strict';
+
+/**
+ * Unit tests for the GSD benchmark harness.
+ *
+ * Tests verify: config parsing, task validation, structural evaluator,
+ * fixture isolation, results writing, model filtering, and ref substitution.
+ *
+ * CRITICAL: No test invokes real `claude` or `copilot` subprocesses.
+ * All subprocess-dependent logic is tested via controlled inputs or by
+ * exercising the exported functions directly.
+ */
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+// Resolve paths relative to the gsd-ng/ directory (cwd when running tests)
+const BENCHMARKS_DIR = path.join(__dirname, '..', 'benchmarks');
+const TASKS_DIR = path.join(BENCHMARKS_DIR, 'tasks');
+const FIXTURE_BASE = path.join(BENCHMARKS_DIR, 'fixtures', 'gsd-test-project');
+
+// Import modules under test
+const {
+  loadConfig,
+  loadTasks,
+  validateTasks,
+  copyFixture,
+  cleanupFixture,
+  substituteRefs,
+  classifyError,
+  filterModels,
+  filterTasks,
+  buildAtRefMatrix,
+} = require('../benchmarks/benchmark-runner.cjs');
+
+const { compareResults } = require('../benchmarks/benchmark-compare.cjs');
+
+const { evaluateOutput } = require('../benchmarks/evaluators/structural.cjs');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
+
+// ---------------------------------------------------------------------------
+// 1. Config parsing
+// ---------------------------------------------------------------------------
+
+describe('config parsing', () => {
+  it('loads and parses benchmark-config.json', () => {
+    const config = loadConfig();
+    assert.ok(Array.isArray(config.models), 'config.models must be an array');
+    assert.ok(typeof config.defaults === 'object', 'config.defaults must be an object');
+    assert.ok(typeof config.defaults.result_dir === 'string', 'config.defaults.result_dir must be a string');
+  });
+
+  it('config has claude and copilot model groups', () => {
+    const config = loadConfig();
+    const claudeModels = config.models.filter(m => m.group === 'claude');
+    const copilotModels = config.models.filter(m => m.group === 'copilot');
+    assert.strictEqual(claudeModels.length, 3, 'should have exactly 3 claude models');
+    assert.ok(copilotModels.length >= 2, 'should have at least 2 copilot models');
+  });
+
+  it('every model has required fields', () => {
+    const config = loadConfig();
+    const requiredFields = ['id', 'runtime', 'model_flag', 'group', 'enabled', 'ref_prefix'];
+    const optionalNullableFields = ['effort_flag']; // null for non-thinking models
+    for (const model of config.models) {
+      for (const field of requiredFields) {
+        assert.ok(
+          model[field] !== undefined && model[field] !== null,
+          `model ${model.id || '(unnamed)'} is missing required field: ${field}`
+        );
+      }
+      for (const field of optionalNullableFields) {
+        assert.ok(
+          field in model,
+          `model ${model.id || '(unnamed)'} is missing field: ${field} (may be null)`
+        );
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. Task validation
+// ---------------------------------------------------------------------------
+
+describe('task validation', () => {
+  it('all task files are valid JSON', () => {
+    const files = fs.readdirSync(TASKS_DIR).filter(f => f.endsWith('.json'));
+    assert.ok(files.length > 0, 'tasks directory must contain JSON files');
+    for (const file of files) {
+      const raw = fs.readFileSync(path.join(TASKS_DIR, file), 'utf-8');
+      assert.doesNotThrow(
+        () => JSON.parse(raw),
+        `${file} is not valid JSON`
+      );
+    }
+  });
+
+  it('all tasks have required schema fields', () => {
+    const tasks = loadTasks();
+    const requiredFields = ['id', 'type', 'prompt', 'timeout_ms', 'at_refs', 'runtime_filter', 'expected'];
+    for (const task of tasks) {
+      for (const field of requiredFields) {
+        assert.ok(
+          task[field] !== undefined && task[field] !== null,
+          `task ${task.id || '(unnamed)'} is missing required field: ${field}`
+        );
+      }
+    }
+  });
+
+  it('micro tasks have 30s timeout', () => {
+    const tasks = loadTasks();
+    const microTasks = tasks.filter(t => t.type === 'micro');
+    assert.ok(microTasks.length > 0, 'must have at least one micro task');
+    for (const task of microTasks) {
+      assert.strictEqual(
+        task.timeout_ms,
+        30000,
+        `micro task ${task.id} must have timeout_ms === 30000, got ${task.timeout_ms}`
+      );
+    }
+  });
+
+  it('core tasks have 120s timeout', () => {
+    const tasks = loadTasks();
+    const coreTasks = tasks.filter(t => t.type === 'core');
+    assert.ok(coreTasks.length > 0, 'must have at least one core task');
+    for (const task of coreTasks) {
+      assert.strictEqual(
+        task.timeout_ms,
+        120000,
+        `core task ${task.id} must have timeout_ms === 120000, got ${task.timeout_ms}`
+      );
+    }
+  });
+
+  it('at least 15 tasks defined', () => {
+    const tasks = loadTasks();
+    assert.ok(tasks.length >= 15, `expected at least 15 tasks, found ${tasks.length}`);
+  });
+
+  it('@ ref tasks include relative, tilde, and project-relative patterns', () => {
+    const tasks = loadTasks();
+    // Collect union of all at_refs values across all tasks
+    const allRefs = new Set();
+    for (const task of tasks) {
+      if (Array.isArray(task.at_refs)) {
+        for (const ref of task.at_refs) {
+          allRefs.add(ref);
+        }
+      }
+    }
+    assert.ok(allRefs.has('relative'), 'tasks must include at least one "relative" at_ref');
+    assert.ok(allRefs.has('tilde'), 'tasks must include at least one "tilde" at_ref');
+    assert.ok(allRefs.has('project-relative'), 'tasks must include at least one "project-relative" at_ref');
+  });
+
+  it('claude-only tasks exist for tilde refs', () => {
+    const tasks = loadTasks();
+    const tildeTasks = tasks.filter(t => Array.isArray(t.at_refs) && t.at_refs.includes('tilde'));
+    assert.ok(tildeTasks.length > 0, 'must have at least one task with tilde at_ref');
+    for (const task of tildeTasks) {
+      assert.strictEqual(
+        task.runtime_filter,
+        'claude-only',
+        `task ${task.id} with tilde ref must have runtime_filter === "claude-only"`
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Structural evaluator
+// ---------------------------------------------------------------------------
+
+describe('structural evaluator', () => {
+  it('passes valid JSON output with correct fields', () => {
+    const taskDef = {
+      id: 'test-json',
+      at_refs: ['none'],
+      expected: {
+        format: 'json_block',
+        required_fields: ['title', 'area'],
+      },
+    };
+    const rawOutput = JSON.stringify({ title: 'Fix bug', area: 'cli' });
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(result.format_compliance, true, 'format_compliance should be true');
+    assert.strictEqual(result.completeness, true, 'completeness should be true');
+    assert.strictEqual(result.pass, true, 'pass should be true');
+  });
+
+  it('fails when required fields are missing', () => {
+    const taskDef = {
+      id: 'test-missing-fields',
+      at_refs: ['none'],
+      expected: {
+        format: 'json_block',
+        required_fields: ['title', 'area', 'priority'],
+      },
+    };
+    // Output is missing 'priority'
+    const rawOutput = JSON.stringify({ title: 'Fix bug', area: 'cli' });
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(result.completeness, false, 'completeness should be false when field is missing');
+    assert.strictEqual(result.pass, false, 'pass should be false when completeness fails');
+  });
+
+  it('fails when forbidden content is present', () => {
+    const taskDef = {
+      id: 'test-forbidden',
+      at_refs: ['none'],
+      expected: {
+        format: 'any',
+        not_contains: ['apology', 'sorry'],
+      },
+    };
+    const rawOutput = 'I am sorry I cannot complete this task.';
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(result.correctness, false, 'correctness should be false when forbidden content present');
+    assert.strictEqual(result.pass, false, 'pass should be false');
+  });
+
+  it('passes markdown format check', () => {
+    const taskDef = {
+      id: 'test-markdown',
+      at_refs: ['none'],
+      expected: {
+        format: 'markdown',
+      },
+    };
+    const rawOutput = '# Phase Plan\n\n## Objective\n\nTest plan content.';
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(result.format_compliance, true, 'markdown with headings should pass format check');
+  });
+
+  it('extracts JSON from code blocks', () => {
+    const taskDef = {
+      id: 'test-code-block',
+      at_refs: ['none'],
+      expected: {
+        format: 'json_block',
+        required_fields: ['name'],
+      },
+    };
+    const rawOutput = 'Here is the result:\n\n```json\n{"name": "gsd-test"}\n```';
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(result.format_compliance, true, 'should extract JSON from code block');
+    assert.strictEqual(result.completeness, true, 'completeness should pass with required field present');
+  });
+
+  it('handles empty output gracefully', () => {
+    const taskDef = {
+      id: 'test-empty',
+      at_refs: ['none'],
+      expected: { format: 'json_block' },
+    };
+    let result;
+    assert.doesNotThrow(() => {
+      result = evaluateOutput(taskDef, '');
+    }, 'evaluateOutput must not throw on empty input');
+    assert.strictEqual(result.pass, false, 'empty output should not pass');
+  });
+
+  it('reports token efficiency', () => {
+    const taskDef = {
+      id: 'test-token-efficiency',
+      at_refs: ['none'],
+      expected: { format: 'any' },
+    };
+    const rawOutput = 'Hello, this is a test output.';
+    const result = evaluateOutput(taskDef, rawOutput);
+    assert.strictEqual(
+      result.token_efficiency.output_chars,
+      rawOutput.length,
+      'output_chars must match rawOutput.length'
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Fixture isolation
+// ---------------------------------------------------------------------------
+
+describe('fixture isolation', () => {
+  it('copies fixture to unique temp directory', () => {
+    const dest = copyFixture(FIXTURE_BASE);
+    try {
+      assert.ok(fs.existsSync(dest), 'temp directory must exist after copyFixture');
+      assert.ok(
+        fs.existsSync(path.join(dest, '.planning', 'STATE.md')),
+        'copied fixture must contain .planning/STATE.md'
+      );
+    } finally {
+      cleanupFixture(dest);
+    }
+  });
+
+  it('copied fixture has independent state', () => {
+    const dest1 = copyFixture(FIXTURE_BASE);
+    const dest2 = copyFixture(FIXTURE_BASE);
+    try {
+      // Write a file to dest1
+      const testFile = path.join(dest1, '.planning', 'test-isolation-marker.txt');
+      fs.writeFileSync(testFile, 'isolation test');
+
+      // dest2 must NOT have that file
+      const dest2TestFile = path.join(dest2, '.planning', 'test-isolation-marker.txt');
+      assert.ok(!fs.existsSync(dest2TestFile), 'file written to dest1 must not appear in dest2');
+    } finally {
+      cleanupFixture(dest1);
+      cleanupFixture(dest2);
+    }
+  });
+
+  it('cleanup removes temp directory', () => {
+    const dest = copyFixture(FIXTURE_BASE);
+    assert.ok(fs.existsSync(dest), 'temp directory must exist before cleanup');
+    cleanupFixture(dest);
+    assert.ok(!fs.existsSync(dest), 'temp directory must not exist after cleanup');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Results write
+// ---------------------------------------------------------------------------
+
+describe('results write', () => {
+  it('writes results JSON to timestamped file', () => {
+    const tmpBase = resolveTmpDir();
+    const tmpResultDir = fs.mkdtempSync(path.join(tmpBase, 'gsd-bench-results-'));
+
+    try {
+      // Replicate the writeResults logic from benchmark-runner.cjs
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}`;
+      const filename = `${timestamp}-baseline.json`;
+      const filepath = path.join(tmpResultDir, filename);
+
+      const mockResults = {
+        captured: now.toISOString(),
+        phase: 'pre-phase-39',
+        models: ['claude-sonnet-4.6'],
+        tasks: {
+          'micro-frontmatter-parse': {
+            'claude-sonnet-4.6': { pass: true, format_compliance: true, completeness: true, correctness: true },
+          },
+        },
+        at_ref_matrix: { relative: { claude: true } },
+        summary: {
+          total_tasks: 1,
+          models_tested: 1,
+          pass_rate_by_model: { 'claude-sonnet-4.6': '1/1' },
+        },
+      };
+
+      fs.writeFileSync(filepath, JSON.stringify(mockResults, null, 2), 'utf-8');
+      assert.ok(fs.existsSync(filepath), 'results file must exist after write');
+
+      // Verify it parses as valid JSON
+      assert.doesNotThrow(() => JSON.parse(fs.readFileSync(filepath, 'utf-8')));
+    } finally {
+      cleanup(tmpResultDir);
+    }
+  });
+
+  it('results JSON has required top-level fields', () => {
+    const tmpBase = resolveTmpDir();
+    const tmpResultDir = fs.mkdtempSync(path.join(tmpBase, 'gsd-bench-results2-'));
+
+    try {
+      const mockResults = {
+        captured: new Date().toISOString(),
+        models: ['claude-sonnet-4.6'],
+        tasks: {},
+        at_ref_matrix: {},
+        summary: { total_tasks: 0, models_tested: 1, pass_rate_by_model: {} },
+      };
+
+      const filepath = path.join(tmpResultDir, 'test-results.json');
+      fs.writeFileSync(filepath, JSON.stringify(mockResults, null, 2), 'utf-8');
+
+      const parsed = JSON.parse(fs.readFileSync(filepath, 'utf-8'));
+      const requiredFields = ['captured', 'models', 'tasks', 'at_ref_matrix', 'summary'];
+      for (const field of requiredFields) {
+        assert.ok(
+          field in parsed,
+          `results JSON must have top-level field: ${field}`
+        );
+      }
+    } finally {
+      cleanup(tmpResultDir);
+    }
+  });
+
+  it('results JSON does not contain stale hardcoded phase field', () => {
+    // F-B003: writeResults used to hardcode phase: 'pre-phase-39' which becomes stale.
+    // The benchmark-runner source must not emit this stale field.
+    const src = fs.readFileSync(path.join(BENCHMARKS_DIR, 'benchmark-runner.cjs'), 'utf-8');
+    assert.ok(
+      !src.includes("phase: 'pre-phase-"),
+      "benchmark-runner.cjs must not hardcode a 'phase: pre-phase-N' field in writeResults output"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Model filtering
+// ---------------------------------------------------------------------------
+
+describe('model filtering', () => {
+  it('--claude filters to claude group only', () => {
+    const config = loadConfig();
+    const models = filterModels(config, { runClaude: true, runCopilot: false, filterModelId: null });
+    assert.ok(models.length > 0, 'should return at least one claude model');
+    for (const m of models) {
+      assert.strictEqual(m.group, 'claude', `model ${m.id} must be in claude group`);
+    }
+  });
+
+  it('--copilot filters to copilot group only', () => {
+    const config = loadConfig();
+    const models = filterModels(config, { runClaude: false, runCopilot: true, filterModelId: null });
+    assert.ok(models.length > 0, 'should return at least one copilot model');
+    for (const m of models) {
+      assert.strictEqual(m.group, 'copilot', `model ${m.id} must be in copilot group`);
+    }
+  });
+
+  it('--claude --copilot includes both groups', () => {
+    const config = loadConfig();
+    const models = filterModels(config, { runClaude: true, runCopilot: true, filterModelId: null });
+    const groups = new Set(models.map(m => m.group));
+    assert.ok(groups.has('claude'), 'result must include claude group');
+    assert.ok(groups.has('copilot'), 'result must include copilot group');
+  });
+
+  it('--model filters to single model', () => {
+    const config = loadConfig();
+    const models = filterModels(config, { runClaude: false, runCopilot: false, filterModelId: 'claude-opus-4.6' });
+    assert.strictEqual(models.length, 1, 'filterModelId should return exactly 1 model');
+    assert.strictEqual(models[0].id, 'claude-opus-4.6');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Ref substitution
+// ---------------------------------------------------------------------------
+
+describe('ref substitution', () => {
+  it('replaces {{REF_PREFIX}} with model ref_prefix', () => {
+    const model = { ref_prefix: '~/.claude/gsd-ng' };
+    const result = substituteRefs('Read @{{REF_PREFIX}}/file.md', model);
+    assert.strictEqual(result, 'Read @~/.claude/gsd-ng/file.md');
+  });
+
+  it('leaves prompt unchanged when no {{REF_PREFIX}}', () => {
+    const model = { ref_prefix: '~/.claude/gsd-ng' };
+    const prompt = 'Read @.planning/STATE.md and summarize.';
+    const result = substituteRefs(prompt, model);
+    assert.strictEqual(result, prompt, 'prompt without {{REF_PREFIX}} must be returned unchanged');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Task filtering — F-B001
+// ---------------------------------------------------------------------------
+
+describe('task filtering', () => {
+  const mockModels = {
+    claudeOnly: [{ id: 'claude-sonnet-4.6', group: 'claude' }],
+    copilotOnly: [{ id: 'copilot-gpt-5-mini', group: 'copilot' }],
+    both: [
+      { id: 'claude-sonnet-4.6', group: 'claude' },
+      { id: 'copilot-gpt-5-mini', group: 'copilot' },
+    ],
+  };
+
+  const mockTasks = [
+    { id: 'task-all', runtime_filter: 'all' },
+    { id: 'task-claude-only', runtime_filter: 'claude-only' },
+    { id: 'task-copilot-only', runtime_filter: 'copilot-only' },
+  ];
+
+  it('claude-only tasks are excluded when only copilot models run', () => {
+    const result = filterTasks(mockTasks, mockModels.copilotOnly);
+    const ids = result.map((t) => t.id);
+    assert.ok(!ids.includes('task-claude-only'), 'claude-only task must be excluded for copilot-only run');
+    assert.ok(ids.includes('task-all'), '"all" task must be included');
+    assert.ok(ids.includes('task-copilot-only'), 'copilot-only task must be included');
+  });
+
+  it('copilot-only tasks are excluded when only claude models run', () => {
+    const result = filterTasks(mockTasks, mockModels.claudeOnly);
+    const ids = result.map((t) => t.id);
+    assert.ok(!ids.includes('task-copilot-only'), 'copilot-only task must be excluded for claude-only run');
+    assert.ok(ids.includes('task-all'), '"all" task must be included');
+    assert.ok(ids.includes('task-claude-only'), 'claude-only task must be included');
+  });
+
+  it('"all" tasks pass through regardless of model group', () => {
+    for (const models of [mockModels.claudeOnly, mockModels.copilotOnly, mockModels.both]) {
+      const result = filterTasks(mockTasks, models);
+      assert.ok(
+        result.some((t) => t.id === 'task-all'),
+        '"all" task must always be included',
+      );
+    }
+  });
+
+  it('all tasks included when both claude and copilot models run', () => {
+    const result = filterTasks(mockTasks, mockModels.both);
+    assert.strictEqual(result.length, mockTasks.length, 'all tasks must be included when both groups present');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. @ ref matrix — F-B001
+// ---------------------------------------------------------------------------
+
+describe('@ ref matrix', () => {
+  it('aggregates at_ref_verified by ref type and runtime', () => {
+    const resultsMap = {
+      'task-1': {
+        'claude-sonnet-4.6': { at_ref_verified: { relative: true, tilde: false } },
+        'copilot-gpt-5-mini': { at_ref_verified: { relative: false } },
+      },
+      'task-2': {
+        'claude-sonnet-4.6': { at_ref_verified: { tilde: true } },
+      },
+    };
+
+    const matrix = buildAtRefMatrix(resultsMap);
+
+    // relative: claude=true (from task-1), copilot=false (from task-1)
+    assert.strictEqual(matrix.relative.claude, true, 'claude relative should be true');
+    assert.strictEqual(matrix.relative.copilot, false, 'copilot relative should be false');
+
+    // tilde: claude=true (true from task-2 overrides false from task-1)
+    assert.strictEqual(matrix.tilde.claude, true, 'claude tilde should be true after aggregation');
+  });
+
+  it('returns empty matrix for empty resultsMap', () => {
+    const matrix = buildAtRefMatrix({});
+    assert.deepStrictEqual(matrix, {}, 'empty resultsMap should produce empty matrix');
+  });
+
+  it('skips results without at_ref_verified field', () => {
+    const resultsMap = {
+      'task-1': {
+        'claude-sonnet-4.6': { pass: true }, // no at_ref_verified
+      },
+    };
+    const matrix = buildAtRefMatrix(resultsMap);
+    assert.deepStrictEqual(matrix, {}, 'results without at_ref_verified must be skipped');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. compareResults — F-B002
+// ---------------------------------------------------------------------------
+
+describe('compareResults', () => {
+  function makeResult(pass, durationMs) {
+    return {
+      pass,
+      format_compliance: pass,
+      completeness: pass,
+      correctness: pass,
+      duration_ms: durationMs || null,
+    };
+  }
+
+  it('classifies pass→fail as regression', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(false, 1200) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.regressions.length, 1, 'should have 1 regression');
+    assert.strictEqual(report.regressions[0].taskId, 'task-1');
+    assert.strictEqual(report.regressions[0].modelId, 'model-a');
+    assert.strictEqual(report.improvements.length, 0);
+    assert.strictEqual(report.unchanged.length, 0);
+  });
+
+  it('classifies fail→pass as improvement', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(false) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.improvements.length, 1, 'should have 1 improvement');
+    assert.strictEqual(report.regressions.length, 0);
+    assert.strictEqual(report.unchanged.length, 0);
+  });
+
+  it('classifies same pass/fail as unchanged', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.unchanged.length, 1, 'should have 1 unchanged');
+    assert.strictEqual(report.regressions.length, 0);
+    assert.strictEqual(report.improvements.length, 0);
+  });
+
+  it('classifies task+model in current but not baseline as added', () => {
+    const baseline = { tasks: {}, models: [] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.added.length, 1, 'new task+model should be added');
+    assert.strictEqual(report.added[0].taskId, 'task-1');
+  });
+
+  it('classifies task+model in baseline but not current as removed', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true) } }, models: ['model-a'] };
+    const current = { tasks: {}, models: [] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.removed.length, 1, 'missing task+model should be removed');
+    assert.strictEqual(report.removed[0].taskId, 'task-1');
+  });
+
+  it('flags duration delta >10% as durationChange', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true, 1200) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.durationChanges.length, 1, 'should flag >10% duration change');
+    assert.ok(parseFloat(report.durationChanges[0].pctChange) >= 10);
+  });
+
+  it('does not flag duration delta <10% as durationChange', () => {
+    const baseline = { tasks: { 'task-1': { 'model-a': makeResult(true, 1000) } }, models: ['model-a'] };
+    const current = { tasks: { 'task-1': { 'model-a': makeResult(true, 1050) } }, models: ['model-a'] };
+    const report = compareResults(baseline, current);
+    assert.strictEqual(report.durationChanges.length, 0, 'should not flag <10% duration change');
+  });
+
+  it('handles empty task sets without throwing', () => {
+    assert.doesNotThrow(() => compareResults({ tasks: {} }, { tasks: {} }));
+  });
+});

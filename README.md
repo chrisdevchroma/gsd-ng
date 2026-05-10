@@ -1,63 +1,36 @@
 <div align="center">
 
-# GET SHIT DONE
+# GET SHIT DONE NG
 
-**A light-weight and powerful meta-prompting, context engineering and spec-driven development system for Claude Code, OpenCode, Gemini CLI, and Codex.**
+**gsd-ng is a next-generation hard fork of GSD, optimized for Claude Code and GitHub Copilot CLI.**
+
+Forked from [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done).
+
+**A light-weight and powerful meta-prompting, context engineering and spec-driven development system.**
 
 **Solves context rot — the quality degradation that happens as Claude fills its context window.**
 
-[![npm version](https://img.shields.io/npm/v/get-shit-done-cc?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-cc)
-[![npm downloads](https://img.shields.io/npm/dm/get-shit-done-cc?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/get-shit-done-cc)
-[![Tests](https://img.shields.io/github/actions/workflow/status/glittercowboy/get-shit-done/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/glittercowboy/get-shit-done/actions/workflows/test.yml)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/gsd)
-[![X (Twitter)](https://img.shields.io/badge/X-@gsd__foundation-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/gsd_foundation)
-[![$GSD Token](https://img.shields.io/badge/$GSD-Dexscreener-1C1C1C?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIgZmlsbD0iIzAwRkYwMCIvPjwvc3ZnPg==&logoColor=00FF00)](https://dexscreener.com/solana/dwudwjvan7bzkw9zwlbyv6kspdlvhwzrqy6ebk8xzxkv)
-[![GitHub stars](https://img.shields.io/github/stars/glittercowboy/get-shit-done?style=for-the-badge&logo=github&color=181717)](https://github.com/glittercowboy/get-shit-done)
+[![npm version](https://img.shields.io/npm/v/gsd-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/gsd-ng)
+[![npm downloads](https://img.shields.io/npm/dm/gsd-ng?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/gsd-ng)
+[![Tests](https://img.shields.io/github/actions/workflow/status/chrisdevchroma/gsd-ng/test.yml?branch=main&style=for-the-badge&logo=github&label=Tests)](https://github.com/chrisdevchroma/gsd-ng/actions/workflows/test.yml)
+[![GitHub stars](https://img.shields.io/github/stars/chrisdevchroma/gsd-ng?style=for-the-badge&logo=github&color=181717)](https://github.com/chrisdevchroma/gsd-ng)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 <br>
 
 ```bash
-npx get-shit-done-cc@latest
+npx gsd-ng@latest
 ```
 
-**Works on Mac, Windows, and Linux.**
+**Works on Mac and Linux.**
 
 <br>
 
 ![GSD Install](assets/terminal.svg)
 
-<br>
-
-*"If you know clearly what you want, this WILL build it for you. No bs."*
-
-*"I've done SpecKit, OpenSpec and Taskmaster — this has produced the best results for me."*
-
-*"By far the most powerful addition to my Claude Code. Nothing over-engineered. Literally just gets shit done."*
-
-<br>
-
-**Trusted by engineers at Amazon, Google, Shopify, and Webflow.**
-
-[Why I Built This](#why-i-built-this) · [How It Works](#how-it-works) · [Commands](#commands) · [Why It Works](#why-it-works) · [User Guide](docs/USER-GUIDE.md)
+[How It Works](#how-it-works) · [Commands](#commands) · [Why It Works](#why-it-works) · [User Guide](docs/USER-GUIDE.md)
 
 </div>
-
----
-
-## Why I Built This
-
-I'm a solo developer. I don't write code — Claude Code does.
-
-Other spec-driven development tools exist; BMAD, Speckit... But they all seem to make things way more complicated than they need to be (sprint ceremonies, story points, stakeholder syncs, retrospectives, Jira workflows) or lack real big picture understanding of what you're building. I'm not a 50-person software company. I don't want to play enterprise theater. I'm just a creative person trying to build great things that work.
-
-So I built GSD. The complexity is in the system, not in your workflow. Behind the scenes: context engineering, XML prompt formatting, subagent orchestration, state management. What you see: a few commands that just work.
-
-The system gives Claude everything it needs to do the work *and* verify it. I trust the workflow. It just does a good job.
-
-That's what this is. No enterprise roleplay bullshit. Just an incredibly effective system for building cool stuff consistently using Claude Code.
-
-— **TÂCHES**
 
 ---
 
@@ -76,112 +49,132 @@ People who want to describe what they want and have it built correctly — witho
 ## Getting Started
 
 ```bash
-npx get-shit-done-cc@latest
+npx gsd-ng@latest
 ```
 
-The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, Gemini, Codex, or all
-2. **Location** — Global (all projects) or local (current project only)
+The installer prompts you to choose your install location (global or local project).
 
 Verify with:
-- Claude Code / Gemini: `/gsd:help`
-- OpenCode: `/gsd-help`
-- Codex: `$gsd-help`
-
-> [!NOTE]
-> Codex installation uses skills (`skills/gsd-*/SKILL.md`) rather than custom prompts.
+- Claude Code: `/gsd:help`
+- Copilot CLI: `gsd-help` (skills format)
 
 ### Staying Updated
 
 GSD evolves fast. Update periodically:
 
 ```bash
-npx get-shit-done-cc@latest
+npx gsd-ng@latest
 ```
 
 <details>
 <summary><strong>Non-interactive Install (Docker, CI, Scripts)</strong></summary>
 
 ```bash
-# Claude Code
-npx get-shit-done-cc --claude --global   # Install to ~/.claude/
-npx get-shit-done-cc --claude --local    # Install to ./.claude/
-
-# OpenCode (open source, free models)
-npx get-shit-done-cc --opencode --global # Install to ~/.config/opencode/
-
-# Gemini CLI
-npx get-shit-done-cc --gemini --global   # Install to ~/.gemini/
-
-# Codex (skills-first)
-npx get-shit-done-cc --codex --global    # Install to ~/.codex/
-npx get-shit-done-cc --codex --local     # Install to ./.codex/
-
-# All runtimes
-npx get-shit-done-cc --all --global      # Install to all directories
+npx gsd-ng --runtime claude --global    # Install to ~/.claude/
+npx gsd-ng --runtime claude --local     # Install to ./.claude/
+npx gsd-ng --runtime copilot --local    # Install for Copilot CLI to ./.github/
+npx gsd-ng --runtime copilot --global   # Install for Copilot CLI to ~/.copilot/
 ```
 
-Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
-Use `--claude`, `--opencode`, `--gemini`, `--codex`, or `--all` to skip the runtime prompt.
+Use `--runtime claude` or `--runtime copilot` with `--global` (`-g`) or `--local` (`-l`) to skip the interactive prompts.
 
 </details>
 
 <details>
-<summary><strong>Development Installation</strong></summary>
+<summary><strong>Development / Building from Source</strong></summary>
 
-Clone the repository and run the installer locally:
+Use this when working on a development branch or testing local changes.
+
+**1. Clone and checkout branch:**
 
 ```bash
-git clone https://github.com/glittercowboy/get-shit-done.git
-cd get-shit-done
-node bin/install.js --claude --local
+git clone https://github.com/chrisdevchroma/gsd-ng.git
+cd gsd-ng
+git checkout <branch-name>
 ```
 
-Installs to `./.claude/` for testing modifications before contributing.
+**2. Install dependencies:**
+
+```bash
+npm install
+```
+
+This installs dev dependencies (esbuild, c8) needed for building and testing.
+
+**3. Build hooks:**
+
+```bash
+npm run build:hooks
+```
+
+Copies hook scripts to `hooks/dist/`. The installer expects built hooks in `hooks/dist/`, so this step is required before installing.
+
+**4. Install locally into your project:**
+
+Run from inside the target project directory (not the gsd-ng clone):
+
+```bash
+node bin/install.js --runtime claude --local
+node bin/install.js --runtime copilot --local   # For Copilot CLI
+```
+
+Installs to `./.claude/` (or `./.github/` for Copilot).
+
+**5. Run tests:**
+
+```bash
+npm test
+```
+
+**6. Run tests with coverage:**
+
+```bash
+npm run test:coverage
+```
 
 </details>
 
-### Recommended: Skip Permissions Mode
+### Sandbox Mode
 
-GSD is designed for frictionless automation. Run Claude Code with:
+Sandbox mode is configured automatically during install. The installer seeds `settings.json` with sandbox settings and pre-approved permissions for all GSD operations.
+
+To opt out during install, use `--no-seed-sandbox-config`.
+
+> [!TIP]
+> If GSD ever triggers an approval dialog in sandbox mode, that's a bug -- [open an issue](https://github.com/chrisdevchroma/gsd-ng/issues).
+
+<details>
+<summary><strong>Alternative: Skip Permissions Mode</strong></summary>
+
+If you prefer to skip all permission checks:
 
 ```bash
 claude --dangerously-skip-permissions
 ```
 
-> [!TIP]
-> This is how GSD is intended to be used — stopping to approve `date` and `git commit` 50 times defeats the purpose.
+This disables all safety checks. Sandbox mode (above) is preferred because it provides the same frictionless experience while maintaining filesystem isolation.
+
+</details>
 
 <details>
-<summary><strong>Alternative: Granular Permissions</strong></summary>
+<summary><strong>Alternative: Custom Granular Permissions</strong></summary>
 
-If you prefer not to use that flag, add this to your project's `.claude/settings.json`:
+If you want to customize which commands are allowed, add this to your project's `.claude/settings.json`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(date:*)",
-      "Bash(echo:*)",
-      "Bash(cat:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(wc:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(sort:*)",
-      "Bash(grep:*)",
-      "Bash(tr:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git status:*)",
-      "Bash(git log:*)",
-      "Bash(git diff:*)",
-      "Bash(git tag:*)"
+      "Bash(date *)",
+      "Bash(git *)",
+      "Bash(node *)",
+      "Bash(npm *)"
     ]
   }
 }
 ```
+
+See `gsd-ng/gsd-ng/templates/settings-sandbox.json` for the complete list of GSD-required commands.
 
 </details>
 
@@ -277,22 +270,22 @@ Plans are grouped into "waves" based on dependencies. Within each wave, plans ru
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  PHASE EXECUTION                                                     │
+│  PHASE EXECUTION                                                    │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
+│                                                                     │
 │  WAVE 1 (parallel)          WAVE 2 (parallel)          WAVE 3       │
-│  ┌─────────┐ ┌─────────┐    ┌─────────┐ ┌─────────┐    ┌─────────┐ │
-│  │ Plan 01 │ │ Plan 02 │ →  │ Plan 03 │ │ Plan 04 │ →  │ Plan 05 │ │
-│  │         │ │         │    │         │ │         │    │         │ │
-│  │ User    │ │ Product │    │ Orders  │ │ Cart    │    │ Checkout│ │
-│  │ Model   │ │ Model   │    │ API     │ │ API     │    │ UI      │ │
-│  └─────────┘ └─────────┘    └─────────┘ └─────────┘    └─────────┘ │
+│  ┌─────────┐ ┌─────────┐    ┌─────────┐ ┌─────────┐    ┌─────────┐  │
+│  │ Plan 01 │ │ Plan 02 │ →  │ Plan 03 │ │ Plan 04 │ →  │ Plan 05 │  │
+│  │         │ │         │    │         │ │         │    │         │  │
+│  │ User    │ │ Product │    │ Orders  │ │ Cart    │    │ Checkout│  │
+│  │ Model   │ │ Model   │    │ API     │ │ API     │    │ UI      │  │
+│  └─────────┘ └─────────┘    └─────────┘ └─────────┘    └─────────┘  │
 │       │           │              ↑           ↑              ↑       │
 │       └───────────┴──────────────┴───────────┘              │       │
 │              Dependencies: Plan 03 needs Plan 01            │       │
 │                          Plan 04 needs Plan 02              │       │
 │                          Plan 05 needs Plans 03 + 04        │       │
-│                                                                      │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -365,10 +358,27 @@ Then `/gsd:new-milestone` starts the next version — same flow as `new-project`
 Quick mode gives you GSD guarantees (atomic commits, state tracking) with a faster path:
 
 - **Same agents** — Planner + executor, same quality
-- **Skips optional steps** — No research, no plan checker, no verifier
+- **Skips optional steps** — No research, no plan checker, no verifier by default
 - **Separate tracking** — Lives in `.planning/quick/`, not phases
 
-Use for: bug fixes, small features, config changes, one-off tasks.
+**`--discuss` flag:** Lightweight discussion to surface gray areas before planning.
+
+**`--research` flag:** Spawns a focused researcher before planning. Investigates implementation approaches, library options, and pitfalls. Use when you're unsure how to approach a task.
+
+**`--verify` flag:** Enables plan-checking (max 2 iterations) and post-execution verification.
+
+**`--all` flag:** Enables all optional stages (discuss + research + verify).
+
+Flags are composable: `--discuss --research --verify` gives discussion + research + plan-checking + verification.
+
+**Quick Mode Flags**
+
+| Flag | What it adds |
+|------|-------------|
+| `--discuss` | Lightweight discussion phase, captures decisions in CONTEXT.md |
+| `--research` | Spawns research agent, produces RESEARCH.md |
+| `--verify` | Plan-checking (max 2 iterations) + post-execution verification |
+| `--all` | All of the above (discuss + research + verify) |
 
 ```
 /gsd:quick
@@ -383,9 +393,9 @@ Use for: bug fixes, small features, config changes, one-off tasks.
 
 ### Context Engineering
 
-Claude Code is incredibly powerful *if* you give it the context it needs. Most people don't.
+Claude Code is powerful — but without structured context, results degrade as projects grow. Context gets lost, quality drops, and code stops fitting together.
 
-GSD handles it for you:
+GSD handles context for you:
 
 | File | What it does |
 |------|--------------|
@@ -397,8 +407,6 @@ GSD handles it for you:
 | `PLAN.md` | Atomic task with XML structure, verification steps |
 | `SUMMARY.md` | What happened, what changed, committed to history |
 | `todos/` | Captured ideas and tasks for later work |
-
-Size limits based on where Claude's quality degrades. Stay under, get consistent excellence.
 
 ### XML Prompt Formatting
 
@@ -417,8 +425,6 @@ Every plan is structured XML optimized for Claude:
   <done>Valid credentials return cookie, invalid return 401</done>
 </task>
 ```
-
-Precise instructions. No guessing. Verification built in.
 
 ### Multi-Agent Orchestration
 
@@ -449,8 +455,6 @@ lmn012o feat(08-02): create registration endpoint
 > [!NOTE]
 > **Benefits:** Git bisect finds exact failing task. Each task independently revertable. Clear history for Claude in future sessions. Better observability in AI-automated workflow.
 
-Every commit is surgical, traceable, and meaningful.
-
 ### Modular by Design
 
 - Add phases to current milestone
@@ -472,7 +476,8 @@ You're never locked in. The system adapts.
 | `/gsd:discuss-phase [N] [--auto]` | Capture implementation decisions before planning |
 | `/gsd:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
 | `/gsd:execute-phase <N>` | Execute all plans in parallel waves, verify when complete |
-| `/gsd:verify-work [N]` | Manual user acceptance testing ¹ |
+| `/gsd:verify-work [N]` | Manual user acceptance testing |
+| `/gsd:research-phase [N]` | Research how to implement a phase (standalone -- usually use /gsd:plan-phase instead) |
 | `/gsd:audit-milestone` | Verify milestone achieved its definition of done |
 | `/gsd:complete-milestone` | Archive milestone, tag release |
 | `/gsd:new-milestone [name]` | Start next version: questions → research → requirements → roadmap |
@@ -484,7 +489,6 @@ You're never locked in. The system adapts.
 | `/gsd:progress` | Where am I? What's next? |
 | `/gsd:help` | Show all commands and usage guide |
 | `/gsd:update` | Update GSD with changelog preview |
-| `/gsd:join-discord` | Join the GSD Discord community |
 
 ### Brownfield
 
@@ -501,6 +505,24 @@ You're never locked in. The system adapts.
 | `/gsd:remove-phase [N]` | Remove future phase, renumber |
 | `/gsd:list-phase-assumptions [N]` | See Claude's intended approach before planning |
 | `/gsd:plan-milestone-gaps` | Create phases to close gaps from audit |
+| `/gsd:create-pr` | Create a pull request or merge request from GSD work |
+| `/gsd:squash <phase> [--strategy single\|per-plan\|logical] [--dry-run]` | Squash phase commits into clean history for code review |
+| `/gsd:validate-phase [N]` | Retroactively audit and fill Nyquist validation gaps for a completed phase |
+
+### Issue Tracking
+
+| Command | What it does |
+|---------|--------------|
+| `/gsd:import-issues [issue]` | Import external issues from GitHub/GitLab/Forgejo/Gitea as GSD todos |
+| `/gsd:sync-issues [phase]` | Manually sync GSD planning state with external issue trackers |
+| `/gsd:divergence [--refresh] [--init]` | Track upstream fork divergence and triage pending commits |
+
+### UI & Design
+
+| Command | What it does |
+|---------|--------------|
+| `/gsd:ui-phase [N]` | Generate UI design contract (UI-SPEC.md) for frontend phases |
+| `/gsd:ui-review [N]` | Retroactive 6-pillar visual audit of implemented frontend code |
 
 ### Session
 
@@ -518,10 +540,15 @@ You're never locked in. The system adapts.
 | `/gsd:add-todo [desc]` | Capture idea for later |
 | `/gsd:check-todos` | List pending todos |
 | `/gsd:debug [desc]` | Systematic debugging with persistent state |
-| `/gsd:quick [--full] [--discuss]` | Execute ad-hoc task with GSD guarantees (`--full` adds plan-checking and verification, `--discuss` gathers context first) |
+| `/gsd:quick [--verify] [--discuss] [--research] [--all]` | Execute ad-hoc task with GSD guarantees (`--verify` adds plan-checking and verification, `--discuss` gathers context first, `--research` investigates approaches before planning, `--all` enables all optional stages) |
 | `/gsd:health [--repair]` | Validate `.planning/` directory integrity, auto-repair with `--repair` |
-
-<sup>¹ Contributed by reddit user OracleGreyBeard</sup>
+| `/gsd:add-tests <phase> [instructions]` | Generate tests for a completed phase based on UAT criteria and implementation |
+| `/gsd:cleanup` | Archive phase directories from completed milestones |
+| `/gsd:do <description>` | Route freeform text to the right GSD command automatically |
+| `/gsd:note <text> \| list \| promote <N>` | Zero-friction idea capture, list notes, or promote to todos |
+| `/gsd:reapply-patches` | Reapply local modifications after a GSD update |
+| `/gsd:seed-memories` | Detect workspace topology and seed appropriate guardrail memories |
+| `/gsd:stats` | Display project statistics -- phases, plans, requirements, git metrics, and timeline |
 
 ---
 
@@ -594,58 +621,26 @@ At milestone completion, GSD offers squash merge (recommended) or merge with his
 
 ---
 
-## Security
-
-### Protecting Sensitive Files
-
-GSD's codebase mapping and analysis commands read files to understand your project. **Protect files containing secrets** by adding them to Claude Code's deny list:
-
-1. Open Claude Code settings (`.claude/settings.json` or global)
-2. Add sensitive file patterns to the deny list:
-
-```json
-{
-  "permissions": {
-    "deny": [
-      "Read(.env)",
-      "Read(.env.*)",
-      "Read(**/secrets/*)",
-      "Read(**/*credential*)",
-      "Read(**/*.pem)",
-      "Read(**/*.key)"
-    ]
-  }
-}
-```
-
-This prevents Claude from reading these files entirely, regardless of what commands you run.
-
-> [!IMPORTANT]
-> GSD includes built-in protections against committing secrets, but defense-in-depth is best practice. Deny read access to sensitive files as a first line of defense.
-
----
-
 ## Troubleshooting
 
 **Commands not found after install?**
 - Restart your runtime to reload commands/skills
 - Verify files exist in `~/.claude/commands/gsd/` (global) or `./.claude/commands/gsd/` (local)
-- For Codex, verify skills exist in `~/.codex/skills/gsd-*/SKILL.md` (global) or `./.codex/skills/gsd-*/SKILL.md` (local)
 
 **Commands not working as expected?**
 - Run `/gsd:help` to verify installation
-- Re-run `npx get-shit-done-cc` to reinstall
+- Re-run `npx gsd-ng` to reinstall
 
 **Updating to the latest version?**
 ```bash
-npx get-shit-done-cc@latest
+npx gsd-ng@latest
 ```
 
 **Using Docker or containerized environments?**
 
 If file reads fail with tilde paths (`~/.claude/...`), set `CLAUDE_CONFIG_DIR` before installing:
 ```bash
-CLAUDE_CONFIG_DIR=/home/youruser/.claude npx get-shit-done-cc --global
+CLAUDE_CONFIG_DIR=/home/youruser/.claude npx gsd-ng --runtime claude --global
 ```
 This ensures absolute paths are used instead of `~` which may not expand correctly in containers.
 
@@ -654,43 +649,20 @@ This ensures absolute paths are used instead of `~` which may not expand correct
 To remove GSD completely:
 
 ```bash
-# Global installs
-npx get-shit-done-cc --claude --global --uninstall
-npx get-shit-done-cc --opencode --global --uninstall
-npx get-shit-done-cc --codex --global --uninstall
+# Claude Code - global installs
+npx gsd-ng --runtime claude --global --uninstall
 
-# Local installs (current project)
-npx get-shit-done-cc --claude --local --uninstall
-npx get-shit-done-cc --opencode --local --uninstall
-npx get-shit-done-cc --codex --local --uninstall
+# Claude Code - local installs (current project)
+npx gsd-ng --runtime claude --local --uninstall
+
+# Copilot CLI - local installs
+npx gsd-ng --runtime copilot --local --uninstall
+
+# Copilot CLI - global installs
+npx gsd-ng --runtime copilot --global --uninstall
 ```
 
-This removes all GSD commands, agents, hooks, and settings while preserving your other configurations.
-
----
-
-## Community Ports
-
-OpenCode, Gemini CLI, and Codex are now natively supported via `npx get-shit-done-cc`.
-
-These community ports pioneered multi-runtime support:
-
-| Project | Platform | Description |
-|---------|----------|-------------|
-| [gsd-opencode](https://github.com/rokicool/gsd-opencode) | OpenCode | Original OpenCode adaptation |
-| gsd-gemini (archived) | Gemini CLI | Original Gemini adaptation by uberfuzzy |
-
----
-
-## Star History
-
-<a href="https://star-history.com/#glittercowboy/get-shit-done&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=glittercowboy/get-shit-done&type=Date" />
- </picture>
-</a>
+This removes all GSD commands/skills, agents, hooks, and settings while preserving your other configurations.
 
 ---
 

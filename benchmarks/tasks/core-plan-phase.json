@@ -1,0 +1,16 @@
+{
+  "id": "core-plan-phase",
+  "type": "core",
+  "description": "Create a PLAN.md for the in-progress Phase 3 (bug fix) based on fixture project state",
+  "prompt": "You are working in a GSD project. Read @.planning/STATE.md, @.planning/ROADMAP.md, and @.planning/phases/03-bug-fix/03-CONTEXT.md. Create a plan (PLAN.md content) for Phase 3. The plan should have: YAML frontmatter with phase, plan, type, wave, depends_on, files_modified, and autonomous fields. It should have an objective, tasks with name/files/action/verify/done, and success criteria. Output the full PLAN.md content.",
+  "timeout_ms": 120000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": ["objective", "tasks"],
+    "contains": ["phase:", "wave:", "files_modified:", "parseConfig", "utils.js"],
+    "not_contains": [],
+    "output_length_hint": { "min": 500, "max": 5000 }
+  }
+}

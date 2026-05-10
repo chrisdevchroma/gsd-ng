@@ -1,0 +1,15 @@
+{
+  "id": "micro-ref-injection-tilde",
+  "type": "micro",
+  "description": "Verify tilde @ reference resolves and content is injected (Claude-only)",
+  "prompt": "Read the file @{{REF_PREFIX}}/references/git-integration.md and tell me the first heading in that file. Output ONLY the heading text.",
+  "timeout_ms": 30000,
+  "at_refs": ["tilde"],
+  "runtime_filter": "claude-only",
+  "expected": {
+    "format": "text",
+    "contains": [],
+    "not_contains": ["not found", "error", "cannot"],
+    "output_length_hint": { "min": 5, "max": 200 }
+  }
+}

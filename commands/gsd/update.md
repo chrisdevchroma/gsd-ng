@@ -1,37 +1,28 @@
 ---
 name: gsd:update
-description: Update GSD to latest version with changelog display
+description: Update GSD to latest version via npm or GitHub Releases fallback
 allowed-tools:
   - Bash
   - AskUserQuestion
 ---
 
-<objective>
-Check for GSD updates, install if available, and display what changed.
 
-Routes to the update workflow which handles:
-- Version detection (local vs global installation)
-- npm version checking
-- Changelog fetching and display
-- User confirmation with clean install warning
-- Update execution and cache clearing
-- Restart reminder
-</objective>
+Run the update command in dry-run mode first, then ask for confirmation before executing:
 
-<execution_context>
-@~/.claude/get-shit-done/workflows/update.md
-</execution_context>
+1. Check for updates:
+!`node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" update --dry-run`
 
-<process>
-**Follow the update workflow** from `@~/.claude/get-shit-done/workflows/update.md`.
+2. Parse the result:
+   - If status is "already_current": tell the user "You're on the latest version (X.Y.Z)." and stop.
+   - If status is "ahead": tell the user "You're ahead of the latest release (installed X.Y.Z > latest A.B.C)." and stop.
+   - If status is "unknown_version": tell the user "No GSD installation found. Run: npx gsd-ng@latest" and stop.
+   - If status is "both_unavailable": tell the user the message from the result and stop.
 
-The workflow handles all logic including:
-1. Installed version detection (local/global)
-2. Latest version checking via npm
-3. Version comparison
-4. Changelog fetching and extraction
-5. Clean install warning display
-6. User confirmation
-7. Update execution
-8. Cache clearing
-</process>
+3. If update_available: show the user "Update available: {installed} -> {latest} (via {update_source})" and warn about clean install (commands/gsd/ and gsd-ng/ will be wiped and replaced; custom files preserved).
+
+4. Use {{USER_QUESTION_TOOL}} to ask "Proceed with update?" with options "Yes, update now" and "Cancel".
+
+5. If confirmed, execute with the install_type from dry-run result:
+!`node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" update --{install_type}`
+
+6. Show the result and remind user to restart Claude Code.

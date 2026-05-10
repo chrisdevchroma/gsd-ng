@@ -9,37 +9,64 @@ allowed-tools:
   - AskUserQuestion
 ---
 
+
 <objective>
 List all pending todos, allow selection, load full context for the selected todo, and route to appropriate action.
 
 Routes to the check-todos workflow which handles:
-- Todo counting and listing with area filtering
-- Interactive selection with full context loading
+- Todo data gathering via CLI (list-todos, recurring-due)
+- Interactive display and selection
+- Full context loading with file summaries
 - Roadmap correlation checking
-- Action routing (work now, add to phase, brainstorm, create phase)
+- Action routing (debug, quick task, plan phase, work now, brainstorm, create phase)
 - STATE.md updates and git commits
 </objective>
 
 <execution_context>
-@~/.claude/get-shit-done/workflows/check-todos.md
+@~/.claude/gsd-ng/workflows/check-todos.md
 </execution_context>
 
 <context>
 Arguments: $ARGUMENTS (optional area filter)
 
-Todo state and roadmap correlation are loaded in-workflow using `init todos` and targeted reads.
+Todo state and roadmap correlation are loaded in-workflow using `list-todos` and `recurring-due` CLI calls.
 </context>
 
+<tool_usage>
+CRITICAL: You MUST use the {{USER_QUESTION_TOOL}} tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real {{USER_QUESTION_TOOL}} tool call with the questions parameter.
+
+The {{USER_QUESTION_TOOL}} tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another {{USER_QUESTION_TOOL}}
+</tool_usage>
+
 <process>
-**Follow the check-todos workflow** from `@~/.claude/get-shit-done/workflows/check-todos.md`.
+**Follow the check-todos workflow** from `@~/.claude/gsd-ng/workflows/check-todos.md`.
 
 The workflow handles all logic including:
-1. Todo existence checking
-2. Area filtering
-3. Interactive listing and selection
-4. Full context loading with file summaries
-5. Roadmap correlation checking
-6. Action offering and execution
-7. STATE.md updates
-8. Git commits
+1. CLI data gathering (list-todos for pending, recurring-due for reminders)
+2. Interactive display and selection
+3. Full context loading with file summaries
+4. Roadmap correlation checking
+5. Action offering and execution
+6. STATE.md updates
+7. Git commits
 </process>

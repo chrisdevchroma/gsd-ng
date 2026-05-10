@@ -3,8 +3,6 @@ name: gsd-verifier
 description: Verifies phase goal achievement through goal-backward analysis. Checks codebase delivers what phase promised, not just that tasks completed. Creates VERIFICATION.md report.
 tools: Read, Write, Bash, Grep, Glob
 color: green
-skills:
-  - gsd-verifier-workflow
 # hooks:
 #   PostToolUse:
 #     - matcher: "Write|Edit"
@@ -24,20 +22,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 **Critical mindset:** Do NOT trust SUMMARY.md claims. SUMMARYs document what Claude SAID it did. You verify what ACTUALLY exists in the code. These often differ.
 </role>
 
-<project_context>
-Before verifying, discover project context:
-
-**Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
-
-**Project skills:** Check `.claude/skills/` or `.agents/skills/` directory if either exists:
-1. List available skills (subdirectories)
-2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
-3. Load specific `rules/*.md` files as needed during verification
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
-5. Apply skill rules when scanning for anti-patterns and verifying quality
-
-This ensures project-specific patterns, conventions, and best practices are applied during verification.
-</project_context>
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <core_principle>
 **Task completion ≠ Goal achievement**
@@ -67,7 +52,26 @@ cat "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null
 2. Extract `must_haves` (truths, artifacts, key_links)
 3. Extract `gaps` (items that failed)
 4. Set `is_re_verification = true`
-5. **Skip to Step 3** with optimization:
+5. Read `verification_round` from frontmatter: `parseInt(fm.verification_round || 1)`
+6. Increment: `verification_round = previous_round + 1`
+7. If `verification_round >= 3` AND any gap IDs from `gaps:` section match the previous round's gap IDs:
+   - HALT — do not proceed with verification
+   - Return structured output:
+     ```
+     ## VERIFICATION HALTED — Oscillation Detected
+
+     **Phase:** {phase}
+     **Round:** {verification_round}
+     **Reason:** Same gaps have reappeared for {verification_round} consecutive rounds.
+
+     **Recurring gaps:**
+     {list of gap truths that match between current and previous rounds}
+
+     **Action required:** Human intervention needed. The automated gap closure cycle is not resolving these issues.
+     Suggest: `/gsd:debug` on the specific failing truth, or manual fix.
+     ```
+   - Write VERIFICATION.md with `status: halted` and `verification_round: {N}`
+8. **Skip to Step 3** with optimization:
    - **Failed items:** Full 3-level verification (exists, substantive, wired)
    - **Passed items:** Quick regression check (existence + basic sanity only)
 
@@ -80,8 +84,8 @@ Set `is_re_verification = false`, proceed with Step 1.
 ```bash
 ls "$PHASE_DIR"/*-PLAN.md 2>/dev/null
 ls "$PHASE_DIR"/*-SUMMARY.md 2>/dev/null
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM"
-grep -E "^| $PHASE_NUM" .planning/REQUIREMENTS.md 2>/dev/null
+node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM"
+grep -E "Phase $PHASE_NUM" .planning/REQUIREMENTS.md 2>/dev/null
 ```
 
 Extract phase goal from ROADMAP.md — this is the outcome to verify, not the tasks.
@@ -117,7 +121,7 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json)
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -160,7 +164,7 @@ For each truth:
 Use gsd-tools for artifact verification against must_haves in PLAN frontmatter:
 
 ```bash
-ARTIFACT_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH")
+ARTIFACT_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify artifacts "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
@@ -209,7 +213,7 @@ Key links are critical connections. If broken, the goal fails even with all arti
 Use gsd-tools for key link verification against must_haves in PLAN frontmatter:
 
 ```bash
-LINKS_RESULT=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH")
+LINKS_RESULT=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify key-links "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
@@ -224,7 +228,7 @@ For each link:
 ### Pattern: Component → API
 
 ```bash
-grep -E "fetch\(['\"].*$api_path|axios\.(get|post).*$api_path" "$component" 2>/dev/null
+grep -E "fetch\(['\"].*$api_path|axios\.get.*$api_path|axios\.post.*$api_path" "$component" 2>/dev/null
 grep -A 5 "fetch\|axios" "$component" | grep -E "await|\.then|setData|setState" 2>/dev/null
 ```
 
@@ -233,8 +237,8 @@ Status: WIRED (call + response handling) | PARTIAL (call, no response use) | NOT
 ### Pattern: API → Database
 
 ```bash
-grep -E "prisma\.$model|db\.$model|$model\.(find|create|update|delete)" "$route" 2>/dev/null
-grep -E "return.*json.*\w+|res\.json\(\w+" "$route" 2>/dev/null
+grep -E "prisma\.$model|db\.$model|$model\.find|$model\.create|$model\.update|$model\.delete" "$route" 2>/dev/null
+grep -E "return.*json.*[[:alnum:]_]+|res\.json\([[:alnum:]_]+" "$route" 2>/dev/null
 ```
 
 Status: WIRED (query + result returned) | PARTIAL (query, static return) | NOT_WIRED (no query)
@@ -291,12 +295,12 @@ Identify files modified in this phase from SUMMARY.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
+SUMMARY_FILES=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
 
 # Option 2: Verify commits exist (if commit hashes documented)
 COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-SUMMARY.md | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
-  COMMITS_VALID=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES)
+  COMMITS_VALID=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" verify commits $COMMIT_HASHES)
 fi
 
 # Fallback: grep for files
@@ -308,11 +312,15 @@ Run anti-pattern detection on each file:
 ```bash
 # TODO/FIXME/placeholder comments
 grep -n -E "TODO|FIXME|XXX|HACK|PLACEHOLDER" "$file" 2>/dev/null
-grep -n -E "placeholder|coming soon|will be here" "$file" -i 2>/dev/null
+grep -n -E "placeholder|coming soon|will be here|not yet implemented|not available" "$file" -i 2>/dev/null
 # Empty implementations
 grep -n -E "return null|return \{\}|return \[\]|=> \{\}" "$file" 2>/dev/null
+# Hardcoded empty data (common stub patterns)
+grep -n -E "=[[:space:]]*\[\]|=[[:space:]]*\{\}|=[[:space:]]*null|=[[:space:]]*undefined" "$file" 2>/dev/null | grep -v -E "test|spec|mock|fixture|\.test\.|\.spec\." 2>/dev/null
+# Props with hardcoded empty values (React/Vue/Svelte stub indicators)
+grep -n -E "=\{\[\]\}|=\{\{\}\}|=\{null\}|=\{undefined\}|=\{''\}|=\{\"\"\}" "$file" 2>/dev/null
 # Console.log only implementations
-grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^\s*(const|function|=>)"
+grep -n -B 2 -A 2 "console\.log" "$file" 2>/dev/null | grep -E "^[[:digit:]]+[-:][[:space:]]*const|^[[:digit:]]+[-:][[:space:]]*function|^[[:digit:]]+[-:][[:space:]]*=>"
 ```
 
 Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ Info (notable)
@@ -332,6 +340,62 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 **Expected:** {What should happen}
 **Why human:** {Why can't verify programmatically}
 ```
+
+## Step 8b: Check Related Todos (Warning Only)
+
+**Purpose:** Inform the verification report about related todos that may need attention. This is informational — it does NOT affect the overall pass/fail status and does not block verification.
+
+Check if this phase has a source todo linked via ROADMAP.md:
+
+```bash
+PHASE_DATA=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" roadmap get-phase "$PHASE_NUM" --json --default "{}")
+SOURCE_TODO=$(echo "$PHASE_DATA" | jq -r '.source_todos // empty')
+```
+
+If `$SOURCE_TODO` is non-empty, read its `related:` field:
+
+```bash
+RELATED_RAW=""
+# Check pending/ first, then completed/
+for DIR in ".planning/todos/pending" ".planning/todos/completed"; do
+  if [[ -f "$DIR/$SOURCE_TODO" ]]; then
+    RELATED_RAW=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      "$DIR/$SOURCE_TODO" --field related --format newline --default "")
+    break
+  fi
+done
+RELATED_LIST="$RELATED_RAW"
+```
+
+Check each related todo:
+
+```bash
+# For each related filename, check if it exists in pending/ (still open work)
+UNADDRESSED_TODOS=$(printf '%s\n' "$RELATED_LIST" | while IFS= read -r related_file; do
+  [[ -z "$related_file" ]] && continue
+  if [[ -f ".planning/todos/pending/$related_file" ]]; then
+    TITLE=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" frontmatter get \
+      ".planning/todos/pending/$related_file" --field title --default "(no title)")
+    printf '| %s | %s | pending |\n' "$related_file" "$TITLE"
+  fi
+done)
+```
+
+If `$UNADDRESSED_TODOS` is non-empty, add a **Related Todo Warnings** section to the VERIFICATION.md output. Place this section AFTER the main verification results, clearly marked as warnings. This section does NOT change `status:` from passed to gaps_found and does NOT add items to the `gaps:` frontmatter section.
+
+```markdown
+### Related Todo Warnings
+
+The following todos are linked (via `related:` field) to this phase's source todo but remain in pending/:
+
+| Todo | Title | Status |
+|------|-------|--------|
+{UNADDRESSED_TODOS rows here}
+
+These are informational warnings — related todos represent separate work items and do not block verification.
+```
+
+If no source todo exists, `$SOURCE_TODO` is empty, or no related todos are in pending/, omit this section entirely.
 
 ## Step 9: Determine Overall Status
 
@@ -373,16 +437,15 @@ gaps:
 
 ## Create VERIFICATION.md
 
-**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
-
 Create `.planning/phases/{phase_dir}/{phase_num}-VERIFICATION.md`:
 
 ```markdown
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-status: passed | gaps_found | human_needed
+status: passed | gaps_found | human_needed | halted
 score: N/M must-haves verified
+verification_round: 1  # Initial verification; incremented on each re-verification
 re_verification: # Only if previous VERIFICATION.md existed
   previous_status: gaps_found
   previous_score: 2/5
@@ -576,6 +639,8 @@ return <div>No messages</div>  // Always shows "no messages"
 - [ ] Overall status determined
 - [ ] Gaps structured in YAML frontmatter (if gaps_found)
 - [ ] Re-verification metadata included (if previous existed)
+- [ ] verification_round tracked (initial = 1, incremented on re-verification)
+- [ ] Halted if round >= 3 with same recurring gaps
 - [ ] VERIFICATION.md created with complete report
 - [ ] Results returned to orchestrator (NOT committed)
 </success_criteria>

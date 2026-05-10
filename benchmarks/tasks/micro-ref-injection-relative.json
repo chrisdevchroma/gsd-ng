@@ -1,0 +1,15 @@
+{
+  "id": "micro-ref-injection-relative",
+  "type": "micro",
+  "description": "Verify relative @ reference resolves and content is injected",
+  "prompt": "Read @.planning/REQUIREMENTS.md and list the requirement IDs that are marked as incomplete ([ ]). Output ONLY the IDs, one per line.",
+  "timeout_ms": 30000,
+  "at_refs": ["relative"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "text",
+    "contains": ["BUG-01", "FEAT-03", "DOC-01"],
+    "not_contains": [],
+    "output_length_hint": { "min": 15, "max": 300 }
+  }
+}

@@ -1,0 +1,239 @@
+'use strict';
+/**
+ * Structural lint rules for the test suite and production code.
+ *
+ * These are not behavioural tests — they enforce code conventions that
+ * prevent copy-paste drift and helper bypass. Each rule runs as a fast
+ * file-scan; failures name the exact line so fixes are unambiguous.
+ *
+ * Adding a new rule here keeps it discoverable and keeps domain test files
+ * (roadmap.test.cjs, guardrail.test.cjs, etc.) focused on behaviour.
+ */
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+// Collect all *.test.cjs files except this one.
+function testFiles() {
+  const self = path.basename(__filename);
+  return fs.readdirSync(__dirname)
+    .filter(f => f.endsWith('.test.cjs') && f !== self)
+    .map(f => ({ name: f, src: fs.readFileSync(path.join(__dirname, f), 'utf-8') }));
+}
+
+// ── Rule 1: no .tmpdir() call in test files — use resolveTmpDir from helpers ──
+//
+// Catches both `os.tmpdir()` and aliased forms like `osMod.tmpdir()`.
+// install-js.test.cjs is excluded — it legitimately passes HOME=os.homedir()
+// to subprocess env overrides (not for temp directory resolution).
+
+describe('lint: no .tmpdir() call in test files (use resolveTmpDir from helpers.cjs)', () => {
+  const EXCLUDED = ['install-js.test.cjs'];
+  test('no test file calls .tmpdir() directly (including aliased require("os"))', () => {
+    const violations = [];
+    for (const { name, src } of testFiles()) {
+      if (EXCLUDED.includes(name)) continue;
+      src.split('\n').forEach((line, i) => {
+        if (line.includes('.tmpdir()') && !line.trim().startsWith('//')) {
+          violations.push(`${name}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(violations, [],
+      `Direct .tmpdir() usage found (use resolveTmpDir() from helpers.cjs instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
+// ── Rule 2: no inline redeclaration of helpers.cjs exports ───────────────────
+
+describe('lint: no inline redeclaration of helpers.cjs exports in test files', () => {
+  // Catches copy-paste of cleanup() or resolveTmpDir() instead of importing from helpers.cjs.
+  // Note: local helpers that *use* these (e.g. makeTmpDir returning {tmpDir, cleanup}) are fine.
+  // `exclude` rules out legitimate forms like `const cleanup = require(...)`.
+  const forbidden = [
+    { pattern: 'function cleanup(', hint: 'import cleanup from helpers.cjs' },
+    { pattern: 'function resolveTmpDir(', hint: 'import resolveTmpDir from helpers.cjs' },
+    { pattern: 'const cleanup = ', hint: 'import cleanup from helpers.cjs', exclude: 'require(' },
+    { pattern: 'const resolveTmpDir = ', hint: 'import resolveTmpDir from helpers.cjs', exclude: 'require(' },
+  ];
+
+  for (const { pattern, hint, exclude } of forbidden) {
+    test(`no test file declares \`${pattern.trim()}\` (${hint})`, () => {
+      const violations = [];
+      for (const { name, src } of testFiles()) {
+        src.split('\n').forEach((line, i) => {
+          if (
+            line.includes(pattern) &&
+            (!exclude || !line.includes(exclude)) &&
+            !line.trim().startsWith('//')
+          ) {
+            violations.push(`${name}:${i + 1}: ${line.trim()}`);
+          }
+        });
+      }
+      assert.deepStrictEqual(violations, [],
+        `Inline redeclaration of helper found:\n${violations.join('\n')}`
+      );
+    });
+  }
+});
+
+// ── Rule 3: no bare recursive dir deletion — use cleanup/cleanupSubdir ────────
+
+describe('lint: no bare recursive dir deletion in test files (use cleanup/cleanupSubdir from helpers.cjs)', () => {
+  test('no test file calls fs.rmSync or fs.rmdirSync with recursive:true directly', () => {
+    const violations = [];
+    for (const { name, src } of testFiles()) {
+      src.split('\n').forEach((line, i) => {
+        if (
+          (line.includes('fs.rmSync(') || line.includes('fs.rmdirSync(')) &&
+          line.includes('recursive: true') &&
+          !line.trim().startsWith('//')
+        ) {
+          violations.push(`${name}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(violations, [],
+      `Bare recursive dir deletion found (use cleanup() or cleanupSubdir() from helpers.cjs instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
+// ── Rule 4: no bare roadmapContent.replace() in roadmap.cjs ──────────────────
+
+describe('lint: no bare roadmapContent.replace() in roadmap.cjs', () => {
+  test('no bare roadmapContent.replace() outside replaceInCurrentMilestone', () => {
+    const roadmapSource = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'roadmap.cjs'), 'utf-8'
+    );
+    const violations = [];
+    roadmapSource.split('\n').forEach((line, i) => {
+      if (
+        line.includes('roadmapContent.replace(') &&
+        !line.includes('replaceInCurrentMilestone') &&
+        !line.trim().startsWith('//')
+      ) {
+        violations.push(`roadmap.cjs:${i + 1}: ${line.trim()}`);
+      }
+    });
+    assert.deepStrictEqual(violations, [],
+      `Bare roadmapContent.replace() found (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
+// ── Rule 5: no bare roadmapContent.replace() in cmdPhaseComplete (phase.cjs) ──
+//
+// cmdPhaseRemove legitimately uses roadmapContent.replace() for low-level
+// mutations; cmdPhaseComplete must go through replaceInCurrentMilestone.
+// Scope the check to cmdPhaseComplete by scanning from its declaration line
+// to the next top-level `function` declaration (or EOF) — no brace-counting
+// needed, so string/template-literal braces can't fool it.
+
+describe('lint: no bare roadmapContent.replace() in cmdPhaseComplete (phase.cjs)', () => {
+  test('cmdPhaseComplete uses replaceInCurrentMilestone for all roadmap mutations', () => {
+    const phaseSource = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'phase.cjs'), 'utf-8'
+    );
+    const lines = phaseSource.split('\n');
+    const fnStartIdx = lines.findIndex(l => l.startsWith('function cmdPhaseComplete('));
+    assert.ok(fnStartIdx !== -1, 'cmdPhaseComplete must exist in phase.cjs');
+    const fnEndIdx = lines.findIndex((l, i) => i > fnStartIdx && /^function \w/.test(l));
+    const fnLines = lines.slice(fnStartIdx, fnEndIdx === -1 ? lines.length : fnEndIdx);
+    const violations = [];
+    fnLines.forEach((line, i) => {
+      if (
+        line.includes('roadmapContent.replace(') &&
+        !line.includes('replaceInCurrentMilestone') &&
+        !line.trim().startsWith('//')
+      ) {
+        violations.push(`phase.cjs:${fnStartIdx + i + 1}: ${line.trim()}`);
+      }
+    });
+    assert.deepStrictEqual(violations, [],
+      `Bare roadmapContent.replace() found in cmdPhaseComplete (use replaceInCurrentMilestone instead):\n${violations.join('\n')}`
+    );
+  });
+});
+
+// ── Rule 6: no dead require('os') import in test files ───────────────────────
+//
+// A test file that imports `os` but never calls any `os.*()` method has a
+// stale import. The permitted use of `os` in test files is `os.homedir()` in
+// install-js.test.cjs (for HOME= subprocess env overrides) — all other temp-dir
+// access must go through `resolveTmpDir()` from helpers.cjs.
+//
+// Detection: file contains require('os') AND contains no `os.` method call
+// (i.e. no match for /\bos\.\w+\s*\(/ outside comments).
+
+describe('lint: no dead require("os") import in test files', () => {
+  // install-js.test.cjs legitimately uses os.homedir() — exclude from this rule.
+  const EXCLUDED = ['install-js.test.cjs'];
+
+  test('no test file imports os without calling any os.method()', () => {
+    const violations = [];
+    for (const { name, src } of testFiles()) {
+      if (EXCLUDED.includes(name)) continue;
+
+      // Detect `const os = require('os')` or `const os = require("os")` (non-destructured)
+      // Destructured imports like `const { homedir } = require('os')` are fine — caller uses the
+      // destructured binding directly (homedir(), not os.homedir()).
+      const hasNonDestructuredOsImport =
+        /\bconst\s+os\s*=\s*require\s*\(\s*['"]os['"]\s*\)/.test(src);
+      if (!hasNonDestructuredOsImport) continue;
+
+      const lines = src.split('\n');
+      const hasOsMethodCall = lines.some(
+        (line) =>
+          !line.trim().startsWith('//') && /\bos\.\w+\s*\(/.test(line),
+      );
+      if (!hasOsMethodCall) {
+        violations.push(`${name}: imports 'os' as namespace (const os = require('os')) but never calls os.method() — remove dead import or use destructured import`);
+      }
+    }
+    assert.deepStrictEqual(violations, [],
+      `Dead require('os') namespace import found (remove it or use const { method } = require('os') if needed):\n${violations.join('\n')}`
+    );
+  });
+});
+
+// ── Rule 7: no hardcoded /tmp/ base in temp-dir creation calls ───────────────
+//
+// When creating real temp directories (mkdtempSync, mkdirSync, path.join used
+// as a base for test dirs) the /tmp/ path must come from resolveTmpDir(), not
+// be hardcoded. This rule specifically targets the pattern:
+//   path.join('/tmp/', ...) | mkdtempSync('/tmp/...')
+//
+// Note: /tmp/ as test *data* (e.g. a file_path field in a JSON payload, or as a
+// hypothetical path argument to a pure function) is fine and NOT flagged here.
+// The distinction: only lines where /tmp/ appears as argument to path.join() or
+// mkdtempSync() directly are violations.
+
+describe('lint: no hardcoded /tmp/ in path.join() or mkdtempSync() calls', () => {
+  test('no test file passes a hardcoded /tmp/ literal to path.join() or mkdtempSync()', () => {
+    const violations = [];
+    for (const { name, src } of testFiles()) {
+      src.split('\n').forEach((line, i) => {
+        const trimmed = line.trim();
+        // Skip comments and assertion lines (assert.* calls may compare against /tmp/ values as test data)
+        if (trimmed.startsWith('//') || /\bassert\./.test(trimmed)) return;
+        // Flag lines that pass /tmp/ as first arg to path.join() or mkdtempSync()
+        if (
+          /path\.join\(\s*['"`]\/tmp\//.test(line) ||
+          /mkdtempSync\(\s*['"`]\/tmp\//.test(line)
+        ) {
+          violations.push(`${name}:${i + 1}: ${trimmed}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(violations, [],
+      `Hardcoded /tmp/ in path.join()/mkdtempSync() found (use path.join(resolveTmpDir(), ...) instead):\n${violations.join('\n')}`
+    );
+  });
+});

@@ -8,8 +8,10 @@ allowed-tools:
   - Glob
   - Grep
   - Write
-  - Task
+  - AskUserQuestion
+  - Agent
 ---
+
 
 <objective>
 Analyze existing codebase using parallel gsd-codebase-mapper agents to produce structured codebase documents.
@@ -19,8 +21,34 @@ Each mapper agent explores a focus area and **writes documents directly** to `.p
 Output: .planning/codebase/ folder with 7 structured documents about the codebase state.
 </objective>
 
+<tool_usage>
+CRITICAL: You MUST use the {{USER_QUESTION_TOOL}} tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real {{USER_QUESTION_TOOL}} tool call with the questions parameter.
+
+The {{USER_QUESTION_TOOL}} tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another {{USER_QUESTION_TOOL}}
+</tool_usage>
+
 <execution_context>
-@~/.claude/get-shit-done/workflows/map-codebase.md
+@~/.claude/gsd-ng/workflows/map-codebase.md
 </execution_context>
 
 <context>
@@ -30,8 +58,8 @@ Focus area: $ARGUMENTS (optional - if provided, tells agents to focus on specifi
 Check for .planning/STATE.md - loads context if project already initialized
 
 **This command can run:**
-- Before /gsd:new-project (brownfield codebases) - creates codebase map first
-- After /gsd:new-project (greenfield codebases) - updates codebase map as code evolves
+- Before {{COMMAND_PREFIX}}new-project (brownfield codebases) - creates codebase map first
+- After {{COMMAND_PREFIX}}new-project (greenfield codebases) - updates codebase map as code evolves
 - Anytime to refresh codebase understanding
 </context>
 
@@ -59,7 +87,7 @@ Check for .planning/STATE.md - loads context if project already initialized
 4. Wait for agents to complete, collect confirmations (NOT document contents)
 5. Verify all 7 documents exist with line counts
 6. Commit codebase map
-7. Offer next steps (typically: /gsd:new-project or /gsd:plan-phase)
+7. Offer next steps (typically: {{COMMAND_PREFIX}}new-project or {{COMMAND_PREFIX}}plan-phase)
 </process>
 
 <success_criteria>

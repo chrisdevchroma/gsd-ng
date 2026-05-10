@@ -1,17 +1,16 @@
 {
-  "name": "get-shit-done-cc",
-  "version": "1.22.4",
-  "description": "A meta-prompting, context engineering and spec-driven development system for Claude Code, OpenCode, Gemini and Codex by TÂCHES.",
+  "name": "gsd-ng",
+  "version": "1.0.0-dev.3",
+  "description": "A meta-prompting, context engineering and spec-driven development system for Claude Code.",
   "bin": {
-    "get-shit-done-cc": "bin/install.js"
+    "gsd-ng": "bin/install.js"
   },
   "files": [
     "bin",
     "commands",
-    "get-shit-done",
+    "gsd-ng",
     "agents",
-    "hooks/dist",
-    "scripts"
+    "hooks/dist"
   ],
   "keywords": [
     "claude",
@@ -19,33 +18,36 @@
     "ai",
     "meta-prompting",
     "context-engineering",
-    "spec-driven-development",
-    "gemini",
-    "gemini-cli",
-    "codex",
-    "codex-cli"
+    "spec-driven-development"
   ],
-  "author": "TÂCHES",
+  "author": "chrisdevchroma",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/glittercowboy/get-shit-done.git"
+    "url": "git+https://github.com/chrisdevchroma/gsd-ng.git"
   },
-  "homepage": "https://github.com/glittercowboy/get-shit-done",
+  "homepage": "https://github.com/chrisdevchroma/gsd-ng",
   "bugs": {
-    "url": "https://github.com/glittercowboy/get-shit-done/issues"
+    "url": "https://github.com/chrisdevchroma/gsd-ng/issues"
   },
   "engines": {
-    "node": ">=16.7.0"
+    "node": ">=22.0.0"
   },
   "devDependencies": {
     "c8": "^11.0.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "prettier": "3.8.3"
   },
   "scripts": {
+    "format": "prettier --write 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
+    "format:check": "prettier --check 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
     "build:hooks": "node scripts/build-hooks.js",
+    "build:tarball": "npm run build:hooks && node scripts/build-tarball.js",
     "prepublishOnly": "npm run build:hooks",
+    "pretest": "npm run build:hooks",
     "test": "node scripts/run-tests.cjs",
-    "test:coverage": "c8 --check-coverage --lines 70 --reporter text --include 'get-shit-done/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs"
+    "test:e2e": "node --test tests/e2e/smoke.test.cjs",
+    "test:coverage": "npm run build:hooks && c8 --reporter=text --reporter=json-summary --include 'gsd-ng/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs && node scripts/coverage-gate.cjs",
+    "lint:actions": "node scripts/run-actionlint.cjs"
   }
 }

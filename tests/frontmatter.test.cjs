@@ -5,10 +5,10 @@
  * extractFrontmatter, reconstructFrontmatter, spliceFrontmatter,
  * parseMustHavesBlock, and FRONTMATTER_SCHEMAS.
  *
- * Includes REG-04 regression: quoted comma inline array edge case.
+ * Includes regression test: quoted comma inline array edge case.
  */
 
-const { test, describe } = require('node:test');
+const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 
 const {
@@ -17,7 +17,11 @@ const {
   spliceFrontmatter,
   parseMustHavesBlock,
   FRONTMATTER_SCHEMAS,
-} = require('../get-shit-done/bin/lib/frontmatter.cjs');
+  cmdFrontmatterArrayAppend,
+} = require('../gsd-ng/bin/lib/frontmatter.cjs');
+const fs = require('fs');
+const path = require('path');
+const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
 // ─── extractFrontmatter ─────────────────────────────────────────────────────
 
@@ -54,8 +58,8 @@ describe('extractFrontmatter', () => {
     assert.deepStrictEqual(result.key, ['a', 'b', 'c']);
   });
 
-  test('handles quoted commas in inline arrays — REG-04 known limitation', () => {
-    // REG-04: The split(',') on line 53 does NOT respect quotes.
+  test('handles quoted commas in inline arrays — known limitation (split does not respect quotes)', () => {
+    // The split(',') on line 53 does NOT respect quotes.
     // The parser WILL split on commas inside quotes, producing wrong results.
     // This test documents the CURRENT (buggy) behavior.
     const content = '---\nkey: ["a, b", c]\n---\n';
@@ -348,6 +352,727 @@ must_haves:
     assert.strictEqual(result[0].path, 'src/api.ts');
     // The nested array should be captured
     assert.ok(result[0].exports !== undefined, 'should have exports field');
+  });
+});
+
+// ─── Bug 1c: reconstructFrontmatter quoting for em-dashes and parentheses ────
+
+describe('reconstructFrontmatter — em-dash and parentheses quoting (Bug 1c)', () => {
+  test('quotes value containing em-dash', () => {
+    const result = reconstructFrontmatter({ status: 'Phase complete \u2014 ready' });
+    assert.ok(
+      result.includes('status: "Phase complete \u2014 ready"'),
+      `expected quoted em-dash value, got: ${result}`
+    );
+  });
+
+  test('quotes value containing parentheses', () => {
+    const result = reconstructFrontmatter({ stopped_at: 'Phase 52 (ast-safety)' });
+    assert.ok(
+      result.includes('stopped_at: "Phase 52 (ast-safety)"'),
+      `expected quoted parentheses value, got: ${result}`
+    );
+  });
+
+  test('does NOT quote plain values (regression guard)', () => {
+    const result = reconstructFrontmatter({ status: 'executing' });
+    assert.ok(
+      result.includes('status: executing') && !result.includes('"executing"'),
+      `plain value should not be quoted, got: ${result}`
+    );
+  });
+
+  test('quotes nested subkey value containing em-dash', () => {
+    const result = reconstructFrontmatter({ meta: { label: 'Phase 1 \u2014 done' } });
+    assert.ok(
+      result.includes('label: "Phase 1 \u2014 done"'),
+      `expected nested em-dash value to be quoted, got: ${result}`
+    );
+  });
+
+  test('quotes nested subkey value containing parentheses', () => {
+    const result = reconstructFrontmatter({ meta: { name: 'worker (prod)' } });
+    assert.ok(
+      result.includes('name: "worker (prod)"'),
+      `expected nested parentheses value to be quoted, got: ${result}`
+    );
+  });
+
+  test('round-trip: em-dash value survives extract then reconstruct', () => {
+    const original = '---\nstatus: "Phase complete \u2014 ready"\n---\n';
+    const extracted = extractFrontmatter(original);
+    const reconstructed = reconstructFrontmatter(extracted);
+    const roundTrip = `---\n${reconstructed}\n---\n`;
+    const extracted2 = extractFrontmatter(roundTrip);
+    assert.strictEqual(extracted2.status, extracted.status, 'em-dash value should round-trip unchanged');
+  });
+
+  test('round-trip: parentheses value survives extract then reconstruct', () => {
+    const original = '---\nstopped_at: "Phase 52 (ast-safety)"\n---\n';
+    const extracted = extractFrontmatter(original);
+    const reconstructed = reconstructFrontmatter(extracted);
+    const roundTrip = `---\n${reconstructed}\n---\n`;
+    const extracted2 = extractFrontmatter(roundTrip);
+    assert.strictEqual(extracted2.stopped_at, extracted.stopped_at, 'parentheses value should round-trip unchanged');
+  });
+});
+
+// ─── frontmatter.cjs branch/line residuals (60-11) ────────────────────────
+
+describe('frontmatter.cjs residuals (60-11)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { resolveTmpDir, cleanup } = require('./helpers.cjs');
+
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-fm-r-'));
+  });
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  // reconstructFrontmatter: lines 133-156 — nested-object array values,
+  // long-array splayed-list rendering, items containing ":" or "#" need quoting,
+  // and 3-level nested object rendering.
+  test('reconstructFrontmatter: object value with long array splays into list', () => {
+    const fm = {
+      'tech-stack': {
+        added: ['lib1', 'lib2', 'lib3', 'lib4', 'lib5'],
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    // Long arrays render as splayed list (not inline)
+    assert.match(r, /tech-stack:/);
+    assert.match(r, /added:\n\s+- lib1/);
+  });
+
+  test('reconstructFrontmatter: array items with ":" get quoted in splayed form', () => {
+    // Array longer than 3 OR total length > 60 forces splayed form, where
+    // items containing ":" or "#" get quoted.
+    const fm = {
+      'key-decisions': [
+        'name: rationale text 1',
+        'name2: rationale text 2',
+        'name3: rationale text 3',
+        'name4: rationale text 4',
+      ],
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /"name: rationale text 1"/);
+  });
+
+  test('reconstructFrontmatter: long array exceeding inline limit splays', () => {
+    // join(", ").length >= 60 forces splay
+    const fm = {
+      tags: [
+        'verylongstring1' + 'x'.repeat(20),
+        'verylongstring2',
+        'verylongstring3',
+      ],
+    };
+    const r = reconstructFrontmatter(fm);
+    // Splay form: each item on own line
+    assert.match(r, /tags:\n\s+- verylongstring1/);
+  });
+
+  test('reconstructFrontmatter: 4+ items also splays', () => {
+    const fm = {
+      tags: ['a', 'b', 'c', 'd', 'e'],
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /tags:\n\s+- a/);
+  });
+
+  test('reconstructFrontmatter: array items with "#" get quoted', () => {
+    const fm = {
+      tags: ['has#hash', 'plain'],
+    };
+    const r = reconstructFrontmatter(fm);
+    // Long array (>3 elements OR string-too-long) splays
+    // Non-splayed inline form keeps unquoted
+    assert.match(r, /tags:/);
+  });
+
+  test('reconstructFrontmatter: inline array short-form renders correctly', () => {
+    const fm = { tags: ['a', 'b'] };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /tags: \[a, b\]/);
+  });
+
+  test('reconstructFrontmatter: empty subkey array renders as []', () => {
+    const fm = {
+      'tech-stack': {
+        added: [],
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /added: \[\]/);
+  });
+
+  test('reconstructFrontmatter: deeply nested object (3 levels)', () => {
+    const fm = {
+      level1: {
+        level2: {
+          level3: 'value',
+        },
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /level1:/);
+    assert.match(r, /level2:/);
+    assert.match(r, /level3: value/);
+  });
+
+  test('reconstructFrontmatter: nested array within object', () => {
+    const fm = {
+      level1: {
+        items: ['a', 'b'],
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /items:/);
+  });
+
+  test('reconstructFrontmatter: nested empty array within object', () => {
+    const fm = {
+      level1: {
+        items: [],
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /items: \[\]/);
+  });
+
+  test('reconstructFrontmatter: scalar value with special chars gets quoted', () => {
+    const fm = {
+      level1: {
+        nested: 'has: colon',
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /"has: colon"/);
+  });
+
+  test('reconstructFrontmatter: skips null/undefined nested values', () => {
+    const fm = {
+      level1: {
+        keep: 'present',
+        skip: null,
+        skip2: undefined,
+      },
+    };
+    const r = reconstructFrontmatter(fm);
+    assert.match(r, /keep: present/);
+    assert.ok(!r.includes('skip: null'));
+    assert.ok(!r.includes('skip:'));
+  });
+
+  // cmdFrontmatterGet: lines 282/283/293/294 — !filePath error, file-not-
+  // found with default, field not found with default, etc.
+  describe('cmdFrontmatterGet branches', () => {
+    test('missing filePath errors via direct invocation', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /file path required/);
+    });
+
+    test('field not found, no default → error JSON', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\nbody\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "missing");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.error, 'Field not found');
+    });
+
+    test('field not found, with default → returns default', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\nbody\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "missing", null, "fallback");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      assert.match(r.stdout, /fallback/);
+    });
+
+    test('file not found, no default → error JSON', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', "no-such.md");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.error, 'File not found');
+    });
+
+    test('file not found, with default → returns default', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', "no-such.md", null, null, "default-val");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      assert.match(r.stdout, /default-val/);
+    });
+
+    test('array field with format=newline joins by newline', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\ntags:\n  - a\n  - b\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "tags", "newline");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      assert.match(r.stdout, /a\nb/);
+    });
+
+    test('array field with no format joins by comma', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\ntags:\n  - a\n  - b\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "tags");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      assert.match(r.stdout, /a, b/);
+    });
+
+    test('no field returns full frontmatter object', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: hello\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterGet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.a, 'hello');
+    });
+  });
+
+  // cmdFrontmatterSet: line 320-332, missing args, field validation
+  describe('cmdFrontmatterSet branches', () => {
+    test('missing filePath errors', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterSet(' +
+        JSON.stringify(tmpDir) +
+        ');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /file, field, and value required/);
+    });
+
+    test('invalid field name errors', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\n');
+      // Use a field name with embedded actual newline char — JSON.stringify
+      // escapes it as "\n" which becomes a literal \n in the spawned JS source.
+      // We need the JS string to contain the actual newline so we use String.fromCharCode(10).
+      const code =
+        'const fp = ' +
+        JSON.stringify(fp) +
+        '; const fname = "field" + String.fromCharCode(10) + "name";' +
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterSet(' +
+        JSON.stringify(tmpDir) +
+        ', fp, fname, "value");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /Invalid field name/);
+    });
+
+    test('JSON value parsing branch', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterSet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "tags", \'["a","b"]\');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const c = fs.readFileSync(fp, 'utf-8');
+      // Tags array stored
+      assert.match(c, /tags:/);
+    });
+
+    test('non-JSON value stored as string', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterSet(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "name", "hello");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const c = fs.readFileSync(fp, 'utf-8');
+      assert.match(c, /name: hello/);
+    });
+
+    test('file not found returns error (not raises)', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterSet(' +
+        JSON.stringify(tmpDir) +
+        ', "no-such.md", "name", "x");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.error, 'File not found');
+    });
+  });
+
+  // cmdFrontmatterMerge branches
+  describe('cmdFrontmatterMerge branches', () => {
+    test('missing filePath errors', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterMerge(' +
+        JSON.stringify(tmpDir) +
+        ');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /file and data required/);
+    });
+
+    test('invalid JSON --data errors', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterMerge(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', "not-json{");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /Invalid JSON/);
+    });
+
+    test('valid JSON merges into frontmatter', () => {
+      const fp = path.join(tmpDir, 'a.md');
+      fs.writeFileSync(fp, '---\na: 1\n---\n');
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterMerge(' +
+        JSON.stringify(tmpDir) +
+        ', ' +
+        JSON.stringify(fp) +
+        ', \'{"b":2}\');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const c = fs.readFileSync(fp, 'utf-8');
+      assert.match(c, /b: 2/);
+    });
+
+    test('file not found returns error', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterMerge(' +
+        JSON.stringify(tmpDir) +
+        ', "no-such.md", \'{"a":1}\');';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 0);
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.error, 'File not found');
+    });
+  });
+
+  // cmdFrontmatterValidate: missing args branches
+  describe('cmdFrontmatterValidate branches', () => {
+    test('missing schemaName errors', () => {
+      const code =
+        'require(' +
+        JSON.stringify(
+          path.resolve(
+            __dirname, '../gsd-ng/bin/lib/frontmatter.cjs',
+          ),
+        ) +
+        ').cmdFrontmatterValidate(' +
+        JSON.stringify(tmpDir) +
+        ', "any.md");';
+      const r = require('child_process').spawnSync(
+        process.execPath,
+        ['-e', code],
+        { encoding: 'utf-8' },
+      );
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /file and schema required/);
+    });
+  });
+});
+
+// ─── cmdFrontmatterArrayAppend ──────────────────────────────────────────────
+
+describe('cmdFrontmatterArrayAppend', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'fm-arr-append-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeFile(name, content) {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, content);
+    return p;
+  }
+
+  function readFm(p) {
+    return extractFrontmatter(fs.readFileSync(p, 'utf-8'));
+  }
+
+  test('creates a new array when the field is missing', () => {
+    const p = writeFile('t.md', '---\ntitle: foo\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md']);
+  });
+
+  test('coerces scalar to array before appending', () => {
+    const p = writeFile('t.md', '---\nrelated: existing.md\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'new.md');
+    assert.deepStrictEqual(readFm(p).related, ['existing.md', 'new.md']);
+  });
+
+  test('dedupes — does not append if value already present', () => {
+    const p = writeFile(
+      't.md',
+      '---\nrelated:\n  - a.md\n  - b.md\n---\nbody\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md']);
+  });
+
+  test('appends to existing array', () => {
+    const p = writeFile(
+      't.md',
+      '---\nrelated:\n  - a.md\n  - b.md\n---\nbody\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'c.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md', 'c.md']);
+  });
+
+  test('treats empty-string field as missing', () => {
+    const p = writeFile('empty.md', '---\nrelated: ""\n---\nbody\n');
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md']);
+  });
+
+  test('preserves other frontmatter fields and body', () => {
+    const p = writeFile(
+      't.md',
+      '---\ntitle: foo\ntype: todo\n---\nThis is the body\nmore lines\n',
+    );
+    cmdFrontmatterArrayAppend(tmpDir, p, 'related', 'a.md');
+    const fm = readFm(p);
+    assert.strictEqual(fm.title, 'foo');
+    assert.strictEqual(fm.type, 'todo');
+    assert.deepStrictEqual(fm.related, ['a.md']);
+    const content = fs.readFileSync(p, 'utf-8');
+    assert.match(content, /This is the body/);
+    assert.match(content, /more lines/);
+  });
+
+  test('absolute file path works regardless of cwd argument', () => {
+    const p = writeFile('t.md', '---\nrelated: a.md\n---\nbody\n');
+    cmdFrontmatterArrayAppend('/somewhere/else', p, 'related', 'b.md');
+    assert.deepStrictEqual(readFm(p).related, ['a.md', 'b.md']);
   });
 });
 

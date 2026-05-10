@@ -1,33 +1,34 @@
-# Security Policy
+# GSD-NG Security Policy
 
-## Reporting a Vulnerability
+## Responsible Disclosure
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+We take security seriously and appreciate responsible disclosure of vulnerabilities. If you discover a security vulnerability in GSD-NG, please report it through [GitHub's private vulnerability reporting](https://github.com/chrisdevchroma/gsd-ng/security/advisories/new) instead of opening a public issue. Alternatively, email **security@devchroma.nl**.
 
-Instead, please report them via email to: **security@gsd.build** (or DM @glittercowboy on Discord/Twitter if email bounces)
+### What to Include in Your Report
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Any suggested fixes (optional)
+When reporting a vulnerability, please include:
+1. **Description** - A clear description of the vulnerability
+2. **Reproduction Steps** - How to reproduce the issue
+3. **Potential Impact** - What could be affected or compromised
+4. **Optional Suggested Fix** - If you have a proposed solution
 
-## Response Timeline
+### Our Response Commitment
 
-- **Acknowledgment**: Within 48 hours
-- **Initial assessment**: Within 1 week
-- **Fix timeline**: Depends on severity, but we aim for:
-  - Critical: 24-48 hours
-  - High: 1 week
-  - Medium/Low: Next release
+We commit to:
+- **Acknowledgment** - Responding within 48 hours
+- **Initial Assessment** - Providing an initial assessment within one week
+- **Fix Timeline** - Based on severity:
+  - Critical issues: Targeted for 24-48 hours
+  - High severity: Within one week
+  - Medium/Low severity: Included in the next release
 
-## Scope
+### Attribution
 
-Security issues in the GSD codebase that could:
-- Execute arbitrary code on user machines
-- Expose sensitive data (API keys, credentials)
-- Compromise the integrity of generated plans/code
+Security researchers who follow responsible disclosure practices will be recognized in release notes. Anonymity is available upon request if preferred.
 
-## Recognition
+### In Scope
 
-We appreciate responsible disclosure and will credit reporters in release notes (unless you prefer to remain anonymous).
+Security issues affecting the GSD-NG codebase, including:
+- Vulnerabilities that could enable arbitrary code execution
+- Issues that could leak sensitive information (e.g., API credentials)
+- Problems that could undermine the reliability of generated plans and code

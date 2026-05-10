@@ -7,7 +7,9 @@ allowed-tools:
   - Read
   - Write
   - Bash
+  - AskUserQuestion
 ---
+
 
 <objective>
 Mark milestone {{version}} complete, archive to milestones/, and update ROADMAP.md and REQUIREMENTS.md.
@@ -16,11 +18,37 @@ Purpose: Create historical record of shipped version, archive milestone artifact
 Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tagged.
 </objective>
 
+<tool_usage>
+CRITICAL: You MUST use the {{USER_QUESTION_TOOL}} tool for ALL user choices in this workflow. NEVER output plain-text menus, lettered lists (a/b/c), or numbered option lists. Every decision point requires a real {{USER_QUESTION_TOOL}} tool call with the questions parameter.
+
+The {{USER_QUESTION_TOOL}} tool schema:
+```json
+{
+  "questions": [
+    {
+      "question": "The question text",
+      "header": "Short label (max 12 chars)",
+      "multiSelect": false,
+      "options": [
+        { "label": "Option label", "description": "What this option means" }
+      ]
+    }
+  ]
+}
+```
+
+Key constraints:
+- header: max 12 characters (abbreviate if needed)
+- options: 2-4 items; "Other" is added automatically by the tool — do NOT add it yourself
+- multiSelect: true for "select all that apply", false for "pick one"
+- If user picks "Other" (free text): follow up as plain text, not another {{USER_QUESTION_TOOL}}
+</tool_usage>
+
 <execution_context>
 **Load these files NOW (before proceeding):**
 
-- @~/.claude/get-shit-done/workflows/complete-milestone.md (main workflow)
-- @~/.claude/get-shit-done/templates/milestone-archive.md (archive template)
+- @~/.claude/gsd-ng/workflows/complete-milestone.md (main workflow)
+- @~/.claude/gsd-ng/templates/milestone-archive.md (archive template)
   </execution_context>
 
 <context>
@@ -42,19 +70,19 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
 0. **Check for audit:**
 
    - Look for `.planning/v{{version}}-MILESTONE-AUDIT.md`
-   - If missing or stale: recommend `/gsd:audit-milestone` first
-   - If audit status is `gaps_found`: recommend `/gsd:plan-milestone-gaps` first
+   - If missing or stale: recommend `{{COMMAND_PREFIX}}audit-milestone` first
+   - If audit status is `gaps_found`: recommend `{{COMMAND_PREFIX}}plan-milestone-gaps` first
    - If audit status is `passed`: proceed to step 1
 
    ```markdown
    ## Pre-flight Check
 
    {If no v{{version}}-MILESTONE-AUDIT.md:}
-   ⚠ No milestone audit found. Run `/gsd:audit-milestone` first to verify
+   ⚠ No milestone audit found. Run `{{COMMAND_PREFIX}}audit-milestone` first to verify
    requirements coverage, cross-phase integration, and E2E flows.
 
    {If audit has gaps:}
-   ⚠ Milestone audit found gaps. Run `/gsd:plan-milestone-gaps` to create
+   ⚠ Milestone audit found gaps. Run `{{COMMAND_PREFIX}}plan-milestone-gaps` to create
    phases that close the gaps, or proceed anyway to accept as tech debt.
 
    {If audit passed:}
@@ -108,7 +136,7 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
    - Ask about pushing tag
 
 8. **Offer next steps:**
-   - `/gsd:new-milestone` — start next milestone (questioning → research → requirements → roadmap)
+   - `{{COMMAND_PREFIX}}new-milestone` — start next milestone (questioning → research → requirements → roadmap)
 
 </process>
 
@@ -132,5 +160,5 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
 - **Archive before deleting:** Always create archive files before updating/deleting originals
 - **One-line summary:** Collapsed milestone in ROADMAP.md should be single line with link
 - **Context efficiency:** Archive keeps ROADMAP.md and REQUIREMENTS.md constant size per milestone
-- **Fresh requirements:** Next milestone starts with `/gsd:new-milestone` which includes requirements definition
+- **Fresh requirements:** Next milestone starts with `{{COMMAND_PREFIX}}new-milestone` which includes requirements definition
   </critical_rules>

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# gsd -- thin wrapper around gsd-tools.cjs
+# Callers can extract fields: gsd roadmap get-phase 17 --pick section
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+node "$SCRIPT_DIR/gsd-tools.cjs" "$@"

@@ -9,8 +9,6 @@ tools:
   - Glob
   - Grep
 color: "#8B5CF6"
-skills:
-  - gsd-nyquist-auditor-workflow
 ---
 
 <role>
@@ -22,6 +20,8 @@ For each gap in `<gaps>`: generate minimal behavioral test, run it, debug if fai
 
 **Implementation files are READ-ONLY.** Only create/modify: test files, fixtures, VALIDATION.md. Implementation bugs → ESCALATE. Never fix implementation.
 </role>
+
+@~/.claude/gsd-ng/references/agent-shared-context.md
 
 <execution_flow>
 

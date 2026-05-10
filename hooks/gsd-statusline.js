@@ -1,10 +1,111 @@
 #!/usr/bin/env node
 // Claude Code Statusline - GSD Edition
-// Shows: model | current task | directory | context usage
+// Shows: model | current task | directory | context usage | git branch | token breakdown
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
+
+// ─── Utility: TTL-based file cache ──────────────────────────────────────────
+
+/**
+ * Cache a computed string value to a file with a TTL.
+ * Returns the cached value if fresh, otherwise calls computeFn(), writes result, and returns it.
+ * Returns '' on any error (silent fail pattern for statusline).
+ */
+function withCache(cacheFile, ttlSeconds, computeFn) {
+  try {
+    if (fs.existsSync(cacheFile)) {
+      const ageMs = Date.now() - fs.statSync(cacheFile).mtimeMs;
+      if (ageMs / 1000 < ttlSeconds) return fs.readFileSync(cacheFile, 'utf8');
+    }
+  } catch (e) { /* cache read failed — fall through to compute */ }
+  try {
+    const value = computeFn();
+    try { fs.writeFileSync(cacheFile, value); } catch (e) { /* cache write failed — return value uncached */ }
+    return value;
+  } catch (e) { return ''; }
+}
+
+// ─── Token formatting ────────────────────────────────────────────────────────
+
+/**
+ * Format a token count as a human-readable string.
+ * e.g. 12345 → "12.3k", 500 → "500"
+ */
+function formatTokenCount(n) {
+  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+}
+
+// ─── Git branch display ──────────────────────────────────────────────────────
+
+/**
+ * Format a branch name with ANSI color.
+ * main/master → red (\x1b[31m), all others → cyan (\x1b[36m)
+ */
+function formatBranchDisplay(branchName) {
+  const isDanger = branchName === 'main' || branchName === 'master';
+  return isDanger
+    ? `\x1b[31m[${branchName}]\x1b[0m`
+    : `\x1b[36m[${branchName}]\x1b[0m`;
+}
+
+/**
+ * Render the git branch segment.
+ * Uses TTL-based caching (5s) to avoid blocking the statusline on every call.
+ * Returns '' if disabled, git not available, or no branch.
+ */
+function renderGitBranch(data, config) {
+  if (config?.statusline?.components?.git_branch === false) return '';
+  const cacheFile = path.join(os.tmpdir(), 'gsd-statusline-git.cache');
+  return withCache(cacheFile, 5, () => {
+    const cwd = data.workspace?.current_dir || process.cwd();
+    const branch = execSync(
+      'git branch --show-current',
+      { encoding: 'utf8', timeout: 1500, cwd, stdio: ['pipe', 'pipe', 'ignore'] }
+    ).trim();
+    if (!branch) return '';
+    return formatBranchDisplay(branch);
+  });
+}
+
+// ─── Token breakdown ─────────────────────────────────────────────────────────
+
+/**
+ * Render the token breakdown segment (cache creation ↑ and cache read ↓).
+ * Returns '' if disabled, current_usage is null, or both counts are 0.
+ */
+function renderTokenBreakdown(data, config) {
+  if (config?.statusline?.components?.token_breakdown === false) return '';
+  const usage = data.context_window?.current_usage;
+  if (!usage) return '';
+  const created = usage.cache_creation_input_tokens || 0;
+  const read = usage.cache_read_input_tokens || 0;
+  if (created === 0 && read === 0) return '';
+  return `\x1b[2m\u2191${formatTokenCount(created)} \u2193${formatTokenCount(read)}\x1b[0m`;
+}
+
+// ─── Cross-model context warning ─────────────────────────────────────────────
+
+/**
+ * Render the cross-model context warning.
+ * Shows [>200k] in yellow when:
+ *   - exceeds_200k_tokens is true (not null/false/undefined)
+ *   - context_window_size > 200000 (only for large-window models; skip Sonnet/Haiku class)
+ * This warning indicates token usage exceeded 200K in the current session,
+ * which is a degradation signal for large-window models (Opus 4.6 = 1M window).
+ * Returns '' otherwise.
+ */
+function renderCrossModelWarning(data, config) {
+  if (config?.statusline?.components?.cross_model_warning === false) return '';
+  if (!data.exceeds_200k_tokens) return '';
+  const windowSize = data.context_window?.context_window_size || 0;
+  if (windowSize <= 200000) return '';
+  return `\x1b[33m[>200k]\x1b[0m`;
+}
+
+// ─── Main statusline ──────────────────────────────────────────────────────────
 
 // Read JSON from stdin
 let input = '';
@@ -35,17 +136,21 @@ process.stdin.on('end', () => {
       // Write context metrics to bridge file for the context-monitor PostToolUse hook.
       // The monitor reads this file to inject agent-facing warnings when context is low.
       if (session) {
-        try {
-          const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
-          const bridgeData = JSON.stringify({
-            session_id: session,
-            remaining_percentage: remaining,
-            used_pct: used,
-            timestamp: Math.floor(Date.now() / 1000)
-          });
-          fs.writeFileSync(bridgePath, bridgeData);
-        } catch (e) {
-          // Silent fail -- bridge is best-effort, don't break statusline
+        // GSD_SIMULATE_SANDBOX: skip bridge write defensively (os.tmpdir() is writable
+        // in sandbox, but guard added per locked degradation pattern for all hook writes)
+        if (!process.env.GSD_SIMULATE_SANDBOX) {
+          try {
+            const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
+            const bridgeData = JSON.stringify({
+              session_id: session,
+              remaining_percentage: remaining,
+              used_pct: used,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+            fs.writeFileSync(bridgePath, bridgeData);
+          } catch (e) {
+            // Silent fail -- bridge is best-effort, don't break statusline
+          }
         }
       }
 
@@ -55,40 +160,18 @@ process.stdin.on('end', () => {
 
       // Color based on usable context thresholds
       if (used < 50) {
-        ctx = ` \x1b[32m${bar} ${used}%\x1b[0m`;
+        ctx = `\x1b[32m${bar} ${used}%\x1b[0m`;
       } else if (used < 65) {
-        ctx = ` \x1b[33m${bar} ${used}%\x1b[0m`;
+        ctx = `\x1b[33m${bar} ${used}%\x1b[0m`;
       } else if (used < 80) {
-        ctx = ` \x1b[38;5;208m${bar} ${used}%\x1b[0m`;
+        ctx = `\x1b[38;5;208m${bar} ${used}%\x1b[0m`;
       } else {
-        ctx = ` \x1b[5;31m💀 ${bar} ${used}%\x1b[0m`;
+        ctx = `\x1b[5;31m💀 ${bar} ${used}%\x1b[0m`;
       }
     }
 
-    // Current task from todos
-    let task = '';
-    const homeDir = os.homedir();
     // Respect CLAUDE_CONFIG_DIR for custom config directory setups (#870)
-    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(homeDir, '.claude');
-    const todosDir = path.join(claudeDir, 'todos');
-    if (session && fs.existsSync(todosDir)) {
-      try {
-        const files = fs.readdirSync(todosDir)
-          .filter(f => f.startsWith(session) && f.includes('-agent-') && f.endsWith('.json'))
-          .map(f => ({ name: f, mtime: fs.statSync(path.join(todosDir, f)).mtime }))
-          .sort((a, b) => b.mtime - a.mtime);
-
-        if (files.length > 0) {
-          try {
-            const todos = JSON.parse(fs.readFileSync(path.join(todosDir, files[0].name), 'utf8'));
-            const inProgress = todos.find(t => t.status === 'in_progress');
-            if (inProgress) task = inProgress.activeForm || '';
-          } catch (e) {}
-        }
-      } catch (e) {
-        // Silently fail on file system errors - don't break statusline
-      }
-    }
+    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 
     // GSD update available?
     let gsdUpdate = '';
@@ -102,14 +185,53 @@ process.stdin.on('end', () => {
       } catch (e) {}
     }
 
+    // Load config for statusline component toggles
+    // Direct JSON.parse — avoid spawning gsd-tools (process spawn overhead per anti-pattern docs)
+    let config = {};
+    try {
+      const projectDir = data.workspace?.project_dir || data.workspace?.current_dir || process.cwd();
+      const configPath = path.join(projectDir, '.planning', 'config.json');
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      }
+    } catch (e) {
+      // Silent fail — config is optional; all components default to enabled
+    }
+
+    // New component segments
+    const gitBranch = renderGitBranch(data, config);
+    const tokenBreakdown = renderTokenBreakdown(data, config);
+    const crossModelWarn = renderCrossModelWarning(data, config);
+
     // Output
     const dirname = path.basename(dir);
-    if (task) {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[1m${task}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
-    } else {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
-    }
+
+    // gsdUpdate already includes its own ' │ ' suffix when non-empty,
+    // so prepend it to model rather than treating as a separate segment.
+    const modelSeg = `${gsdUpdate}\x1b[2m${model}\x1b[0m`;
+
+    // dirname [branch] combined — branch is '' when unavailable
+    const dirBranchSeg = `\x1b[2m${dirname}\x1b[0m${gitBranch ? ' ' + gitBranch : ''}`;
+
+    // ctx + crossModelWarn combined — either may be empty
+    const ctxCombined = [ctx, crossModelWarn].filter(Boolean).join(' ');
+
+    // Build segments array in desired order:
+    //   gsdUpdate model | dirname [branch] | ctx crossModelWarn | tokenBreakdown
+    const segments = [
+      modelSeg,
+      dirBranchSeg,
+      ctxCombined,
+      tokenBreakdown,
+    ].filter(s => s !== '');
+
+    process.stdout.write(segments.join(' \u2502 '));
   } catch (e) {
     // Silent fail - don't break statusline on parse errors
   }
 });
+
+// Exports for testing (not used by Claude Code — hook reads stdin, writes stdout)
+if (typeof module !== 'undefined') {
+  module.exports = { formatTokenCount, formatBranchDisplay, renderTokenBreakdown, renderCrossModelWarning, renderGitBranch, withCache };
+}

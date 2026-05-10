@@ -1,0 +1,17 @@
+{
+  "id": "micro-researcher-hypothesis-discipline",
+  "type": "micro",
+  "description": "Tests whether researcher agent treats training data as hypothesis and flags uncertainty when citing library capabilities",
+  "prompt": "Research whether the Bun runtime supports Node.js worker_threads. Provide your finding with a confidence assessment. Explain how you would verify this claim.",
+  "timeout_ms": 30000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "required_fields": [],
+    "contains": ["confidence", "verif"],
+    "not_contains": [],
+    "output_length_hint": { "min": 150, "max": 1500 }
+  }
+}

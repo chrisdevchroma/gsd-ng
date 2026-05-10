@@ -1,0 +1,16 @@
+{
+  "id": "core-add-todo",
+  "type": "core",
+  "description": "Create a GSD todo file for a described problem with proper frontmatter",
+  "prompt": "Create a GSD-style todo markdown file for this problem: 'The formatWidget function in src/utils.js does not handle widgets with missing name or type fields gracefully — it outputs [undefined] undefined'. The todo should have YAML frontmatter with: title, area (bug), priority (medium), created (2026-01-16). The body should describe the problem and suggest a fix approach. Output the complete todo file content.",
+  "timeout_ms": 120000,
+  "at_refs": ["none"],
+  "runtime_filter": "all",
+  "expected": {
+    "format": "markdown",
+    "required_sections": [],
+    "contains": ["title:", "area:", "priority:", "formatWidget"],
+    "not_contains": [],
+    "output_length_hint": { "min": 100, "max": 1000 }
+  }
+}
