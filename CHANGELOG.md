@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-dev.6] - 2026-05-12
+
 ### Changed
 - `prepare-release.yml` pushes branch + tag directly via the `RELEASE_PAT` secret; `release.yml` and `publish.yml` fire on the tag push.
 - Dependabot opens PRs against `develop`; ecosystems `npm` and `github-actions`, weekly.
