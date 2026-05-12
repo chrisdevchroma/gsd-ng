@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - `prepare-release.yml` pushes branch + tag directly via the `RELEASE_PAT` secret; `release.yml` and `publish.yml` fire on the tag push.
+- Dependabot opens PRs against `develop`; ecosystems `npm` and `github-actions`, weekly.
+
+### Removed
+- `esbuild` devDependency. It was never imported; `build:hooks` only copies files.
 
 ### Fixed
 - `publish.yml` publish job no longer attaches `environment: release`.
