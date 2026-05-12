@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `publish.yml` uses Node 24 (npm 11) instead of Node 22 (npm 10). npm 10's CLI sends an unresolved `${NODE_AUTH_TOKEN}` placeholder as the bearer token to the npm registry and never falls back to OIDC trusted publishing, producing a misleading `404 Not Found` error.
+
 ## [1.0.0-dev.6] - 2026-05-12
 
 ### Changed
