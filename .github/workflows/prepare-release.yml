@@ -1,10 +1,22 @@
 name: Prepare Release
 
+# Bumps version + stamps CHANGELOG + commits + pushes branch and tag in one
+# atomic push. Downstream release.yml and publish.yml fire on the tag-push
+# event triggered by this push (not via a workflow_dispatch chain).
+#
+# Requires the RELEASE_PAT secret: a fine-grained Personal Access Token owned
+# by a repo admin (ruleset bypass actor) with `Contents: read/write` on this
+# repo. Two things this enables that GITHUB_TOKEN cannot:
+#   - Push directly to develop/main (GITHUB_TOKEN can't bypass branch rulesets
+#     on user-owned repos because github-actions[bot] can't be a bypass actor).
+#   - Trigger downstream workflows from the tag push (GITHUB_TOKEN tag pushes
+#     are deliberately not trigger events, as anti-loop protection).
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 1.0.0-dev.4, 1.0.0)'
+        description: 'Version to release (e.g., 1.0.0-dev.5, 1.0.0)'
         required: true
         type: string
       branch:
@@ -15,9 +27,9 @@ on:
         options:
           - develop
           - main
+
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   prepare:
@@ -27,6 +39,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ inputs.branch }}
+          token: ${{ secrets.RELEASE_PAT }}
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -51,7 +64,7 @@ jobs:
               echo "::error::Tag v$VERSION and GitHub release already exist"
               exit 1
             fi
-            echo "::error::Tag v$VERSION exists but no GitHub release was found. Re-run the release and publish workflows from the Actions tab for this tag instead."
+            echo "::error::Tag v$VERSION exists but no GitHub release was found. Re-run release.yml and publish.yml from the Actions tab against the existing tag instead of re-running prepare-release."
             exit 1
           fi
           # Enforce gitflow: prereleases from develop, stable from main
@@ -66,6 +79,19 @@ jobs:
           CURRENT=$(node -p "require('./package.json').version")
           echo "Releasing $VERSION (current: $CURRENT) from $BRANCH"
 
+      - name: Validate CHANGELOG.md
+        shell: bash
+        run: |
+          if ! grep -q '## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no [Unreleased] section. Add release notes under [Unreleased] before running this workflow."
+            exit 1
+          fi
+          CONTENT=$(sed -n '/## \[Unreleased\]/,/## \[/{ /## \[/d; /^$/d; p; }' CHANGELOG.md)
+          if [ -z "$CONTENT" ]; then
+            echo "::error::CHANGELOG.md [Unreleased] section is empty. Add release notes before running this workflow."
+            exit 1
+          fi
+
       - name: Update package.json version
         env:
           VERSION: ${{ inputs.version }}
@@ -74,78 +100,29 @@ jobs:
       - name: Update package-lock.json
         run: npm install --package-lock-only
 
-      - name: Validate CHANGELOG.md
-        shell: bash
-        run: |
-          if ! grep -q '## \[Unreleased\]' CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no [Unreleased] section. Add release notes under [Unreleased] before running this workflow."
-            exit 1
-          fi
-          # Check that [Unreleased] has content (not just the heading followed by another heading or EOF)
-          CONTENT=$(sed -n '/## \[Unreleased\]/,/## \[/{ /## \[/d; /^$/d; p; }' CHANGELOG.md)
-          if [ -z "$CONTENT" ]; then
-            echo "::error::CHANGELOG.md [Unreleased] section is empty. Add release notes before running this workflow."
-            exit 1
-          fi
-
       - name: Stamp CHANGELOG.md
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
         run: |
           DATE=$(date +%Y-%m-%d)
-          if grep -q '## \[Unreleased\]' CHANGELOG.md; then
-            sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
-          fi
+          sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
 
-      - name: Commit, tag, and push release branch
+      - name: Commit, tag, and push
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
           BRANCH: ${{ inputs.branch }}
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # New branch holds the release commit + tag. Pushing to a fresh
-          # branch and to a new tag are not blocked by the branch's
-          # pull_request ruleset (which only governs the existing branch).
-          RELEASE_BRANCH="release/v$VERSION"
-          git checkout -b "$RELEASE_BRANCH"
+          git config user.name "$ACTOR"
+          git config user.email "${ACTOR_ID}+${ACTOR}@users.noreply.github.com"
           git add package.json package-lock.json CHANGELOG.md
           git commit -m "chore: release v$VERSION"
           git tag -a "v$VERSION" -m "Release v$VERSION"
-          # Atomic push: branch + tag together. Downstream release.yml /
-          # publish.yml fire on the tag push and don't depend on the PR
-          # merging to $BRANCH first.
-          git push --atomic origin "$RELEASE_BRANCH" "v$VERSION"
-          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-
-      - name: Trigger release and publish workflows
-        env:
-          VERSION: ${{ inputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Tags pushed by GITHUB_TOKEN do NOT trigger downstream workflows
-          # (anti-loop protection). Explicitly dispatch release.yml and
-          # publish.yml against the just-pushed tag.
-          gh workflow run release.yml --ref "v$VERSION" -f tag="v$VERSION"
-          gh workflow run publish.yml --ref "v$VERSION" -f tag="v$VERSION"
-
-      - name: Open release PR with auto-merge
-        env:
-          VERSION: ${{ inputs.version }}
-          BRANCH: ${{ inputs.branch }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_BODY="Automated release commit for v$VERSION.
-
-          - \`package.json\` bumped to $VERSION
-          - \`CHANGELOG.md\` stamped with the [$VERSION] section
-          - Tag \`v$VERSION\` already pushed; \`release.yml\` and \`publish.yml\` triggered explicitly against the tag
-          - This PR merges the version bump + changelog stamp into \`$BRANCH\`; auto-merge enabled (rebase) so it lands as soon as required checks pass"
-          gh pr create \
-            --base "$BRANCH" \
-            --head "$RELEASE_BRANCH" \
-            --title "chore: release v$VERSION" \
-            --body "$PR_BODY"
-          gh pr merge --auto --rebase "$RELEASE_BRANCH"
+          # Atomic push: branch + tag together. The RELEASE_PAT credential
+          # (configured on the remote by the checkout step) lets us push
+          # directly to develop/main, and makes the tag push a real trigger
+          # event for release.yml + publish.yml.
+          git push --atomic origin "$BRANCH" "v$VERSION"

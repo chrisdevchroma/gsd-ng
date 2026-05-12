@@ -6,8 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `prepare-release.yml` pushes branch + tag directly via the `RELEASE_PAT` secret; `release.yml` and `publish.yml` fire on the tag push.
+
 ### Fixed
-- Release pipeline end-to-end automation — `1.0.0-dev.4` was tagged + drafted as a GitHub Release but never landed on npm because the `publish.yml` workflow didn't fire (tags pushed by `GITHUB_TOKEN` don't trigger downstream workflows, and the workflow at that tag predated the explicit `workflow_dispatch` chain). This release is the first that exercises the full chain — `prepare-release` → tag push → release branch PR auto-merge → explicit dispatch of `release.yml` + `publish.yml` → GitHub Release published + npm package published — without manual intervention.
+- `publish.yml` publish job no longer attaches `environment: release`.
 
 ## [1.0.0-dev.4] - 2026-05-10
 
