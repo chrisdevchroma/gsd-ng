@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - `publish.yml` uses Node 24 (npm 11) instead of Node 22 (npm 10). npm 10's CLI sends an unresolved `${NODE_AUTH_TOKEN}` placeholder as the bearer token to the npm registry and never falls back to OIDC trusted publishing, producing a misleading `404 Not Found` error.
 - `bash-safety-hook.cjs` was missing from the published npm and GitHub Release tarballs — `package.json` `files` shipped `hooks/dist` but never the `.cjs` source, so installed workspaces failed the PreToolUse Bash hook with "Cannot find module" on every Bash call. `install.js` now also asserts every expected hook landed, failing the install loudly instead of silently.
+- Dual-runtime installs no longer corrupt each other. The shared `.planning/config.json` `runtime` field was written by every install, so installing a second runtime into a project flipped effort-frontmatter gating for the first. The engine now detects its runtime from a per-engine `.runtime` marker written into each deployed engine tree instead.
 
 ### Changed
 - Hooks are published and installed directly from `hooks/`. The `hooks/dist/` build step, `scripts/build-hooks.js`, and the `build:hooks` npm script (with its `pretest` / `prepublishOnly` / `build:tarball` / `test:coverage` call sites and the `npm ci` steps in `release.yml` / `publish.yml`) are removed — `build-hooks.js` had been a no-op file copy since the hooks became dependency-free and `esbuild` was dropped.
