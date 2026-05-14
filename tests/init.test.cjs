@@ -11,6 +11,7 @@ const {
   createTempProject,
   cleanup,
   cleanupSubdir,
+  resolveTmpDir,
 } = require('./helpers.cjs');
 
 describe('init commands', () => {
@@ -372,26 +373,34 @@ describe('Effort fields in init commands', () => {
     assert.ok('verifier_effort' in output, 'verifier_effort should be present');
   });
 
-  test('Test 8: effort fields are null when config.json has runtime=copilot', () => {
+  test('Test 8: effort fields are null when .runtime marker is copilot', () => {
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
     fs.mkdirSync(phaseDir, { recursive: true });
     fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
-    writeCopilotConfig(tmpDir);
+    // Write config with quality profile; runtime detection comes from the .runtime marker
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ model_profile: 'quality' }, null, 2), 'utf-8');
 
-    const result = runGsdTools('init execute-phase 03 --json', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    const markerDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-copilot-marker-'));
+    fs.writeFileSync(path.join(markerDir, '.runtime'), 'copilot\n', 'utf-8');
+    try {
+      const result = runGsdTools('init execute-phase 03 --json', tmpDir, { GSD_TEST_RUNTIME_MARKER_DIR: markerDir });
+      assert.ok(result.success, `Command failed: ${result.error}`);
 
-    const output = JSON.parse(result.output);
-    assert.strictEqual(
-      output.executor_effort,
-      null,
-      'executor_effort should be null for copilot runtime',
-    );
-    assert.strictEqual(
-      output.verifier_effort,
-      null,
-      'verifier_effort should be null for copilot runtime',
-    );
+      const output = JSON.parse(result.output);
+      assert.strictEqual(
+        output.executor_effort,
+        null,
+        'executor_effort should be null for copilot runtime',
+      );
+      assert.strictEqual(
+        output.verifier_effort,
+        null,
+        'verifier_effort should be null for copilot runtime',
+      );
+    } finally {
+      cleanup(markerDir);
+    }
   });
 
   function writeClaudeHaikuExecutorConfig(dir) {

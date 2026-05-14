@@ -1247,6 +1247,7 @@ describe('resolveEffortInternal', () => {
   });
 
   afterEach(() => {
+    delete process.env.GSD_TEST_RUNTIME_MARKER_DIR;
     cleanup(tmpDir);
   });
 
@@ -1255,6 +1256,11 @@ describe('resolveEffortInternal', () => {
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify(obj, null, 2),
     );
+  }
+
+  function writeRuntimeMarker(dir, value) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '.runtime'), value + '\n', 'utf-8');
   }
 
   test('Test 1: returns max for gsd-planner when model_profile=quality and no overrides', () => {
@@ -1293,19 +1299,28 @@ describe('resolveEffortInternal', () => {
     assert.strictEqual(result, null);
   });
 
-  test('Test 6: returns null when config.runtime is copilot (non-Claude runtime suppression)', () => {
-    writeConfig({ model_profile: 'quality', runtime: 'copilot' });
+  test('Test 6: returns null when .runtime marker is copilot (non-Claude runtime suppression)', () => {
+    const markerDir = path.join(tmpDir, 'marker-copilot');
+    writeRuntimeMarker(markerDir, 'copilot');
+    process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+    writeConfig({ model_profile: 'quality' });
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     assert.strictEqual(result, null);
   });
 
-  test('Test 7: returns normal value when config.runtime is claude', () => {
-    writeConfig({ model_profile: 'quality', runtime: 'claude' });
+  test('Test 7: returns normal value when .runtime marker is claude', () => {
+    const markerDir = path.join(tmpDir, 'marker-claude');
+    writeRuntimeMarker(markerDir, 'claude');
+    process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+    writeConfig({ model_profile: 'quality' });
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     assert.strictEqual(result, 'max');
   });
 
-  test('Test 8: returns normal value when config.runtime is undefined (backward compat)', () => {
+  test('Test 8: returns normal value when .runtime marker is absent (backward compat, defaults to claude)', () => {
+    const markerDir = path.join(tmpDir, 'marker-absent');
+    fs.mkdirSync(markerDir, { recursive: true });
+    process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
     writeConfig({ model_profile: 'quality' });
     const result = resolveEffortInternal(tmpDir, 'gsd-planner');
     assert.strictEqual(result, 'max');

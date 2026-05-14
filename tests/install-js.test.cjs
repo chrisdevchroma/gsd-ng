@@ -1847,9 +1847,9 @@ test('SVN-03: --runtime claude --local writes manifest.version equal to VERSION 
   }
 });
 
-// ── install.js writes runtime field to .planning/config.json ─────
+// ── install.js writes .runtime marker into the deployed engine tree ──
 
-test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .planning/config.json', () => {
+test('RUNTIME-01: install.js --runtime claude writes .runtime marker containing "claude" into .claude/gsd-ng/', () => {
   const tmpDir = fs.mkdtempSync(
     path.join(BASE_TMPDIR, 'gsd-js-runtime-claude-'),
   );
@@ -1872,24 +1872,24 @@ test('RUNTIME-01: install.js --runtime claude writes "runtime":"claude" to .plan
         (result.stderr || ''),
     );
 
-    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    const markerPath = path.join(tmpDir, '.claude', 'gsd-ng', '.runtime');
     assert.ok(
-      fs.existsSync(configPath),
-      '.planning/config.json must exist after install (RUNTIME-01)',
+      fs.existsSync(markerPath),
+      '.claude/gsd-ng/.runtime must exist after claude install (RUNTIME-01)',
     );
 
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const markerContent = fs.readFileSync(markerPath, 'utf8').trim();
     assert.strictEqual(
-      config.runtime,
+      markerContent,
       'claude',
-      'config.json must contain "runtime":"claude" after claude install (RUNTIME-01)',
+      '.runtime marker must contain "claude" after claude install (RUNTIME-01)',
     );
   } finally {
     cleanup(tmpDir);
   }
 });
 
-test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .planning/config.json', () => {
+test('RUNTIME-02: install.js --runtime copilot writes .runtime marker containing "copilot" into .github/gsd-ng/', () => {
   const tmpDir = fs.mkdtempSync(
     path.join(BASE_TMPDIR, 'gsd-js-runtime-copilot-'),
   );
@@ -1912,17 +1912,17 @@ test('RUNTIME-02: install.js --runtime copilot writes "runtime":"copilot" to .pl
         (result.stderr || ''),
     );
 
-    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    const markerPath = path.join(tmpDir, '.github', 'gsd-ng', '.runtime');
     assert.ok(
-      fs.existsSync(configPath),
-      '.planning/config.json must exist after copilot install (RUNTIME-02)',
+      fs.existsSync(markerPath),
+      '.github/gsd-ng/.runtime must exist after copilot install (RUNTIME-02)',
     );
 
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const markerContent = fs.readFileSync(markerPath, 'utf8').trim();
     assert.strictEqual(
-      config.runtime,
+      markerContent,
       'copilot',
-      'config.json must contain "runtime":"copilot" after copilot install (RUNTIME-02)',
+      '.runtime marker must contain "copilot" after copilot install (RUNTIME-02)',
     );
   } finally {
     cleanup(tmpDir);
@@ -2022,7 +2022,7 @@ test('ALLOW-20: install.js syncSection uses Set.has() — not Array.includes() �
   );
 });
 
-test('RUNTIME-03: install.js preserves existing config.json values when writing runtime field', () => {
+test('RUNTIME-03: install.js preserves existing config.json values and writes .runtime marker', () => {
   const tmpDir = fs.mkdtempSync(
     path.join(BASE_TMPDIR, 'gsd-js-runtime-preserve-'),
   );
@@ -2053,30 +2053,38 @@ test('RUNTIME-03: install.js preserves existing config.json values when writing 
         (result.stderr || ''),
     );
 
+    // Existing config.json values must be preserved (install does not touch them)
     const config = JSON.parse(
       fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'),
-    );
-    assert.strictEqual(
-      config.runtime,
-      'claude',
-      'runtime field must be added (RUNTIME-03)',
     );
     assert.strictEqual(
       config.model_profile,
       'quality',
       'existing model_profile must be preserved (RUNTIME-03)',
     );
+
+    // .runtime marker must be written into the engine tree
+    const markerPath = path.join(tmpDir, '.claude', 'gsd-ng', '.runtime');
+    assert.ok(
+      fs.existsSync(markerPath),
+      '.claude/gsd-ng/.runtime marker must exist (RUNTIME-03)',
+    );
+    assert.strictEqual(
+      fs.readFileSync(markerPath, 'utf8').trim(),
+      'claude',
+      '.runtime marker must contain "claude" (RUNTIME-03)',
+    );
   } finally {
     cleanup(tmpDir);
   }
 });
 
-test('RUNTIME-04: install.js updates existing runtime field in config.json', () => {
+test('RUNTIME-04: stale config.json runtime field is left inert; .runtime marker reflects actual install runtime', () => {
   const tmpDir = fs.mkdtempSync(
     path.join(BASE_TMPDIR, 'gsd-js-runtime-update-'),
   );
   try {
-    // Pre-create config.json with runtime: copilot
+    // Pre-create config.json with a stale runtime: copilot field
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
@@ -2084,7 +2092,7 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
       'utf-8',
     );
 
-    // Install with claude runtime — should update to claude
+    // Install with claude runtime
     const result = spawnSync(
       process.execPath,
       [INSTALLER, '--runtime', 'claude', '--local'],
@@ -2102,17 +2110,149 @@ test('RUNTIME-04: install.js updates existing runtime field in config.json', () 
       'install.js must exit 0 (RUNTIME-04)\nstderr: ' + (result.stderr || ''),
     );
 
+    // The .runtime marker in the engine tree reflects the actual install runtime
+    const markerPath = path.join(tmpDir, '.claude', 'gsd-ng', '.runtime');
+    assert.ok(
+      fs.existsSync(markerPath),
+      '.claude/gsd-ng/.runtime marker must exist after claude install (RUNTIME-04)',
+    );
+    assert.strictEqual(
+      fs.readFileSync(markerPath, 'utf8').trim(),
+      'claude',
+      '.runtime marker must contain "claude" (RUNTIME-04)',
+    );
+
+    // The stale config.json runtime field is left untouched (no migration)
     const config = JSON.parse(
       fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'),
     );
     assert.strictEqual(
       config.runtime,
-      'claude',
-      'runtime must be updated from copilot to claude (RUNTIME-04)',
+      'copilot',
+      'stale config.json runtime field must be left inert — no migration (RUNTIME-04)',
     );
   } finally {
     cleanup(tmpDir);
   }
+});
+
+// ── dual-runtime install-order integration test ───────────────────
+
+function runDualRuntimeTest(firstRuntime, secondRuntime) {
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, `gsd-js-dual-${firstRuntime}-${secondRuntime}-`),
+  );
+  try {
+    const runInstall = (rt) =>
+      spawnSync(
+        process.execPath,
+        [INSTALLER, '--runtime', rt, '--local'],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          cwd: tmpDir,
+          env: Object.assign({}, process.env, { HOME: os.homedir() }),
+        },
+      );
+
+    // Install both runtimes in order
+    const r1 = runInstall(firstRuntime);
+    assert.strictEqual(
+      r1.status,
+      0,
+      `first install (${firstRuntime}) must exit 0\nstderr: ${r1.stderr || ''}`,
+    );
+    const r2 = runInstall(secondRuntime);
+    assert.strictEqual(
+      r2.status,
+      0,
+      `second install (${secondRuntime}) must exit 0\nstderr: ${r2.stderr || ''}`,
+    );
+
+    // Both markers must exist with correct content
+    const claudeMarker = path.join(tmpDir, '.claude', 'gsd-ng', '.runtime');
+    const copilotMarker = path.join(tmpDir, '.github', 'gsd-ng', '.runtime');
+    assert.ok(fs.existsSync(claudeMarker), `.claude/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`);
+    assert.ok(fs.existsSync(copilotMarker), `.github/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`);
+    assert.strictEqual(fs.readFileSync(claudeMarker, 'utf8').trim(), 'claude', `.claude marker must be "claude" (${firstRuntime}-then-${secondRuntime})`);
+    assert.strictEqual(fs.readFileSync(copilotMarker, 'utf8').trim(), 'copilot', `.github marker must be "copilot" (${firstRuntime}-then-${secondRuntime})`);
+
+    // Set up a model_profile so effort sync produces a non-null result
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ model_profile: 'quality' }, null, 2),
+      'utf-8',
+    );
+
+    // Create a gsd-planner.md agent in Claude's agents dir
+    const claudeAgentsDir = path.join(tmpDir, '.claude', 'agents');
+    fs.mkdirSync(claudeAgentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeAgentsDir, 'gsd-planner.md'),
+      '---\nmodel: claude-opus-4-5\n---\n# GSD Planner\n',
+      'utf-8',
+    );
+
+    // Create a gsd-planner.md agent in Copilot's agents dir
+    const copilotAgentsDir = path.join(tmpDir, '.github', 'agents');
+    fs.mkdirSync(copilotAgentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(copilotAgentsDir, 'gsd-planner.md'),
+      '---\nmodel: claude-opus-4-5\n---\n# GSD Planner\n',
+      'utf-8',
+    );
+
+    // Invoke each deployed engine's sync-agents CLI
+    const claudeGsdTools = path.join(tmpDir, '.claude', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    const copilotGsdTools = path.join(tmpDir, '.github', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+
+    const claudeSync = spawnSync(
+      process.execPath,
+      [claudeGsdTools, 'sync-agents', '--agents-dir', claudeAgentsDir],
+      { encoding: 'utf8', timeout: 10000, cwd: tmpDir },
+    );
+    const copilotSync = spawnSync(
+      process.execPath,
+      [copilotGsdTools, 'sync-agents', '--agents-dir', copilotAgentsDir],
+      { encoding: 'utf8', timeout: 10000, cwd: tmpDir },
+    );
+
+    assert.strictEqual(
+      claudeSync.status,
+      0,
+      `Claude sync-agents must exit 0 (${firstRuntime}-then-${secondRuntime})\nstderr: ${claudeSync.stderr || ''}`,
+    );
+    assert.strictEqual(
+      copilotSync.status,
+      0,
+      `Copilot sync-agents must exit 0 (${firstRuntime}-then-${secondRuntime})\nstderr: ${copilotSync.stderr || ''}`,
+    );
+
+    // Claude engine: gsd-planner.md must have effort: frontmatter (quality profile → max)
+    const claudeAgentContent = fs.readFileSync(path.join(claudeAgentsDir, 'gsd-planner.md'), 'utf-8');
+    assert.ok(
+      /^effort:\s*max$/m.test(claudeAgentContent),
+      `Claude agent must have effort: max after sync (${firstRuntime}-then-${secondRuntime})\nactual:\n${claudeAgentContent}`,
+    );
+
+    // Copilot engine: gsd-planner.md must NOT have effort: frontmatter
+    const copilotAgentContent = fs.readFileSync(path.join(copilotAgentsDir, 'gsd-planner.md'), 'utf-8');
+    assert.ok(
+      !/^effort:/m.test(copilotAgentContent),
+      `Copilot agent must NOT have effort: after sync (${firstRuntime}-then-${secondRuntime})\nactual:\n${copilotAgentContent}`,
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+}
+
+test('RUNTIME-DUAL-A: claude-then-copilot install — Claude agents get effort:, Copilot agents do not, regardless of install order', () => {
+  runDualRuntimeTest('claude', 'copilot');
+});
+
+test('RUNTIME-DUAL-B: copilot-then-claude install — Claude agents get effort:, Copilot agents do not, regardless of install order', () => {
+  runDualRuntimeTest('copilot', 'claude');
 });
 
 // ── double-install is idempotent — no phantom local modifications ──
