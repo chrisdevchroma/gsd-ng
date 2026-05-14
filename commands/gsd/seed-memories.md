@@ -33,7 +33,6 @@ This skill is re-runnable; runtime topology may have changed since install. All 
 <!-- ONLY:copilot -->
    - If `{{PROJECT_RULES_FILE}}` exists at workspace root → runtime is Copilot.
 <!-- /ONLY:copilot -->
-   - If both exist, prefer the runtime that owns the active session (consult `.planning/config.json` `runtime:` field).
 
    Per detected runtime, use the correct paths:
 

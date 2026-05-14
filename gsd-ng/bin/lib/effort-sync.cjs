@@ -16,7 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, resolveEffortInternal } = require('./core.cjs');
+const { resolveEffortInternal, getEngineRuntime } = require('./core.cjs');
 const { EFFORT_PROFILES } = require('./model-profiles.cjs');
 const { extractFrontmatter, spliceFrontmatter } = require('./frontmatter.cjs');
 
@@ -30,8 +30,7 @@ const RESTART_NOTICE = 'Restart Claude Code to apply effort changes.';
  * @returns {{ changes: Array<{agent: string, effort: string|null}>, skipped?: boolean }}
  */
 function syncAgentEffortFrontmatter(cwd, agentsDir) {
-  const config = loadConfig(cwd) || {};
-  if (config.runtime && config.runtime !== 'claude') {
+  if (getEngineRuntime() !== 'claude') {
     return { skipped: true, changes: [] };
   }
 
