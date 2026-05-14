@@ -1176,42 +1176,12 @@ function stripGsdFromCopilotInstructions(content) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Write the runtime field to .planning/config.json so effort-gating
- * can determine whether effort: frontmatter should be injected.
- * Creates .planning/ and config.json if they don't exist.
- * Preserves existing config values — only sets/updates "runtime".
- */
-function writeRuntimeToConfig(rt) {
-  const configDir = path.join(process.cwd(), '.planning');
-  const configPath = path.join(configDir, 'config.json');
-
-  // Ensure .planning directory exists
-  try {
-    fs.mkdirSync(configDir, { recursive: true });
-  } catch {}
-
-  let config = {};
-  try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    }
-  } catch {
-    // If config.json is corrupt, start fresh
-    config = {};
-  }
-
-  config.runtime = rt;
-
-  try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-  } catch {
-    // If .planning is gitignored or read-only, silently skip
-    // runtime will default to claude behavior in loadConfig
-  }
+function writeRuntimeMarker(targetDir, runtime) {
+  const dest = path.join(targetDir, 'gsd-ng', '.runtime');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, runtime + '\n');
+  console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 function install(isGlobal) {
   const isClaudeCode = runtime === 'claude';
@@ -1708,8 +1678,7 @@ function install(isGlobal) {
       }
     }
 
-    // Persist runtime to .planning/config.json for effort-gating
-    writeRuntimeToConfig(runtime);
+    writeRuntimeMarker(targetDir, runtime);
 
     return { settingsPath, settings, statuslineCommand };
 
@@ -1846,8 +1815,7 @@ function install(isGlobal) {
     writeManifest(targetDir, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
-    // Persist runtime to .planning/config.json for effort-gating
-    writeRuntimeToConfig(runtime);
+    writeRuntimeMarker(targetDir, runtime);
 
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
   }

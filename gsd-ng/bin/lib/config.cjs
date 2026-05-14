@@ -4,7 +4,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, planningPaths, loadConfig } = require('./core.cjs');
+const {
+  output,
+  error,
+  planningPaths,
+  loadConfig,
+  getEngineRuntime,
+} = require('./core.cjs');
 const { DEFAULTS, WORKFLOW_DEFAULTS } = require('./defaults.cjs');
 const {
   VALID_PROFILES,
@@ -310,23 +316,17 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
     );
   }
 
-  // Claude-only surface lock: profile/effort keys are Claude-only.
-  // When runtime === 'copilot', treat these keys as not-present so callers
-  // get the same not-found / defaultValue behaviour they would on a config
-  // that simply doesn't define them.
-  if (PROFILE_EFFORT_KEY_PATTERN.test(keyPath)) {
-    const cfg = loadConfig(cwd) || {};
-    const isClaudeCode = (cfg.runtime || 'claude') === 'claude';
-    if (isClaudeCode) {
-      // fall through to the existing lookup below
-    } else {
-      if (defaultValue !== undefined) {
-        output(defaultValue, String(defaultValue));
-        return;
-      }
-      error(`Key not found: ${keyPath}`);
+  // Claude-only surface lock: profile/effort keys read as not-present on non-Claude runtimes.
+  if (
+    PROFILE_EFFORT_KEY_PATTERN.test(keyPath) &&
+    getEngineRuntime() !== 'claude'
+  ) {
+    if (defaultValue !== undefined) {
+      output(defaultValue, String(defaultValue));
       return;
     }
+    error(`Key not found: ${keyPath}`);
+    return;
   }
 
   let config = {};

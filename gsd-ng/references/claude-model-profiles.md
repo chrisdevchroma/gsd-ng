@@ -135,7 +135,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 ### Effort Resolution Order
 
 ```
-1. If runtime != 'claude', return null (effort unsupported)
+1. If engine runtime != 'claude', return null (effort unsupported)
 2. Check effort_overrides[agent] in .planning/config.json
 3. If no override, look up agent in EFFORT_PROFILES[agent][profile]
 4. If value is 'inherit', return null (omit effort parameter)
@@ -147,7 +147,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 
 ### Runtime Gating
 
-Effort is only injected when `runtime` in `.planning/config.json` is `"claude"`. Copilot installs always receive null from `resolveEffortInternal` regardless of profile or overrides. The `runtime` field is written by `install.js` at install time.
+Effort is Claude-only. The engine detects its runtime from a `.runtime` marker file that `install.js` writes into the deployed engine tree (`<config-dir>/gsd-ng/.runtime`, sibling of `VERSION`). When the marker is absent, the engine defaults to Claude. On Copilot installs, `resolveEffortInternal` always returns null regardless of profile or overrides.
 
 ### Per-Agent Effort Overrides
 

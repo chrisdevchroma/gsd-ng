@@ -814,8 +814,21 @@ describe('set-profile effort display and effort_overrides config-set (EFF-04, EF
 
 describe('Phase 55 — effort sync wiring', () => {
   let tmpDir;
+  let copilotMarkerDir;
   const { createTempProjectWithAgents } = require('./helpers.cjs');
-  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+  afterEach(() => {
+    if (tmpDir) cleanup(tmpDir);
+    if (copilotMarkerDir) {
+      try { cleanup(copilotMarkerDir); } catch {}
+      copilotMarkerDir = undefined;
+    }
+  });
+
+  function makeCopilotMarkerDir() {
+    const dir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-copilot-marker-'));
+    fs.writeFileSync(path.join(dir, '.runtime'), 'copilot\n', 'utf-8');
+    return dir;
+  }
 
   test('EFFSYNC-CONFIG-01: config-set-model-profile quality syncs agents and prints restart notice on stderr', () => {
     tmpDir = createTempProjectWithAgents(['gsd-planner', 'gsd-executor'], {
@@ -861,12 +874,14 @@ describe('Phase 55 — effort sync wiring', () => {
   });
 
   test('EFFSYNC-CONFIG-04: config-get model_profile is gated to defaultValue on Copilot runtime', () => {
+    copilotMarkerDir = makeCopilotMarkerDir();
     tmpDir = createTempProjectWithAgents(['gsd-planner'], {
       // hand-edited copilot config that includes profile keys (the strip must hide them)
-      config: { runtime: 'copilot', model_profile: 'quality', effort_overrides: { 'gsd-executor': 'high' } },
+      config: { model_profile: 'quality', effort_overrides: { 'gsd-executor': 'high' } },
     });
+    const env = { GSD_TEST_RUNTIME_MARKER_DIR: copilotMarkerDir };
     // With --default flag, Copilot consumer gets the default (key treated as not-present)
-    const withDefault = runGsdTools(['config-get', 'model_profile', '--default', 'balanced'], tmpDir);
+    const withDefault = runGsdTools(['config-get', 'model_profile', '--default', 'balanced'], tmpDir, env);
     assert.ok(withDefault.success, `expected success with --default, got: ${withDefault.error}`);
     assert.match(
       withDefault.output.trim(),
@@ -874,7 +889,7 @@ describe('Phase 55 — effort sync wiring', () => {
       `expected default 'balanced', got: ${withDefault.output}`
     );
     // Without --default, Copilot consumer gets a Key not found error
-    const noDefault = runGsdTools(['config-get', 'model_profile'], tmpDir);
+    const noDefault = runGsdTools(['config-get', 'model_profile'], tmpDir, env);
     assert.ok(!noDefault.success, `expected failure without --default, but command succeeded`);
     assert.ok(
       (noDefault.stderr || noDefault.error || '').includes('Key not found'),
@@ -892,10 +907,11 @@ describe('Phase 55 — effort sync wiring', () => {
   });
 
   test('EFFSYNC-CONFIG-06: config-get effort_overrides.gsd-executor is gated on Copilot runtime', () => {
+    copilotMarkerDir = makeCopilotMarkerDir();
     tmpDir = createTempProjectWithAgents(['gsd-planner'], {
-      config: { runtime: 'copilot', effort_overrides: { 'gsd-executor': 'high' } },
+      config: { effort_overrides: { 'gsd-executor': 'high' } },
     });
-    const result = runGsdTools(['config-get', 'effort_overrides.gsd-executor'], tmpDir);
+    const result = runGsdTools(['config-get', 'effort_overrides.gsd-executor'], tmpDir, { GSD_TEST_RUNTIME_MARKER_DIR: copilotMarkerDir });
     assert.ok(!result.success, `expected failure on copilot, but command succeeded with output: ${result.output}`);
     assert.ok(
       (result.stderr || result.error || '').includes('Key not found'),
@@ -1324,30 +1340,38 @@ describe('cmdConfigGet defaultValue and traversal branches', () => {
 describe('cmdConfigGet copilot runtime profile/effort gating', () => {
   test('strips effort_overrides.* keys with --default on copilot runtime', () => {
     const tmpDir = createTempProject();
+    const markerDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-copilot-marker-'));
+    fs.writeFileSync(path.join(markerDir, '.runtime'), 'copilot\n', 'utf-8');
     writeConfig(tmpDir, {
-      runtime: 'copilot',
       effort_overrides: { 'gsd-executor': 'high' },
     });
     try {
       const result = runGsdTools(
         ['config-get', 'effort_overrides.gsd-executor', '--default', 'medium'],
         tmpDir,
+        { GSD_TEST_RUNTIME_MARKER_DIR: markerDir },
       );
       assert.ok(result.success, `Command failed: ${result.error}`);
       assert.strictEqual(result.output.trim(), 'medium');
     } finally {
       cleanup(tmpDir);
+      cleanup(markerDir);
     }
   });
 
   test('strips model_overrides.* keys (errors without default) on copilot runtime', () => {
     const tmpDir = createTempProject();
+    const markerDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-copilot-marker-'));
+    fs.writeFileSync(path.join(markerDir, '.runtime'), 'copilot\n', 'utf-8');
     writeConfig(tmpDir, {
-      runtime: 'copilot',
       model_overrides: { 'gsd-executor': 'opus' },
     });
     try {
-      const result = runGsdTools(['config-get', 'model_overrides.gsd-executor'], tmpDir);
+      const result = runGsdTools(
+        ['config-get', 'model_overrides.gsd-executor'],
+        tmpDir,
+        { GSD_TEST_RUNTIME_MARKER_DIR: markerDir },
+      );
       assert.strictEqual(result.success, false);
       assert.match(
         result.stderr,
@@ -1356,6 +1380,7 @@ describe('cmdConfigGet copilot runtime profile/effort gating', () => {
       );
     } finally {
       cleanup(tmpDir);
+      cleanup(markerDir);
     }
   });
 });
