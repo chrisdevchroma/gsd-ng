@@ -10,7 +10,7 @@
     "commands",
     "gsd-ng",
     "agents",
-    "hooks/dist"
+    "hooks"
   ],
   "keywords": [
     "claude",
@@ -40,13 +40,10 @@
   "scripts": {
     "format": "prettier --write 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
     "format:check": "prettier --check 'gsd-ng/**/*.{js,cjs}' 'bin/**/*.{js,cjs}'",
-    "build:hooks": "node scripts/build-hooks.js",
-    "build:tarball": "npm run build:hooks && node scripts/build-tarball.js",
-    "prepublishOnly": "npm run build:hooks",
-    "pretest": "npm run build:hooks",
+    "build:tarball": "node scripts/build-tarball.js",
     "test": "node scripts/run-tests.cjs",
     "test:e2e": "node --test tests/e2e/smoke.test.cjs",
-    "test:coverage": "npm run build:hooks && c8 --reporter=text --reporter=json-summary --include 'gsd-ng/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs && node scripts/coverage-gate.cjs",
+    "test:coverage": "c8 --reporter=text --reporter=json-summary --include 'gsd-ng/bin/lib/*.cjs' --exclude 'tests/**' --all node scripts/run-tests.cjs && node scripts/coverage-gate.cjs",
     "lint:actions": "node scripts/run-actionlint.cjs"
   }
 }
