@@ -53,12 +53,6 @@ jobs:
           TAG: ${{ steps.resolve.outputs.ref }}
         run: bash scripts/validate-release.sh "${TAG#v}"
 
-      - name: Install dev dependencies
-        run: npm ci
-
-      - name: Build hooks
-        run: npm run build:hooks
-
       - name: Build tarball
         run: node scripts/build-tarball.js
 

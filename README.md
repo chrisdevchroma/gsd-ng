@@ -93,23 +93,15 @@ cd gsd-ng
 git checkout <branch-name>
 ```
 
-**2. Install dependencies:**
+**2. Install dependencies (optional):**
 
 ```bash
 npm install
 ```
 
-This installs dev dependencies (esbuild, c8) needed for building and testing.
+This installs the dev dependencies (`c8`, `prettier`) used for testing and formatting. The installer itself has no build step and no runtime dependencies — skip this if you only want to install.
 
-**3. Build hooks:**
-
-```bash
-npm run build:hooks
-```
-
-Copies hook scripts to `hooks/dist/`. The installer expects built hooks in `hooks/dist/`, so this step is required before installing.
-
-**4. Install locally into your project:**
+**3. Install locally into your project:**
 
 Run from inside the target project directory (not the gsd-ng clone):
 

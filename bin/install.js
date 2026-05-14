@@ -42,6 +42,15 @@ if (runtimeArgVal && !['claude', 'copilot'].includes(runtimeArgVal)) {
   process.exit(1);
 }
 
+const REQUIRED_HOOKS = [
+  'gsd-check-update.js',
+  'gsd-context-monitor.js',
+  'gsd-guardrail.js',
+  'gsd-sandbox-detect.js',
+  'gsd-statusline.js',
+  'bash-safety-hook.cjs',
+];
+
 /**
  * Convert a pathPrefix (which uses absolute paths for global installs) to a
  * $HOME-relative form for replacing $HOME/.claude/ references in bash code blocks.
@@ -1360,50 +1369,38 @@ function install(isGlobal) {
     fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
     console.log(`  ${green}✓${reset} Wrote package.json (CommonJS mode)`);
 
-    // Copy hooks from dist/ (bundled with dependencies) and .cjs files directly from hooks/
-    // Template paths for the target runtime (replaces '.claude' with correct config dir)
-    const hooksSrc = path.join(src, 'hooks', 'dist');
-    const hooksCjsSrc = path.join(src, 'hooks');
-    if (fs.existsSync(hooksSrc) || fs.existsSync(hooksCjsSrc)) {
+    // .js hooks reference the config dir as a literal '.claude' — rewrite it for the target runtime.
+    const hooksSrc = path.join(src, 'hooks');
+    if (fs.existsSync(hooksSrc)) {
       const hooksDest = path.join(targetDir, 'hooks');
       fs.mkdirSync(hooksDest, { recursive: true });
       const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
 
-      // Copy bundled .js hooks from dist/ (with config dir templating)
-      if (fs.existsSync(hooksSrc)) {
-        const hookEntries = fs.readdirSync(hooksSrc);
-        for (const entry of hookEntries) {
-          const srcFile = path.join(hooksSrc, entry);
-          if (fs.statSync(srcFile).isFile()) {
-            const destFile = path.join(hooksDest, entry);
-            // Template .js files to replace '.claude' with runtime-specific config dir
-            if (entry.endsWith('.js')) {
-              let content = fs.readFileSync(srcFile, 'utf8');
-              content = content.replace(/'\.claude'/g, configDirReplacement);
-              fs.writeFileSync(destFile, content);
-            } else {
-              fs.copyFileSync(srcFile, destFile);
-            }
-          }
+      for (const entry of fs.readdirSync(hooksSrc)) {
+        const srcFile = path.join(hooksSrc, entry);
+        if (!fs.statSync(srcFile).isFile()) continue;
+        const destFile = path.join(hooksDest, entry);
+        if (entry.endsWith('.js')) {
+          const content = fs
+            .readFileSync(srcFile, 'utf8')
+            .replace(/'\.claude'/g, configDirReplacement);
+          fs.writeFileSync(destFile, content);
+        } else {
+          fs.copyFileSync(srcFile, destFile);
         }
       }
 
-      // Copy .cjs hooks directly from hooks/ (no bundling needed — no external dependencies)
-      if (fs.existsSync(hooksCjsSrc)) {
-        const cjsEntries = fs.readdirSync(hooksCjsSrc);
-        for (const entry of cjsEntries) {
-          if (entry.endsWith('.cjs')) {
-            const srcFile = path.join(hooksCjsSrc, entry);
-            if (fs.statSync(srcFile).isFile()) {
-              fs.copyFileSync(srcFile, path.join(hooksDest, entry));
-            }
-          }
-        }
-      }
-
-      if (verifyInstalled(hooksDest, 'hooks')) {
-        console.log(`  ${green}✓${reset} Installed hooks (bundled)`);
+      const missingHooks = REQUIRED_HOOKS.filter(
+        h => !fs.existsSync(path.join(hooksDest, h))
+      );
+      if (verifyInstalled(hooksDest, 'hooks') && missingHooks.length === 0) {
+        console.log(`  ${green}✓${reset} Installed hooks`);
       } else {
+        if (missingHooks.length > 0) {
+          console.error(
+            `  ${yellow}✗${reset} Failed to install hooks: missing required hook(s): ${missingHooks.join(', ')}`
+          );
+        }
         failures.push('hooks');
       }
     }
@@ -1585,11 +1582,14 @@ function install(isGlobal) {
     // Replaces AST safety rules — transparent hook instead of model instructions.
     // See: https://github.com/anthropics/claude-code/issues/30435
     // Append at END of PreToolUse array — user's custom hooks run first.
+    const bashSafetyHookInstalled = fs.existsSync(
+      path.join(targetDir, 'hooks', 'bash-safety-hook.cjs')
+    );
     const hasGsdBashSafetyHook = settings.hooks.PreToolUse.some(entry =>
       entry.hooks && entry.hooks.some(h => h.command && h.command.includes('bash-safety-hook.cjs'))
     );
 
-    if (!hasGsdBashSafetyHook) {
+    if (bashSafetyHookInstalled && !hasGsdBashSafetyHook) {
       settings.hooks.PreToolUse.push({
         matcher: 'Bash',
         hooks: [

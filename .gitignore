@@ -4,8 +4,7 @@ __pycache__/
 .env
 .env.*
 
-# Build artifacts (committed to npm, not git)
-hooks/dist/
+# Build artifacts
 dist/
 
 # Coverage artifacts
