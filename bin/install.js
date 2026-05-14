@@ -1176,43 +1176,6 @@ function stripGsdFromCopilotInstructions(content) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Write the runtime field to .planning/config.json so effort-gating
- * can determine whether effort: frontmatter should be injected.
- * Creates .planning/ and config.json if they don't exist.
- * Preserves existing config values — only sets/updates "runtime".
- */
-function writeRuntimeToConfig(rt) {
-  const configDir = path.join(process.cwd(), '.planning');
-  const configPath = path.join(configDir, 'config.json');
-
-  // Ensure .planning directory exists
-  try {
-    fs.mkdirSync(configDir, { recursive: true });
-  } catch {}
-
-  let config = {};
-  try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    }
-  } catch {
-    // If config.json is corrupt, start fresh
-    config = {};
-  }
-
-  config.runtime = rt;
-
-  try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-  } catch {
-    // If .planning is gitignored or read-only, silently skip
-    // runtime will default to claude behavior in loadConfig
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 function install(isGlobal) {
   const isClaudeCode = runtime === 'claude';
   const dirName = getDirName(runtime);
@@ -1708,8 +1671,12 @@ function install(isGlobal) {
       }
     }
 
-    // Persist runtime to .planning/config.json for effort-gating
-    writeRuntimeToConfig(runtime);
+    // Write the per-engine .runtime marker so the deployed engine detects its
+    // own runtime without consulting the shared .planning/config.json.
+    const runtimeMarkerDest = path.join(targetDir, 'gsd-ng', '.runtime');
+    fs.mkdirSync(path.dirname(runtimeMarkerDest), { recursive: true });
+    fs.writeFileSync(runtimeMarkerDest, runtime + '\n');
+    console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
 
     return { settingsPath, settings, statuslineCommand };
 
@@ -1846,8 +1813,12 @@ function install(isGlobal) {
     writeManifest(targetDir, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
-    // Persist runtime to .planning/config.json for effort-gating
-    writeRuntimeToConfig(runtime);
+    // Write the per-engine .runtime marker so the deployed engine detects its
+    // own runtime without consulting the shared .planning/config.json.
+    const runtimeMarkerDest = path.join(targetDir, 'gsd-ng', '.runtime');
+    fs.mkdirSync(path.dirname(runtimeMarkerDest), { recursive: true });
+    fs.writeFileSync(runtimeMarkerDest, runtime + '\n');
+    console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
 
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
   }
