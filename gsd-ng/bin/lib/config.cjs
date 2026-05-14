@@ -316,22 +316,17 @@ function cmdConfigGet(cwd, keyPath, defaultValue) {
     );
   }
 
-  // Claude-only surface lock: profile/effort keys are Claude-only.
-  // When running as copilot, treat these keys as not-present so callers
-  // get the same not-found / defaultValue behaviour they would on a config
-  // that simply doesn't define them.
-  if (PROFILE_EFFORT_KEY_PATTERN.test(keyPath)) {
-    const isClaudeCode = getEngineRuntime() === 'claude';
-    if (isClaudeCode) {
-      // fall through to the existing lookup below
-    } else {
-      if (defaultValue !== undefined) {
-        output(defaultValue, String(defaultValue));
-        return;
-      }
-      error(`Key not found: ${keyPath}`);
+  // Claude-only surface lock: profile/effort keys read as not-present on non-Claude runtimes.
+  if (
+    PROFILE_EFFORT_KEY_PATTERN.test(keyPath) &&
+    getEngineRuntime() !== 'claude'
+  ) {
+    if (defaultValue !== undefined) {
+      output(defaultValue, String(defaultValue));
       return;
     }
+    error(`Key not found: ${keyPath}`);
+    return;
   }
 
   let config = {};

@@ -147,7 +147,7 @@ Effort profiles control the `effort:` frontmatter injected into agent spawn call
 
 ### Runtime Gating
 
-The engine reads a `.runtime` marker file at `<config-dir>/gsd-ng/.runtime` (sibling of `VERSION`) to detect which runtime it belongs to. `install.js` writes this file into the deployed engine tree at install time — Claude installs write `claude`, Copilot installs write `copilot`. The file is read via `path.join(__dirname, '..', '..', '.runtime')` from `core.cjs`, making it immune to custom global config dirs. When the marker is absent (old install, source repo, test fixture), the engine defaults to Claude behavior. Copilot installs always receive null from `resolveEffortInternal` regardless of profile or overrides.
+Effort is Claude-only. The engine detects its runtime from a `.runtime` marker file that `install.js` writes into the deployed engine tree (`<config-dir>/gsd-ng/.runtime`, sibling of `VERSION`). When the marker is absent, the engine defaults to Claude. On Copilot installs, `resolveEffortInternal` always returns null regardless of profile or overrides.
 
 ### Per-Agent Effort Overrides
 

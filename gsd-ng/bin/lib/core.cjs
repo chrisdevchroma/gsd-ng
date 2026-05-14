@@ -297,8 +297,7 @@ function loadConfig(cwd) {
 }
 
 function getEngineRuntime() {
-  // Test seam: GSD_TEST_RUNTIME_MARKER_DIR points at a fixture dir holding a .runtime marker.
-  // Mirrors the existing GSD_TEST_* env-hook pattern (install.js GSD_TEST_FORCE_PLATFORM).
+  // GSD_TEST_RUNTIME_MARKER_DIR: test-only override of the marker location.
   const markerDir =
     process.env.GSD_TEST_RUNTIME_MARKER_DIR || path.join(__dirname, '..', '..');
   try {
@@ -307,7 +306,7 @@ function getEngineRuntime() {
       .trim();
     return val === 'copilot' ? 'copilot' : 'claude';
   } catch {
-    return 'claude'; // marker absent (old install, source repo, test fixture) → claude
+    return 'claude'; // marker absent → default to claude
   }
 }
 

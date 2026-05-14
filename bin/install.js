@@ -1176,6 +1176,13 @@ function stripGsdFromCopilotInstructions(content) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function writeRuntimeMarker(targetDir, runtime) {
+  const dest = path.join(targetDir, 'gsd-ng', '.runtime');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, runtime + '\n');
+  console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
+}
+
 function install(isGlobal) {
   const isClaudeCode = runtime === 'claude';
   const dirName = getDirName(runtime);
@@ -1671,12 +1678,7 @@ function install(isGlobal) {
       }
     }
 
-    // Write the per-engine .runtime marker so the deployed engine detects its
-    // own runtime without consulting the shared .planning/config.json.
-    const runtimeMarkerDest = path.join(targetDir, 'gsd-ng', '.runtime');
-    fs.mkdirSync(path.dirname(runtimeMarkerDest), { recursive: true });
-    fs.writeFileSync(runtimeMarkerDest, runtime + '\n');
-    console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
+    writeRuntimeMarker(targetDir, runtime);
 
     return { settingsPath, settings, statuslineCommand };
 
@@ -1813,12 +1815,7 @@ function install(isGlobal) {
     writeManifest(targetDir, INSTALLED_VERSION);
     console.log(`  ${green}✓${reset} Wrote file manifest (${MANIFEST_NAME})`);
 
-    // Write the per-engine .runtime marker so the deployed engine detects its
-    // own runtime without consulting the shared .planning/config.json.
-    const runtimeMarkerDest = path.join(targetDir, 'gsd-ng', '.runtime');
-    fs.mkdirSync(path.dirname(runtimeMarkerDest), { recursive: true });
-    fs.writeFileSync(runtimeMarkerDest, runtime + '\n');
-    console.log(`  ${green}✓${reset} Wrote .runtime marker (${runtime})`);
+    writeRuntimeMarker(targetDir, runtime);
 
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime };
   }
