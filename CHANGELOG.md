@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-dev.7] - 2026-05-14
+
 ### Fixed
 - `publish.yml` uses Node 24 (npm 11) instead of Node 22 (npm 10). npm 10's CLI sends an unresolved `${NODE_AUTH_TOKEN}` placeholder as the bearer token to the npm registry and never falls back to OIDC trusted publishing, producing a misleading `404 Not Found` error.
 - `bash-safety-hook.cjs` was missing from the published npm and GitHub Release tarballs — `package.json` `files` shipped `hooks/dist` but never the `.cjs` source, so installed workspaces failed the PreToolUse Bash hook with "Cannot find module" on every Bash call. `install.js` now also asserts every expected hook landed, failing the install loudly instead of silently.
