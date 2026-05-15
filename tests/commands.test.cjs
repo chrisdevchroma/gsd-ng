@@ -4067,6 +4067,380 @@ describe('update command', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// update command — prerelease channel handling
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('update command — prerelease channel handling', () => {
+  let tmpDir;
+  let fakeHome;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-update-pre-'));
+    fakeHome = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-home-pre-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+    cleanup(fakeHome);
+  });
+
+  // Mirrors the runUpdate helper from the sibling `update command` describe block.
+  // Kept local so the new tests can be reviewed/moved as a unit without touching
+  // the original block.
+  function runUpdate(
+    localGsdVersion,
+    globalGsdVersion,
+    overrides,
+    options = {},
+  ) {
+    if (localGsdVersion) {
+      const localGsdDir = path.join(tmpDir, '.claude', 'gsd-ng');
+      fs.mkdirSync(localGsdDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localGsdDir, 'VERSION'),
+        localGsdVersion + '\n',
+      );
+    }
+    if (globalGsdVersion) {
+      const globalGsdDir = path.join(fakeHome, '.claude', 'gsd-ng');
+      fs.mkdirSync(globalGsdDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(globalGsdDir, 'VERSION'),
+        globalGsdVersion + '\n',
+      );
+    }
+
+    const args = ['update', '--dry-run'];
+    if (options.execute) {
+      args.splice(args.indexOf('--dry-run'), 1);
+    }
+
+    const env = {
+      GSD_TEST_HOME: fakeHome,
+      GSD_UPDATE_TEST_OVERRIDES: JSON.stringify(
+        overrides || { latestVersion: null, updateSource: null },
+      ),
+    };
+    if (options.dryExecute) {
+      env.GSD_TEST_DRY_EXECUTE = '1';
+    }
+
+    return runGsdTools(args, tmpDir, env);
+  }
+
+  // ── A) compareSemVer — semver §11 precedence ────────────────────────────────
+
+  test('A1: compareSemVer prerelease numeric ordering (-dev.7 < -dev.8)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-dev.7', '1.0.0-dev.8'), -1);
+  });
+
+  test('A2: compareSemVer prerelease numeric ordering symmetric (-dev.8 > -dev.7)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-dev.8', '1.0.0-dev.7'), 1);
+  });
+
+  test('A3: compareSemVer equal prerelease returns 0', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-dev.7', '1.0.0-dev.7'), 0);
+  });
+
+  test('A4: compareSemVer release > prerelease (§11: 1.0.0 > 1.0.0-dev.3)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0', '1.0.0-dev.3'), 1);
+  });
+
+  test('A5: compareSemVer prerelease < release symmetric', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-dev.3', '1.0.0'), -1);
+  });
+
+  test('A6: compareSemVer fewer prerelease identifiers < more (alpha < alpha.1)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-alpha', '1.0.0-alpha.1'), -1);
+  });
+
+  test('A7: compareSemVer numeric identifier < alphanumeric (alpha.1 < alpha.beta)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-alpha.1', '1.0.0-alpha.beta'), -1);
+  });
+
+  test('A8: compareSemVer ignores +build metadata even on prerelease', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0-rc.1+abc', '1.0.0-rc.1'), 0);
+  });
+
+  test('A9: compareSemVer regression guards (plain semver still correct)', () => {
+    const { compareSemVer } = require('../gsd-ng/bin/lib/commands.cjs');
+    assert.strictEqual(compareSemVer('1.0.0', '0.9.9'), 1);
+    assert.strictEqual(compareSemVer('1.0.0', '1.0.1'), -1);
+    assert.strictEqual(compareSemVer('1.2.3', '1.2.3'), 0);
+    assert.strictEqual(compareSemVer('v1.0.0', '1.0.0'), 0);
+    assert.strictEqual(compareSemVer('1.0.0+abc1234', '1.0.0'), 0);
+  });
+
+  // ── B) detectInstallLocation — preserves prerelease suffix ──────────────────
+
+  test('B1: detectInstallLocation preserves -dev.N on local VERSION, drops +build', () => {
+    const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.claude', 'gsd-ng', 'VERSION'),
+      '1.0.0-dev.7+30c9587\n',
+    );
+    process.env.GSD_TEST_HOME = homeDir;
+    try {
+      const r = detectInstallLocation(dir);
+      assert.ok(r);
+      assert.strictEqual(r.isLocal, true);
+      assert.strictEqual(r.installedVersion, '1.0.0-dev.7');
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+  });
+
+  test('B2: detectInstallLocation preserves -dev.N on global VERSION', () => {
+    const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(homeDir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(
+      path.join(homeDir, '.claude', 'gsd-ng', 'VERSION'),
+      '1.0.0-dev.7+30c9587\n',
+    );
+    process.env.GSD_TEST_HOME = homeDir;
+    try {
+      const r = detectInstallLocation(dir);
+      assert.ok(r);
+      assert.strictEqual(r.isLocal, false);
+      assert.strictEqual(r.installedVersion, '1.0.0-dev.7');
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+  });
+
+  test('B3: detectInstallLocation regression — plain 1.2.3 / 2.0.0 inputs', () => {
+    const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'gsd-ng', 'VERSION'), '1.2.3');
+    process.env.GSD_TEST_HOME = homeDir;
+    try {
+      const r = detectInstallLocation(dir);
+      assert.ok(r);
+      assert.strictEqual(r.installedVersion, '1.2.3');
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+  });
+
+  // ── C) cmdUpdate end-to-end with prerelease versions ────────────────────────
+
+  test('C1: prerelease user with newer prerelease available → update_available (headline regression)', () => {
+    const result = runUpdate('1.0.0-dev.7+30c9587', null, {
+      latestVersion: '1.0.0-dev.8',
+      updateSource: 'npm',
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'update_available');
+    assert.strictEqual(parsed.installed, '1.0.0-dev.7');
+    assert.strictEqual(parsed.latest, '1.0.0-dev.8');
+    assert.strictEqual(parsed.install_type, 'local');
+    assert.strictEqual(parsed.update_available, true);
+  });
+
+  test('C2: prerelease user ahead of injected older prerelease → ahead', () => {
+    const result = runUpdate('1.0.0-dev.8', null, {
+      latestVersion: '1.0.0-dev.7',
+      updateSource: 'npm',
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'ahead');
+  });
+
+  test('C3: prerelease user with stable release available → update_available (dev → stable)', () => {
+    const result = runUpdate('1.0.0-dev.7', null, {
+      latestVersion: '1.0.0',
+      updateSource: 'npm',
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'update_available');
+  });
+
+  test('C4: stable release user MUST NOT be prompted to "upgrade" to a prerelease → ahead', () => {
+    const result = runUpdate('1.0.0', null, {
+      latestVersion: '1.0.0-dev.99',
+      updateSource: 'npm',
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'ahead');
+  });
+
+  test('C5: prerelease user truly current on prerelease channel → already_current (no over-correction)', () => {
+    const result = runUpdate('1.0.0-dev.7', '1.0.0-dev.7', {
+      latestVersion: '1.0.0-dev.7',
+      updateSource: 'npm',
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.strictEqual(parsed.status, 'already_current');
+  });
+
+  // ── D) Channel pinning seam — npm dist-tag selection on prerelease installs ──
+
+  // These tests stub `_testOverrides.execNpmView` (a new seam introduced in
+  // Task 2) so we can assert the actual `npm view` command string that the
+  // channel-pinning branch would have shelled out, then read the JSON
+  // payload that `output()` writes via `fs.writeSync(1, ...)`.
+
+  // captureCmdUpdate: stubs `fs.writeSync(1, …)` so we can read the JSON
+  // `output()` would have sent to stdout, while still letting non-stdout
+  // writeSync calls (test reporter, etc.) pass through.
+  function captureCmdUpdate(dir, overrides) {
+    const { cmdUpdate } = require('../gsd-ng/bin/lib/commands.cjs');
+    const origWriteSync = fs.writeSync;
+    let captured_stdout = '';
+    fs.writeSync = function (fd, buf, ...rest) {
+      if (fd === 1) {
+        captured_stdout += typeof buf === 'string' ? buf : buf.toString();
+        return Buffer.byteLength(buf);
+      }
+      return origWriteSync.call(fs, fd, buf, ...rest);
+    };
+    try {
+      cmdUpdate(dir, { dryRun: true }, overrides);
+    } finally {
+      fs.writeSync = origWriteSync;
+    }
+    return captured_stdout;
+  }
+
+  test('D1: prerelease install → npm path queries dist-tags.<channel>, not dist-tags.latest', () => {
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.claude', 'gsd-ng', 'VERSION'),
+      '1.0.0-dev.7+30c9587',
+    );
+    process.env.GSD_TEST_HOME = homeDir;
+    const captured = [];
+    const stubExec = (cmd) => {
+      captured.push(cmd);
+      if (/dist-tags\.dev$/.test(cmd)) return '1.0.0-dev.8\n';
+      return '';
+    };
+    let captured_stdout;
+    try {
+      captured_stdout = captureCmdUpdate(dir, { execNpmView: stubExec });
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+    assert.ok(
+      captured.some((c) => /npm view gsd-ng dist-tags\.dev/.test(c)),
+      'expected channel-pinned dist-tags.dev query, got: ' +
+        JSON.stringify(captured),
+    );
+    const parsed = JSON.parse(captured_stdout);
+    assert.strictEqual(parsed.status, 'update_available');
+    assert.strictEqual(parsed.latest, '1.0.0-dev.8');
+  });
+
+  test('D2: release install → npm path keeps prior `npm view gsd-ng version` query (regression guard)', () => {
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'gsd-ng', 'VERSION'), '1.0.0');
+    process.env.GSD_TEST_HOME = homeDir;
+    const captured = [];
+    const stubExec = (cmd) => {
+      captured.push(cmd);
+      return '1.0.1\n';
+    };
+    let captured_stdout;
+    try {
+      captured_stdout = captureCmdUpdate(dir, { execNpmView: stubExec });
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+    assert.ok(
+      captured.some((c) => /npm view gsd-ng version/.test(c)),
+      'expected plain "npm view gsd-ng version" query for release install, got: ' +
+        JSON.stringify(captured),
+    );
+    assert.ok(
+      !captured.some((c) => /dist-tags\./.test(c)),
+      'release install must not query dist-tags.*, got: ' +
+        JSON.stringify(captured),
+    );
+    const parsed = JSON.parse(captured_stdout);
+    assert.strictEqual(parsed.status, 'update_available');
+    assert.strictEqual(parsed.latest, '1.0.1');
+  });
+
+  test('D3: prerelease install + channel dist-tag throws → falls back to plain `npm view gsd-ng version`', () => {
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.claude', 'gsd-ng', 'VERSION'),
+      '1.0.0-dev.7',
+    );
+    process.env.GSD_TEST_HOME = homeDir;
+    const captured = [];
+    const stubExec = (cmd) => {
+      captured.push(cmd);
+      if (/dist-tags\.dev$/.test(cmd)) {
+        const e = new Error('npm ERR! dist-tag dev not found');
+        e.status = 1;
+        throw e;
+      }
+      if (/npm view gsd-ng version$/.test(cmd)) return '1.0.0\n';
+      return '';
+    };
+    let captured_stdout;
+    try {
+      captured_stdout = captureCmdUpdate(dir, { execNpmView: stubExec });
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+    assert.ok(
+      captured.some((c) => /npm view gsd-ng dist-tags\.dev/.test(c)),
+      'expected dist-tags.dev query attempt, got: ' + JSON.stringify(captured),
+    );
+    assert.ok(
+      captured.some((c) => /npm view gsd-ng version/.test(c)),
+      'expected fallback "npm view gsd-ng version" query after dist-tag failure, got: ' +
+        JSON.stringify(captured),
+    );
+    // The fallback latest (`1.0.0`) is correctly seen as a §11 upgrade from
+    // a prerelease (`1.0.0-dev.7`).
+    const parsed = JSON.parse(captured_stdout);
+    assert.strictEqual(parsed.status, 'update_available');
+    assert.strictEqual(parsed.latest, '1.0.0');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // staleness-check --count flag
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -10206,9 +10580,7 @@ describe('commands.cjs branch coverage residuals (60-11)', () => {
         const code =
           'const r = require(' +
           JSON.stringify(
-            path.resolve(
-              __dirname, '../gsd-ng/bin/lib/commands.cjs',
-            ),
+            path.resolve(__dirname, '../gsd-ng/bin/lib/commands.cjs'),
           ) +
           ').cmdCommit(' +
           JSON.stringify(proj) +
@@ -10245,9 +10617,7 @@ describe('commands.cjs branch coverage residuals (60-11)', () => {
         const code =
           'require(' +
           JSON.stringify(
-            path.resolve(
-              __dirname, '../gsd-ng/bin/lib/commands.cjs',
-            ),
+            path.resolve(__dirname, '../gsd-ng/bin/lib/commands.cjs'),
           ) +
           ').cmdCommit(' +
           JSON.stringify(proj) +
@@ -10281,9 +10651,7 @@ describe('commands.cjs branch coverage residuals (60-11)', () => {
       const code =
         'require(' +
         JSON.stringify(
-          path.resolve(
-            __dirname, '../gsd-ng/bin/lib/commands.cjs',
-          ),
+          path.resolve(__dirname, '../gsd-ng/bin/lib/commands.cjs'),
         ) +
         ').cmdScaffold(' +
         JSON.stringify(tmpDir) +
@@ -10306,9 +10674,7 @@ describe('commands.cjs branch coverage residuals (60-11)', () => {
       const code =
         'const r = require(' +
         JSON.stringify(
-          path.resolve(
-            __dirname, '../gsd-ng/bin/lib/commands.cjs',
-          ),
+          path.resolve(__dirname, '../gsd-ng/bin/lib/commands.cjs'),
         ) +
         ').cmdScaffold(' +
         JSON.stringify(tmpDir) +
