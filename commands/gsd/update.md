@@ -22,7 +22,10 @@ Run the update command in dry-run mode first, then ask for confirmation before e
 
 4. Use {{USER_QUESTION_TOOL}} to ask "Proceed with update?" with options "Yes, update now" and "Cancel".
 
-5. If confirmed, execute with the install_type from dry-run result:
-!`node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" update --{install_type}`
+5. If confirmed, execute the update by invoking the Bash tool (NOT the `!`backtick form, which runs literally without substitution). Use the `install_type` value from the dry-run JSON in step 1 to pick the flag: `--local` if `install_type` is `"local"`, `--global` if `"global"`. Run:
+
+   `node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" update <flag>`
+
+   where `<flag>` is the resolved `--local` or `--global` (substitute it yourself before calling Bash — do not pass the literal placeholder).
 
 6. Show the result and remind user to restart Claude Code.
