@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-dev.8] - 2026-05-15
+
 ### Fixed
 - `/gsd:update` step 5 shelled out `update --{install_type}` as a literal slash-command bash block, so the placeholder was passed verbatim and `gsd-tools.cjs update` rejected the unknown flag. The same load-time semantics would also have bypassed the step-4 confirmation prompt if the flag had been valid. Step 5 now invokes the Bash tool after confirmation, substituting `install_type` from the dry-run JSON into `--local` or `--global` before the call.
 
