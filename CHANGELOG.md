@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-dev.9] - 2026-05-17
+
 ### Fixed
 - `/gsd:update` never prompted prerelease (`-dev.N`) users to upgrade, even when a newer prerelease was published. Three intertwined bugs in `commands.cjs`: `detectInstallLocation` stripped the prerelease suffix from the local `VERSION` file (so `1.0.0-dev.7+30c9587` became `1.0.0`), `cmdUpdate` queried `npm view gsd-ng version` which returns the `latest` dist-tag rather than the channel the user is on, and `compareSemVer` only compared the numeric core (so `1.0.0` and `1.0.0-dev.3` compared equal). `detectInstallLocation` now preserves the prerelease tag and drops only `+build` metadata, `cmdUpdate` picks the npm dist-tag matching the installed channel (with the previous query as a fallback) and filters GitHub Releases by channel on the fallback path, and `compareSemVer` is now semver §11 compliant — release versions beat prerelease versions, numeric identifiers compare numerically, and identifier counts break ties correctly.
 
