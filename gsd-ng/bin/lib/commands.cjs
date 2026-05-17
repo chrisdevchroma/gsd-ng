@@ -4472,13 +4472,47 @@ function cmdCleanup(cwd, options) {
  * Compare two semver strings.
  * @returns {number} 1 if a > b, -1 if a < b, 0 if equal
  */
+// Implements semver §11 precedence (release > prerelease, identifier-by-identifier compare).
 function compareSemVer(a, b) {
-  const pa = String(a).replace(/^v/, '').split('.').map(Number);
-  const pb = String(b).replace(/^v/, '').split('.').map(Number);
+  const stripBuild = (v) => String(v).replace(/^v/, '').split('+')[0];
+  const [coreA, preA] = stripBuild(a).split(/-(.+)/);
+  const [coreB, preB] = stripBuild(b).split(/-(.+)/);
+
+  const pa = coreA.split('.').map(Number);
+  const pb = coreB.split('.').map(Number);
   for (let i = 0; i < 3; i++) {
     if ((pa[i] || 0) > (pb[i] || 0)) return 1;
     if ((pa[i] || 0) < (pb[i] || 0)) return -1;
   }
+
+  if (!preA && !preB) return 0;
+  if (!preA) return 1;
+  if (!preB) return -1;
+
+  const idsA = preA.split('.');
+  const idsB = preB.split('.');
+  const n = Math.min(idsA.length, idsB.length);
+  for (let i = 0; i < n; i++) {
+    const aId = idsA[i];
+    const bId = idsB[i];
+    const aNum = /^\d+$/.test(aId);
+    const bNum = /^\d+$/.test(bId);
+    if (aNum && bNum) {
+      const dA = Number(aId);
+      const dB = Number(bId);
+      if (dA > dB) return 1;
+      if (dA < dB) return -1;
+    } else if (aNum && !bNum) {
+      return -1;
+    } else if (!aNum && bNum) {
+      return 1;
+    } else {
+      if (aId > bId) return 1;
+      if (aId < bId) return -1;
+    }
+  }
+  if (idsA.length < idsB.length) return -1;
+  if (idsA.length > idsB.length) return 1;
   return 0;
 }
 
@@ -4495,11 +4529,15 @@ function detectInstallLocation(cwd) {
   const localPath = path.join(cwd, '.claude', 'gsd-ng', 'VERSION');
   const globalPath = path.join(homeDir, '.claude', 'gsd-ng', 'VERSION');
 
+  // Strips build metadata (semver §10) so compareSemVer sees a clean version.
+  const VERSION_RE = /^(\d+\.\d+\.\d+(?:-[\w.]+)?)/;
+
   // Check local first
   if (fs.existsSync(localPath)) {
     try {
       const localVersion = fs.readFileSync(localPath, 'utf-8').trim();
-      if (/^\d+\.\d+\.\d+/.test(localVersion)) {
+      const m = localVersion.match(VERSION_RE);
+      if (m) {
         // Only treat as LOCAL if local path differs from global path
         // (prevents misdetection when cwd === homeDir)
         const localDir = path.dirname(localPath);
@@ -4508,7 +4546,7 @@ function detectInstallLocation(cwd) {
           return {
             isLocal: true,
             installPath: localDir,
-            installedVersion: localVersion.match(/^\d+\.\d+\.\d+/)[0],
+            installedVersion: m[1],
           };
         }
       }
@@ -4519,11 +4557,12 @@ function detectInstallLocation(cwd) {
   if (fs.existsSync(globalPath)) {
     try {
       const globalVersion = fs.readFileSync(globalPath, 'utf-8').trim();
-      if (/^\d+\.\d+\.\d+/.test(globalVersion)) {
+      const m = globalVersion.match(VERSION_RE);
+      if (m) {
         return {
           isLocal: false,
           installPath: path.dirname(globalPath),
-          installedVersion: globalVersion.match(/^\d+\.\d+\.\d+/)[0],
+          installedVersion: m[1],
         };
       }
     } catch {}
@@ -4645,33 +4684,86 @@ function cmdUpdate(cwd, options, _testOverrides) {
   const { isLocal, installedVersion } = installInfo;
   const installed = installedVersion;
 
+  const installedChannel = installed.includes('-')
+    ? installed.split('-')[1].split('.')[0] || null
+    : null;
+
   // 2. Check latest version
   let latestVersion = null;
   let updateSource = null;
 
-  if (_testOverrides) {
-    // Test injection: bypass network calls
-    latestVersion = _testOverrides.latestVersion || null;
-    updateSource = _testOverrides.updateSource || null;
+  if (overrides.latestVersion) {
+    latestVersion = overrides.latestVersion;
+    updateSource = overrides.updateSource || null;
+  } else if (_testOverrides && !overrides.execNpmView) {
+    // Test override present without an explicit execNpmView seam means "no
+    // live network" — don't fall through to real `npm view`.
+    latestVersion = null;
+    updateSource = null;
   } else {
-    /* c8 ignore start — network: `npm view` + GitHub Releases API. Exercised via _testOverrides.latestVersion injection seam in cmdUpdate dryRun/already_current/ahead tests. */
-    // Try npm first
-    try {
-      const npmResult = execSync('npm view gsd-ng version', {
-        timeout: 15000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        encoding: 'utf-8',
-      });
-      const npmVersion = npmResult.toString().trim();
-      if (npmVersion && /^\d+\.\d+\.\d+/.test(npmVersion)) {
-        latestVersion = npmVersion;
-        updateSource = 'npm';
-      }
-    } catch {}
+    /* c8 ignore start — network: `npm view` + GitHub Releases API. */
+    const execNpmView =
+      overrides.execNpmView ||
+      ((cmd) =>
+        execSync(cmd, {
+          timeout: 15000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          encoding: 'utf-8',
+        }));
+    let npmVersion = null;
+    if (installedChannel) {
+      try {
+        const v = execNpmView(`npm view gsd-ng dist-tags.${installedChannel}`)
+          .toString()
+          .trim();
+        if (v && /^\d+\.\d+\.\d+/.test(v)) npmVersion = v;
+      } catch {}
+    }
+    if (!npmVersion) {
+      try {
+        const v = execNpmView('npm view gsd-ng version').toString().trim();
+        if (v && /^\d+\.\d+\.\d+/.test(v)) npmVersion = v;
+      } catch {}
+    }
+    if (npmVersion) {
+      latestVersion = npmVersion;
+      updateSource = 'npm';
+    }
 
-    // Fall back to GitHub Releases API
     if (!latestVersion) {
-      const githubScript = `
+      const githubScript = installedChannel
+        ? `
+        const https = require('https');
+        const opts = {
+          hostname: 'api.github.com',
+          path: '/repos/chrisdevchroma/gsd-ng/releases?per_page=100',
+          headers: { 'User-Agent': 'gsd-ng', 'Accept': 'application/vnd.github.v3+json' },
+          timeout: 10000,
+        };
+        const channel = ${JSON.stringify(installedChannel)};
+        const req = https.request(opts, function(res) {
+          if (res.statusCode !== 200) { process.exit(1); }
+          let d = '';
+          res.on('data', function(c) { d += c; });
+          res.on('end', function() {
+            try {
+              const r = JSON.parse(d);
+              if (!Array.isArray(r)) { process.exit(1); }
+              const tags = r
+                .map(function(x) { return (x.tag_name || '').replace(/^v/, ''); })
+                .filter(function(t) {
+                  return t && t.indexOf('-' + channel) !== -1 && /^\\d+\\.\\d+\\.\\d+/.test(t);
+                });
+              if (tags.length === 0) { process.exit(0); }
+              process.stdout.write(tags.join('\\n'));
+            } catch(e) { process.exit(1); }
+          });
+        });
+        req.on('error', function() { process.exit(1); });
+        req.on('timeout', function() { req.destroy(); });
+        req.end();
+      `
+        : `
         const https = require('https');
         const opts = {
           hostname: 'api.github.com',
@@ -4702,10 +4794,22 @@ function cmdUpdate(cwd, options, _testOverrides) {
         stdio: ['pipe', 'pipe', 'pipe'],
         encoding: 'utf-8',
       });
-      const githubTag = (githubResult.stdout || '').toString().trim();
-      if (githubTag && /^\d+\.\d+\.\d+/.test(githubTag)) {
-        latestVersion = githubTag;
-        updateSource = 'github';
+      const stdout = (githubResult.stdout || '').toString().trim();
+      if (stdout) {
+        if (installedChannel) {
+          const tags = stdout
+            .split('\n')
+            .map((t) => t.trim())
+            .filter((t) => /^\d+\.\d+\.\d+/.test(t));
+          if (tags.length > 0) {
+            tags.sort((a, b) => compareSemVer(b, a));
+            latestVersion = tags[0];
+            updateSource = 'github';
+          }
+        } else if (/^\d+\.\d+\.\d+/.test(stdout)) {
+          latestVersion = stdout;
+          updateSource = 'github';
+        }
       }
     }
     /* c8 ignore stop */
