@@ -40,6 +40,7 @@ const {
   getReadEditWriteAllowRules,
   RW_FORMS,
 } = require('./allowlist.cjs');
+const { compareSemVer } = require('./semver-utils.cjs');
 
 function cmdGenerateSlug(text) {
   if (!text) {
@@ -4467,54 +4468,6 @@ function cmdCleanup(cwd, options) {
 }
 
 // ─── Update command ───────────────────────────────────────────────────────────
-
-/**
- * Compare two semver strings.
- * @returns {number} 1 if a > b, -1 if a < b, 0 if equal
- */
-// Implements semver §11 precedence (release > prerelease, identifier-by-identifier compare).
-function compareSemVer(a, b) {
-  const stripBuild = (v) => String(v).replace(/^v/, '').split('+')[0];
-  const [coreA, preA] = stripBuild(a).split(/-(.+)/);
-  const [coreB, preB] = stripBuild(b).split(/-(.+)/);
-
-  const pa = coreA.split('.').map(Number);
-  const pb = coreB.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
-    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
-  }
-
-  if (!preA && !preB) return 0;
-  if (!preA) return 1;
-  if (!preB) return -1;
-
-  const idsA = preA.split('.');
-  const idsB = preB.split('.');
-  const n = Math.min(idsA.length, idsB.length);
-  for (let i = 0; i < n; i++) {
-    const aId = idsA[i];
-    const bId = idsB[i];
-    const aNum = /^\d+$/.test(aId);
-    const bNum = /^\d+$/.test(bId);
-    if (aNum && bNum) {
-      const dA = Number(aId);
-      const dB = Number(bId);
-      if (dA > dB) return 1;
-      if (dA < dB) return -1;
-    } else if (aNum && !bNum) {
-      return -1;
-    } else if (!aNum && bNum) {
-      return 1;
-    } else {
-      if (aId > bId) return 1;
-      if (aId < bId) return -1;
-    }
-  }
-  if (idsA.length < idsB.length) return -1;
-  if (idsA.length > idsB.length) return 1;
-  return 0;
-}
 
 /**
  * Detect GSD install location (local or global).

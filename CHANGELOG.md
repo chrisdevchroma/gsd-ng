@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- SessionStart update-check hook (`gsd-check-update.js`) now respects prerelease channels. The hook's child process was using a non-§11 `compareSemVer` (coerced `"0-dev"` to `NaN`), always queried `npm view gsd-ng version` (returns the `latest` dist-tag, not the user's channel), and paginated GitHub Releases unconditionally skipping prereleases for all users. Now: §11-compliant semver comparison via shared `semver-utils.cjs` module, channel-pinned `npm view gsd-ng dist-tags.<channel>` query for prerelease installs, and paginated channel-filtered GitHub Releases fallback for prerelease users (stable users keep the `/releases/latest` path).
+
 ## [1.0.0-dev.9] - 2026-05-17
 
 ### Fixed
