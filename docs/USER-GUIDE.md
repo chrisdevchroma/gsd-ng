@@ -543,7 +543,7 @@ Set `commit_docs: false` during `/gsd:new-project` or via `/gsd:settings`. Add `
 
 ### GSD Update Overwrote My Local Changes
 
-Since v1.17, the installer backs up locally modified files to `gsd-local-patches/`. Run `/gsd:reapply-patches` to merge your changes back.
+The installer backs up locally modified GSD files to `gsd-local-patches/` before overwriting them. Run `/gsd:reapply-patches` to merge your changes back into the freshly installed copies.
 
 ### Subagent Appears to Fail but Work Was Done
 
