@@ -367,10 +367,31 @@ Lightweight scan of existing code to inform gray area identification and discuss
 ls .planning/codebase/*.md 2>/dev/null
 ```
 
-**If codebase maps exist:** Read the most relevant ones (CONVENTIONS.md, STRUCTURE.md, STACK.md based on phase type). Extract:
+**If codebase maps exist:** Read the ones this phase routes to:
+
+| Phase Keywords | Load These |
+|----------------|------------|
+| UI, frontend, components | CONVENTIONS.md, STRUCTURE.md |
+| API, backend, endpoints | ARCHITECTURE.md, CONVENTIONS.md |
+| database, schema, models | ARCHITECTURE.md, STACK.md |
+| testing, tests | TESTING.md, CONVENTIONS.md |
+| integration, external API | INTEGRATIONS.md, STACK.md |
+| refactor, cleanup | CONCERNS.md, ARCHITECTURE.md |
+| setup, config | STACK.md, STRUCTURE.md |
+| (default) | STACK.md, ARCHITECTURE.md |
+
+Read **CONCERNS.md** as well whenever it exists, whatever the phase type. The open items and
+known-broken edges are what a discussion most needs and is least likely to rediscover on its own,
+and a gray area that a recorded concern already answers is a question worth not asking the user.
+
+**The map is a starting point with a date on it, not an authority.** It was accurate when it was
+written and the code has moved since. Where it matters to the discussion, confirm against source.
+
+Extract:
 - Reusable components/hooks/utilities
 - Established patterns (state management, styling, data fetching)
 - Integration points (where new code would connect)
+- Open items and constraints this phase would inherit (from CONCERNS.md)
 
 Skip to Step 3 below.
 
