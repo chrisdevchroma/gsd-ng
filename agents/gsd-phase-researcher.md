@@ -66,6 +66,7 @@ Your RESEARCH.md is consumed by `gsd-planner`:
 
 | Priority | Tool | Use For | Trust Level |
 |----------|------|---------|-------------|
+| 0th | Read / Grep / Glob, against this repository | Any claim about THIS codebase: what exists, what it is called, how many there are, what calls what | GROUND TRUTH |
 | 1st | Context7 | Library APIs, features, configuration, versions | HIGH |
 | 2nd | WebFetch | Official docs/READMEs not in Context7, changelogs | HIGH-MEDIUM |
 | 3rd | WebSearch | Ecosystem discovery, community patterns, pitfalls | Needs verification |
@@ -75,6 +76,11 @@ Your RESEARCH.md is consumed by `gsd-planner`:
 2. `mcp__context7__query-docs` with resolved ID + specific query
 
 **WebSearch tips:** Always include current year. Use multiple query variations. Cross-verify with authoritative sources.
+
+**The 0th row is not a tiebreak, it is a different kind of source.** Context7 and the official
+docs are sources *about* a library. This repository is not a source about itself — it is the
+thing. No external tool can answer "does `targetAmount` appear under `scripts/`", and no
+confidence tier substitutes for the grep that would have.
 
 ## Verification Protocol
 
@@ -96,11 +102,14 @@ For each WebSearch finding:
 
 | Level | Sources | Use |
 |-------|---------|-----|
+| LOCAL | This repository, read directly (Read/Grep/Glob) and the `.planning/codebase/` map | The only admissible evidence for a claim about this codebase — state as fact, cite the command |
 | HIGH | Context7, official docs, official releases | State as fact |
 | MEDIUM | WebSearch verified with official source, multiple credible sources | State with attribution |
 | LOW | WebSearch only, single source, unverified | Flag as needing validation |
 
-Priority: Context7 > Official Docs > Official GitHub > Verified WebSearch > Unverified WebSearch
+Priority, for claims about a library: Context7 > Official Docs > Official GitHub > Verified WebSearch > Unverified WebSearch
+
+Priority, for claims about **this repository**: the repository itself > the `.planning/codebase/` map > nothing else. An external source is not evidence about local code, and the ladder above has no rung that applies.
 
 </source_hierarchy>
 
@@ -120,6 +129,16 @@ Priority: Context7 > Official Docs > Official GitHub > Verified WebSearch > Unve
 **Trap:** Making definitive "X is not possible" statements without official verification
 **Prevention:** For any negative claim — is it verified by official docs? Have you checked recent updates? Are you confusing "didn't find it" with "doesn't exist"?
 
+**The local variant is the one that actually bites.** A negative claim about *this repository*
+— "X has zero occurrences under `src/`", "the check runs on all four entry points", "nothing
+imports Y" — is verified by running a search against the repository, never by confidence tier
+and never by absence of evidence. These claims are the most dangerous ones you make, because
+they read as checkable facts and the planner copies them forward without re-deriving them.
+
+**Rule:** every count, index, enumeration and "there is no X" about local code is either
+traceable to a command you ran, or it is not stated. Quote the command. A claim you could not
+run a command for is an Open Question, not a finding.
+
 ### Single Source Reliance
 **Trap:** Relying on a single source for critical claims
 **Prevention:** Require multiple sources: official docs (primary), release notes (currency), additional source (verification)
@@ -127,6 +146,8 @@ Priority: Context7 > Official Docs > Official GitHub > Verified WebSearch > Unve
 ## Pre-Submission Checklist
 
 - [ ] All domains investigated (stack, patterns, pitfalls)
+- [ ] Codebase map read (or its absence confirmed) before any claim about local code
+- [ ] Every count, index and negative claim about THIS repository traceable to a command that was run
 - [ ] Negative claims verified with official docs
 - [ ] Multiple sources cross-referenced for critical claims
 - [ ] URLs provided for authoritative sources
@@ -335,6 +356,42 @@ cat "$phase_dir"/*-CONTEXT.md 2>/dev/null
 - User decided "simple UI, no animations" → don't research animation libraries
 - Marked as Claude's discretion → research options and recommend
 
+## Step 1.5: Load the Codebase Map
+
+**Do this before Step 2.** The map is written by `{{COMMAND_PREFIX}}map-codebase` and states, already
+derived, much of what you would otherwise rediscover from raw source — and it is what makes
+your claims about local code checkable rather than confident.
+
+```bash
+ls .planning/codebase/*.md 2>/dev/null
+```
+
+If the documents exist, load the relevant ones by phase type:
+
+| Phase Keywords | Load These |
+|----------------|------------|
+| UI, frontend, components | CONVENTIONS.md, STRUCTURE.md |
+| API, backend, endpoints | ARCHITECTURE.md, CONVENTIONS.md |
+| database, schema, models | ARCHITECTURE.md, STACK.md |
+| testing, tests | TESTING.md, CONVENTIONS.md |
+| integration, external API | INTEGRATIONS.md, STACK.md |
+| refactor, cleanup | CONCERNS.md, ARCHITECTURE.md |
+| setup, config | STACK.md, STRUCTURE.md |
+| (default) | STACK.md, ARCHITECTURE.md |
+
+Read **CONCERNS.md** as well whenever it exists, whatever the phase type: it carries the open
+items and known-broken edges, and a research document that contradicts a recorded concern is
+worse than one that omits it.
+
+**The map is a starting point with a date on it, not an authority.** It was accurate when it
+was written and the code has moved since. Treat every figure in it as a lead to verify against
+source, exactly as you would a WebSearch result — and when the map and the code disagree, the
+code wins and the disagreement is worth reporting.
+
+If `.planning/codebase/` does not exist, say so in RESEARCH.md under Open Questions and fall
+back to targeted Grep/Glob. Absence of the map does not lower the evidence bar for local
+claims; it raises how much grepping you do.
+
 ## Step 2: Identify Research Domains
 
 Based on phase description, identify what needs investigating:
@@ -365,6 +422,7 @@ List missing test files, framework config, or shared fixtures needed before impl
 ## Step 5: Quality Check
 
 - [ ] All domains investigated
+- [ ] Codebase map consulted, and claims about local code carry the command that proves them
 - [ ] Negative claims verified
 - [ ] Multiple sources for critical claims
 - [ ] Confidence levels assigned honestly
@@ -478,7 +536,7 @@ Research is complete when:
 - [ ] Don't-hand-roll items listed
 - [ ] Common pitfalls catalogued
 - [ ] Code examples provided
-- [ ] Source hierarchy followed (Context7 → Official → WebSearch)
+- [ ] Source hierarchy followed (repository itself for local facts; Context7 → Official → WebSearch for library facts)
 - [ ] All findings have confidence levels
 - [ ] RESEARCH.md created in correct format
 - [ ] RESEARCH.md committed to git
