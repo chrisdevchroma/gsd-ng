@@ -1,13 +1,14 @@
 'use strict';
 /**
  * opencode-plugin.test.cjs
- * Unit coverage for the OpenCode plugin: the bash-safety adapter on
- * tool.execute.before and the update-check adapter on the session-start event.
+ * Unit coverage for the OpenCode plugin's dual entrypoints: the V1 hooks
+ * object returned by server(), and the V2 setup(ctx) adapter, over the
+ * shared bash-safety and update-check behaviours.
  *
- * The hook behaviours are driven through the plugin's injectable seam with fake
- * dependencies. The last three cases drive the REAL factory against a synthetic
- * config home on disk, because a seam that is only ever tested with injected
- * settings cannot show which settings file production reads.
+ * The hook behaviours are driven through the plugin's injectable seam with
+ * fake dependencies. The last cases drive the REAL installed plugin against
+ * a synthetic config home on disk, because a seam that is only ever tested
+ * with injected settings cannot show which settings file production reads.
  */
 
 const { describe, test } = require('node:test');
@@ -95,13 +96,67 @@ async function hooksWith(overrides) {
   return mod.createGsdHooks(overrides);
 }
 
-describe('PLUGIN: tool.execute.before adapts decide() to the opencode signature', () => {
-  test('PLUGIN-01: the module exports a factory returning both hooks', async () => {
-    const mod = await importPlugin(PLUGIN_PATH);
-    assert.equal(typeof mod.default, 'function', 'a default plugin factory');
-    assert.equal(typeof mod.createGsdHooks, 'function', 'an injectable seam');
+/** An async iterable that yields the given items and terminates naturally. */
+async function* fakeAsyncIterable(items) {
+  for (const item of items) {
+    yield item;
+  }
+}
 
-    const hooks = await mod.default({}, {});
+/**
+ * V2 ctx stand-in: records execute.before registrations and the options
+ * handed to event.subscribe, and streams the given events to the adapter.
+ */
+function fakeCtx(events) {
+  const ctx = {
+    toolCalls: [],
+    subscribeOpts: [],
+    tool: {
+      async hook(name, cb) {
+        ctx.toolCalls.push({ name, cb });
+      },
+      async list() {
+        return [];
+      },
+    },
+    event: {
+      subscribe(opts) {
+        ctx.subscribeOpts.push(opts);
+        return fakeAsyncIterable(events);
+      },
+    },
+  };
+  return ctx;
+}
+
+/**
+ * Build a FRESH V2 adapter with fake deps and run its setup against a fake
+ * ctx. A fresh adapter keeps the once-per-process guard per-test; driving
+ * spawn-triggering events through the shared module-level setup would make
+ * the tests order-dependent. The short drain lets the detached consume
+ * loop settle before the caller asserts.
+ */
+async function v2Setup(overrides, events) {
+  const mod = await importPlugin(PLUGIN_PATH);
+  const setup = mod.createV2Adapter(overrides);
+  const ctx = fakeCtx(events || []);
+  const release = await setup(ctx);
+  await new Promise((r) => setTimeout(r, 50));
+  return { ctx, release };
+}
+
+describe('PLUGIN: tool.execute.before adapts decide() to the opencode signature', () => {
+  test('PLUGIN-01: the module exports the dual V1+V2 shape', async () => {
+    const mod = await importPlugin(PLUGIN_PATH);
+    assert.equal(typeof mod.default, 'object', 'default is a plain object');
+    assert.ok(mod.default, 'the default export exists');
+    assert.equal(mod.default.id, 'gsd-core', 'a stable plugin id');
+    assert.equal(typeof mod.default.setup, 'function', 'the V2 setup entrypoint');
+    assert.equal(typeof mod.default.server, 'function', 'the V1 server entrypoint');
+    assert.equal(typeof mod.createGsdHooks, 'function', 'an injectable seam');
+    assert.equal(typeof mod.createV2Adapter, 'function', 'a V2 adapter seam');
+
+    const hooks = await mod.default.server();
     assert.equal(typeof hooks.event, 'function');
     assert.equal(typeof hooks['tool.execute.before'], 'function');
   });
@@ -304,6 +359,128 @@ describe('PLUGIN: event() runs the update check once per process', () => {
   });
 });
 
+// ── V2 adapter: setup(ctx) ──────────────────────────────────────────────
+// V2 replaces the V1 hook object with a setup function that registers a
+// tool hook and subscribes to an event stream. These drive that contract
+// with fakes; fresh adapters keep the once-guard per-test.
+
+describe('V2 adapter: setup(ctx) wires hooks and events', () => {
+  test('V2-01: setup registers a hook named exactly execute.before', async () => {
+    const { ctx, release } = await v2Setup({
+      decide: fakeDecide({ decision: 'passthrough' }),
+      loadSettings: countingSettings({}),
+      spawnFn: fakeSpawn(),
+    });
+    assert.equal(ctx.toolCalls.length, 1, 'one hook registration');
+    assert.equal(ctx.toolCalls[0].name, 'execute.before');
+    assert.equal(typeof ctx.toolCalls[0].cb, 'function', 'a callable hook');
+    release();
+  });
+
+  test('V2-02: a denied shell command throws through the adapter with the exact reason', async () => {
+    const reason = `Command "${DENY_COMMAND}" matches deny pattern "${DENY_PATTERN}"`;
+    const { ctx, release } = await v2Setup({
+      decide: fakeDecide({ decision: 'deny', reason }),
+      loadSettings: countingSettings({ permissions: { allow: [], deny: [] } }),
+      spawnFn: fakeSpawn(),
+    });
+    const before = ctx.toolCalls[0].cb;
+    await assert.rejects(
+      () =>
+        before({ tool: 'shell', sessionID: 's', input: { command: DENY_COMMAND } }),
+      (err) => {
+        assert.equal(err.message, reason, 'the deny is not swallowed');
+        return true;
+      },
+    );
+    release();
+  });
+
+  test('V2-03: shell commands that are not denied resolve, non-shell tools never decide', async () => {
+    const allow = await v2Setup({
+      decide: fakeDecide({ decision: 'allow', reason: 'matched allow' }),
+      loadSettings: countingSettings({}),
+      spawnFn: fakeSpawn(),
+    });
+    const before = allow.ctx.toolCalls[0].cb;
+    await before({ tool: 'shell', input: { command: 'git status' } });
+    await before({ tool: 'bash', input: { command: 'curl https://example.com' } });
+    allow.release();
+
+    const decide = fakeDecide({ decision: 'deny', reason: 'should never run' });
+    const loadSettings = countingSettings({});
+    const ignored = await v2Setup({ decide, loadSettings, spawnFn: fakeSpawn() });
+    await ignored.ctx.toolCalls[0].cb({
+      tool: 'read',
+      input: { filePath: '/etc/passwd' },
+    });
+    assert.equal(loadSettings.calls, 0, 'settings must not be read for a non-shell tool');
+    assert.equal(decide.seen.length, 0, 'decide must not run for a non-shell tool');
+    ignored.release();
+  });
+
+  test('V2-04: a missing or empty command resolves without consulting decide', async () => {
+    const decide = fakeDecide({ decision: 'deny', reason: 'should never run' });
+    const { ctx, release } = await v2Setup({
+      decide,
+      loadSettings: countingSettings({}),
+      spawnFn: fakeSpawn(),
+    });
+    const before = ctx.toolCalls[0].cb;
+    await before({ tool: 'shell', input: {} });
+    await before({ tool: 'shell', input: { command: '' } });
+    await before({ tool: 'shell' });
+    assert.equal(decide.seen.length, 0, 'an absent command is nothing to decide about');
+    release();
+  });
+
+  test('V2-05: repeated session-start triggers collapse to one spawn with the same shape', async () => {
+    const spawnFn = fakeSpawn();
+    const hooksDir = path.join(BASE_TMPDIR, 'gsd-plugin-v2-hooks-fake');
+    const { release } = await v2Setup(
+      {
+        decide: fakeDecide({ decision: 'passthrough' }),
+        loadSettings: countingSettings({}),
+        spawnFn,
+        hooksDir,
+      },
+      [
+        { type: 'session.execution.started' },
+        { type: 'session.execution.started' },
+        { type: 'session.created' },
+      ],
+    );
+    assert.equal(spawnFn.calls.length, 1, 'both trigger ids and repeats collapse to one');
+    const call = spawnFn.calls[0];
+    assert.equal(call.command, process.execPath);
+    assert.deepEqual(call.args, [path.join(hooksDir, 'gsd-check-update.js')]);
+    assert.ok(call.child.handlers.includes('error'));
+    assert.ok(call.child.stdin.handlers.includes('error'));
+    assert.deepEqual(call.options.stdio, ['pipe', 'ignore', 'ignore']);
+    assert.equal(call.options.detached, true);
+    assert.equal(
+      call.writes.join(''),
+      JSON.stringify({ source: 'startup' }),
+      'the child is gated on source === startup',
+    );
+    assert.equal(call.child.stdinEnded, true);
+    assert.equal(call.child.unrefCalled, true);
+    release();
+  });
+
+  test('V2-06: cleanup aborts the recorded subscription signal', async () => {
+    const { ctx, release } = await v2Setup({
+      decide: fakeDecide({ decision: 'passthrough' }),
+      loadSettings: countingSettings({}),
+      spawnFn: fakeSpawn(),
+    });
+    assert.ok(ctx.subscribeOpts.length >= 1, 'the adapter subscribed to events');
+    assert.equal(ctx.subscribeOpts[0].signal.aborted, false, 'live before cleanup');
+    release();
+    assert.equal(ctx.subscribeOpts[0].signal.aborted, true, 'cleanup aborts the signal');
+  });
+});
+
 // ── the real factory, against a config home on disk ──────────────────────────
 // The seam above proves the adapters. Only the real factory can show which
 // settings file production reads, so these drive the installed layout:
@@ -363,7 +540,7 @@ describe('PLUGIN: the real factory reads the config home it is installed in', ()
 
       await withIsolatedEnv(home, async () => {
         const mod = await importPlugin(installedPlugin);
-        const hooks = await mod.default({}, {});
+        const hooks = await mod.default.server();
         await assert.rejects(
           () =>
             hooks['tool.execute.before'](
@@ -381,6 +558,33 @@ describe('PLUGIN: the real factory reads the config home it is installed in', ()
     }
   });
 
+  test('V2-07: the production V2 setup reads the config home it was installed in', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-v2-real-'));
+    try {
+      const { configHome, installedPlugin, home } = stageInstall(tmpDir);
+      fs.writeFileSync(path.join(configHome, 'settings.json'), DENY_SETTINGS);
+
+      await withIsolatedEnv(home, async () => {
+        const mod = await importPlugin(installedPlugin);
+        // Empty event stream: the production adapter never spawns here, so
+        // only the deny path through the installed settings is exercised.
+        const ctx = fakeCtx([]);
+        const release = await mod.default.setup(ctx);
+        const before = ctx.toolCalls[0].cb;
+        await assert.rejects(
+          () => before({ tool: 'shell', input: { command: DENY_COMMAND } }),
+          (err) => {
+            assert.match(err.message, /matches deny pattern "Bash\(rm:\*\)"/);
+            return true;
+          },
+        );
+        release();
+      });
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
   test('PLUGIN-14: the same deny pattern under HOME/.claude alone does not block', async () => {
     const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-real-b-'));
     try {
@@ -391,7 +595,7 @@ describe('PLUGIN: the real factory reads the config home it is installed in', ()
 
       await withIsolatedEnv(home, async () => {
         const mod = await importPlugin(installedPlugin);
-        const hooks = await mod.default({}, {});
+        const hooks = await mod.default.server();
         await hooks['tool.execute.before'](
           { tool: 'bash' },
           { args: { command: DENY_COMMAND } },
