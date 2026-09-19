@@ -479,6 +479,66 @@ describe('V2 adapter: setup(ctx) wires hooks and events', () => {
     release();
     assert.equal(ctx.subscribeOpts[0].signal.aborted, true, 'cleanup aborts the signal');
   });
+
+  test('V2-08: a second setup on the same adapter retires the first subscription', async () => {
+    const mod = await importPlugin(PLUGIN_PATH);
+    const setup = mod.createV2Adapter({
+      decide: fakeDecide({ decision: 'passthrough' }),
+      loadSettings: countingSettings({}),
+      spawnFn: fakeSpawn(),
+    });
+    const ctx1 = fakeCtx([]);
+    const release1 = await setup(ctx1);
+    const ctx2 = fakeCtx([]);
+    const release2 = await setup(ctx2);
+    assert.equal(
+      ctx1.subscribeOpts[0].signal.aborted,
+      true,
+      'the previous subscription is retired when setup runs again',
+    );
+    assert.equal(ctx2.subscribeOpts[0].signal.aborted, false, 'the new one is live');
+    release2();
+    release1();
+  });
+
+  test('V2-09: a stream error that is not an abort is logged, not swallowed', async () => {
+    const errors = [];
+    const savedError = console.error;
+    console.error = (...args) => errors.push(args.map(String).join(' '));
+    try {
+      const mod = await importPlugin(PLUGIN_PATH);
+      const setup = mod.createV2Adapter({
+        decide: fakeDecide({ decision: 'passthrough' }),
+        loadSettings: countingSettings({}),
+        spawnFn: fakeSpawn(),
+      });
+      const ctx = {
+        tool: {
+          async hook() {
+            return undefined;
+          },
+        },
+        event: {
+          subscribe() {
+            return {
+              async *[Symbol.asyncIterator]() {
+                throw new Error('stream exploded');
+              },
+            };
+          },
+        },
+      };
+      const release = await setup(ctx);
+      await new Promise((r) => setTimeout(r, 50));
+      release();
+      assert.ok(
+        errors.some((e) => e.includes('stream exploded')),
+        'the failure is surfaced instead of silently ending the update check',
+      );
+    } finally {
+      console.error = savedError;
+    }
+  });
 });
 
 // ── the real factory, against a config home on disk ──────────────────────────

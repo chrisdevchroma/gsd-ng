@@ -189,11 +189,17 @@ export function createGsdHooks(deps = {}) {
  */
 export function createV2Adapter(deps = {}) {
   const hooks = createGsdHooks(deps);
+  // A reload can run setup again on this adapter before the old instance is
+  // unloaded; retire the previous registration and subscription first so
+  // hooks never stack and only one stream feeds the core.
+  let retirePrevious = async () => {};
 
   return async function setup(ctx) {
+    await retirePrevious();
+
     const controller = new AbortController();
 
-    await ctx.tool.hook('execute.before', async (event) => {
+    const toolRegistration = await ctx.tool.hook('execute.before', async (event) => {
       // Deny must propagate: the throw inside the core hook IS the block,
       // so nothing here may swallow it.
       await hooks['tool.execute.before'](
@@ -213,14 +219,30 @@ export function createV2Adapter(deps = {}) {
         })) {
           await hooks.event({ event: evt });
         }
-      } catch (_e) {
+      } catch (err) {
         // A dropped or aborted subscription is never a session failure.
+        // A silent drop, though, reads exactly like the "nothing fired"
+        // blindness this port replaced, so surface real stream errors.
+        if (controller.signal.aborted) return;
+        console.error('[gsd-core] update-check event stream failed:', err);
       }
     })();
 
-    return () => {
+    const cleanup = () => {
       controller.abort();
     };
+    retirePrevious = async () => {
+      if (toolRegistration && typeof toolRegistration.dispose === 'function') {
+        try {
+          await toolRegistration.dispose();
+        } catch (_e) {
+          // A failed dispose is never a session failure either.
+        }
+      }
+      cleanup();
+    };
+
+    return cleanup;
   };
 }
 
