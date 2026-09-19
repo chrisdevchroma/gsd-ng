@@ -41,18 +41,24 @@ const defaultHooksDir = (function () {
 // project-level settings layers.
 const LOCAL_CONFIG_DIR = '.opencode';
 
-// The tool id OpenCode exposes for shell execution. Kept as "bash" for
-// compatibility with existing plugins and saved permissions, so the file that
-// defines it is tool/shell/id.ts and there is no tool/bash.ts to grep for.
-const BASH_TOOL = 'bash';
+// The tool ids that mean "shell execution". OpenCode V2 renamed the shell
+// tool id to "shell"; "bash" survives on V1, so both ids match one core
+// path rather than forking the decision logic per runtime generation.
+const SHELL_TOOLS = new Set(['bash', 'shell']);
 
-// Observed by logging every event.type in a real OpenCode session: this is the
-// first event of a session and fires once per session. The server-connection
-// event this constant previously named never appears in the stream at all, so
-// nothing fired. The factory runs once per process and before any session
-// exists, which is earlier than session start, so a discriminant is needed
-// rather than running the check in the factory body.
-const SESSION_START_EVENT = 'session.created';
+// Observed by logging every event.type in a real OpenCode session. Two ids
+// count as session start: V2's schema includes session.created but the live
+// runtime never delivered it to a plugin subscription on cold start, while
+// session.execution.started fires reliably. The per-process closure guard
+// below makes the check fire once regardless of how many triggers arrive.
+// The server-connection event this constant previously named never appears
+// in the stream at all, so nothing fired. The factory runs once per process
+// and before any session exists, which is earlier than session start, so a
+// discriminant is needed rather than running the check in the factory body.
+const SESSION_START_EVENTS = new Set([
+  'session.created',
+  'session.execution.started',
+]);
 
 /**
  * The interpreter to run the update-check script with.
@@ -120,7 +126,7 @@ export function createGsdHooks(deps = {}) {
   return {
     async event(input) {
       const event = input && input.event;
-      if (!event || event.type !== SESSION_START_EVENT) return;
+      if (!event || !SESSION_START_EVENTS.has(event.type)) return;
       if (updateChecked) return;
       updateChecked = true;
 
@@ -147,7 +153,7 @@ export function createGsdHooks(deps = {}) {
     },
 
     async 'tool.execute.before'(input, output) {
-      if (!input || input.tool !== BASH_TOOL) return;
+      if (!input || !SHELL_TOOLS.has(input.tool)) return;
       const command = (output && output.args && output.args.command) || '';
       if (!command) return;
 
@@ -169,7 +175,64 @@ export function createGsdHooks(deps = {}) {
   };
 }
 
-/** The factory OpenCode loads. */
-const GsdCore = async () => createGsdHooks();
+/**
+ * Build the V2 setup function. The core hooks are created once here so the
+ * once-per-process update-check guard lives exactly as long as the plugin
+ * instance, matching V1's factory-runs-once-per-process semantics.
+ *
+ * The adapter maps V2's single mutable hook event onto the core's
+ * (input, output) shape: the tool id and the command come in as
+ * `event.tool` and `event.input.command`.
+ *
+ * @param {object} [deps] - same injectable seams as createGsdHooks
+ * @returns {Function} an async setup(ctx) per the V2 plugin contract
+ */
+export function createV2Adapter(deps = {}) {
+  const hooks = createGsdHooks(deps);
 
-export default GsdCore;
+  return async function setup(ctx) {
+    const controller = new AbortController();
+
+    await ctx.tool.hook('execute.before', async (event) => {
+      // Deny must propagate: the throw inside the core hook IS the block,
+      // so nothing here may swallow it.
+      await hooks['tool.execute.before'](
+        { tool: event && event.tool },
+        { args: { command: event && event.input && event.input.command } },
+      );
+    });
+
+    // The event stream is consumed in the background so registering the
+    // tool hook is not gated on the subscription. Every streamed event is
+    // forwarded to the core handler; the trigger set and the once-guard
+    // inside decide what actually fires.
+    (async () => {
+      try {
+        for await (const evt of ctx.event.subscribe({ signal: controller.signal })) {
+          await hooks.event({ event: evt });
+        }
+      } catch (_e) {
+        // A dropped or aborted subscription is never a session failure.
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  };
+}
+
+/**
+ * Dual V1+V2 entrypoint. V2 reads `id` and `setup()` and ignores
+ * `server()`; V1 (>= 1.18.29) calls `default.server()` and gets the
+ * legacy hooks object verbatim. The export must be a plain structural
+ * object: the installed standalone file cannot resolve
+ * `@opencode/plugin`, and the documented Plugin.define is identity anyway.
+ */
+export default {
+  id: 'gsd-core',
+  setup: createV2Adapter(),
+  async server() {
+    return createGsdHooks();
+  },
+};
