@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The OpenCode plugin loads under OpenCode 2. The old export shape was V1-only, so a V2 server rejected the plugin at startup with "Plugin must export a default definition with an id and an effect or setup function", leaving the update check and shell command safety unenforced. The default export is now a V2 plugin definition (id + setup) that keeps the legacy V1 entrypoint, so OpenCode 1.18.29 and later and OpenCode 2 both load the same file. The safety hook follows the V2 tool rename from bash to shell, and the startup update check now triggers on the events V2 actually delivers on a cold start.
+
 - The installer advertises OpenCode. `--help` listed `claude or copilot` as the runtime choices and gave no OpenCode example, and the startup banner named Claude Code alone, so the only way to discover the third runtime was the interactive prompt — which has offered it all along, since it is generated from the runtime registry. Nothing about installing changed; it is now findable without running the installer blind.
 
 - The README and user guide cover OpenCode: install and uninstall commands for both scopes, where a global install resolves (`OPENCODE_CONFIG_DIR`, then `$XDG_CONFIG_HOME/opencode`, then `~/.config/opencode`), the `/gsd-help` verification command, and a note that Copilot CLI and OpenCode use a `gsd-` command prefix where Claude Code uses `gsd:`.
