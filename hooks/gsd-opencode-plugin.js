@@ -208,7 +208,9 @@ export function createV2Adapter(deps = {}) {
     // inside decide what actually fires.
     (async () => {
       try {
-        for await (const evt of ctx.event.subscribe({ signal: controller.signal })) {
+        for await (const evt of ctx.event.subscribe({
+          signal: controller.signal,
+        })) {
           await hooks.event({ event: evt });
         }
       } catch (_e) {
