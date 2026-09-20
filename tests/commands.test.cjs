@@ -1715,7 +1715,7 @@ describe('scaffold command', () => {
     assert.ok(content.includes('Phase 3'), 'should reference phase number');
     assert.ok(content.includes('Decisions'), 'should have decisions section');
     assert.ok(
-      content.includes('Discretion Areas'),
+      content.includes("### Agent's Discretion"),
       'should have discretion section',
     );
   });
