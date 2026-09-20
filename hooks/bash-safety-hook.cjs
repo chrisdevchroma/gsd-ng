@@ -23,12 +23,13 @@
  * Debug logging: GSD_HOOK_DEBUG=1 — writes verbose logs to stderr
  *
  * Settings layers read (project-root and CLAUDE_SETTINGS_PATH env vars).
- * The project root is GSD_PROJECT_DIR, falling back to the harness-native
- * CLAUDE_PROJECT_DIR:
+ * Hooks are launched by the harness, so layers 3 and 4 take the harness-native
+ * project-directory variable as authoritative and fall back to GSD_PROJECT_DIR
+ * where a harness exports none:
  *   Layer 1: $CLAUDE_SETTINGS_PATH || ~/.claude/settings.json
  *   Layer 2: ~/.claude/settings.local.json
- *   Layer 3: $GSD_PROJECT_DIR/.claude/settings.json
- *   Layer 4: $GSD_PROJECT_DIR/.claude/settings.local.json
+ *   Layer 3: <project root>/.claude/settings.json
+ *   Layer 4: <project root>/.claude/settings.local.json
  */
 
 'use strict';
@@ -1394,8 +1395,8 @@ function commandMatchesPattern(command, pattern) {
  *   Layer 3: <project root>/<local config dir>/settings.json
  *   Layer 4: <project root>/<local config dir>/settings.local.json
  *
- * The project root is $GSD_PROJECT_DIR when exported, falling back to the
- * harness-native $CLAUDE_PROJECT_DIR.
+ * The project root is the harness-native $CLAUDE_PROJECT_DIR, falling back
+ * to $GSD_PROJECT_DIR for harnesses that export no native variable.
  *
  * The config dirs default to Claude's — `~/.claude` and `.claude` — so a caller
  * that names neither resolves exactly the four paths it always did. A caller
@@ -1446,9 +1447,9 @@ function loadMergedSettings(envOverride, options) {
   const layer2Path = path.join(globalConfigDir, 'settings.local.json');
   const layer2 = loadSettings(layer2Path);
 
-  // Layers 3 & 4 require a project root: GSD_PROJECT_DIR wins, and the
-  // harness-native CLAUDE_PROJECT_DIR answers where GSD_PROJECT_DIR is unset.
-  const projectDir = env.GSD_PROJECT_DIR || env.CLAUDE_PROJECT_DIR || '';
+  // Layers 3 & 4 require a project root: the harness-native variable is
+  // authoritative, and GSD_PROJECT_DIR answers where a harness exports none.
+  const projectDir = env.CLAUDE_PROJECT_DIR || env.GSD_PROJECT_DIR || '';
   const layer3 = projectDir
     ? loadSettings(path.join(projectDir, localConfigDirName, 'settings.json'))
     : {};
