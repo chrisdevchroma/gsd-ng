@@ -307,16 +307,38 @@ function shippedToolPaths(targetDir) {
  * Resolve a shipped path against the anchor its form declares.
  *
  * `$HOME` and `~` are the home directory; a `${VAR:-fallback}` prefix is the
- * project-directory expression the installer writes for local installs, with
- * or without one level of folded fallback; a bare relative path is what a
+ * project-directory expression the installer writes for local installs, at
+ * any nesting depth whose braces balance; a bare relative path is what a
  * local install of a non-source runtime produces, and its anchor is the
  * project root the workflow runs in.
+ *
+ * The expression boundary is the close that returns brace depth to zero, not
+ * the first `}/`: the folded claude chain nests one level, and a lazy scan
+ * anchors at the inner close wherever a brace appears in a fallback. Braces
+ * that do not balance, or a close not followed by `/`, throw rather than
+ * resolve to a plausible-looking wrong path.
  */
 function resolveShippedPath(raw, home, proj) {
   if (raw.startsWith('$HOME/')) return path.join(home, raw.slice('$HOME/'.length));
   if (raw.startsWith('~/')) return path.join(home, raw.slice(2));
-  const projectExpr = raw.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-.*?\}\/(.*)$/);
-  if (projectExpr) return path.join(proj, projectExpr[1]);
+  const head = raw.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-/);
+  if (head) {
+    let depth = 1;
+    let i = head[0].length;
+    while (i < raw.length && depth > 0) {
+      if (raw[i] === '{') depth += 1;
+      else if (raw[i] === '}') depth -= 1;
+      i += 1;
+    }
+    if (depth !== 0 || raw[i] !== '/') {
+      throw new Error(
+        'resolveShippedPath: malformed project-root expression ' +
+          '(unbalanced braces or no path after the close): ' +
+          raw,
+      );
+    }
+    return path.join(proj, raw.slice(i + 1));
+  }
   if (path.isAbsolute(raw)) return raw;
   return path.join(proj, raw);
 }
@@ -499,6 +521,25 @@ test('ISOLATION-14: every local install renders the registry chain into its ship
       `${runtime}: workflow tool invocations must sit under the registry chain`,
     );
   }
+});
+
+test('ISOLATION-15: the shipped-path resolver anchors on the balanced close, not the first `}/`', () => {
+  const H = '/fake-home';
+  const P = '/fake-proj';
+  const tool = '/bin/gsd-tools.cjs';
+
+  assert.equal(resolveShippedPath(projectRootChain('opencode') + tool, H, P), path.join(P, 'bin', 'gsd-tools.cjs'));
+  assert.equal(resolveShippedPath(projectRootChain('claude') + tool, H, P), path.join(P, 'bin', 'gsd-tools.cjs'));
+  assert.equal(resolveShippedPath('${GSD_PROJECT_DIR:-${A:-a}/b}/rest', H, P), path.join(P, 'rest'));
+
+  assert.throws(
+    () => resolveShippedPath('${GSD_PROJECT_DIR:-${A:-a}/unclosed', H, P),
+    /malformed project-root expression/,
+  );
+  assert.throws(
+    () => resolveShippedPath('${GSD_PROJECT_DIR:-closed}no-slash', H, P),
+    /malformed project-root expression/,
+  );
 });
 
 // ── two runtimes, one home, one project ──────────────────────────────────────

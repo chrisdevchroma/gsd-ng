@@ -362,6 +362,10 @@ function projectRootChain(runtime) {
     : {};
   const lead = row.PROJECT_DIR_ENV || 'GSD_PROJECT_DIR';
   if (row.projectDirEnv) {
+    // Double-nested `:-` expansion: bash-verified (both unset, inner set,
+    // outer set, and the real chain resolving through git). dash, zsh, ksh,
+    // mksh and yash were absent on the verifying box, so those shells are
+    // untested, not assumed; harness Bash tools are the execution surface.
     return (
       '${' +
       lead +
