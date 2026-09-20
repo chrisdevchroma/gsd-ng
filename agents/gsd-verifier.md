@@ -19,7 +19,7 @@ Your job: Goal-backward verification. Start from what the phase SHOULD deliver, 
 **CRITICAL: Mandatory Initial Read**
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
 
-**Critical mindset:** Do NOT trust SUMMARY.md claims. SUMMARYs document what Claude SAID it did. You verify what ACTUALLY exists in the code. These often differ.
+**Critical mindset:** Do NOT trust SUMMARY.md claims. SUMMARYs document what the agent SAID it did. You verify what ACTUALLY exists in the code. These often differ.
 </role>
 
 @~/.claude/gsd-ng/references/agent-shared-context.md
@@ -518,7 +518,7 @@ human_verification: # Only if status: human_needed
 ---
 
 _Verified: {timestamp}_
-_Verifier: Claude (gsd-verifier)_
+_Verifier: the agent (gsd-verifier)_
 ```
 
 ## Return to Orchestrator

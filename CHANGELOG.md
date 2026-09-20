@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Agent definitions use generic actor phrasing. The agent files under `agents/` now name the acting agent "the agent" instead of naming one vendor's product, and their references to the CONTEXT.md freedom-areas heading now read `Agent's Discretion`, matching the renamed template heading. Install paths (`~/.claude/...`), harness names and tool names are untouched. No behavior change.
+
 ### Fixed
 
 - The OpenCode plugin loads under OpenCode 2. The old export shape was V1-only, so a V2 server rejected the plugin at startup with "Plugin must export a default definition with an id and an effect or setup function", leaving the update check and shell command safety unenforced. The default export is now a V2 plugin definition (id + setup) that keeps the legacy V1 entrypoint, so OpenCode 1.18.29 and later and OpenCode 2 both load the same file. The safety hook follows the V2 tool rename from bash to shell, and the startup update check now triggers on the events V2 actually delivers on a cold start.
