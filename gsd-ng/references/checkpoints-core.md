@@ -6,13 +6,13 @@
 <overview>
 Plans execute autonomously. Checkpoints formalize interaction points where human verification or decisions are needed.
 
-**Core principle:** Claude automates everything with CLI/API. Checkpoints are for verification and decisions, not manual work.
+**Core principle:** The agent automates everything with CLI/API. Checkpoints are for verification and decisions, not manual work.
 
 **Core rules:**
-1. **If Claude can run it, Claude runs it** - Never ask user to execute CLI commands, start servers, or run builds
-2. **Claude sets up the verification environment** - Start dev servers, seed databases, configure env vars
+1. **If the agent can run it, the agent runs it** - Never ask user to execute CLI commands, start servers, or run builds
+2. **The agent sets up the verification environment** - Start dev servers, seed databases, configure env vars
 3. **User only does what requires human judgment** - Visual checks, UX evaluation, "does this feel right?"
-4. **Secrets come from user, automation comes from Claude** - Ask for API keys, then Claude uses them via CLI
+4. **Secrets come from user, automation comes from the agent** - Ask for API keys, then the agent uses them via CLI
 5. **Auto-mode bypasses verification/decision checkpoints** — When `workflow._auto_chain_active` or `workflow.auto_advance` is true in config: human-verify auto-approves, decision auto-selects first option, human-action still stops (auth gates cannot be automated)
 </overview>
 
@@ -21,7 +21,7 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 <type name="human-verify">
 ## checkpoint:human-verify (Most Common - 90%)
 
-**When:** Claude completed automated work, human confirms it works correctly.
+**When:** The agent completed automated work, human confirms it works correctly.
 
 **Use for:**
 - Visual UI checks (layout, styling, responsiveness)
@@ -33,7 +33,7 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 
 **Structure:**
 
-**Example: UI Component (shows key pattern: Claude starts server BEFORE checkpoint)**
+**Example: UI Component (shows key pattern: the agent starts server BEFORE checkpoint)**
 
 **Example: Xcode Build**
 </type>
@@ -60,10 +60,10 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 <type name="human-action">
 ## checkpoint:human-action (1% - Rare)
 
-**When:** Action has NO CLI/API and requires human-only interaction, OR Claude hit an authentication gate during automation.
+**When:** Action has NO CLI/API and requires human-only interaction, OR the agent hit an authentication gate during automation.
 
 **Use ONLY for:**
-- **Authentication gates** - Claude tried CLI/API but needs credentials (this is NOT a failure)
+- **Authentication gates** - the agent tried CLI/API but needs credentials (this is NOT a failure)
 - Email verification links (clicking email)
 - SMS 2FA codes (phone verification)
 - Manual account approvals (platform requires human review)
@@ -82,7 +82,7 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 
 **Example: Authentication Gate (Dynamic Checkpoint)**
 
-**Key distinction:** Auth gates are created dynamically when Claude encounters auth errors. NOT pre-planned — Claude automates first, asks for credentials only when blocked.
+**Key distinction:** Auth gates are created dynamically when the agent encounters auth errors. NOT pre-planned — the agent automates first, asks for credentials only when blocked.
 </type>
 </checkpoint_types>
 
@@ -90,16 +90,16 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 
 Checkpoints formalize human-in-the-loop points for verification and decisions, not manual work.
 
-**The core rule:** If Claude CAN automate it, Claude MUST automate it.
+**The core rule:** If the agent CAN automate it, the agent MUST automate it.
 
 **Checkpoint priority:**
-1. **checkpoint:human-verify** (90%) - Claude automated everything, human confirms visual/functional correctness
+1. **checkpoint:human-verify** (90%) - the agent automated everything, human confirms visual/functional correctness
 2. **checkpoint:decision** (9%) - Human makes architectural/technology choices
 3. **checkpoint:human-action** (1%) - Truly unavoidable manual steps with no API/CLI
 
 **When NOT to use checkpoints:**
-- Things Claude can verify programmatically (tests, builds)
-- File operations (Claude can read files)
+- Things the agent can verify programmatically (tests, builds)
+- File operations (the agent can read files)
 - Code correctness (tests and static analysis)
 - Anything automatable via CLI/API
 </summary>

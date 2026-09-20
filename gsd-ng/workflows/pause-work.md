@@ -82,7 +82,7 @@ Start with: [specific first action when resuming]
 </next_action>
 ```
 
-Be specific enough for a fresh Claude to understand immediately.
+Be specific enough for a fresh agent to understand immediately.
 
 Use `current-timestamp` for last_updated field. You can use init todos (which provides timestamps) or call directly:
 ```bash

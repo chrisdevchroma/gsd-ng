@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Workflows, references, templates, agent definitions and commands name the acting agent "the agent" instead of naming one vendor's product. The CONTEXT/RESEARCH freedom-areas heading is now `Agent's Discretion` on both sides of its contract: every generator (templates, discuss/plan/quick workflows) and every reader (planner, plan-checker stop-sentinels, researchers) was renamed in the same change, so boundary checks keep firing. Existing project files written with the old heading keep working - nothing migrates them. Runtime notes that were facts about a single harness (the classifyHandoffIfNeeded false-failure workaround, question-dialog occlusion, auto-compact, deny permissions) now say which harness they come from instead of reading as universal. Install paths (`~/.claude/...`), harness names and tool names are untouched.
+
 ### Fixed
 
 - The OpenCode plugin loads under OpenCode 2. The old export shape was V1-only, so a V2 server rejected the plugin at startup with "Plugin must export a default definition with an id and an effect or setup function", leaving the update check and shell command safety unenforced. The default export is now a V2 plugin definition (id + setup) that keeps the legacy V1 entrypoint, so OpenCode 1.18.29 and later and OpenCode 2 both load the same file. The safety hook follows the V2 tool rename from bash to shell, and the startup update check now triggers on the events V2 actually delivers on a cold start.
