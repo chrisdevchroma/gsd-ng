@@ -126,7 +126,10 @@ Mark the recommended option by placing it FIRST in the options list and appendin
 SESSION_ID=$(echo "$ARGUMENTS" | grep -oP '(?<=session_id=)\S+' 2>/dev/null || echo "")
 CONTEXT_PCT=0
 if [[ -n "$SESSION_ID" ]]; then
-  BRIDGE_FILE="/tmp/claude-ctx-${SESSION_ID}.json"
+  BRIDGE_FILE="/tmp/gsd-ctx-${SESSION_ID}.json"
+  if [[ ! -f "$BRIDGE_FILE" ]]; then
+    BRIDGE_FILE="/tmp/claude-ctx-${SESSION_ID}.json"
+  fi
   if [[ -f "$BRIDGE_FILE" ]]; then
     CONTEXT_PCT=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('$BRIDGE_FILE','utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}")
   fi
