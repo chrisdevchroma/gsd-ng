@@ -1,7 +1,7 @@
 <purpose>
 Validate built features through conversational testing with persistent state. Creates UAT.md that tracks test progress, survives /clear, and feeds gaps into {{COMMAND_PREFIX}}plan-phase --gaps.
 
-User tests, Claude records. One test at a time. Plain text responses.
+User tests, the agent records. One test at a time. Plain text responses.
 </purpose>
 
 @~/.claude/gsd-ng/references/ask-user-question.md
@@ -9,7 +9,7 @@ User tests, Claude records. One test at a time. Plain text responses.
 <philosophy>
 **Show expected, ask if reality matches.**
 
-Claude presents what SHOULD happen. User confirms or describes what's different.
+The agent presents what SHOULD happen. User confirms or describes what's different.
 - "yes" / "y" / "next" / empty → pass
 - Anything else → logged as issue, severity inferred
 

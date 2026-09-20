@@ -182,7 +182,7 @@ For automation-first checkpoint patterns, server lifecycle management, CLI insta
 **@~/.claude/gsd-ng/references/checkpoints-standard.md** → `<automation_reference>` section
 
 Key principles:
-- Claude sets up verification environment BEFORE presenting checkpoints
+- The agent sets up verification environment BEFORE presenting checkpoints
 - Users never run CLI commands (visit URLs only)
 - Server lifecycle: start before checkpoint, handle port conflicts, keep running for duration
 - CLI installation: auto-install where safe, checkpoint for user choice otherwise

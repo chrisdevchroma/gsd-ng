@@ -83,7 +83,7 @@ Use {{USER_QUESTION_TOOL}} to help users think by presenting concrete options to
 
 **UI rendering constraint — keep preceding text minimal:**
 
-The Claude Code UI renders the {{USER_QUESTION_TOOL}} dialog in a way that can occlude preceding text when that text is long. This means users may not see analysis or context you wrote immediately before the tool call.
+Some harness UIs render the {{USER_QUESTION_TOOL}} dialog in a way that can occlude preceding text when that text is long (first observed in Claude Code). This means users may not see analysis or context you wrote immediately before the tool call.
 
 Rule: Output at most 2-3 short lines of plain text before an {{USER_QUESTION_TOOL}} call. If you need to convey more context, embed it in the `question` string or in option `description` fields — not as separate preceding output.
 
@@ -182,7 +182,7 @@ Loop until "Create PROJECT.md" selected.
 - **Rushing** — Minimizing questions to get to "the work"
 - **Shallow acceptance** — Taking vague answers without probing
 - **Premature constraints** — Asking about tech stack before understanding the idea
-- **User skills** — NEVER ask about user's technical experience. Claude builds.
+- **User skills** — NEVER ask about user's technical experience. The agent builds.
 
 </anti_patterns>
 

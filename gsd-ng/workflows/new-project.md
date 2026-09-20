@@ -1100,7 +1100,7 @@ The active runtime determines which insertion strategy applies. The selection is
 made by the runtime-specific install/setup flow; here we describe the two
 strategies used by supported runtimes.
 
-- **Heading-based (Claude):** Project rules live at top-level Markdown headings. If
+- **Heading-based (Claude Code):** Project rules live at top-level Markdown headings. If
   `{{PROJECT_RULES_FILE}}` does NOT exist, create it with the project-name heading,
   then the `## GSD` section with workspace type, then the `## Memories` section. If
   the file exists and has NO `## GSD` section, insert the `## GSD` section before
