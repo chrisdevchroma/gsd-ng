@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Workflows, references and templates name the acting agent "the agent" instead of naming one vendor's product, and the CONTEXT/RESEARCH freedom-areas heading is now `### Agent's Discretion`. Nothing parses that heading, so project files written with the old one keep working untouched. Runtime notes that were facts about a single harness (the classifyHandoffIfNeeded false-failure workaround, question-dialog occlusion, auto-compact, deny permissions) now say which harness they come from instead of reading as universal. No behavior change.
+- Workflows, references, templates, agent definitions and commands name the acting agent "the agent" instead of naming one vendor's product. The CONTEXT/RESEARCH freedom-areas heading is now `Agent's Discretion` on both sides of its contract: every generator (templates, discuss/plan/quick workflows) and every reader (planner, plan-checker stop-sentinels, researchers) was renamed in the same change, so boundary checks keep firing. Existing project files written with the old heading keep working - nothing migrates them. Runtime notes that were facts about a single harness (the classifyHandoffIfNeeded false-failure workaround, question-dialog occlusion, auto-compact, deny permissions) now say which harness they come from instead of reading as universal. Install paths (`~/.claude/...`), harness names and tool names are untouched.
 
 ### Fixed
 

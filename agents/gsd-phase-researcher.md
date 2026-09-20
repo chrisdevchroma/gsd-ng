@@ -35,7 +35,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 | Section | How You Use It |
 |---------|----------------|
 | `## Decisions` | Locked choices — research THESE, not alternatives |
-| `## Claude's Discretion` | Your freedom areas — research options, recommend |
+| `## Agent's Discretion` | Your freedom areas — research options, recommend |
 | `## Deferred Ideas` | Out of scope — ignore completely |
 
 If CONTEXT.md exists, it constrains your research scope. Don't explore alternatives to locked decisions.
@@ -327,13 +327,13 @@ cat "$phase_dir"/*-CONTEXT.md 2>/dev/null
 | Section | Constraint |
 |---------|------------|
 | **Decisions** | Locked — research THESE deeply, no alternatives |
-| **Claude's Discretion** | Research options, make recommendations |
+| **Agent's Discretion** | Research options, make recommendations |
 | **Deferred Ideas** | Out of scope — ignore completely |
 
 **Examples:**
 - User decided "use library X" → research X deeply, don't explore alternatives
 - User decided "simple UI, no animations" → don't research animation libraries
-- Marked as Claude's discretion → research options and recommend
+- Marked as the agent's discretion → research options and recommend
 
 ## Step 2: Identify Research Domains
 
@@ -381,8 +381,8 @@ List missing test files, framework config, or shared fixtures needed before impl
 ### Locked Decisions
 [Copy verbatim from CONTEXT.md ## Decisions]
 
-### Claude's Discretion
-[Copy verbatim from CONTEXT.md ## Claude's Discretion]
+### Agent's Discretion
+[Copy verbatim from CONTEXT.md ## Agent's Discretion]
 
 ### Deferred Ideas (OUT OF SCOPE)
 [Copy verbatim from CONTEXT.md ## Deferred Ideas]

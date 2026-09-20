@@ -36,7 +36,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 | Section                  | How You Use It                                         |
 | ------------------------ | ------------------------------------------------------ |
 | `## Decisions`           | Locked choices — use these as design contract defaults |
-| `## Claude's Discretion` | Your freedom areas — research and recommend            |
+| `## Agent's Discretion`  | Your freedom areas — research and recommend            |
 | `## Deferred Ideas`      | Out of scope — ignore completely                       |
 
 **RESEARCH.md** (if exists) — Technical findings from `{{COMMAND_PREFIX}}plan-phase`
