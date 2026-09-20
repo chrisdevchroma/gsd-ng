@@ -8,9 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The context-monitor bridge file is now `/tmp/gsd-ctx-{session_id}.json` instead of `/tmp/claude-ctx-{session_id}.json`. The bridge is harness-neutral machinery — a statusline writes it, the context monitor and workflow launch checks read it — so the vendor-specific name no longer fit. The statusline writer and every reader moved in the same change, and readers fall back to the legacy `claude-ctx` path when the new file is absent, so mixed installs (an updated reader beside a not-yet-reinstalled statusline) keep working. The fallback is transitional and will be dropped in a later release.
+- The context-monitor bridge file is now `gsd-ctx-{session_id}.json` instead of `claude-ctx-{session_id}.json` in the OS temp directory. The bridge is harness-neutral machinery — a statusline writes it, the context monitor and workflow launch checks read it — so the vendor-specific name no longer fit. The statusline writer and every reader moved in the same change, and readers fall back to the legacy `claude-ctx` path when the new file is absent, so mixed installs (an updated reader beside a not-yet-reinstalled statusline) keep working. The fallback is transitional and will be dropped in a later release.
 
 ### Fixed
+
+- The launch-time context check in `/gsd:check-todos` now resolves the bridge file the same way its writer does — `${TMPDIR:-/tmp}` instead of a literal `/tmp` — so context warnings fire on macOS and remapped-TMPDIR systems instead of silently reading zero. The session-id extraction was made BSD-sed portable (the previous `grep -P` silently yielded nothing on macOS), and the bridge path reaches `node` via an environment variable instead of string interpolation into JS source.
 
 - The OpenCode plugin loads under OpenCode 2. The old export shape was V1-only, so a V2 server rejected the plugin at startup with "Plugin must export a default definition with an id and an effect or setup function", leaving the update check and shell command safety unenforced. The default export is now a V2 plugin definition (id + setup) that keeps the legacy V1 entrypoint, so OpenCode 1.18.29 and later and OpenCode 2 both load the same file. The safety hook follows the V2 tool rename from bash to shell, and the startup update check now triggers on the events V2 actually delivers on a cold start.
 
