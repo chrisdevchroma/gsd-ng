@@ -35,7 +35,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const { RUNTIMES } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const {
+  RUNTIMES,
+  projectRootChain,
+} = require('../gsd-ng/bin/lib/template-processor.cjs');
 const {
   runIsolatedInstall,
   runIsolatedUninstall,
@@ -304,14 +307,15 @@ function shippedToolPaths(targetDir) {
  * Resolve a shipped path against the anchor its form declares.
  *
  * `$HOME` and `~` are the home directory; a `${VAR:-fallback}` prefix is the
- * project-directory expression the installer writes for local installs; a bare
- * relative path is what a local install of a non-source runtime produces, and
- * its anchor is the project root the workflow runs in.
+ * project-directory expression the installer writes for local installs, with
+ * or without one level of folded fallback; a bare relative path is what a
+ * local install of a non-source runtime produces, and its anchor is the
+ * project root the workflow runs in.
  */
 function resolveShippedPath(raw, home, proj) {
   if (raw.startsWith('$HOME/')) return path.join(home, raw.slice('$HOME/'.length));
   if (raw.startsWith('~/')) return path.join(home, raw.slice(2));
-  const projectExpr = raw.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-[^}]*\}\/(.*)$/);
+  const projectExpr = raw.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-.*?\}\/(.*)$/);
   if (projectExpr) return path.join(proj, projectExpr[1]);
   if (path.isAbsolute(raw)) return raw;
   return path.join(proj, raw);
@@ -441,6 +445,60 @@ test('ISOLATION-11: ordinary github paths and hostnames are not flagged', () => 
     [],
     'a repository directory that happens to share a config-home name is correct content',
   );
+});
+
+// ── installed project-root chains ────────────────────────────────────────────
+//
+// Harness neutrality lives or dies in the rendered chain. GSD_PROJECT_DIR
+// leads in every runtime so a user export always wins; a claude install
+// keeps its harness-native variable folded behind it; a copilot or opencode
+// install names no other harness's variable in any chain.
+
+/** A chain expression that falls back through the claude variable. */
+const CLAUDE_CHAIN_SEGMENT = /\$\{CLAUDE_PROJECT_DIR:-/;
+
+test('ISOLATION-13: no installed file carries a CLAUDE_PROJECT_DIR chain outside the claude tree', () => {
+  for (const runtime of ['copilot', 'opencode']) {
+    for (const scope of ['local', 'global']) {
+      const { targetDir } = installOnce(runtime, scope);
+      const offenders = readFilesUnder(targetDir, () => true)
+        .filter(({ content }) => CLAUDE_CHAIN_SEGMENT.test(content))
+        .map(({ rel }) => rel);
+      assert.deepStrictEqual(
+        offenders,
+        [],
+        `${runtime} ${scope}: installed file(s) render a CLAUDE_PROJECT_DIR chain`,
+      );
+    }
+  }
+
+  const { targetDir } = installOnce('claude', 'local');
+  const claudeChains = readFilesUnder(targetDir, () => true).filter(
+    ({ content }) => CLAUDE_CHAIN_SEGMENT.test(content),
+  );
+  assert.ok(
+    claudeChains.length > 0,
+    'the claude tree must keep its harness-native variable in the folded chain',
+  );
+});
+
+test('ISOLATION-14: every local install renders the registry chain into its shipped workflows', () => {
+  for (const runtime of ['claude', 'copilot', 'opencode']) {
+    const { targetDir } = installOnce(runtime, 'local');
+    const chain = projectRootChain(runtime);
+    const workflow = fs.readFileSync(
+      path.join(targetDir, 'gsd-ng', 'workflows', 'execute-phase.md'),
+      'utf8',
+    );
+    assert.ok(
+      workflow.includes('PROJECT_ROOT="' + chain + '"'),
+      `${runtime}: the hand-written PROJECT_ROOT line must render the registry chain inside one quote pair`,
+    );
+    assert.ok(
+      workflow.includes(chain + '/'),
+      `${runtime}: workflow tool invocations must sit under the registry chain`,
+    );
+  }
 });
 
 // ── two runtimes, one home, one project ──────────────────────────────────────
