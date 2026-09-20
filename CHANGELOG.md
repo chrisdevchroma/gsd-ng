@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Scaffolded CONTEXT.md files now carry the same freedom-area heading the verification boundary checks. `gsd-ng scaffold context` wrote its discretion section under a differently named heading, so the plan checker's decision scan never stopped there and deliberate free-reins items read as locked decisions, raising spurious decision-coverage blockers. The scaffold emits `Agent's Discretion` at the level the checker's stop sentinel halts on, and a new contract test keeps every producer and the sentinel pinned to the same string so a future rename cannot land one-sided again.
 - Workflows, references, templates, agent definitions and commands name the acting agent "the agent" instead of naming one vendor's product. The CONTEXT/RESEARCH freedom-areas heading is now `Agent's Discretion` on both sides of its contract: every generator (templates, discuss/plan/quick workflows) and every reader (planner, plan-checker stop-sentinels, researchers) was renamed in the same change, so boundary checks keep firing. Existing project files written with the old heading keep working - nothing migrates them. Runtime notes that were facts about a single harness (the classifyHandoffIfNeeded false-failure workaround, question-dialog occlusion, auto-compact, deny permissions) now say which harness they come from instead of reading as universal. Install paths (`~/.claude/...`), harness names and tool names are untouched.
 
 ### Fixed

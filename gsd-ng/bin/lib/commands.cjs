@@ -1221,7 +1221,7 @@ function cmdScaffold(cwd, type, options) {
   switch (type) {
     case 'context': {
       filePath = path.join(phaseDir, `${padded}-CONTEXT.md`);
-      content = `---\nphase: ${fmPhase}\nname: ${fmName}\ncreated: ${today}\n---\n\n# Phase ${phase}: ${displayName} — Context\n\n## Decisions\n\n_Decisions will be captured during /gsd:discuss-phase ${phase}_\n\n## Discretion Areas\n\n_Areas where the executor can use judgment_\n\n## Deferred Ideas\n\n_Ideas to consider later_\n`;
+      content = `---\nphase: ${fmPhase}\nname: ${fmName}\ncreated: ${today}\n---\n\n# Phase ${phase}: ${displayName} — Context\n\n## Decisions\n\n_Decisions will be captured during /gsd:discuss-phase ${phase}_\n\n### Agent's Discretion\n\n_Areas where the executor can use judgment_\n\n## Deferred Ideas\n\n_Ideas to consider later_\n`;
       break;
     }
     case 'uat': {
