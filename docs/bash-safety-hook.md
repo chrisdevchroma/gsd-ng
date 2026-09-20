@@ -101,8 +101,11 @@ four layers:
 
 1. `$CLAUDE_SETTINGS_PATH` or `~/.claude/settings.json` (global)
 2. `~/.claude/settings.local.json` (global, gitignored)
-3. `$CLAUDE_PROJECT_DIR/.claude/settings.json` (project, committed)
-4. `$CLAUDE_PROJECT_DIR/.claude/settings.local.json` (project, gitignored)
+3. `<project root>/.claude/settings.json` (project, committed)
+4. `<project root>/.claude/settings.local.json` (project, gitignored)
+
+The project root is `$GSD_PROJECT_DIR` when exported, falling back to
+`$CLAUDE_PROJECT_DIR`, the Claude Code native variable.
 
 Entries are deduplicated and order-preserving. This matches Claude Code's
 own layering so users can allowlist tools at whatever scope makes sense

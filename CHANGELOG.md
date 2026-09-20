@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Installed path chains no longer borrow another harness's identity. Every installed command resolves the project root through a harness-neutral `GSD_PROJECT_DIR`: an explicit `export GSD_PROJECT_DIR=/your/project` now wins in every runtime, a Claude Code install additionally keeps its native `CLAUDE_PROJECT_DIR` working with no user action, and OpenCode and Copilot installs resolve through `git rev-parse` without any `CLAUDE_PROJECT_DIR` reference in the installed files.
+
 ### Fixed
 
 - The OpenCode plugin loads under OpenCode 2. The old export shape was V1-only, so a V2 server rejected the plugin at startup with "Plugin must export a default definition with an id and an effect or setup function", leaving the update check and shell command safety unenforced. The default export is now a V2 plugin definition (id + setup) that keeps the legacy V1 entrypoint, so OpenCode 1.18.29 and later and OpenCode 2 both load the same file. The safety hook follows the V2 tool rename from bash to shell, and the startup update check now triggers on the events V2 actually delivers on a cold start.
