@@ -12,8 +12,8 @@ const HOOKS_DIR = path.resolve(__dirname, '..', 'hooks');
 
 test('gsd-context-monitor emits flat additionalContext, not hookSpecificOutput', () => {
   const session = 'phase2-test-' + Date.now();
-  const metricsPath = path.join(resolveTmpDir(), `claude-ctx-${session}.json`);
-  const warnPath = path.join(resolveTmpDir(), `claude-ctx-${session}-warned.json`);
+  const metricsPath = path.join(resolveTmpDir(), `gsd-ctx-${session}.json`);
+  const warnPath = path.join(resolveTmpDir(), `gsd-ctx-${session}-warned.json`);
 
   fs.writeFileSync(metricsPath, JSON.stringify({
     session_id: session,
@@ -79,8 +79,8 @@ test('gsd-check-update exits 0 without crashing', () => {
 
 test('HOOK-07: hookSpecificOutput must not appear in context-monitor stdout', () => {
   const session = 'hook07-test-' + Date.now();
-  const metricsPath = path.join(resolveTmpDir(), `claude-ctx-${session}.json`);
-  const warnPath = path.join(resolveTmpDir(), `claude-ctx-${session}-warned.json`);
+  const metricsPath = path.join(resolveTmpDir(), `gsd-ctx-${session}.json`);
+  const warnPath = path.join(resolveTmpDir(), `gsd-ctx-${session}-warned.json`);
 
   fs.writeFileSync(metricsPath, JSON.stringify({
     session_id: session,
@@ -111,6 +111,44 @@ test('HOOK-07: hookSpecificOutput must not appear in context-monitor stdout', ()
       'hookSpecificOutput must not be present');
   } finally {
     fs.rmSync(metricsPath, { force: true });
+    fs.rmSync(warnPath, { force: true });
+  }
+});
+
+test('gsd-context-monitor falls back to the legacy claude-ctx bridge file', () => {
+  const session = 'legacy-ctx-test-' + Date.now();
+  const legacyMetricsPath = path.join(resolveTmpDir(), `claude-ctx-${session}.json`);
+  const warnPath = path.join(resolveTmpDir(), `gsd-ctx-${session}-warned.json`);
+
+  fs.writeFileSync(legacyMetricsPath, JSON.stringify({
+    session_id: session,
+    remaining_percentage: 20,
+    used_pct: 80,
+    timestamp: Math.floor(Date.now() / 1000),
+  }));
+
+  try {
+    const hookPath = path.join(HOOKS_DIR, 'gsd-context-monitor.js');
+    const { stdout, exitCode } = runHook(hookPath, {
+      session_id: session,
+      tool_name: 'Bash',
+      tool_input: { command: 'echo hi' },
+      cwd: process.cwd(),
+    });
+
+    assert.strictEqual(exitCode, 0, 'Hook must exit 0');
+
+    let parsed;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch (e) {
+      assert.fail(`stdout is not valid JSON: ${JSON.stringify(stdout)}`);
+    }
+
+    assert.strictEqual(typeof parsed.additionalContext, 'string',
+      'Monitor must read the legacy bridge file and still warn');
+  } finally {
+    fs.rmSync(legacyMetricsPath, { force: true });
     fs.rmSync(warnPath, { force: true });
   }
 });
