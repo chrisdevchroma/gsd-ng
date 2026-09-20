@@ -8,7 +8,7 @@ The statusline shows context usage to the **user**, but the **agent** has no awa
 
 ## How It Works
 
-1. The statusline hook writes context metrics to `/tmp/gsd-ctx-{session_id}.json`
+1. The statusline hook writes context metrics to `gsd-ctx-{session_id}.json` in the OS temp dir (`os.tmpdir()`, honoring `$TMPDIR`)
 2. After each tool use, the context monitor reads these metrics
 3. When remaining context drops below thresholds, it injects a warning as `additionalContext`
 4. The agent receives the warning in its conversation and can act accordingly
@@ -34,7 +34,7 @@ To avoid spamming the agent with repeated warnings:
 Statusline Hook (gsd-statusline.js)
     | writes
     v
-/tmp/gsd-ctx-{session_id}.json
+$TMPDIR/gsd-ctx-{session_id}.json
     ^ reads
     |
 Context Monitor (gsd-context-monitor.js, PostToolUse)
@@ -94,4 +94,4 @@ Manual registration in `~/.claude/settings.json`:
 - It never blocks tool execution — a broken monitor should not break the agent's workflow
 - Stale metrics (older than 60s) are ignored
 - Missing bridge files are handled gracefully (subagents, fresh sessions)
-- The monitor falls back to the legacy `/tmp/claude-ctx-{session_id}.json` name when the `gsd-ctx` file is absent, so mixed installs keep working until the legacy name is dropped
+- The monitor falls back to the legacy `$TMPDIR/claude-ctx-{session_id}.json` name when the `gsd-ctx` file is absent, so mixed installs keep working until the legacy name is dropped
