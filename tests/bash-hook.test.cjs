@@ -294,7 +294,7 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
     }
   });
 
-  test('GSD_PROJECT_DIR wins over CLAUDE_PROJECT_DIR for layers 3 and 4', () => {
+  test('harness-native CLAUDE_PROJECT_DIR wins over GSD_PROJECT_DIR for layers 3 and 4', () => {
     const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
     try {
       const gsdProject = path.join(tmpDir, 'gsd-project', '.claude');
@@ -306,8 +306,16 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
         JSON.stringify({ permissions: { allow: ['Bash(npm:*)'], deny: [] } }),
       );
       fs.writeFileSync(
+        path.join(gsdProject, 'settings.local.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(pnpm:*)'], deny: [] } }),
+      );
+      fs.writeFileSync(
         path.join(claudeProject, 'settings.json'),
         JSON.stringify({ permissions: { allow: ['Bash(cargo:*)'], deny: [] } }),
+      );
+      fs.writeFileSync(
+        path.join(claudeProject, 'settings.local.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(deno:*)'], deny: [] } }),
       );
 
       const settings = loadMergedSettings({
@@ -317,12 +325,20 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
       });
 
       assert.ok(
-        settings.permissions.allow.includes('Bash(npm:*)'),
-        'GSD_PROJECT_DIR layer 3 Bash(npm:*) should be present',
+        settings.permissions.allow.includes('Bash(cargo:*)'),
+        'CLAUDE_PROJECT_DIR layer 3 Bash(cargo:*) should be present',
       );
       assert.ok(
-        !settings.permissions.allow.includes('Bash(cargo:*)'),
-        'CLAUDE_PROJECT_DIR layer 3 Bash(cargo:*) should lose to GSD_PROJECT_DIR',
+        settings.permissions.allow.includes('Bash(deno:*)'),
+        'CLAUDE_PROJECT_DIR layer 4 Bash(deno:*) should be present',
+      );
+      assert.ok(
+        !settings.permissions.allow.includes('Bash(npm:*)'),
+        'GSD_PROJECT_DIR layer 3 Bash(npm:*) should lose to CLAUDE_PROJECT_DIR',
+      );
+      assert.ok(
+        !settings.permissions.allow.includes('Bash(pnpm:*)'),
+        'GSD_PROJECT_DIR layer 4 Bash(pnpm:*) should lose to CLAUDE_PROJECT_DIR',
       );
     } finally {
       cleanup(tmpDir);
@@ -347,6 +363,38 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
       assert.ok(
         settings.permissions.allow.includes('Bash(make:*)'),
         'Layer 3 via CLAUDE_PROJECT_DIR should still be read',
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('GSD_PROJECT_DIR answers layers 3 and 4 when no harness variable is set', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
+    try {
+      const projectClaudeDir = path.join(tmpDir, 'project', '.claude');
+      fs.mkdirSync(projectClaudeDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(make:*)'], deny: [] } }),
+      );
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.local.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(yarn:*)'], deny: [] } }),
+      );
+
+      const settings = loadMergedSettings({
+        HOME: path.join(tmpDir, 'home'),
+        GSD_PROJECT_DIR: path.join(tmpDir, 'project'),
+      });
+
+      assert.ok(
+        settings.permissions.allow.includes('Bash(make:*)'),
+        'Layer 3 via GSD_PROJECT_DIR should be read with no harness variable set',
+      );
+      assert.ok(
+        settings.permissions.allow.includes('Bash(yarn:*)'),
+        'Layer 4 via GSD_PROJECT_DIR should be read with no harness variable set',
       );
     } finally {
       cleanup(tmpDir);

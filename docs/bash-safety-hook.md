@@ -104,8 +104,20 @@ four layers:
 3. `<project root>/.claude/settings.json` (project, committed)
 4. `<project root>/.claude/settings.local.json` (project, gitignored)
 
-The project root is `$GSD_PROJECT_DIR` when exported, falling back to
-`$CLAUDE_PROJECT_DIR`, the Claude Code native variable.
+#### Project root precedence
+
+The two context classes resolve `<project root>` differently, by design:
+
+- **Workflow-invoked chains**, the installed bash blocks and tool paths the
+  installer's converter builds, put `GSD_PROJECT_DIR` first: an explicit
+  export wins in every runtime.
+- **Harness-launched hooks**, this hook's settings layers, put the
+  harness-native variable first (`$CLAUDE_PROJECT_DIR` under Claude Code),
+  with `GSD_PROJECT_DIR` as the fallback for harnesses that export none.
+
+The harness exports its own variable correctly into every hook context, so
+ranking it first means a stale global `GSD_PROJECT_DIR` export cannot
+repoint a session's allow/deny policy at another project's settings.
 
 Entries are deduplicated and order-preserving. This matches Claude Code's
 own layering so users can allowlist tools at whatever scope makes sense
