@@ -16,7 +16,7 @@ const reset = '\x1b[0m';
 
 // Get version from package.json
 const pkg = require('../package.json');
-const { processTemplate, buildContext, injectAppendToFile, fillBetweenMarkers, RUNTIMES, patternToRemoval } = require('../gsd-ng/bin/lib/template-processor.cjs');
+const { processTemplate, buildContext, injectAppendToFile, fillBetweenMarkers, RUNTIMES, patternToRemoval, projectRootChain, CANONICAL_PROJECT_ROOT } = require('../gsd-ng/bin/lib/template-processor.cjs');
 const { getPlatformCliPatterns, PLATFORM_TO_CLI, getReadEditWriteAllowRules, RW_FORMS, normalizePermissionRules } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'allowlist.cjs'));
 const { syncAgentEffortFrontmatter, formatRestartNotice } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'effort-sync.cjs'));
 const { extractFrontmatter, spliceFrontmatter } = require(path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'frontmatter.cjs'));
@@ -179,14 +179,20 @@ function shippedHookNames(rt) {
 
 /**
  * Convert a pathPrefix (which uses absolute paths for global installs) to a
- * $HOME-relative form for replacing $HOME/.claude/ references in bash code blocks.
- * Preserves $HOME as a shell variable so paths remain portable across machines.
+ * $HOME-relative form for replacing $HOME/.claude/ references in bash code
+ * blocks. Preserves $HOME as a shell variable so paths remain portable across
+ * machines.
  *
- * For local installs (pathPrefix is a relative path like "./.claude/"), returns
- * a shell expression with fallback chain: $CLAUDE_PROJECT_DIR (hook contexts),
- * git rev-parse --show-toplevel (subdirectories), pwd (fallback).
+ * For local installs (pathPrefix is a relative path like "./.claude/"), the
+ * project-root segment is the runtime's own fallback chain, assembled by the
+ * registry projectRootChain from the projectDirEnv spec: GSD_PROJECT_DIR,
+ * then the runtime's own variable where its harness exports one, then git
+ * rev-parse --show-toplevel (subdirectories), then pwd.
+ *
+ * @param {string} pathPrefix - Install path prefix from the install context
+ * @param {string} runtime - Registry key of the runtime being installed for
  */
-function toHomePrefix(pathPrefix) {
+function toHomePrefix(pathPrefix, runtime) {
   const home = os.homedir().replace(/\\/g, '/');
   const normalized = pathPrefix.replace(/\\/g, '/');
   if (normalized.startsWith(home)) {
@@ -196,14 +202,14 @@ function toHomePrefix(pathPrefix) {
   if (normalized.startsWith('~/')) {
     return '$HOME' + normalized.slice(1);
   }
-  // For local installs (relative paths), use a fallback chain so that bash
-  // code blocks work in both hook contexts (where CLAUDE_PROJECT_DIR is set)
-  // and Bash tool invocations (where it is unset).
-  // pathPrefix is like "./.claude/" — extract the dir name and build the correct path.
-  // e.g., "./.claude/" → "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/"
+  // For local installs (relative paths), use the runtime fallback chain so
+  // that bash code blocks work both in hook contexts (where the harness
+  // exports a project-root variable) and in plain tool invocations (where it
+  // does not). pathPrefix is like "./.claude/": extract the dir name and
+  // build the path under the runtime chain.
   const dirMatch = normalized.match(/^\.\/(\.[^/]+\/)/);
   if (dirMatch) {
-    return '${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/' + dirMatch[1];
+    return projectRootChain(runtime) + '/' + dirMatch[1];
   }
   return normalized;
 }
@@ -565,8 +571,8 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       const globalClaudeRegex = /~\/\.claude\//g;
       const globalClaudeHomeRegex = /\$HOME\/\.claude\//g;
       const localClaudeRegex = /\.\/\.claude\//g;
-      content = content.replace(globalClaudeRegex, toHomePrefix(pathPrefix));
-      content = content.replace(globalClaudeHomeRegex, toHomePrefix(pathPrefix));
+      content = content.replace(globalClaudeRegex, toHomePrefix(pathPrefix, runtime));
+      content = content.replace(globalClaudeHomeRegex, toHomePrefix(pathPrefix, runtime));
       content = content.replace(localClaudeRegex, `./${dirName}/`);
       // NOTE: {{PROJECT_RULES_FILE}} is intentionally NOT resolved here.
       // Skills (seed-memories, new-project Step 9) detect the active runtime at
@@ -1899,8 +1905,8 @@ const CONVERTERS = {
   identity: (content, ctx) =>
     processAttribution(
       content
-        .replace(/~\/\.claude\//g, () => toHomePrefix(ctx.pathPrefix))
-        .replace(/\$HOME\/\.claude\//g, () => toHomePrefix(ctx.pathPrefix)),
+        .replace(/~\/\.claude\//g, () => toHomePrefix(ctx.pathPrefix, ctx.runtime))
+        .replace(/\$HOME\/\.claude\//g, () => toHomePrefix(ctx.pathPrefix, ctx.runtime)),
       getCommitAttribution()
     ),
   copilotCommand: (content, ctx) =>
@@ -2012,7 +2018,13 @@ function resolveTemplateDir(dir, ctx) {
     }
     if (!entry.name.endsWith('.md') && !entry.name.endsWith('.cjs')) continue;
     const content = fs.readFileSync(full, 'utf-8');
-    if (!content.includes('{{') && !content.includes('<!-- ONLY:')) continue;
+    if (
+      !content.includes('{{') &&
+      !content.includes('<!-- ONLY:') &&
+      !content.includes(CANONICAL_PROJECT_ROOT)
+    ) {
+      continue;
+    }
     try {
       fs.writeFileSync(full, processTemplate(content, ctx), 'utf-8');
     } catch {

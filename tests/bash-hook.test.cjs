@@ -294,6 +294,65 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
     }
   });
 
+  test('GSD_PROJECT_DIR wins over CLAUDE_PROJECT_DIR for layers 3 and 4', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
+    try {
+      const gsdProject = path.join(tmpDir, 'gsd-project', '.claude');
+      const claudeProject = path.join(tmpDir, 'claude-project', '.claude');
+      fs.mkdirSync(gsdProject, { recursive: true });
+      fs.mkdirSync(claudeProject, { recursive: true });
+      fs.writeFileSync(
+        path.join(gsdProject, 'settings.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(npm:*)'], deny: [] } }),
+      );
+      fs.writeFileSync(
+        path.join(claudeProject, 'settings.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(cargo:*)'], deny: [] } }),
+      );
+
+      const settings = loadMergedSettings({
+        HOME: path.join(tmpDir, 'home'),
+        GSD_PROJECT_DIR: path.join(tmpDir, 'gsd-project'),
+        CLAUDE_PROJECT_DIR: path.join(tmpDir, 'claude-project'),
+      });
+
+      assert.ok(
+        settings.permissions.allow.includes('Bash(npm:*)'),
+        'GSD_PROJECT_DIR layer 3 Bash(npm:*) should be present',
+      );
+      assert.ok(
+        !settings.permissions.allow.includes('Bash(cargo:*)'),
+        'CLAUDE_PROJECT_DIR layer 3 Bash(cargo:*) should lose to GSD_PROJECT_DIR',
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('CLAUDE_PROJECT_DIR still answers layers 3 and 4 when GSD_PROJECT_DIR is unset', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
+    try {
+      const projectClaudeDir = path.join(tmpDir, 'project', '.claude');
+      fs.mkdirSync(projectClaudeDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectClaudeDir, 'settings.json'),
+        JSON.stringify({ permissions: { allow: ['Bash(make:*)'], deny: [] } }),
+      );
+
+      const settings = loadMergedSettings({
+        HOME: path.join(tmpDir, 'home'),
+        CLAUDE_PROJECT_DIR: path.join(tmpDir, 'project'),
+      });
+
+      assert.ok(
+        settings.permissions.allow.includes('Bash(make:*)'),
+        'Layer 3 via CLAUDE_PROJECT_DIR should still be read',
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
   test('merges allow patterns from all 4 layers without duplicates', () => {
     const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
     try {

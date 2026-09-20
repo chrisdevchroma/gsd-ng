@@ -111,9 +111,9 @@ test('UNINSTALL-01: install.js --uninstall shows Mode: Uninstall indicator in ou
   }
 });
 
-// ── local install produces $CLAUDE_PROJECT_DIR paths, not $HOME ──────
+// ── local install produces GSD_PROJECT_DIR chains, not $HOME ────────
 
-test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bash blocks', () => {
+test('PATH-03: install.js local install uses the GSD-first fallback chain in workflow bash blocks', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-path-local-'));
   try {
     const result = spawnSync(
@@ -153,8 +153,13 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
         badFiles.push(fname);
       }
       // Must produce fallback chain path in at least one file
-      // New pattern: "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.claude/"
-      if (content.includes('${CLAUDE_PROJECT_DIR:-$(git rev-parse')) {
+      // Claude folds its native variable behind the neutral GSD_PROJECT_DIR:
+      // "${GSD_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse ...)}/.claude/"
+      if (
+        content.includes(
+          '${GSD_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse',
+        )
+      ) {
         goodPathFound = true;
       }
     }
@@ -167,7 +172,7 @@ test('PATH-03: install.js local install uses $CLAUDE_PROJECT_DIR in workflow bas
     );
     assert.ok(
       goodPathFound,
-      'install.js local install must produce fallback chain ${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)',
+      'install.js local install must produce the GSD-first folded chain ${GSD_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse...)}/.claude/ in workflow files (PATH-03)',
     );
   } finally {
     cleanup(tmpDir);
