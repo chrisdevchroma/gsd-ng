@@ -313,10 +313,11 @@ function shippedToolPaths(targetDir) {
  * project root the workflow runs in.
  *
  * The expression boundary is the close that returns brace depth to zero, not
- * the first `}/`: the folded claude chain nests one level, and a lazy scan
- * anchors at the inner close wherever a brace appears in a fallback. Braces
- * that do not balance, or a close not followed by `/`, throw rather than
- * resolve to a plausible-looking wrong path.
+ * the first `}/`. The old lazy regex handled every current chain because none
+ * contains `}/` inside its fallback. Tracking depth defensively covers deeper
+ * folds and synthetic fallbacks that do contain `}/`, where the lazy scan
+ * anchored too early. Braces that do not balance, or a close not followed by
+ * `/`, throw rather than resolve to a plausible-looking wrong path.
  */
 function resolveShippedPath(raw, home, proj) {
   if (raw.startsWith('$HOME/')) return path.join(home, raw.slice('$HOME/'.length));
