@@ -401,6 +401,42 @@ describe('BASH-HOOK-12: reads allowlist from all 4 settings layers', () => {
     }
   });
 
+  test('an explicit project root overrides both project environment variables', () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
+    try {
+      const roots = {
+        explicit: ['Bash(make:*)'],
+        claude: ['Bash(cargo:*)'],
+        gsd: ['Bash(npm:*)'],
+      };
+      for (const [name, allow] of Object.entries(roots)) {
+        const configDir = path.join(tmpDir, name, '.opencode');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(configDir, 'settings.json'),
+          JSON.stringify({ permissions: { allow, deny: [] } }),
+        );
+      }
+
+      const settings = loadMergedSettings(
+        {
+          HOME: path.join(tmpDir, 'home'),
+          CLAUDE_PROJECT_DIR: path.join(tmpDir, 'claude'),
+          GSD_PROJECT_DIR: path.join(tmpDir, 'gsd'),
+        },
+        {
+          globalConfigDir: path.join(tmpDir, 'config-home'),
+          localConfigDirName: '.opencode',
+          projectDir: path.join(tmpDir, 'explicit'),
+        },
+      );
+
+      assert.deepEqual(settings.permissions.allow, ['Bash(make:*)']);
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
   test('merges allow patterns from all 4 layers without duplicates', () => {
     const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-hook-test-'));
     try {

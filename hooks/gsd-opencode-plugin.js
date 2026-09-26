@@ -91,11 +91,30 @@ const { decide, loadMergedSettings } = require(
  * user's rules or nobody's. The config home is passed explicitly for that
  * reason.
  */
-function loadRuntimeSettings() {
-  return loadMergedSettings(undefined, {
+function loadRuntimeSettings(projectDir) {
+  const env = { ...process.env };
+  delete env.CLAUDE_PROJECT_DIR;
+  return loadMergedSettings(env, {
     globalConfigDir: configHome,
     localConfigDirName: LOCAL_CONFIG_DIR,
+    projectDir:
+      validProjectRoot(projectDir) ||
+      validProjectRoot(env.GSD_PROJECT_DIR) ||
+      '',
   });
+}
+
+function validProjectRoot(value) {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function v2ProjectRoot(ctx) {
+  const project = ctx && ctx.location && ctx.location.project;
+  return validProjectRoot(project && project.directory);
+}
+
+function v1ProjectRoot(ctx) {
+  return validProjectRoot(ctx && ctx.project && ctx.project.worktree);
 }
 
 /**
@@ -109,10 +128,12 @@ function loadRuntimeSettings() {
  * @param {Function} [deps.spawnFn] - child_process.spawn stand-in
  * @param {string} [deps.hooksDir] - Directory holding the update-check script
  * @param {string} [deps.nodeExec] - Interpreter to run the update check with
+ * @param {string} [deps.projectDir] - Project root supplied by the runtime
  */
 export function createGsdHooks(deps = {}) {
   const decideFn = deps.decide || decide;
-  const loadSettings = deps.loadSettings || loadRuntimeSettings;
+  const loadSettings =
+    deps.loadSettings || (() => loadRuntimeSettings(deps.projectDir));
   const spawnFn = deps.spawnFn || spawn;
   const hooksDir = deps.hooksDir || defaultHooksDir;
   const nodeExec =
@@ -188,14 +209,23 @@ export function createGsdHooks(deps = {}) {
  * @returns {Function} an async setup(ctx) per the V2 plugin contract
  */
 export function createV2Adapter(deps = {}) {
-  const hooks = createGsdHooks(deps);
   // A reload can run setup again on this adapter before the old instance is
   // unloaded; retire the previous registration and subscription first so
   // hooks never stack and only one stream feeds the core.
   let retirePrevious = async () => {};
+  let hooks;
 
   return async function setup(ctx) {
     await retirePrevious();
+
+    if (!hooks) {
+      hooks = createGsdHooks({
+        ...deps,
+        // location.directory may be nested below the project. The project
+        // metadata names the root whose settings apply to this plugin instance.
+        projectDir: v2ProjectRoot(ctx) || deps.projectDir,
+      });
+    }
 
     const controller = new AbortController();
 
@@ -256,7 +286,10 @@ export function createV2Adapter(deps = {}) {
 export default {
   id: 'gsd-core',
   setup: createV2Adapter(),
-  async server() {
-    return createGsdHooks();
+  async server(ctx) {
+    return createGsdHooks({
+      // V1's project context calls the active checkout root `worktree`.
+      projectDir: v1ProjectRoot(ctx),
+    });
   },
 };

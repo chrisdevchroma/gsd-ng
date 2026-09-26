@@ -111,13 +111,21 @@ The two context classes resolve `<project root>` differently, by design:
 - **Workflow-invoked chains**, the installed bash blocks and tool paths the
   installer's converter builds, put `GSD_PROJECT_DIR` first: an explicit
   export wins in every runtime.
-- **Harness-launched hooks**, this hook's settings layers, put the
-  harness-native variable first (`$CLAUDE_PROJECT_DIR` under Claude Code),
-  with `GSD_PROJECT_DIR` as the fallback for harnesses that export none.
+- **Claude Code's harness-launched safety hook** puts its native
+  `$CLAUDE_PROJECT_DIR` first, with `GSD_PROJECT_DIR` as a fallback.
+- **OpenCode's plugin adapter** passes the runtime's project/worktree root
+  directly to the settings loader: `ctx.location.project.directory` under V2
+  and `project.worktree` under V1. The active location can be a nested package,
+  so `ctx.location.directory` and V1's top-level `directory` are not used as
+  the settings root. If project metadata is unavailable, the adapter falls back
+  to `GSD_PROJECT_DIR` and ignores an unrelated `CLAUDE_PROJECT_DIR` export.
+  Copilot CLI installs do not register the safety hook.
 
-The harness exports its own variable correctly into every hook context, so
-ranking it first means a stale global `GSD_PROJECT_DIR` export cannot
-repoint a session's allow/deny policy at another project's settings.
+Claude Code exports its native variable into its hook contexts, so ranking it
+first means a stale global `GSD_PROJECT_DIR` export cannot repoint a Claude Code
+session's allow/deny policy at another project's settings. Passing OpenCode's
+project root explicitly gives its sessions the same protection without
+borrowing Claude Code's environment variable.
 
 Entries are deduplicated and order-preserving. This matches Claude Code's
 own layering so users can allowlist tools at whatever scope makes sense

@@ -54,7 +54,7 @@
   "command/gsd-update.md": "adc435e669243c2a3720a230f016298ef3e7b84faadb0b01395fefdf511baa5f",
   "command/gsd-validate-phase.md": "4653ba0f4775ba18ef3b0c8c24c79a6f01fa4fcb9b713d70cf3b7e617cbf0821",
   "command/gsd-verify-work.md": "b482569b579953e9cf9b1b77d4331f29e011f154a0b9a1b631009da60a6f2842",
-  "gsd-file-manifest.json": "7168e08546c3bedf5c0819291c9f6b1869e6216189569deea29a4f9b026240d2",
+  "gsd-file-manifest.json": "cfe49f2de7a2fe9035dea06e8e5d9b4bceeedf3b5bd85a9b73d3938805e2e9e0",
   "gsd-ng/.runtime": "0d74cc0a7af2a416cc5b856425aaaab1618cda1fe909905f16858274c5330a39",
   "gsd-ng/VERSION": "72f559c7b2e13160993b1b28dd6169d009b7bb40a8b33bd6a6d039144eb7dc78",
   "gsd-ng/bin/gsd": "0c76870ddf4fead3872aa0d7e90f57ae1d36899397757370b16a0030ca7b7d87",
@@ -84,7 +84,7 @@
   "gsd-ng/bin/lib/type-alias.cjs": "9f655b01cfaa5ab931077f5c9bc3d52fc6f91a9176831ec84faf9e89284c9d00",
   "gsd-ng/bin/lib/verify.cjs": "d27d1b8ca5df2665ba815a720a95a4a10e8cd4381c4083939298aceae9ea6ad1",
   "gsd-ng/bin/lib/workspace.cjs": "625706465dc7a57652eedf3abc7513f66676f53b5b49acd817ec7e49fdb79a21",
-  "gsd-ng/hooks/bash-safety-hook.cjs": "037348ea75dd1ec878cb895065b75ae8570a3ad58aa173524cf351d787a1ba65",
+  "gsd-ng/hooks/bash-safety-hook.cjs": "e114be53b131a9a0d95c0c01f2d610b1de872aa5344c0fb3428544bdcd196349",
   "gsd-ng/hooks/gsd-check-update.js": "dce532e4d25cf2043156ef85494e9463ca0e3b2a05d527fda97ee0181f444475",
   "gsd-ng/hooks/gsd-hook-stdin.cjs": "9d590c6f3dd89e10ebd7c27a226ab6dce3da589e66a6abfa0e57687018f1ec37",
   "gsd-ng/references/agent-shared-context.md": "f1f4acc9a97e30e1015634a2199963ae878335f450c02babe2d197b7bfbc7361",
@@ -191,5 +191,5 @@
   "gsd-ng/workflows/verify-phase.md": "2434def89989f6b96bba35274266e62278f47aa3917b2f4b4904bebdeffd33cf",
   "gsd-ng/workflows/verify-work.md": "63c9c8d44b97a41c5bf4f30061fffda6359da2dcfcca580da3790d016c22d70e",
   "opencode.json": "3a1689520689222b217d5107e8e7becc3fbbd2aae41dc086435cd6a941b650c1",
-  "plugin/gsd-core.js": "1c8add4143782446a9a2b7ad22d056811da61d9bf4c35e6082a86be4cd0e6f81"
+  "plugin/gsd-core.js": "44d7e0e11a327f24f5073bfb195077a9f472f4bdb35e7d5fd4f74a6da554e198"
 }

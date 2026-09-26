@@ -1395,8 +1395,9 @@ function commandMatchesPattern(command, pattern) {
  *   Layer 3: <project root>/<local config dir>/settings.json
  *   Layer 4: <project root>/<local config dir>/settings.local.json
  *
- * The project root is the harness-native $CLAUDE_PROJECT_DIR, falling back
- * to $GSD_PROJECT_DIR for harnesses that export no native variable.
+ * The project root is an explicit caller-supplied root when present. Otherwise
+ * it is the harness-native $CLAUDE_PROJECT_DIR, falling back to
+ * $GSD_PROJECT_DIR for harnesses that export no native variable.
  *
  * The config dirs default to Claude's — `~/.claude` and `.claude` — so a caller
  * that names neither resolves exactly the four paths it always did. A caller
@@ -1414,6 +1415,7 @@ function commandMatchesPattern(command, pattern) {
  * @param {object} [options] - Config-home resolution.
  * @param {string} [options.globalConfigDir] - Global config home. Defaults to `<home>/.claude`.
  * @param {string} [options.localConfigDirName] - Project-local config dir name. Defaults to `.claude`.
+ * @param {string} [options.projectDir] - Explicit project root. Overrides environment variables.
  * @returns {{ permissions: { allow: string[], deny: string[] } }}
  */
 function loadMergedSettings(envOverride, options) {
@@ -1447,9 +1449,16 @@ function loadMergedSettings(envOverride, options) {
   const layer2Path = path.join(globalConfigDir, 'settings.local.json');
   const layer2 = loadSettings(layer2Path);
 
-  // Layers 3 & 4 require a project root: the harness-native variable is
-  // authoritative, and GSD_PROJECT_DIR answers where a harness exports none.
-  const projectDir = env.CLAUDE_PROJECT_DIR || env.GSD_PROJECT_DIR || '';
+  // Layers 3 & 4 require a project root. A runtime adapter can name its root
+  // directly; otherwise the harness-native variable is authoritative and
+  // GSD_PROJECT_DIR answers where a harness exports none.
+  const hasExplicitProjectDir = Object.prototype.hasOwnProperty.call(
+    opts,
+    'projectDir',
+  );
+  const projectDir = hasExplicitProjectDir
+    ? opts.projectDir || ''
+    : env.CLAUDE_PROJECT_DIR || env.GSD_PROJECT_DIR || '';
   const layer3 = projectDir
     ? loadSettings(path.join(projectDir, localConfigDirName, 'settings.json'))
     : {};
