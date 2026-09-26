@@ -35,7 +35,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 | Section | How You Use It |
 |---------|----------------|
 | `## Decisions` | Locked choices — research THESE, not alternatives |
-| `## Agent's Discretion` | Your freedom areas — research options, recommend |
+| `### Agent's Discretion` | Your freedom areas — research options, recommend |
 | `## Deferred Ideas` | Out of scope — ignore completely |
 
 If CONTEXT.md exists, it constrains your research scope. Don't explore alternatives to locked decisions.
@@ -382,7 +382,7 @@ List missing test files, framework config, or shared fixtures needed before impl
 [Copy verbatim from CONTEXT.md ## Decisions]
 
 ### Agent's Discretion
-[Copy verbatim from CONTEXT.md ## Agent's Discretion]
+[Copy verbatim from CONTEXT.md ### Agent's Discretion]
 
 ### Deferred Ideas (OUT OF SCOPE)
 [Copy verbatim from CONTEXT.md ## Deferred Ideas]
