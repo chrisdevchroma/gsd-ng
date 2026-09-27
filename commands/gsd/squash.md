@@ -8,7 +8,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Squash phase commits into clean history for code review.
 
@@ -26,7 +28,7 @@ Use --dry-run to preview groupings without executing.
 </execution_context>
 
 <context>
-$ARGUMENTS
+the exact invocation text in the `<arguments>` block
 </context>
 
 <tool_usage>
@@ -57,5 +59,5 @@ Key constraints:
 
 <process>
 Execute the squash workflow from @~/.claude/gsd-ng/workflows/squash.md end-to-end.
-Pass $ARGUMENTS for phase number and flags.
+Pass the exact invocation text in the `<arguments>` block for phase number and flags.
 </process>

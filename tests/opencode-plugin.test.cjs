@@ -16,6 +16,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { EventEmitter } = require('events');
 
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
@@ -110,6 +111,10 @@ async function* fakeAsyncIterable(items) {
 function fakeCtx(events, location) {
   const ctx = {
     toolCalls: [],
+    commandTransformCalls: [],
+    commandCalls: [],
+    promptCalls: [],
+    sessionCalls: [],
     subscribeOpts: [],
     tool: {
       async hook(name, cb) {
@@ -117,6 +122,37 @@ function fakeCtx(events, location) {
       },
       async list() {
         return [];
+      },
+    },
+    command: {
+      async transform(callback) {
+        const added = [];
+        const transformCall = { callback, added, disposed: false };
+        ctx.commandTransformCalls.push(transformCall);
+        callback({
+          add(definition) {
+            const call = {
+              name: definition.name,
+              definition,
+              disposed: false,
+            };
+            added.push(call);
+            ctx.commandCalls.push(call);
+          },
+        });
+        return {
+          async dispose() {
+            transformCall.disposed = true;
+            for (const call of added) call.disposed = true;
+          },
+        };
+      },
+    },
+    session: {
+      async prompt(input) {
+        ctx.sessionCalls.push({ method: 'prompt', input });
+        ctx.promptCalls.push(input);
+        return { accepted: true };
       },
     },
     event: {
@@ -130,6 +166,28 @@ function fakeCtx(events, location) {
   return ctx;
 }
 
+function plannerCtx(failAt) {
+  const ctx = fakeCtx([]);
+  const child = { id: 'planner-child' };
+  const plannerContext = {
+    sessionID: child.id,
+    messages: [{ role: 'assistant', text: 'Planner completed' }],
+  };
+  const stage = (method, result) => async (input) => {
+    ctx.sessionCalls.push({ method, input });
+    if (failAt === method) throw new Error(`${method} failed`);
+    return result;
+  };
+  ctx.session.create = stage('create', child);
+  ctx.session.switchAgent = stage('switchAgent', { selected: true });
+  ctx.session.prompt = stage('prompt', { accepted: true });
+  ctx.session.wait = stage('wait', { status: 'completed' });
+  ctx.session.context = stage('context', plannerContext);
+  ctx.session.synthetic = stage('synthetic', { published: true });
+  ctx.plannerContext = plannerContext;
+  return ctx;
+}
+
 /**
  * Build a FRESH V2 adapter with fake deps and run its setup against a fake
  * ctx. A fresh adapter keeps the once-per-process guard per-test; driving
@@ -139,11 +197,73 @@ function fakeCtx(events, location) {
  */
 async function v2Setup(overrides, events) {
   const mod = await importPlugin(PLUGIN_PATH);
-  const setup = mod.createV2Adapter(overrides);
+  const setup = mod.createV2Adapter({
+    commandManifest: { schema_version: 1, commands: [] },
+    ...overrides,
+  });
   const ctx = fakeCtx(events || []);
   const release = await setup(ctx);
   await new Promise((r) => setTimeout(r, 50));
   return { ctx, release };
+}
+
+const COMMAND_INPUT_CORPUS = [
+  '',
+  'two words',
+  "single ' quote",
+  'double " quote',
+  'line one\nline two',
+  '$(touch should-not-run)',
+  '`touch should-not-run`',
+  'first; second',
+  '--unknown value',
+  '$ARGUMENTS',
+  '$&',
+  '$$',
+  "$'",
+  '$`',
+  '!`printf OPEN_CODE_ARGUMENT_EXECUTION`',
+  'before !`printf FIRST_MARKER` between !`printf SECOND_MARKER` after',
+];
+
+function commandRecord(overrides = {}) {
+  return {
+    name: 'gsd-sample',
+    description: 'Sample command',
+    template: '<arguments>\n$ARGUMENTS\n</arguments>',
+    argument_mode: 'replace',
+    route: { kind: 'current' },
+    preludes: [],
+    ...overrides,
+  };
+}
+
+function commandManifest(commands) {
+  return { schema_version: 1, commands };
+}
+
+function fakeCompletingSpawn(outputs) {
+  const calls = [];
+  const queue = outputs.slice();
+  const fn = (command, args, options) => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    calls.push({ command, args, options, child });
+    const next = queue.shift() || { stdout: '', stderr: '', code: 0 };
+    queueMicrotask(() => {
+      if (next.error) {
+        child.emit('error', next.error);
+        return;
+      }
+      if (next.stdout) child.stdout.emit('data', Buffer.from(next.stdout));
+      if (next.stderr) child.stderr.emit('data', Buffer.from(next.stderr));
+      child.emit('close', next.code ?? 0);
+    });
+    return child;
+  };
+  fn.calls = calls;
+  return fn;
 }
 
 describe('PLUGIN: tool.execute.before adapts decide() to the opencode signature', () => {
@@ -487,6 +607,7 @@ describe('V2 adapter: setup(ctx) wires hooks and events', () => {
       decide: fakeDecide({ decision: 'passthrough' }),
       loadSettings: countingSettings({}),
       spawnFn: fakeSpawn(),
+      commandManifest: commandManifest([]),
     });
     const ctx1 = fakeCtx([]);
     const release1 = await setup(ctx1);
@@ -512,10 +633,17 @@ describe('V2 adapter: setup(ctx) wires hooks and events', () => {
         decide: fakeDecide({ decision: 'passthrough' }),
         loadSettings: countingSettings({}),
         spawnFn: fakeSpawn(),
+        commandManifest: commandManifest([]),
       });
       const ctx = {
         tool: {
           async hook() {
+            return undefined;
+          },
+        },
+        command: {
+          async transform(callback) {
+            callback({ add() {} });
             return undefined;
           },
         },
@@ -542,18 +670,350 @@ describe('V2 adapter: setup(ctx) wires hooks and events', () => {
   });
 });
 
+describe('PLUGIN command manifest: safe current-session callbacks', () => {
+  test('PLUGIN command argument transport preserves every input byte and never spawns from hostile markers', async () => {
+    const spawnFn = fakeCompletingSpawn([]);
+    const { ctx, release } = await v2Setup({
+      spawnFn,
+      commandManifest: commandManifest([commandRecord()]),
+    });
+    assert.equal(ctx.commandCalls.length, 1);
+    assert.equal(ctx.commandCalls[0].name, 'gsd-sample');
+    assert.equal(ctx.commandCalls[0].definition.description, 'Sample command');
+
+    for (const text of COMMAND_INPUT_CORPUS) {
+      const files = [{ path: 'one.md' }];
+      const agents = [{ name: 'helper' }];
+      const skills = [{ name: 'skill' }];
+      const delivery = { mode: 'immediate' };
+      await ctx.commandCalls[0].definition.execute({
+        sessionID: 'parent-session',
+        prompt: { text, files, agents, skills },
+        delivery,
+      });
+      const submitted = ctx.promptCalls.at(-1);
+      assert.equal(submitted.sessionID, 'parent-session');
+      assert.equal(submitted.text, `<arguments>\n${text}\n</arguments>`);
+      assert.strictEqual(submitted.files, files);
+      assert.strictEqual(submitted.agents, agents);
+      assert.strictEqual(submitted.skills, skills);
+      assert.strictEqual(submitted.delivery, delivery);
+    }
+    assert.deepStrictEqual(spawnFn.calls, []);
+    await release();
+  });
+
+  test('PLUGIN command argument transport appends unexpected input without scanning hostile markers', async () => {
+    const spawnFn = fakeCompletingSpawn([]);
+    const { ctx, release } = await v2Setup({
+      spawnFn,
+      commandManifest: commandManifest([
+        commandRecord({
+          name: 'gsd-no-arguments',
+          template: 'Static prompt',
+          argument_mode: 'append',
+        }),
+      ]),
+    });
+    const hostile = ' !`printf FIRST`\n!`printf SECOND` ';
+    await ctx.commandCalls[0].definition.execute({
+      sessionID: 'session',
+      prompt: { text: hostile, files: [], agents: [], skills: [] },
+      delivery: 'queued',
+    });
+    assert.equal(ctx.promptCalls[0].text, `Static prompt\n\n${hostile}`);
+    assert.deepStrictEqual(spawnFn.calls, []);
+    await release();
+  });
+
+  test('PLUGIN command prelude runs only allowlisted argv with shell false before hostile input insertion', async () => {
+    const spawnFn = fakeCompletingSpawn([
+      { stdout: 'PREVIEW OUTPUT\n', code: 0 },
+      { stdout: 'FINAL OUTPUT\n', code: 0 },
+    ]);
+    const toolsPath = path.join('/isolated', 'gsd-tools.cjs');
+    const tokens = [
+      '<gsd-prelude-output index="0">',
+      '<gsd-prelude-output index="1">',
+    ];
+    const { ctx, release } = await v2Setup({
+      spawnFn,
+      nodeExec: '/usr/bin/node',
+      toolsPath,
+      commandManifest: commandManifest([
+        commandRecord({
+          name: 'gsd-cleanup',
+          template: `${tokens[0]}\n${tokens[1]}\n$ARGUMENTS`,
+          preludes: [
+            {
+              token: tokens[0],
+              operation: 'gsd-tools',
+              argv: ['cleanup', '--dry-run'],
+            },
+            {
+              token: tokens[1],
+              operation: 'gsd-tools',
+              argv: ['cleanup'],
+            },
+          ],
+        }),
+      ]),
+    });
+    const hostile = '!`printf OPEN_CODE_ARGUMENT_EXECUTION`';
+    await ctx.commandCalls[0].definition.execute({
+      sessionID: 'session',
+      prompt: { text: hostile, files: [], agents: [], skills: [] },
+      delivery: 'immediate',
+    });
+    assert.deepStrictEqual(
+      spawnFn.calls.map(({ command, args, options }) => ({
+        command,
+        args,
+        options,
+      })),
+      [
+        {
+          command: '/usr/bin/node',
+          args: [toolsPath, 'cleanup', '--dry-run'],
+          options: { stdio: ['ignore', 'pipe', 'pipe'], shell: false },
+        },
+        {
+          command: '/usr/bin/node',
+          args: [toolsPath, 'cleanup'],
+          options: { stdio: ['ignore', 'pipe', 'pipe'], shell: false },
+        },
+      ],
+    );
+    assert.equal(
+      ctx.promptCalls[0].text,
+      `PREVIEW OUTPUT\nFINAL OUTPUT\n${hostile}`,
+    );
+    await release();
+  });
+
+  test('PLUGIN command manifest rejects malformed sets without partial registration', async () => {
+    const badManifests = [
+      { schema_version: 2, commands: [] },
+      commandManifest([
+        commandRecord(),
+        commandRecord({ description: 'Duplicate' }),
+      ]),
+      commandManifest([
+        commandRecord({ route: { kind: 'unknown' } }),
+      ]),
+      commandManifest([
+        commandRecord({
+          template: '$ARGUMENTS $ARGUMENTS',
+        }),
+      ]),
+      commandManifest([
+        commandRecord({
+          template: '<gsd-prelude-output index="0">\n$ARGUMENTS',
+          preludes: [
+            {
+              token: '<gsd-prelude-output index="1">',
+              operation: 'gsd-tools',
+              argv: ['cleanup'],
+            },
+          ],
+        }),
+      ]),
+      commandManifest([
+        commandRecord({
+          template: '<gsd-prelude-output index="0">\n$ARGUMENTS',
+          preludes: [
+            {
+              token: '<gsd-prelude-output index="0">',
+              operation: 'gsd-tools',
+              argv: ['cleanup', '--force'],
+            },
+          ],
+        }),
+      ]),
+    ];
+    const mod = await importPlugin(PLUGIN_PATH);
+    for (const manifest of badManifests) {
+      const ctx = fakeCtx([]);
+      const setup = mod.createV2Adapter({
+        commandManifest: manifest,
+        spawnFn: fakeCompletingSpawn([]),
+      });
+      await assert.rejects(() => setup(ctx), /command manifest|command record|prelude/i);
+      assert.equal(ctx.commandCalls.length, 0);
+      assert.equal(ctx.promptCalls.length, 0);
+    }
+  });
+
+  test('PLUGIN command prelude failures reject without submitting a prompt', async () => {
+    const token = '<gsd-prelude-output index="0">';
+    const spawnFn = fakeCompletingSpawn([
+      { stderr: 'cleanup failed', code: 7 },
+    ]);
+    const { ctx, release } = await v2Setup({
+      spawnFn,
+      toolsPath: '/isolated/gsd-tools.cjs',
+      commandManifest: commandManifest([
+        commandRecord({
+          template: `${token}\n$ARGUMENTS`,
+          preludes: [
+            { token, operation: 'gsd-tools', argv: ['cleanup'] },
+          ],
+        }),
+      ]),
+    });
+    await assert.rejects(
+      () =>
+        ctx.commandCalls[0].definition.execute({
+          sessionID: 'session',
+          prompt: { text: 'safe', files: [], agents: [], skills: [] },
+          delivery: 'immediate',
+        }),
+      /cleanup failed|code 7/i,
+    );
+    assert.equal(ctx.promptCalls.length, 0);
+    await release();
+  });
+
+  test('PLUGIN command registrations are disposed on reload cleanup', async () => {
+    const mod = await importPlugin(PLUGIN_PATH);
+    const setup = mod.createV2Adapter({
+      commandManifest: commandManifest([commandRecord()]),
+      spawnFn: fakeCompletingSpawn([]),
+    });
+    const first = fakeCtx([]);
+    await setup(first);
+    assert.equal(first.commandCalls[0].disposed, false);
+    const second = fakeCtx([]);
+    const release = await setup(second);
+    assert.equal(first.commandCalls[0].disposed, true);
+    await release();
+    assert.equal(second.commandCalls[0].disposed, true);
+  });
+});
+
+describe('PLUGIN planner command: child-session routing', () => {
+  const plannerRecord = () =>
+    commandRecord({
+      name: 'gsd-plan-phase',
+      description: 'Plan a phase',
+      route: { kind: 'planner', agent: 'gsd-planner' },
+    });
+
+  test('PLUGIN planner creates and selects a child, waits, then publishes to the parent', async () => {
+    const mod = await importPlugin(PLUGIN_PATH);
+    const setup = mod.createV2Adapter({
+      commandManifest: commandManifest([plannerRecord()]),
+      spawnFn: fakeCompletingSpawn([]),
+    });
+    const ctx = plannerCtx();
+    const release = await setup(ctx);
+    assert.equal(ctx.commandCalls.length, 1);
+    const files = [{ path: 'phase.md' }];
+    const agents = [{ name: 'mentioned-agent' }];
+    const skills = [{ name: 'planning-skill' }];
+    const delivery = { mode: 'background' };
+    await ctx.commandCalls[0].definition.execute({
+      sessionID: 'parent-session',
+      prompt: { text: '12 --gaps', files, agents, skills },
+      delivery,
+    });
+
+    assert.deepStrictEqual(
+      ctx.sessionCalls.map((call) => call.method),
+      ['create', 'switchAgent', 'prompt', 'wait', 'context', 'synthetic'],
+    );
+    assert.deepStrictEqual(ctx.sessionCalls[0].input, {});
+    assert.deepStrictEqual(ctx.sessionCalls[1].input, {
+      sessionID: 'planner-child',
+      agent: 'gsd-planner',
+    });
+    const childPrompt = ctx.sessionCalls[2].input;
+    assert.equal(childPrompt.sessionID, 'planner-child');
+    assert.equal(childPrompt.text, '<arguments>\n12 --gaps\n</arguments>');
+    assert.strictEqual(childPrompt.files, files);
+    assert.strictEqual(childPrompt.agents, agents);
+    assert.strictEqual(childPrompt.skills, skills);
+    assert.strictEqual(childPrompt.delivery, delivery);
+    assert.deepStrictEqual(ctx.sessionCalls[3].input, {
+      sessionID: 'planner-child',
+    });
+    assert.deepStrictEqual(ctx.sessionCalls[4].input, {
+      sessionID: 'planner-child',
+    });
+    assert.deepStrictEqual(ctx.sessionCalls[5].input, {
+      sessionID: 'parent-session',
+      text: JSON.stringify(ctx.plannerContext),
+    });
+    assert.ok(
+      !ctx.sessionCalls.some(
+        (call) =>
+          call.method === 'prompt' && call.input.sessionID === 'parent-session',
+      ),
+    );
+    await release();
+  });
+
+  test('PLUGIN planner failures at every public API stage reject and never prompt the parent', async () => {
+    const mod = await importPlugin(PLUGIN_PATH);
+    for (const failAt of [
+      'create',
+      'switchAgent',
+      'prompt',
+      'wait',
+      'context',
+    ]) {
+      const setup = mod.createV2Adapter({
+        commandManifest: commandManifest([plannerRecord()]),
+        spawnFn: fakeCompletingSpawn([]),
+      });
+      const ctx = plannerCtx(failAt);
+      const release = await setup(ctx);
+      await assert.rejects(
+        () =>
+          ctx.commandCalls[0].definition.execute({
+            sessionID: 'parent-session',
+            prompt: {
+              text: '12',
+              files: [],
+              agents: [],
+              skills: [],
+            },
+            delivery: 'background',
+          }),
+        new RegExp(`${failAt} failed`),
+      );
+      assert.ok(
+        !ctx.sessionCalls.some(
+          (call) =>
+            call.method === 'prompt' &&
+            call.input.sessionID === 'parent-session',
+        ),
+      );
+      assert.ok(
+        ctx.sessionCalls.some(
+          (call) =>
+            call.method === 'synthetic' &&
+            call.input.sessionID === 'parent-session' &&
+            call.input.text.includes(`${failAt} failed`),
+        ),
+      );
+      await release();
+    }
+  });
+});
+
 // ── the real factory, against a config home on disk ──────────────────────────
 // The seam above proves the adapters. Only the real factory can show which
 // settings file production reads, so these drive the installed layout:
-// <config home>/plugin/gsd-core.js beside <config home>/gsd-ng/hooks/.
+// <config home>/plugins/gsd-core.js beside <config home>/gsd-ng/hooks/.
 
 /**
- * Lay out a synthetic opencode install: the plugin at plugin/gsd-core.js, the
+ * Lay out a synthetic opencode install: the plugin at plugins/gsd-core.js, the
  * hooks payload it requires under gsd-ng/hooks/, and an isolated HOME.
  */
 function stageInstall(tmpDir) {
   const configHome = path.join(tmpDir, 'cfg');
-  const pluginDir = path.join(configHome, 'plugin');
+  const pluginDir = path.join(configHome, 'plugins');
   const payloadDir = path.join(configHome, 'gsd-ng', 'hooks');
   const home = path.join(tmpDir, 'home');
   fs.mkdirSync(pluginDir, { recursive: true });
@@ -562,6 +1022,10 @@ function stageInstall(tmpDir) {
 
   const installedPlugin = path.join(pluginDir, 'gsd-core.js');
   fs.copyFileSync(PLUGIN_PATH, installedPlugin);
+  fs.writeFileSync(
+    path.join(configHome, 'gsd-ng', 'opencode-commands.json'),
+    JSON.stringify(commandManifest([])),
+  );
   for (const name of ['bash-safety-hook.cjs', 'gsd-hook-stdin.cjs']) {
     fs.copyFileSync(path.join(HOOKS_DIR, name), path.join(payloadDir, name));
   }

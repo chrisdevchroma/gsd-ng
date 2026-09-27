@@ -18,6 +18,7 @@ const {
 
 // Resolve a writable temp base — sandbox sets TMPDIR=/tmp/claude which may not exist on disk
 const { resolveTmpDir, cleanup, cleanupSubdir } = require('./helpers.cjs');
+const { runInstall: runHarnessInstall } = require('./install-harness.cjs');
 const BASE_TMPDIR = resolveTmpDir();
 
 const HAS_GH = spawnSync('gh', ['--version'], { timeout: 5000 }).status === 0;
@@ -1159,7 +1160,13 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
     assert.strictEqual(
       fs.readFileSync(sandboxTemplate, 'utf8'),
       fs.readFileSync(
-        path.resolve(__dirname, '..', 'gsd-ng', 'templates', 'settings-sandbox.json'),
+        path.resolve(
+          __dirname,
+          '..',
+          'gsd-ng',
+          'templates',
+          'settings-sandbox.json',
+        ),
         'utf8',
       ),
       'the Copilot install must copy the sandbox template byte-for-byte from source, ' +
@@ -1168,7 +1175,9 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
 
     // The contrast that gives "does not seed" its meaning: the same flags on
     // Claude do produce a permissions-bearing settings.json.
-    const claudeDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-copilot-ref-'));
+    const claudeDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, 'gsd-js-copilot-ref-'),
+    );
     try {
       const ref = spawnSync(
         process.execPath,
@@ -1187,7 +1196,10 @@ test('COPILOT-05: --local --copilot does NOT seed permissions or sandbox setting
           (ref.stderr || ''),
       );
       const refSettings = JSON.parse(
-        fs.readFileSync(path.join(claudeDir, '.claude', 'settings.json'), 'utf8'),
+        fs.readFileSync(
+          path.join(claudeDir, '.claude', 'settings.json'),
+          'utf8',
+        ),
       );
       assert.ok(
         refSettings.permissions &&
@@ -1525,8 +1537,16 @@ test('BASH-HOOK-01b: a hooks/ file the claude layout does not declare is not ins
     // The opencode plugin ships from hooks/ because that directory is packaged,
     // not because every runtime installs it. It is an ESM module for a runtime
     // whose hook surface claude does not have.
-    const source = path.join(__dirname, '..', 'hooks', 'gsd-opencode-plugin.js');
-    assert.ok(fs.existsSync(source), 'the source file this asserts about must exist');
+    const source = path.join(
+      __dirname,
+      '..',
+      'hooks',
+      'gsd-opencode-plugin.js',
+    );
+    assert.ok(
+      fs.existsSync(source),
+      'the source file this asserts about must exist',
+    );
     assert.ok(
       !fs.existsSync(
         path.join(tmpDir, '.claude', 'hooks', 'gsd-opencode-plugin.js'),
@@ -2144,7 +2164,10 @@ test('ALLOW-18: only GSD_TEST_FORCE_PLATFORM overrides platform detection — th
             {},
             process.env,
             { HOME: os.homedir() },
-            { GSD_TEST_FORCE_PLATFORM: undefined, GSD_FORCE_PLATFORM: undefined },
+            {
+              GSD_TEST_FORCE_PLATFORM: undefined,
+              GSD_FORCE_PLATFORM: undefined,
+            },
             extraEnv,
           ),
         },
@@ -2348,16 +2371,12 @@ function runDualRuntimeTest(firstRuntime, secondRuntime) {
   );
   try {
     const runInstall = (rt) =>
-      spawnSync(
-        process.execPath,
-        [INSTALLER, '--runtime', rt, '--local'],
-        {
-          encoding: 'utf8',
-          timeout: 15000,
-          cwd: tmpDir,
-          env: Object.assign({}, process.env, { HOME: os.homedir() }),
-        },
-      );
+      spawnSync(process.execPath, [INSTALLER, '--runtime', rt, '--local'], {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      });
 
     // Install both runtimes in order
     const r1 = runInstall(firstRuntime);
@@ -2376,10 +2395,24 @@ function runDualRuntimeTest(firstRuntime, secondRuntime) {
     // Both markers must exist with correct content
     const claudeMarker = path.join(tmpDir, '.claude', 'gsd-ng', '.runtime');
     const copilotMarker = path.join(tmpDir, '.github', 'gsd-ng', '.runtime');
-    assert.ok(fs.existsSync(claudeMarker), `.claude/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`);
-    assert.ok(fs.existsSync(copilotMarker), `.github/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`);
-    assert.strictEqual(fs.readFileSync(claudeMarker, 'utf8').trim(), 'claude', `.claude marker must be "claude" (${firstRuntime}-then-${secondRuntime})`);
-    assert.strictEqual(fs.readFileSync(copilotMarker, 'utf8').trim(), 'copilot', `.github marker must be "copilot" (${firstRuntime}-then-${secondRuntime})`);
+    assert.ok(
+      fs.existsSync(claudeMarker),
+      `.claude/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`,
+    );
+    assert.ok(
+      fs.existsSync(copilotMarker),
+      `.github/gsd-ng/.runtime must exist (${firstRuntime}-then-${secondRuntime})`,
+    );
+    assert.strictEqual(
+      fs.readFileSync(claudeMarker, 'utf8').trim(),
+      'claude',
+      `.claude marker must be "claude" (${firstRuntime}-then-${secondRuntime})`,
+    );
+    assert.strictEqual(
+      fs.readFileSync(copilotMarker, 'utf8').trim(),
+      'copilot',
+      `.github marker must be "copilot" (${firstRuntime}-then-${secondRuntime})`,
+    );
 
     // Set up a model_profile so effort sync produces a non-null result
     fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
@@ -2408,8 +2441,20 @@ function runDualRuntimeTest(firstRuntime, secondRuntime) {
     );
 
     // Invoke each deployed engine's sync-agents CLI
-    const claudeGsdTools = path.join(tmpDir, '.claude', 'gsd-ng', 'bin', 'gsd-tools.cjs');
-    const copilotGsdTools = path.join(tmpDir, '.github', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    const claudeGsdTools = path.join(
+      tmpDir,
+      '.claude',
+      'gsd-ng',
+      'bin',
+      'gsd-tools.cjs',
+    );
+    const copilotGsdTools = path.join(
+      tmpDir,
+      '.github',
+      'gsd-ng',
+      'bin',
+      'gsd-tools.cjs',
+    );
 
     const claudeSync = spawnSync(
       process.execPath,
@@ -2434,14 +2479,20 @@ function runDualRuntimeTest(firstRuntime, secondRuntime) {
     );
 
     // Claude engine: gsd-planner.md must have effort: frontmatter (quality profile → xhigh)
-    const claudeAgentContent = fs.readFileSync(path.join(claudeAgentsDir, 'gsd-planner.md'), 'utf-8');
+    const claudeAgentContent = fs.readFileSync(
+      path.join(claudeAgentsDir, 'gsd-planner.md'),
+      'utf-8',
+    );
     assert.ok(
       /^effort:\s*xhigh$/m.test(claudeAgentContent),
       `Claude agent must have effort: xhigh after sync (${firstRuntime}-then-${secondRuntime})\nactual:\n${claudeAgentContent}`,
     );
 
     // Copilot engine: gsd-planner.md must NOT have effort: frontmatter
-    const copilotAgentContent = fs.readFileSync(path.join(copilotAgentsDir, 'gsd-planner.md'), 'utf-8');
+    const copilotAgentContent = fs.readFileSync(
+      path.join(copilotAgentsDir, 'gsd-planner.md'),
+      'utf-8',
+    );
     assert.ok(
       !/^effort:/m.test(copilotAgentContent),
       `Copilot agent must NOT have effort: after sync (${firstRuntime}-then-${secondRuntime})\nactual:\n${copilotAgentContent}`,
@@ -3090,7 +3141,10 @@ test('CLEANEV-01: --clean preserves user-owned content on the Claude runtime', (
     // User-owned content the wipe must never touch. Deliberately NOT gsd-prefixed:
     // gsd-*.md agents and the six named gsd hook files are deleted by design.
     const planted = [
-      [path.join(claudeDir, 'agents', 'zz-user-agent.md'), 'zz-user-agent-body'],
+      [
+        path.join(claudeDir, 'agents', 'zz-user-agent.md'),
+        'zz-user-agent-body',
+      ],
       [path.join(claudeDir, 'hooks', 'zz-user-hook.js'), 'zz-user-hook-body'],
       [path.join(claudeDir, 'commands', 'zz-user-cmd.md'), 'zz-user-cmd-body'],
       [
@@ -3404,7 +3458,8 @@ test('UNINST-CLEAN-03: a hook installed by an earlier release but no longer ship
     assert.ok(
       !fs.existsSync(retiredHook),
       'a hook recorded as installed but no longer shipped must be removed by ' +
-        '--clean, not stranded: ' + retiredHook,
+        '--clean, not stranded: ' +
+        retiredHook,
     );
   } finally {
     cleanup(tmpDir);
@@ -3498,7 +3553,10 @@ test('CLEANEV-02: --clean on the Copilot runtime wipes the managed tree and pres
     // Copilot-side user content. Non-gsd-prefixed on purpose: the wipe deletes
     // only gsd-*.agent.md files and skills/gsd-* directories.
     const planted = [
-      [path.join(configDir, 'agents', 'zz-user.agent.md'), 'zz-user-agent-body'],
+      [
+        path.join(configDir, 'agents', 'zz-user.agent.md'),
+        'zz-user-agent-body',
+      ],
       [
         path.join(configDir, 'skills', 'zz-user-skill', 'SKILL.md'),
         'zz-user-skill-body',
@@ -3527,7 +3585,12 @@ test('CLEANEV-02: --clean on the Copilot runtime wipes the managed tree and pres
     // stopped clearing stale gsd- skills and the wipe has become load-bearing
     // for local installs too. Do not delete the assertion — give this test a
     // real absence witness instead.
-    const staleSkill = path.join(configDir, 'skills', 'gsd-zz-stale', 'SKILL.md');
+    const staleSkill = path.join(
+      configDir,
+      'skills',
+      'gsd-zz-stale',
+      'SKILL.md',
+    );
     fs.mkdirSync(path.dirname(staleSkill), { recursive: true });
     fs.writeFileSync(staleSkill, 'stale-gsd-owned-file');
 
@@ -3724,7 +3787,8 @@ test('CLEANEV-04: --clean --global on the Copilot runtime deletes a hook file a 
     assert.strictEqual(
       r1.status,
       0,
-      'baseline global copilot install must exit 0\nstderr: ' + (r1.stderr || ''),
+      'baseline global copilot install must exit 0\nstderr: ' +
+        (r1.stderr || ''),
     );
 
     // Containment gate — must hold before any --clean run. If the redirect is
@@ -3750,7 +3814,8 @@ test('CLEANEV-04: --clean --global on the Copilot runtime deletes a hook file a 
     assert.strictEqual(
       rPlain.status,
       0,
-      'plain global copilot reinstall must exit 0\nstderr: ' + (rPlain.stderr || ''),
+      'plain global copilot reinstall must exit 0\nstderr: ' +
+        (rPlain.stderr || ''),
     );
     assert.ok(
       fs.existsSync(staleWitness),
@@ -3766,7 +3831,8 @@ test('CLEANEV-04: --clean --global on the Copilot runtime deletes a hook file a 
     assert.strictEqual(
       r2.status,
       0,
-      'global copilot --clean install must exit 0\nstderr: ' + (r2.stderr || ''),
+      'global copilot --clean install must exit 0\nstderr: ' +
+        (r2.stderr || ''),
     );
     assert.ok(
       !fs.existsSync(staleWitness),
@@ -3942,7 +4008,9 @@ test('ALLOW-07: install.js --local on Linux writes bare Edit/Write/Read forms', 
 
 test('PERM-10: install.js seeds no unmatched Tool(path) rule into allow/deny/ask on any platform', () => {
   for (const platform of ['linux', 'darwin', 'win32']) {
-    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, `gsd-perm10-${platform}-`));
+    const tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, `gsd-perm10-${platform}-`),
+    );
     try {
       const result = spawnSync(
         process.execPath,
@@ -3957,7 +4025,11 @@ test('PERM-10: install.js seeds no unmatched Tool(path) rule into allow/deny/ask
           }),
         },
       );
-      assert.strictEqual(result.status, 0, `install.js failed on ${platform}: ${result.stderr}`);
+      assert.strictEqual(
+        result.status,
+        0,
+        `install.js failed on ${platform}: ${result.stderr}`,
+      );
 
       const settings = JSON.parse(
         fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8'),
@@ -3978,7 +4050,9 @@ test('PERM-10: install.js seeds no unmatched Tool(path) rule into allow/deny/ask
       // platform, not withdrawn. Linux keeps bare Write; macOS/Windows rely on Edit(*).
       const allow = settings.permissions?.allow ?? [];
       assert.ok(
-        platform === 'linux' ? allow.includes('Write') : allow.includes('Edit(*)'),
+        platform === 'linux'
+          ? allow.includes('Write')
+          : allow.includes('Edit(*)'),
         `${platform}: file-editing must still be allowed after dropping the unmatched form`,
       );
     } finally {
@@ -4012,8 +4086,10 @@ test('ALLOW-08: install.js --local on macOS writes canonical glob forms', (t) =>
     );
     const allow = settings.permissions?.allow ?? [];
     assert.ok(allow.includes('Edit(*)'));
-    assert.ok(!allow.includes('Write(*)'),
-      'macOS must NOT carry Write(*) — unmatched path form; Edit(*) covers the Write tool');
+    assert.ok(
+      !allow.includes('Write(*)'),
+      'macOS must NOT carry Write(*) — unmatched path form; Edit(*) covers the Write tool',
+    );
     assert.ok(allow.includes('Read(*)'));
     assert.ok(!allow.includes('Edit'), 'macOS must not carry bare Edit');
 
@@ -4393,10 +4469,7 @@ const RTAGNOSTIC_SCAN_DIRS = [
  * literal is provably correct.
  */
 function rtagnosticStripOnlyBlocks(content) {
-  return content.replace(
-    /<!-- ONLY:\w+ -->[\s\S]*?<!-- \/ONLY:\w+ -->/g,
-    '',
-  );
+  return content.replace(/<!-- ONLY:\w+ -->[\s\S]*?<!-- \/ONLY:\w+ -->/g, '');
 }
 
 /** The command names `commands/gsd/` actually ships, without the .md. */
@@ -4500,7 +4573,9 @@ function rtagnosticWalkMd(dir) {
 function rtagnosticScannedFiles() {
   const files = [];
   for (const segments of RTAGNOSTIC_SCAN_DIRS) {
-    for (const abs of rtagnosticWalkMd(path.join(RTAGNOSTIC_ROOT, ...segments))) {
+    for (const abs of rtagnosticWalkMd(
+      path.join(RTAGNOSTIC_ROOT, ...segments),
+    )) {
       files.push({
         rel: path.relative(RTAGNOSTIC_ROOT, abs).split(path.sep).join('/'),
         content: fs.readFileSync(abs, 'utf8'),
@@ -4544,10 +4619,7 @@ function rtagnosticConfigDirLiterals(runtimes) {
   return [
     ...new Set(
       Object.values(runtimes)
-        .flatMap((r) => [
-          r.configHome.globalDirName,
-          r.configHome.localDirName,
-        ])
+        .flatMap((r) => [r.configHome.globalDirName, r.configHome.localDirName])
         .filter(Boolean),
     ),
   ];
@@ -4664,7 +4736,10 @@ test('RTAGNOSTIC-12: a tool name in allowed-tools: frontmatter is not flagged, i
   const frontmatterOnly =
     '---\nallowed-tools:\n  - Read\n  - AskUserQuestion\n---\n\nBody prose.\n';
   assert.deepStrictEqual(
-    rtagnosticOffenders([{ rel: 'synthetic.md', content: frontmatterOnly }], banned),
+    rtagnosticOffenders(
+      [{ rel: 'synthetic.md', content: frontmatterOnly }],
+      banned,
+    ),
     [],
     'the converters key on the Claude tool name, so the declaration must survive',
   );
@@ -4746,7 +4821,9 @@ test('RTAGNOSTIC-11: config-home literals in the library stay within the recorde
     );
     const allowed = RTAGNOSTIC_CONFIG_DIR_ALLOWLIST[rel] || 0;
     if (count > allowed) {
-      offenders.push(`${rel} :: ${count} config-home literals, allowlist ${allowed}`);
+      offenders.push(
+        `${rel} :: ${count} config-home literals, allowlist ${allowed}`,
+      );
     } else if (count < allowed) {
       shrunk.push(`${rel} :: ${count} < ${allowed}`);
     }
@@ -4783,13 +4860,198 @@ test('COPILOT-RT: runtime-comparison prose survives Copilot conversion intact', 
 // ── GSD's own agent-frontmatter sync is not a "local modification" ──
 
 function runLocalInstall(tmpDir) {
-  return spawnSync(process.execPath, [INSTALLER, '--runtime', 'claude', '--local'], {
-    encoding: 'utf8',
-    timeout: 15000,
-    cwd: tmpDir,
-    env: Object.assign({}, process.env, { HOME: os.homedir() }),
-  });
+  return spawnSync(
+    process.execPath,
+    [INSTALLER, '--runtime', 'claude', '--local'],
+    {
+      encoding: 'utf8',
+      timeout: 15000,
+      cwd: tmpDir,
+      env: Object.assign({}, process.env, { HOME: os.homedir() }),
+    },
+  );
 }
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+test('local patch reporting follows only the current detection batch and preserves retired backups', () => {
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-local-patch-batch-'),
+  );
+  try {
+    const first = runLocalInstall(tmpDir);
+    assert.strictEqual(first.status, 0, first.stderr || 'first install failed');
+
+    const configDir = path.join(tmpDir, '.claude');
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(configDir, 'gsd-file-manifest.json'), 'utf8'),
+    );
+    const relPath = Object.keys(manifest.files).find((name) =>
+      name.startsWith('gsd-ng/'),
+    );
+    assert.ok(relPath, 'manifest must contain a managed engine file');
+    const managedPath = path.join(configDir, relPath);
+    fs.appendFileSync(managedPath, '\ncurrent local edit\n');
+
+    const modified = runLocalInstall(tmpDir);
+    assert.strictEqual(modified.status, 0, modified.stderr || 'modified install failed');
+    assert.strictEqual(
+      (modified.stdout.match(/Local patches detected/g) || []).length,
+      1,
+      'a current modification must produce one local-patch report',
+    );
+    assert.match(
+      modified.stdout,
+      /review and compare/i,
+      'the report must ask the user to review the current backup',
+    );
+    assert.match(
+      modified.stdout,
+      /still needed/i,
+      'reapply guidance must be conditional on the change still being needed',
+    );
+
+    const patchesDir = path.join(configDir, 'gsd-local-patches');
+    const metaPath = path.join(patchesDir, 'backup-meta.json');
+    const backupPath = path.join(patchesDir, relPath);
+    const activeMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    assert.strictEqual(activeMeta.active, true, 'a fresh detection batch must be active');
+    assert.deepStrictEqual(activeMeta.files, [relPath]);
+    const firstBackupHash = sha256File(backupPath);
+
+    const clean = runLocalInstall(tmpDir);
+    assert.strictEqual(clean.status, 0, clean.stderr || 'clean install failed');
+    assert.doesNotMatch(
+      clean.stdout,
+      /Local patches detected|Found \d+ locally modified GSD file/,
+      'a clean current detection batch must not replay stale metadata',
+    );
+    assert.strictEqual(
+      sha256File(backupPath),
+      firstBackupHash,
+      'retiring metadata must leave the backup payload byte-identical',
+    );
+    const retiredMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    assert.strictEqual(retiredMeta.active, false, 'a clean pass must retire active metadata');
+
+    fs.appendFileSync(managedPath, '\na newer local edit\n');
+    const modifiedAgain = runLocalInstall(tmpDir);
+    assert.strictEqual(
+      modifiedAgain.status,
+      0,
+      modifiedAgain.stderr || 'later modified install failed',
+    );
+    assert.strictEqual(
+      (modifiedAgain.stdout.match(/Local patches detected/g) || []).length,
+      1,
+      'a new genuine modification must produce a fresh report',
+    );
+    const refreshedMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    assert.strictEqual(refreshedMeta.active, true, 'the new batch must become active');
+    assert.deepStrictEqual(refreshedMeta.files, [relPath]);
+    assert.notStrictEqual(
+      sha256File(backupPath),
+      firstBackupHash,
+      'the fresh batch must replace the payload with the newer local edit',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('backup-meta from an older version is retired instead of reported as current evidence', () => {
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-stale-backup-meta-'),
+  );
+  try {
+    const first = runLocalInstall(tmpDir);
+    assert.strictEqual(first.status, 0, first.stderr || 'first install failed');
+
+    const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
+    const payloadPath = path.join(patchesDir, 'gsd-ng', 'stale-example.md');
+    fs.mkdirSync(path.dirname(payloadPath), { recursive: true });
+    fs.writeFileSync(payloadPath, 'saved user content\n');
+    const payloadHash = sha256File(payloadPath);
+    const metaPath = path.join(patchesDir, 'backup-meta.json');
+    fs.writeFileSync(
+      metaPath,
+      JSON.stringify(
+        {
+          active: true,
+          backed_up_at: '2020-01-01T00:00:00.000Z',
+          from_version: '0.1.0',
+          files: ['gsd-ng/stale-example.md'],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const clean = runLocalInstall(tmpDir);
+    assert.strictEqual(clean.status, 0, clean.stderr || 'clean install failed');
+    assert.doesNotMatch(
+      clean.stdout,
+      /Local patches detected|stale-example\.md/,
+      'old metadata must not be rediscovered as evidence for this install',
+    );
+    assert.strictEqual(
+      sha256File(payloadPath),
+      payloadHash,
+      'retiring stale metadata must preserve its payload',
+    );
+    const retiredMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    assert.strictEqual(retiredMeta.active, false, 'stale active metadata must be retired');
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('reapply command retires backup-meta only after every patch is successfully processed', () => {
+  const commandPath = path.resolve(
+    __dirname,
+    '..',
+    'commands',
+    'gsd',
+    'reapply-patches.md',
+  );
+  const content = fs.readFileSync(commandPath, 'utf8');
+
+  assert.match(
+    content,
+    /active.*exactly `true`/i,
+    'only explicitly active backup metadata may enter the reapply flow',
+  );
+  assert.match(
+    content,
+    /Before offering backup cleanup[\s\S]*update only `backup-meta\.json`[\s\S]*`"active": false`/,
+    'every successful keep-or-cleanup path must retire active metadata first',
+  );
+  assert.match(
+    content,
+    /Keep patch backups[\s\S]*preserve every payload file[\s\S]*inactive metadata/i,
+    'keeping backups must retain payloads and retired metadata',
+  );
+  assert.match(
+    content,
+    /Clean up patch backups[\s\S]*remove only the selected `\$PATCHES_DIR`/i,
+    'cleanup must remove only the backup directory the user selected',
+  );
+  assert.match(
+    content,
+    /pending, failed, unresolved, or cancelled[\s\S]*leave `active` as `true`/i,
+    'incomplete processing must leave the batch active',
+  );
+
+  const successful = content.indexOf('Before offering backup cleanup');
+  const cleanupIndex = content.indexOf('## Step 5: Cleanup option');
+  const report = content.indexOf('## Step 6: Report');
+  assert.ok(
+    successful !== -1 && successful < cleanupIndex && cleanupIndex < report,
+    'metadata retirement must happen before either cleanup choice and success reporting',
+  );
+});
 
 // Reproduces what /gsd:set-profile and `config-set effort_overrides.*` do to the
 // deployed agent files: write a profile, then run the real sync helper.
@@ -4808,14 +5070,17 @@ function applyProfileSync(tmpDir, profile) {
   );
 }
 
-test('MANIFEST-SYNC-01: agent files rewritten by GSD\'s own effort sync are NOT reported as locally modified', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-sync-01-'));
+test("MANIFEST-SYNC-01: agent files rewritten by GSD's own effort sync are NOT reported as locally modified", () => {
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-sync-01-'),
+  );
   try {
     const r1 = runLocalInstall(tmpDir);
     assert.strictEqual(
       r1.status,
       0,
-      'first install must exit 0 (MANIFEST-SYNC-01)\nstderr: ' + (r1.stderr || ''),
+      'first install must exit 0 (MANIFEST-SYNC-01)\nstderr: ' +
+        (r1.stderr || ''),
     );
 
     const synced = applyProfileSync(tmpDir, 'quality');
@@ -4828,7 +5093,8 @@ test('MANIFEST-SYNC-01: agent files rewritten by GSD\'s own effort sync are NOT 
     assert.strictEqual(
       r2.status,
       0,
-      'second install must exit 0 (MANIFEST-SYNC-01)\nstderr: ' + (r2.stderr || ''),
+      'second install must exit 0 (MANIFEST-SYNC-01)\nstderr: ' +
+        (r2.stderr || ''),
     );
 
     const r2Stdout = r2.stdout || '';
@@ -4841,7 +5107,9 @@ test('MANIFEST-SYNC-01: agent files rewritten by GSD\'s own effort sync are NOT 
 
     const patchesDir = path.join(tmpDir, '.claude', 'gsd-local-patches');
     if (fs.existsSync(patchesDir)) {
-      const entries = fs.readdirSync(patchesDir).filter((e) => e !== '.gitkeep');
+      const entries = fs
+        .readdirSync(patchesDir)
+        .filter((e) => e !== '.gitkeep');
       assert.strictEqual(
         entries.length,
         0,
@@ -4854,19 +5122,27 @@ test('MANIFEST-SYNC-01: agent files rewritten by GSD\'s own effort sync are NOT 
   }
 });
 
-test('MANIFEST-SYNC-02: a real body edit is still detected when GSD also rewrote the same file\'s frontmatter', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-sync-02-'));
+test("MANIFEST-SYNC-02: a real body edit is still detected when GSD also rewrote the same file's frontmatter", () => {
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-sync-02-'),
+  );
   try {
     const r1 = runLocalInstall(tmpDir);
     assert.strictEqual(
       r1.status,
       0,
-      'first install must exit 0 (MANIFEST-SYNC-02)\nstderr: ' + (r1.stderr || ''),
+      'first install must exit 0 (MANIFEST-SYNC-02)\nstderr: ' +
+        (r1.stderr || ''),
     );
 
     // Hand-edit the body of ONE agent, then let GSD's sync rewrite the managed
     // frontmatter of ALL of them on top. Only the hand-edited one is a patch.
-    const editedAgent = path.join(tmpDir, '.claude', 'agents', 'gsd-planner.md');
+    const editedAgent = path.join(
+      tmpDir,
+      '.claude',
+      'agents',
+      'gsd-planner.md',
+    );
     const marker = '<!-- local body edit -->';
     fs.appendFileSync(editedAgent, '\n' + marker + '\n');
     applyProfileSync(tmpDir, 'quality');
@@ -4875,7 +5151,8 @@ test('MANIFEST-SYNC-02: a real body edit is still detected when GSD also rewrote
     assert.strictEqual(
       r2.status,
       0,
-      'second install must exit 0 (MANIFEST-SYNC-02)\nstderr: ' + (r2.stderr || ''),
+      'second install must exit 0 (MANIFEST-SYNC-02)\nstderr: ' +
+        (r2.stderr || ''),
     );
 
     const r2Stdout = r2.stdout || '';
@@ -4919,13 +5196,16 @@ test('MANIFEST-SYNC-02: a real body edit is still detected when GSD also rewrote
 });
 
 test('MANIFEST-SYNC-03: manifest without files_normalized falls back to raw-hash comparison', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-sync-03-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-sync-03-'),
+  );
   try {
     const r1 = runLocalInstall(tmpDir);
     assert.strictEqual(
       r1.status,
       0,
-      'first install must exit 0 (MANIFEST-SYNC-03)\nstderr: ' + (r1.stderr || ''),
+      'first install must exit 0 (MANIFEST-SYNC-03)\nstderr: ' +
+        (r1.stderr || ''),
     );
 
     // Simulate a manifest written before files_normalized existed: raw hashes only.
@@ -4945,7 +5225,8 @@ test('MANIFEST-SYNC-03: manifest without files_normalized falls back to raw-hash
     assert.strictEqual(
       r2.status,
       0,
-      'second install must exit 0 (MANIFEST-SYNC-03)\nstderr: ' + (r2.stderr || ''),
+      'second install must exit 0 (MANIFEST-SYNC-03)\nstderr: ' +
+        (r2.stderr || ''),
     );
     assert.ok(
       /Found \d+ locally modified GSD file/.test(r2.stdout || ''),
@@ -5109,7 +5390,9 @@ test('HOOKENTRY-02: uninstall keeps user commands sharing SessionStart and PostT
         JSON.stringify(commandsFor('PostToolUse')),
     );
     assert.ok(
-      !commandsFor('PostToolUse').some((c) => c.includes('gsd-context-monitor')),
+      !commandsFor('PostToolUse').some((c) =>
+        c.includes('gsd-context-monitor'),
+      ),
       'GSD PostToolUse hook must be removed (HOOKENTRY-02)',
     );
   } finally {
@@ -5162,10 +5445,7 @@ test('HOOKENTRY-03: an event left with no entries is removed, not left as an emp
 // ── an unreadable settings.json must never be silently replaced ──
 
 function readSettingsFile(tmpDir) {
-  return fs.readFileSync(
-    path.join(tmpDir, '.claude', 'settings.json'),
-    'utf8',
-  );
+  return fs.readFileSync(path.join(tmpDir, '.claude', 'settings.json'), 'utf8');
 }
 
 function seedSettings(tmpDir, body) {
@@ -5575,16 +5855,19 @@ test('RTPATH-01: claude and copilot resolve exactly as before the registry rewri
   });
   // An XDG value set in the ambient environment must not reach a runtime that
   // has no such spec.
-  withResolverEnv({ XDG_CONFIG_HOME: path.join(BASE_TMPDIR, 'xdg-config-home') }, () => {
-    assert.strictEqual(
-      getGlobalDir('claude'),
-      path.join(os.homedir(), '.claude'),
-    );
-    assert.strictEqual(
-      getGlobalDir('copilot'),
-      path.join(os.homedir(), '.copilot'),
-    );
-  });
+  withResolverEnv(
+    { XDG_CONFIG_HOME: path.join(BASE_TMPDIR, 'xdg-config-home') },
+    () => {
+      assert.strictEqual(
+        getGlobalDir('claude'),
+        path.join(os.homedir(), '.claude'),
+      );
+      assert.strictEqual(
+        getGlobalDir('copilot'),
+        path.join(os.homedir(), '.copilot'),
+      );
+    },
+  );
 
   assert.strictEqual(getDirName('claude'), '.claude');
   assert.strictEqual(getDirName('copilot'), '.github');
@@ -5613,6 +5896,7 @@ const {
   globalHomeRelative,
   convertContent,
   convertClaudeCommandToOpencodeCommand,
+  buildOpencodeCommandRecord,
 } = require('../bin/install.js');
 
 // Outside $HOME by construction, and never created on disk — the resolvers are
@@ -5632,9 +5916,12 @@ test('GHR-02: an override under $HOME moves the home-relative form with it', () 
   withResolverEnv({ OPENCODE_CONFIG_DIR: '~/oc-override' }, () => {
     assert.strictEqual(globalHomeRelative('opencode'), 'oc-override');
   });
-  withResolverEnv({ CLAUDE_CONFIG_DIR: path.join(os.homedir(), 'cc', 'nested') }, () => {
-    assert.strictEqual(globalHomeRelative('claude'), 'cc/nested');
-  });
+  withResolverEnv(
+    { CLAUDE_CONFIG_DIR: path.join(os.homedir(), 'cc', 'nested') },
+    () => {
+      assert.strictEqual(globalHomeRelative('claude'), 'cc/nested');
+    },
+  );
   withResolverEnv({ XDG_CONFIG_HOME: path.join(os.homedir(), 'xdg') }, () => {
     assert.strictEqual(globalHomeRelative('opencode'), 'xdg/opencode');
   });
@@ -5668,17 +5955,19 @@ test('GHR-03: an override outside $HOME yields the absolute path, never a $HOME 
   });
 });
 
-test('GHR-04: an opencode @ reference resolves against the same absolute dir', () => {
+test('GHR-04: an opencode package @ reference inlines independently of the config dir', () => {
   withResolverEnv({ OPENCODE_CONFIG_DIR: OUTSIDE_HOME }, () => {
-    // No frontmatter, so this passes the body straight through the opencode
-    // content conversion the @-reference rewrite lives in.
     const converted = convertClaudeCommandToOpencodeCommand(
-      'load @~/.claude/gsd-ng/workflows/quick.md now',
+      '@~/.claude/gsd-ng/workflows/quick.md\n',
       true,
     );
     assert.ok(
-      converted.includes(`@${OUTSIDE_HOME}/gsd-ng/workflows/quick.md`),
-      `@ reference must carry the resolved dir, got: ${converted}`,
+      converted.includes('BEGIN GSD STATIC ATTACHMENT: workflows/quick.md'),
+      `package attachment must be model-visible, got: ${converted}`,
+    );
+    assert.ok(
+      !converted.includes(`@${OUTSIDE_HOME}/gsd-ng/workflows/quick.md`),
+      `package attachment must not rely on a config-home path, got: ${converted}`,
     );
   });
 });
@@ -5692,12 +5981,16 @@ test('OPENCODE-ARG-01: --runtime opencode passes argument validation', () => {
   try {
     // No --global/--local and no TTY, so this stops at the non-interactive
     // gate. Reaching that gate is the proof that validation accepted it.
-    const result = spawnSync(process.execPath, [INSTALLER, '--runtime', 'opencode'], {
-      encoding: 'utf8',
-      timeout: 15000,
-      cwd: tmpDir,
-      env: Object.assign({}, process.env, { HOME: os.homedir() }),
-    });
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'opencode'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
     const output = (result.stderr || '') + (result.stdout || '');
     assert.ok(
       !output.includes('Unknown runtime'),
@@ -5717,12 +6010,16 @@ test('OPENCODE-ARG-01: --runtime opencode passes argument validation', () => {
 test('OPENCODE-ARG-02: an unknown runtime is rejected and the error names every registry runtime', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-js-badrt-'));
   try {
-    const result = spawnSync(process.execPath, [INSTALLER, '--runtime', 'zed'], {
-      encoding: 'utf8',
-      timeout: 15000,
-      cwd: tmpDir,
-      env: Object.assign({}, process.env, { HOME: os.homedir() }),
-    });
+    const result = spawnSync(
+      process.execPath,
+      [INSTALLER, '--runtime', 'zed'],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        cwd: tmpDir,
+        env: Object.assign({}, process.env, { HOME: os.homedir() }),
+      },
+    );
     assert.notStrictEqual(
       result.status,
       0,
@@ -5801,7 +6098,12 @@ test('REMOVE-SPEC-01: claude uninstall removes the declared sets and nothing els
       'baseline claude install must exit 0 (REMOVE-SPEC-01)',
     );
     const target = path.join(tmpDir, '.claude');
-    const userAgent = writeFileAt(target, 'agents', 'my-agent.md', 'user-agent');
+    const userAgent = writeFileAt(
+      target,
+      'agents',
+      'my-agent.md',
+      'user-agent',
+    );
     const userCommand = writeFileAt(
       target,
       'commands',
@@ -5946,8 +6248,14 @@ test('REMOVE-SPEC-03: a runtime whose layout declares agent/ never gets the skil
     const ownCommand = writeFileAt(
       target,
       'command',
-      'gsd-y.md',
+      'gsd-progress.md',
       'gsd-command',
+    );
+    const customCommand = writeFileAt(
+      target,
+      'command',
+      'gsd-custom.md',
+      'user-command',
     );
     const engineFile = writeFileAt(target, 'gsd-ng', 'VERSION', '0.0.0');
     // Not declared by it — the copilot-shaped fall-through would take these.
@@ -5975,7 +6283,12 @@ test('REMOVE-SPEC-03: a runtime whose layout declares agent/ never gets the skil
           gone,
       );
     }
-    for (const survivor of [foreignSkill, foreignAgent, userAgent]) {
+    for (const survivor of [
+      foreignSkill,
+      foreignAgent,
+      userAgent,
+      customCommand,
+    ]) {
       assert.ok(
         fs.existsSync(survivor),
         'a path the opencode layout does not declare must survive (REMOVE-SPEC-03): ' +
@@ -6068,7 +6381,9 @@ test('REMOVE-SPEC-06: uninstall counts what it removed, per runtime', () => {
     cleanup(tmpDir);
   }
 
-  const tmpDir2 = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-remove-spec-06b-'));
+  const tmpDir2 = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-remove-spec-06b-'),
+  );
   try {
     assert.strictEqual(runInstallIn(tmpDir2, 'copilot').status, 0);
     const target = path.join(tmpDir2, '.github');
@@ -6107,7 +6422,9 @@ function readManifest(target) {
 }
 
 test('MANIFEST-SPEC-01: a copilot manifest covers every installed skill', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-spec-01-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-spec-01-'),
+  );
   try {
     assert.strictEqual(runInstallIn(tmpDir, 'copilot').status, 0);
     const target = path.join(tmpDir, '.github');
@@ -6152,7 +6469,9 @@ test('MANIFEST-SPEC-01: a copilot manifest covers every installed skill', () => 
 });
 
 test('MANIFEST-SPEC-02: a claude manifest lists exactly the three sets it listed before', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-spec-02-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-spec-02-'),
+  );
   try {
     assert.strictEqual(runInstallIn(tmpDir, 'claude').status, 0);
     const target = path.join(tmpDir, '.claude');
@@ -6185,7 +6504,9 @@ test('MANIFEST-SPEC-02: a claude manifest lists exactly the three sets it listed
 });
 
 test('MANIFEST-SPEC-03: a locally modified copilot skill is backed up on reinstall', () => {
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-manifest-spec-03-'));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-manifest-spec-03-'),
+  );
   try {
     assert.strictEqual(runInstallIn(tmpDir, 'copilot').status, 0);
     const target = path.join(tmpDir, '.github');
@@ -6555,6 +6876,86 @@ const OPENCODE_COMMAND_SCHEMA_KEYS = new Set([
 ]);
 
 const COMMAND_SOURCE_DIR = path.join(__dirname, '..', 'commands', 'gsd');
+const ENGINE_SOURCE_DIR = path.join(__dirname, '..', 'gsd-ng');
+
+const ARGUMENT_CONSUMERS = [
+  ['add-phase.md', 'workflows/add-phase.md'],
+  ['add-tests.md', 'workflows/add-tests.md'],
+  ['add-todo.md', 'workflows/add-todo.md'],
+  ['audit-milestone.md', 'workflows/audit-milestone.md'],
+  ['check-todos.md', 'workflows/check-todos.md'],
+  ['create-pr.md', 'workflows/create-pr.md'],
+  ['debug.md', null],
+  ['discuss-phase.md', 'workflows/discuss-phase.md'],
+  ['do.md', 'workflows/do.md'],
+  ['execute-phase.md', 'workflows/execute-phase.md'],
+  ['import-issues.md', 'workflows/import-issue.md'],
+  ['insert-phase.md', 'workflows/insert-phase.md'],
+  ['list-phase-assumptions.md', 'workflows/list-phase-assumptions.md'],
+  ['map-codebase.md', 'workflows/map-codebase.md'],
+  ['new-milestone.md', 'workflows/new-milestone.md'],
+  ['new-project.md', 'workflows/new-project.md'],
+  ['note.md', 'workflows/note.md'],
+  ['plan-phase.md', 'workflows/plan-phase.md'],
+  ['quick.md', 'workflows/quick.md'],
+  ['remove-phase.md', 'workflows/remove-phase.md'],
+  ['research-phase.md', null],
+  ['set-profile.md', null],
+  ['squash.md', 'workflows/squash.md'],
+  ['sync-issues.md', 'workflows/sync-issues.md'],
+  ['ui-phase.md', 'workflows/ui-phase.md'],
+  ['ui-review.md', 'workflows/ui-review.md'],
+  ['validate-phase.md', 'workflows/validate-phase.md'],
+  ['verify-work.md', 'workflows/verify-work.md'],
+];
+
+const ARGUMENT_CORPUS = [
+  '',
+  'two words',
+  "single ' quote",
+  'double " quote',
+  'line one\nline two',
+  '$(touch should-not-run)',
+  '`touch should-not-run`',
+  'first; second',
+  '--unknown value',
+  '$ARGUMENTS',
+  '$&',
+  '$$',
+  "$'",
+  '$`',
+  '!`printf OPEN_CODE_ARGUMENT_EXECUTION`',
+  'before !`printf FIRST_MARKER` between !`printf SECOND_MARKER` after',
+];
+
+function evaluateNativeOpencodeTemplate(template, input, processSpy) {
+  const positional = [];
+  const positionalRe = /"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^\s]+)/g;
+  for (const match of input.matchAll(positionalRe)) {
+    positional.push(match[1] ?? match[2] ?? match[3]);
+  }
+  const expanded = template.replace(/\$(\d+)/g, (_token, index) =>
+    positional[Number(index) - 1] ?? '',
+  );
+  const withArguments = expanded.includes('$ARGUMENTS')
+    ? expanded.replaceAll('$ARGUMENTS', () => input)
+    : input.length > 0
+      ? `${expanded}\n\n${input}`
+      : expanded;
+  const sources = Array.from(
+    withArguments.trim().matchAll(/!`([^`]+)`/g),
+    (match) => match[1],
+  );
+  for (const source of sources) processSpy(source);
+  return { text: withArguments, sources };
+}
+
+function shellBlocksOf(text) {
+  return [
+    ...(text.match(/!`[^`]*`/g) || []),
+    ...(text.match(/```(?:bash|sh|shell)\n[\s\S]*?```/g) || []),
+  ];
+}
 
 /** Top-level frontmatter keys of a converted .md file, in file order. */
 function frontmatterKeysOf(text) {
@@ -6604,38 +7005,45 @@ function installOpencode(tmpDir, scope) {
 }
 
 function installedCommandFiles(targetDir) {
-  const dir = path.join(targetDir, 'command');
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.startsWith('gsd-') && f.endsWith('.md'))
-    .sort();
+  const found = [];
+  for (const dirName of ['command', 'commands']) {
+    const dir = path.join(targetDir, dirName);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (file.startsWith('gsd-') && file.endsWith('.md')) {
+        found.push(`${dirName}/${file}`);
+      }
+    }
+  }
+  return found.sort();
 }
 
-test('OPENCODE-CMD-01: an opencode install writes one flat command file per source command except set-profile', () => {
+function readOpencodeCommandManifest(targetDir) {
+  return JSON.parse(
+    fs.readFileSync(
+      path.join(targetDir, 'gsd-ng', 'opencode-commands.json'),
+      'utf8',
+    ),
+  );
+}
+
+test('OPENCODE-CMD-01 command manifest: an opencode install writes plugin data and no native discovered command', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-cmd-01-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
     const sources = fs
       .readdirSync(COMMAND_SOURCE_DIR)
-      .filter((f) => f.endsWith('.md'));
-    const installed = installedCommandFiles(targetDir);
+      .filter((f) => f.endsWith('.md') && f !== 'set-profile.md');
+    const native = installedCommandFiles(targetDir);
+    const manifest = readOpencodeCommandManifest(targetDir);
 
-    assert.strictEqual(
-      sources.length,
-      41,
-      'the source command count changed — update the expected installed count with it (OPENCODE-CMD-01)',
-    );
-    assert.strictEqual(
-      installed.length,
-      40,
-      'an opencode install must write 40 command files, one per source command ' +
-        'except the Claude-only set-profile (OPENCODE-CMD-01)\nInstalled: ' +
-        installed.join(', '),
-    );
-    assert.ok(
-      !fs.existsSync(path.join(targetDir, 'command', 'gsd')),
-      'the opencode command layout is flat — no command/gsd/ directory (OPENCODE-CMD-01)',
+    assert.strictEqual(manifest.schema_version, 1);
+    assert.strictEqual(manifest.commands.length, sources.length);
+    assert.strictEqual(new Set(manifest.commands.map((entry) => entry.name)).size, sources.length);
+    assert.deepStrictEqual(
+      native,
+      [],
+      'no GSD public command may reach native discovery (OPENCODE-CMD-01)',
     );
   } finally {
     cleanup(tmpDir);
@@ -6647,7 +7055,9 @@ test('OPENCODE-CMD-02: set-profile is not installed for opencode', () => {
   try {
     const targetDir = installOpencode(tmpDir, 'local');
     assert.ok(
-      !fs.existsSync(path.join(targetDir, 'command', 'gsd-set-profile.md')),
+      !readOpencodeCommandManifest(targetDir).commands.some(
+        (entry) => entry.name === 'gsd-set-profile',
+      ),
       'set-profile configures effort frontmatter and model profiles, both ' +
         'Claude-only — it must not reach an opencode install (OPENCODE-CMD-02)',
     );
@@ -6656,84 +7066,59 @@ test('OPENCODE-CMD-02: set-profile is not installed for opencode', () => {
   }
 });
 
-test('OPENCODE-CMD-03: every converted command carries only keys the opencode command schema declares', () => {
+test('OPENCODE-CMD-03 command manifest: every record carries the declarative plugin contract', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-cmd-03-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
-    const files = installedCommandFiles(targetDir);
-    assert.ok(files.length > 0, 'no converted command files to inspect');
-
-    const offenders = [];
-    const withAllowedTools = [];
-    const withArgumentHint = [];
-    for (const file of files) {
-      const text = fs.readFileSync(path.join(targetDir, 'command', file), 'utf8');
-      for (const key of frontmatterKeysOf(text)) {
-        if (!OPENCODE_COMMAND_SCHEMA_KEYS.has(key)) offenders.push(`${file}: ${key}`);
-        if (key === 'allowed-tools') withAllowedTools.push(file);
-        if (key === 'argument-hint') withArgumentHint.push(file);
-      }
+    const records = readOpencodeCommandManifest(targetDir).commands;
+    assert.ok(records.length > 0, 'no command manifest records to inspect');
+    for (const record of records) {
+      assert.deepStrictEqual(Object.keys(record).sort(), [
+        'argument_mode',
+        'description',
+        'name',
+        'preludes',
+        'route',
+        'template',
+      ]);
+      assert.match(record.name, /^gsd-[a-z0-9-]+$/);
+      assert.ok(record.description.length > 0);
+      assert.ok(['replace', 'append'].includes(record.argument_mode));
+      assert.ok(['current', 'planner'].includes(record.route.kind));
     }
-
-    assert.deepStrictEqual(
-      offenders,
-      [],
-      'a converted command must carry no frontmatter key outside the opencode ' +
-        'command struct (OPENCODE-CMD-03)',
-    );
-    assert.deepStrictEqual(withAllowedTools, [], 'allowed-tools has no opencode equivalent (OPENCODE-CMD-03)');
-    assert.deepStrictEqual(withArgumentHint, [], 'argument-hint has no opencode equivalent (OPENCODE-CMD-03)');
   } finally {
     cleanup(tmpDir);
   }
 });
 
-test('OPENCODE-CMD-04: a converted command keeps its description, its declared agent and its body syntax', () => {
+test('OPENCODE-CMD-04 command manifest: descriptions, planner route, templates and preludes survive conversion', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-cmd-04-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
-    const read = (name) =>
-      fs.readFileSync(path.join(targetDir, 'command', name), 'utf8');
+    const records = readOpencodeCommandManifest(targetDir).commands;
+    const read = (name) => records.find((entry) => entry.name === name);
+    const planPhase = read('gsd-plan-phase');
+    assert.strictEqual(planPhase.description, 'Create detailed phase plan (PLAN.md) with verification loop');
+    assert.deepStrictEqual(planPhase.route, {
+      kind: 'planner',
+      agent: 'gsd-planner',
+    });
+    assert.deepStrictEqual(read('gsd-progress').route, { kind: 'current' });
 
-    const planPhase = read('gsd-plan-phase.md');
-    assert.deepStrictEqual(
-      frontmatterKeysOf(planPhase),
-      ['description', 'agent'],
-      'a source naming an agent keeps description and agent, and nothing else (OPENCODE-CMD-04)',
-    );
-    assert.match(planPhase, /^agent: gsd-planner$/m);
-
-    const progress = read('gsd-progress.md');
-    assert.deepStrictEqual(
-      frontmatterKeysOf(progress),
-      ['description'],
-      'a source naming no agent keeps description alone (OPENCODE-CMD-04)',
-    );
-
-    const addTests = read('gsd-add-tests.md');
+    const addTests = read('gsd-add-tests');
     assert.ok(
-      addTests.includes('$ARGUMENTS'),
+      addTests.template.includes('$ARGUMENTS'),
       '$ARGUMENTS is native opencode syntax and must survive verbatim (OPENCODE-CMD-04)',
     );
-
-    // The shell-run marker itself is native opencode syntax and survives; the
-    // paths inside it are rewritten to the opencode tree like any other.
-    const update = read('gsd-update.md');
-    const sourceUpdate = fs.readFileSync(path.join(COMMAND_SOURCE_DIR, 'update.md'), 'utf8');
-    const sourceRuns = sourceUpdate.match(/!`[^`]*`/g) || [];
-    const convertedRuns = update.match(/!`[^`]*`/g) || [];
-    assert.ok(sourceRuns.length > 0, 'the chosen source must contain a shell-run reference');
-    assert.strictEqual(
-      convertedRuns.length,
-      sourceRuns.length,
-      '!`…` shell-run syntax must survive conversion (OPENCODE-CMD-04)',
-    );
-    for (const run of convertedRuns) {
-      assert.ok(
-        !run.includes('.claude/'),
-        `a shell-run reference must point at the opencode tree: ${run} (OPENCODE-CMD-04)`,
-      );
-    }
+    assert.deepStrictEqual(read('gsd-cleanup').preludes.map((item) => item.argv), [
+      ['cleanup', '--dry-run'],
+      ['cleanup'],
+    ]);
+    assert.deepStrictEqual(read('gsd-update').preludes.map((item) => item.argv), [
+      ['update', '--dry-run'],
+    ]);
+    assert.doesNotMatch(read('gsd-cleanup').template, /^\s*!`/m);
+    assert.doesNotMatch(read('gsd-update').template, /^\s*!`/m);
   } finally {
     cleanup(tmpDir);
   }
@@ -6746,32 +7131,27 @@ test('OPENCODE-CMD-05: {{COMMAND_PREFIX}} resolves to the opencode prefix in bod
 
     // Uppercase braces are registry variables; lowercase ones like {{version}}
     // are placeholders the command's own prose fills in at run time.
-    for (const file of installedCommandFiles(targetDir)) {
-      const text = fs.readFileSync(path.join(targetDir, 'command', file), 'utf8');
+    const records = readOpencodeCommandManifest(targetDir).commands;
+    for (const record of records) {
+      const text = record.description + '\n' + record.template;
       const unresolved = text.match(/\{\{[A-Z][A-Z0-9_]*\}\}/g) || [];
       assert.deepStrictEqual(
         unresolved,
         [],
-        `no registry variable may survive into a converted command: ${file} (OPENCODE-CMD-05)`,
+        `no registry variable may survive into a converted command: ${record.name} (OPENCODE-CMD-05)`,
       );
     }
 
-    const mapCodebase = fs.readFileSync(
-      path.join(targetDir, 'command', 'gsd-map-codebase.md'),
-      'utf8',
-    );
+    const mapCodebase = records.find((entry) => entry.name === 'gsd-map-codebase').template;
     assert.ok(
       mapCodebase.includes('/gsd-new-project'),
       '{{COMMAND_PREFIX}} must resolve to /gsd- in a converted body (OPENCODE-CMD-05)',
     );
 
-    const research = fs.readFileSync(
-      path.join(targetDir, 'command', 'gsd-research-phase.md'),
-      'utf8',
-    );
+    const research = records.find((entry) => entry.name === 'gsd-research-phase');
     assert.match(
-      research,
-      /^description: .*\/gsd-plan-phase/m,
+      research.description,
+      /\/gsd-plan-phase/,
       'a {{COMMAND_PREFIX}} inside frontmatter must resolve too (OPENCODE-CMD-05)',
     );
   } finally {
@@ -6779,39 +7159,513 @@ test('OPENCODE-CMD-05: {{COMMAND_PREFIX}} resolves to the opencode prefix in bod
   }
 });
 
-test('OPENCODE-CMD-06: @ references resolve without shell expansion in both scopes', () => {
+test('OPENCODE-CMD-06: package attachments are recursively inlined in both scopes', () => {
   const localTmp = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-cmd-06a-'));
   const globalTmp = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-cmd-06b-'));
   try {
     const localDir = installOpencode(localTmp, 'local');
-    const localProgress = fs.readFileSync(
-      path.join(localDir, 'command', 'gsd-progress.md'),
-      'utf8',
-    );
+    const localProgress = readOpencodeCommandManifest(localDir).commands.find(
+      (entry) => entry.name === 'gsd-progress',
+    ).template;
     assert.ok(
-      localProgress.includes('@.opencode/gsd-ng/workflows/progress.md'),
-      'a local install references the workflow by project-relative path (OPENCODE-CMD-06)',
+      localProgress.includes(
+        'BEGIN GSD STATIC ATTACHMENT: workflows/progress.md',
+      ),
+      'a local install must contain model-visible workflow content (OPENCODE-CMD-06)',
+    );
+    assert.ok(localProgress.includes('<purpose>'));
+    assert.ok(
+      !localProgress.includes('@.opencode/gsd-ng/workflows/progress.md'),
     );
 
     const globalDir = installOpencode(globalTmp, 'global');
-    const globalProgress = fs.readFileSync(
-      path.join(globalDir, 'command', 'gsd-progress.md'),
-      'utf8',
+    const globalProgress = readOpencodeCommandManifest(globalDir).commands.find(
+      (entry) => entry.name === 'gsd-progress',
+    ).template;
+    assert.ok(
+      globalProgress.includes(
+        'BEGIN GSD STATIC ATTACHMENT: workflows/progress.md',
+      ),
+      'a global install must contain model-visible workflow content (OPENCODE-CMD-06)',
     );
     assert.ok(
-      globalProgress.includes('@' + path.join(globalDir, 'gsd-ng/workflows/progress.md')),
-      'a global install references the workflow by resolved absolute path, since ' +
-        'whether opencode expands ~ or $HOME inside an @ reference is unverified ' +
-        '(OPENCODE-CMD-06)\nActual: ' +
-        (globalProgress.match(/@\S*workflows\/progress\.md/) || ['none'])[0],
-    );
-    assert.ok(
-      !/@~\//.test(globalProgress),
-      'no tilde-prefixed @ reference may survive a global install (OPENCODE-CMD-06)',
+      !globalProgress.includes(
+        '@' + path.join(globalDir, 'gsd-ng/workflows/progress.md'),
+      ),
+      'a global install must not rely on a literal package attachment path (OPENCODE-CMD-06)',
     );
   } finally {
     cleanup(localTmp);
     cleanup(globalTmp);
+  }
+});
+
+test('OPENCODE-CMD-07: nested package attachments inline recursively and diagnose missing files and cycles', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-static-'));
+  try {
+    fs.mkdirSync(path.join(sourceRoot, 'workflows'), { recursive: true });
+    fs.mkdirSync(path.join(sourceRoot, 'references'), { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceRoot, 'workflows', 'root.md'),
+      'ROOT BODY\n@~/.claude/gsd-ng/references/nested.md\n',
+    );
+    fs.writeFileSync(
+      path.join(sourceRoot, 'references', 'nested.md'),
+      'NESTED BODY\n',
+    );
+
+    const rendered = convertClaudeCommandToOpencodeCommand(
+      '@~/.claude/gsd-ng/workflows/root.md\n',
+      false,
+      undefined,
+      sourceRoot,
+    );
+    assert.match(rendered, /BEGIN GSD STATIC ATTACHMENT: workflows\/root\.md/);
+    assert.match(rendered, /ROOT BODY/);
+    assert.match(
+      rendered,
+      /BEGIN GSD STATIC ATTACHMENT: references\/nested\.md/,
+    );
+    assert.match(rendered, /NESTED BODY/);
+    assert.doesNotMatch(
+      rendered,
+      /@.*gsd-ng\/(?:workflows|references|templates)\//,
+    );
+
+    assert.throws(
+      () =>
+        convertClaudeCommandToOpencodeCommand(
+          '@~/.claude/gsd-ng/workflows/missing.md\n',
+          false,
+          undefined,
+          sourceRoot,
+        ),
+      /missing static attachment.*workflows\/missing\.md/i,
+    );
+
+    fs.writeFileSync(
+      path.join(sourceRoot, 'workflows', 'cycle-a.md'),
+      '@~/.claude/gsd-ng/references/cycle-b.md\n',
+    );
+    fs.writeFileSync(
+      path.join(sourceRoot, 'references', 'cycle-b.md'),
+      '@~/.claude/gsd-ng/workflows/cycle-a.md\n',
+    );
+    assert.throws(
+      () =>
+        convertClaudeCommandToOpencodeCommand(
+          '@~/.claude/gsd-ng/workflows/cycle-a.md\n',
+          false,
+          undefined,
+          sourceRoot,
+        ),
+      /static attachment cycle.*cycle-a.*cycle-b.*cycle-a/i,
+    );
+  } finally {
+    cleanup(sourceRoot);
+  }
+});
+
+test('OPENCODE-CMD-08: dynamic project attachments remain runtime reads', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-dynamic-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      'INSTALL-TIME SECRET',
+    );
+    const rendered = convertClaudeCommandToOpencodeCommand(
+      '@.planning/STATE.md\n',
+      false,
+      undefined,
+      ENGINE_SOURCE_DIR,
+    );
+    assert.match(rendered, /runtime.*read.*\.planning\/STATE\.md/i);
+    assert.doesNotMatch(rendered, /INSTALL-TIME SECRET/);
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('argument transport native discovery: evaluator-faithful process spy sees the legacy defect but no installed public command', () => {
+  const hostile = '!`printf OPEN_CODE_ARGUMENT_EXECUTION`';
+  const source = fs.readFileSync(
+    path.join(COMMAND_SOURCE_DIR, 'new-project.md'),
+    'utf8',
+  );
+  const legacy = convertClaudeCommandToOpencodeCommand(
+    source,
+    false,
+    undefined,
+    ENGINE_SOURCE_DIR,
+  );
+  const legacyCaptured = [];
+  evaluateNativeOpencodeTemplate(legacy, hostile, (sourceText) => {
+    legacyCaptured.push(sourceText);
+  });
+  assert.deepStrictEqual(legacyCaptured, ['printf OPEN_CODE_ARGUMENT_EXECUTION']);
+
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-native-boundary-'));
+  try {
+    const targetDir = installOpencode(tmpDir, 'local');
+    const installedNative = installedCommandFiles(targetDir);
+    const fixedCaptured = [];
+    for (const relative of installedNative) {
+      const template = fs.readFileSync(path.join(targetDir, relative), 'utf8');
+      evaluateNativeOpencodeTemplate(template, hostile, (sourceText) => {
+        fixedCaptured.push(sourceText);
+      });
+    }
+    assert.deepStrictEqual(
+      installedNative,
+      [],
+      'GSD public commands must be absent from native discovery; ' +
+        `the unfixed evaluator process spy captured ${JSON.stringify(legacyCaptured)}`,
+    );
+    assert.deepStrictEqual(fixedCaptured, []);
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('command manifest generation fails closed on unknown or input-dependent native shell blocks', () => {
+  const wrap = (body) =>
+    `---\ndescription: Synthetic command\n---\n${body}\n`;
+  assert.throws(
+    () =>
+      buildOpencodeCommandRecord(
+        'gsd-synthetic',
+        wrap('!`printf unknown`'),
+        false,
+        undefined,
+        ENGINE_SOURCE_DIR,
+      ),
+    /unrecognized.*shell|prelude/i,
+  );
+  assert.throws(
+    () =>
+      buildOpencodeCommandRecord(
+        'gsd-synthetic',
+        wrap(
+          '!`node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" cleanup $ARGUMENTS`',
+        ),
+        false,
+        undefined,
+        ENGINE_SOURCE_DIR,
+      ),
+    /argument|positional|prelude/i,
+  );
+});
+
+test('stale command cleanup: normal OpenCode upgrade removes only exact managed native names from both discovery directories', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-stale-command-'));
+  try {
+    const targetDir = path.join(tmpDir, '.opencode');
+    const stalePaths = [
+      writeFileAt(targetDir, 'command', 'gsd-new-project.md', 'stale'),
+      writeFileAt(targetDir, 'commands', 'gsd-plan-phase.md', 'stale'),
+    ];
+    const survivors = [
+      writeFileAt(targetDir, 'command', 'gsd-custom.md', 'user'),
+      writeFileAt(targetDir, 'commands', 'notes.md', 'user'),
+    ];
+    fs.writeFileSync(
+      path.join(targetDir, 'gsd-file-manifest.json'),
+      JSON.stringify({
+        schema_version: 2,
+        files: {
+          'command/gsd-new-project.md': crypto
+            .createHash('sha256')
+            .update('stale')
+            .digest('hex'),
+          'commands/gsd-plan-phase.md': crypto
+            .createHash('sha256')
+            .update('stale')
+            .digest('hex'),
+        },
+      }),
+    );
+
+    installOpencode(tmpDir, 'local');
+    for (const stale of stalePaths) assert.ok(!fs.existsSync(stale), stale);
+    for (const survivor of survivors) assert.ok(fs.existsSync(survivor), survivor);
+
+    const regularManifest = readManifest(targetDir);
+    assert.ok(
+      regularManifest.files['gsd-ng/opencode-commands.json'],
+      'the regular file manifest must hash the generated command manifest',
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('stale command cleanup: known managed names are retired without a usable old manifest', () => {
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-stale-no-manifest-'));
+  try {
+    const targetDir = path.join(tmpDir, '.opencode');
+    const stale = writeFileAt(
+      targetDir,
+      'commands',
+      'gsd-progress.md',
+      'stale',
+    );
+    const custom = writeFileAt(
+      targetDir,
+      'commands',
+      'gsd-custom.md',
+      'user',
+    );
+    fs.writeFileSync(path.join(targetDir, 'gsd-file-manifest.json'), '{bad');
+
+    installOpencode(tmpDir, 'local');
+    assert.ok(!fs.existsSync(stale));
+    assert.ok(fs.existsSync(custom));
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('argument transport: every consumer binds exact input once as inert prompt data', () => {
+  assert.strictEqual(ARGUMENT_CONSUMERS.length, 28);
+  for (const [command, workflow] of ARGUMENT_CONSUMERS) {
+    const source = fs.readFileSync(
+      path.join(COMMAND_SOURCE_DIR, command),
+      'utf8',
+    );
+    assert.strictEqual(
+      (source.match(/\$ARGUMENTS/g) || []).length,
+      1,
+      `${command} must contain exactly one raw argument placeholder`,
+    );
+    assert.ok(
+      source.includes('<arguments>\n$ARGUMENTS\n</arguments>'),
+      `${command} must bind arguments in the canonical inert block`,
+    );
+    for (const block of shellBlocksOf(source)) {
+      assert.ok(
+        !block.includes('$ARGUMENTS'),
+        `${command} exposes raw arguments in shell source`,
+      );
+    }
+    if (workflow) {
+      const attached = fs.readFileSync(
+        path.join(ENGINE_SOURCE_DIR, workflow),
+        'utf8',
+      );
+      assert.ok(
+        !attached.includes('$ARGUMENTS'),
+        `${workflow} must consume the bound arguments block without duplicating the placeholder`,
+      );
+    }
+  }
+  const phaseParsing = fs.readFileSync(
+    path.join(ENGINE_SOURCE_DIR, 'references', 'phase-argument-parsing.md'),
+    'utf8',
+  );
+  assert.ok(!phaseParsing.includes('$ARGUMENTS'));
+});
+
+test('argument transport: OpenCode replacement preserves the adversarial corpus byte-for-byte', () => {
+  const source = fs.readFileSync(
+    path.join(COMMAND_SOURCE_DIR, 'new-project.md'),
+    'utf8',
+  );
+  const converted = convertClaudeCommandToOpencodeCommand(
+    source,
+    false,
+    undefined,
+    ENGINE_SOURCE_DIR,
+  );
+  for (const input of ARGUMENT_CORPUS) {
+    const prompt = converted.replaceAll('$ARGUMENTS', () => input);
+    const match = prompt.match(/<arguments>\n([\s\S]*?)\n<\/arguments>/);
+    assert.ok(
+      match,
+      `rendered prompt must retain the arguments block for ${JSON.stringify(input)}`,
+    );
+    assert.strictEqual(
+      match[1],
+      input,
+      `argument bytes changed for ${JSON.stringify(input)}`,
+    );
+  }
+});
+
+test('argument transport: every registered runtime installs the same inert-input contract', () => {
+  const sourceConsumers = fs
+    .readdirSync(COMMAND_SOURCE_DIR)
+    .filter((file) => file.endsWith('.md'))
+    .filter((file) =>
+      fs
+        .readFileSync(path.join(COMMAND_SOURCE_DIR, file), 'utf8')
+        .includes('$ARGUMENTS'),
+    )
+    .sort();
+
+  assert.strictEqual(
+    sourceConsumers.length,
+    28,
+    'the integration census must discover every argument consumer from source',
+  );
+
+  for (const [runtime, runtimeSpec] of Object.entries(RUNTIMES)) {
+    const tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, `gsd-argument-parity-${runtime}-`),
+    );
+    try {
+      const dynamicSentinel = `INSTALL-TIME-DYNAMIC-${runtime}`;
+      fs.mkdirSync(path.join(tmpDir, '.planning'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, '.planning', 'STATE.md'),
+        dynamicSentinel,
+      );
+      const targetDir = runHarnessInstall(tmpDir, {
+        runtime,
+        scope: 'local',
+      });
+      const commandLayout = runtimeSpec.layout.commands;
+      const opencodeRecords =
+        runtime === 'opencode'
+          ? new Map(
+              readOpencodeCommandManifest(targetDir).commands.map((entry) => [
+                entry.name,
+                entry,
+              ]),
+            )
+          : null;
+
+      for (const sourceFile of sourceConsumers) {
+        const skip =
+          runtime === 'opencode'
+            ? runtimeSpec.layout.commandManifest.skip
+            : commandLayout.skip;
+        if (skip.includes(sourceFile)) continue;
+
+        const commandName = path.basename(sourceFile, '.md');
+        const installedRelpath =
+          runtime === 'opencode'
+            ? `gsd-ng/opencode-commands.json#gsd-${commandName}`
+            : path.join(
+                commandLayout.dir,
+                commandLayout.pattern.replace('<name>', commandName),
+              );
+
+        const source = fs.readFileSync(
+          path.join(COMMAND_SOURCE_DIR, sourceFile),
+          'utf8',
+        );
+        let installed;
+        if (runtime === 'opencode') {
+          const record = opencodeRecords.get(`gsd-${commandName}`);
+          assert.ok(record, `${runtime} must install argument consumer ${sourceFile}`);
+          installed = record.template;
+        } else {
+          const installedPath = path.join(targetDir, installedRelpath);
+          assert.ok(
+            fs.existsSync(installedPath),
+            `${runtime} must install argument consumer ${sourceFile}`,
+          );
+          installed = fs.readFileSync(installedPath, 'utf8');
+        }
+        assert.strictEqual(
+          (installed.match(/\$ARGUMENTS/g) || []).length,
+          1,
+          `${runtime}/${installedRelpath} must contain one raw placeholder`,
+        );
+        assert.ok(
+          installed.includes('<arguments>\n$ARGUMENTS\n</arguments>'),
+          `${runtime}/${installedRelpath} must retain the canonical inert block`,
+        );
+        for (const block of shellBlocksOf(installed)) {
+          assert.ok(
+            !block.includes('$ARGUMENTS'),
+            `${runtime}/${installedRelpath} exposes raw input in shell source`,
+          );
+        }
+
+        for (const input of ARGUMENT_CORPUS) {
+          const rendered = installed.replaceAll('$ARGUMENTS', () => input);
+          const match = rendered.match(
+            /<arguments>\n([\s\S]*?)\n<\/arguments>/,
+          );
+          assert.ok(
+            match,
+            `${runtime}/${installedRelpath} lost its inert block for ${JSON.stringify(input)}`,
+          );
+          assert.strictEqual(
+            match[1],
+            input,
+            `${runtime}/${installedRelpath} changed input bytes for ${JSON.stringify(input)}`,
+          );
+        }
+
+        for (const match of installed.matchAll(
+          /guard sync-chain\s+([^\s`]+)/g,
+        )) {
+          assert.ok(
+            ['enter', 'preserve', 'reset'].includes(match[1]),
+            `${runtime}/${installedRelpath} derives sync-chain from ${match[1]}`,
+          );
+        }
+
+        const staticAttachments = [
+          ...source.matchAll(
+            /^@.*gsd-ng\/((?:workflows|references|templates)\/[^\s]+)$/gm,
+          ),
+        ].map((match) => match[1]);
+        for (const attachment of staticAttachments) {
+          if (runtime === 'opencode') {
+            assert.ok(
+              installed.includes(`BEGIN GSD STATIC ATTACHMENT: ${attachment}`),
+              `${runtime}/${installedRelpath} must inline ${attachment}`,
+            );
+            assert.ok(
+              !installed.match(
+                new RegExp(
+                  `^@.*gsd-ng/${attachment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+                  'm',
+                ),
+              ),
+              `${runtime}/${installedRelpath} must not retain ${attachment} as a required path`,
+            );
+          } else {
+            assert.match(
+              installed,
+              new RegExp(
+                `^@.*gsd-ng/${attachment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+                'm',
+              ),
+              `${runtime}/${installedRelpath} must retain attachment ${attachment}`,
+            );
+          }
+        }
+
+        for (const [, attachment] of source.matchAll(
+          /^@(\.planning\/[^\s]+)$/gm,
+        )) {
+          assert.ok(
+            installed.includes(attachment),
+            `${runtime}/${installedRelpath} must retain dynamic path ${attachment}`,
+          );
+          if (runtime === 'opencode') {
+            assert.match(
+              installed,
+              new RegExp(
+                `runtime.*read.*${attachment.replace('.', '\\.')}`,
+                'i',
+              ),
+            );
+          }
+        }
+        assert.ok(
+          !installed.includes(dynamicSentinel),
+          `${runtime}/${installedRelpath} must not snapshot changing project content`,
+        );
+      }
+    } finally {
+      cleanup(tmpDir);
+    }
   }
 });
 
@@ -6848,7 +7702,9 @@ function syntheticAgent(toolsLines, color = 'cyan') {
   ].join('\n');
 }
 
-const INLINE_TOOLS_AGENT = syntheticAgent(['tools: ' + SAMPLE_TOOLS.join(', ')]);
+const INLINE_TOOLS_AGENT = syntheticAgent([
+  'tools: ' + SAMPLE_TOOLS.join(', '),
+]);
 const BLOCK_TOOLS_AGENT = syntheticAgent([
   'tools:',
   ...SAMPLE_TOOLS.map((t) => '  - ' + t),
@@ -6878,7 +7734,11 @@ test('OPENCODE-AGT-01: every source agent installs as a subagent', () => {
       .filter((f) => f.startsWith('gsd-') && f.endsWith('.md'));
     const installed = installedAgentFiles(targetDir);
 
-    assert.strictEqual(sources.length, 15, 'the source agent count changed (OPENCODE-AGT-01)');
+    assert.strictEqual(
+      sources.length,
+      15,
+      'the source agent count changed (OPENCODE-AGT-01)',
+    );
     assert.strictEqual(
       installed.length,
       15,
@@ -6903,11 +7763,17 @@ test('OPENCODE-AGT-01: every source agent installs as a subagent', () => {
 });
 
 test('OPENCODE-AGT-02: a tools block list converts to the same permission map as the inline form', () => {
-  const fromInline = convertClaudeAgentToOpencodeAgent(INLINE_TOOLS_AGENT, false);
+  const fromInline = convertClaudeAgentToOpencodeAgent(
+    INLINE_TOOLS_AGENT,
+    false,
+  );
   const fromBlock = convertClaudeAgentToOpencodeAgent(BLOCK_TOOLS_AGENT, false);
 
   const inlineBlock = permissionBlockOf(fromInline);
-  assert.ok(inlineBlock, 'the inline form must produce a permission block (OPENCODE-AGT-02)');
+  assert.ok(
+    inlineBlock,
+    'the inline form must produce a permission block (OPENCODE-AGT-02)',
+  );
   assert.strictEqual(
     permissionBlockOf(fromBlock),
     inlineBlock,
@@ -6921,7 +7787,10 @@ test('OPENCODE-AGT-02: a tools block list converts to the same permission map as
 });
 
 test('OPENCODE-AGT-03: the copilot converter reads the block-list form too', () => {
-  const fromInline = convertClaudeAgentToCopilotAgent(INLINE_TOOLS_AGENT, false);
+  const fromInline = convertClaudeAgentToCopilotAgent(
+    INLINE_TOOLS_AGENT,
+    false,
+  );
   const fromBlock = convertClaudeAgentToCopilotAgent(BLOCK_TOOLS_AGENT, false);
 
   assert.match(
@@ -6977,7 +7846,9 @@ test('OPENCODE-AGT-04: each Claude tool name maps to its opencode permission id'
 
 test('OPENCODE-AGT-05: a tool with no opencode equivalent is dropped, not passed through', () => {
   const converted = convertClaudeAgentToOpencodeAgent(
-    syntheticAgent(['tools: Read, SlashCommand, mcp__context7__resolve-library-id']),
+    syntheticAgent([
+      'tools: Read, SlashCommand, mcp__context7__resolve-library-id',
+    ]),
     false,
   );
   assert.strictEqual(
@@ -6994,7 +7865,10 @@ test('OPENCODE-AGT-06: no mcp__ tool name reaches a converted agent file', () =>
     const offenders = [];
     for (const file of installedAgentFiles(targetDir)) {
       const text = fs.readFileSync(path.join(targetDir, 'agent', file), 'utf8');
-      const frontmatter = (text.match(/^---\n([\s\S]*?)\n---\n/) || ['', ''])[1];
+      const frontmatter = (text.match(/^---\n([\s\S]*?)\n---\n/) || [
+        '',
+        '',
+      ])[1];
       if (frontmatter.includes('mcp__')) offenders.push(file);
     }
     assert.deepStrictEqual(
@@ -7065,7 +7939,11 @@ test('OPENCODE-AGT-09: a converted agent drops name: and keeps effort:', () => {
     !/^name:/m.test(converted),
     'opencode injects the agent name from the file path (OPENCODE-AGT-09)',
   );
-  assert.match(converted, /^effort: high$/m, 'effort: must survive for the effort sync (OPENCODE-AGT-09)');
+  assert.match(
+    converted,
+    /^effort: high$/m,
+    'effort: must survive for the effort sync (OPENCODE-AGT-09)',
+  );
   assert.match(converted, /^description: A sample agent$/m);
 });
 
@@ -7078,14 +7956,14 @@ const OPENCODE_PAYLOAD_FILES = [
   'gsd-check-update.js',
 ];
 
-test('OPENCODE-PLUG-01: an opencode install writes plugin/gsd-core.js from the plugin source', () => {
+test('OPENCODE-PLUG-01: an opencode install writes plugins/gsd-core.js from the plugin source', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-plug-01-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
-    const installed = path.join(targetDir, 'plugin', 'gsd-core.js');
+    const installed = path.join(targetDir, 'plugins', 'gsd-core.js');
     assert.ok(
       fs.existsSync(installed),
-      'opencode loads plugins from plugin/*.js — gsd-core.js must be there (OPENCODE-PLUG-01)',
+      'opencode loads plugins from plugins/*.js - gsd-core.js must be there (OPENCODE-PLUG-01)',
     );
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'hooks', 'gsd-opencode-plugin.js'),
@@ -7131,7 +8009,7 @@ test('OPENCODE-PLUG-03: the spawn path the plugin computes for itself resolves t
     // Computed exactly as the plugin computes it: from its own directory, up to
     // the config home, then into the engine tree. Two correct-looking halves
     // that do not meet is the copilot defect this asserts against.
-    const pluginDir = path.join(targetDir, 'plugin');
+    const pluginDir = path.join(targetDir, 'plugins');
     const spawnTarget = path.join(
       pluginDir,
       '..',
@@ -7158,7 +8036,7 @@ test('OPENCODE-PLUG-04: no CommonJS marker lands in an opencode tree', () => {
       assert.ok(
         !/"type"\s*:\s*"commonjs"/.test(marker),
         'a .js plugin under a commonjs package.json is parsed as CommonJS, ' +
-          "where `export` is a syntax error (OPENCODE-PLUG-04)",
+          'where `export` is a syntax error (OPENCODE-PLUG-04)',
       );
     }
   } finally {
@@ -7166,14 +8044,14 @@ test('OPENCODE-PLUG-04: no CommonJS marker lands in an opencode tree', () => {
   }
 });
 
-test('OPENCODE-PLUG-05: plugin/ holds exactly one GSD file', () => {
+test('OPENCODE-PLUG-05: plugins/ holds exactly one GSD file', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-plug-05-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
     // The plugin glob is flat, so anything else GSD dropped here would be
     // loaded as a plugin in its own right.
     assert.deepStrictEqual(
-      fs.readdirSync(path.join(targetDir, 'plugin')).sort(),
+      fs.readdirSync(path.join(targetDir, 'plugins')).sort(),
       ['gsd-core.js'],
       'GSD must write one plugin file and nothing else (OPENCODE-PLUG-05)',
     );
@@ -7186,8 +8064,14 @@ test('OPENCODE-PLUG-06: uninstall removes gsd-core.js and leaves a user plugin a
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-oc-plug-06-'));
   try {
     const targetDir = installOpencode(tmpDir, 'local');
-    const userPlugin = path.join(targetDir, 'plugin', 'mine.js');
+    const userPlugin = path.join(targetDir, 'plugins', 'mine.js');
     fs.writeFileSync(userPlugin, 'export default async () => ({});\n');
+    const legacyDir = path.join(targetDir, 'plugin');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    const legacyPlugin = path.join(legacyDir, 'gsd-core.js');
+    const legacyUserPlugin = path.join(legacyDir, 'mine.js');
+    fs.writeFileSync(legacyPlugin, 'legacy GSD plugin\n');
+    fs.writeFileSync(legacyUserPlugin, 'user plugin\n');
 
     const result = spawnSync(
       process.execPath,
@@ -7207,13 +8091,15 @@ test('OPENCODE-PLUG-06: uninstall removes gsd-core.js and leaves a user plugin a
     );
 
     assert.ok(
-      !fs.existsSync(path.join(targetDir, 'plugin', 'gsd-core.js')),
+      !fs.existsSync(path.join(targetDir, 'plugins', 'gsd-core.js')),
       'the GSD plugin must be removed (OPENCODE-PLUG-06)',
     );
+    assert.ok(!fs.existsSync(legacyPlugin), 'the retired singular-path plugin must be removed');
     assert.ok(
       fs.existsSync(userPlugin),
       'a user-authored plugin must survive uninstall (OPENCODE-PLUG-06)',
     );
+    assert.ok(fs.existsSync(legacyUserPlugin), 'a user plugin under the retired directory must survive');
   } finally {
     cleanup(tmpDir);
   }
@@ -7270,7 +8156,9 @@ test('COPILOT-HOOKPATH-01: the script a copilot local install points its hook at
       `the hook descriptor names a script that must exist: ${named} (COPILOT-HOOKPATH-01)`,
     );
     assert.ok(
-      fs.existsSync(path.join(tmpDir, '.github', 'gsd-ng', 'hooks', 'gsd-hook-stdin.cjs')),
+      fs.existsSync(
+        path.join(tmpDir, '.github', 'gsd-ng', 'hooks', 'gsd-hook-stdin.cjs'),
+      ),
       'the update check requires the stdin reader beside it (COPILOT-HOOKPATH-01)',
     );
   } finally {
@@ -7427,7 +8315,7 @@ test('RULES-03: uninstall strips the block and leaves the user content byte-iden
     assert.strictEqual(
       fs.readFileSync(agentsPath, 'utf8'),
       USER_PARAGRAPH,
-      'every byte outside the markers is the user\'s (RULES-03)',
+      "every byte outside the markers is the user's (RULES-03)",
     );
   } finally {
     cleanup(tmpDir);
@@ -7568,13 +8456,22 @@ test('RULES-09: one template serves both runtimes through ONLY blocks', () => {
   );
   assert.ok(
     !fs.existsSync(
-      path.join(__dirname, '..', 'gsd-ng', 'templates', 'copilot-instructions.md'),
+      path.join(
+        __dirname,
+        '..',
+        'gsd-ng',
+        'templates',
+        'copilot-instructions.md',
+      ),
     ),
     'the copilot-shaped template it replaced must be gone (RULES-09)',
   );
 
   const raw = fs.readFileSync(templatePath, 'utf8');
-  assert.ok(raw.includes('ONLY:copilot'), 'copilot has its own surface (RULES-09)');
+  assert.ok(
+    raw.includes('ONLY:copilot'),
+    'copilot has its own surface (RULES-09)',
+  );
   assert.ok(raw.includes('ONLY:opencode'), 'so does opencode (RULES-09)');
 });
 
@@ -7584,7 +8481,12 @@ test('RULES-10: an opencode install describes opencode surfaces, not copilot one
     installOpencode(tmpDir, 'local');
     const content = fs.readFileSync(path.join(tmpDir, 'AGENTS.md'), 'utf8');
 
-    for (const expected of ['command/gsd-', 'agent/gsd-', 'plugin/gsd-core.js', 'gsd-ng/workflows/']) {
+    for (const expected of [
+      'command/gsd-',
+      'agent/gsd-',
+      'plugin/gsd-core.js',
+      'gsd-ng/workflows/',
+    ]) {
       assert.ok(
         content.includes(expected),
         `the block must name ${expected} (RULES-10)\nGot:\n${content}`,
@@ -7592,7 +8494,7 @@ test('RULES-10: an opencode install describes opencode surfaces, not copilot one
     }
     assert.ok(
       !content.includes('skills/gsd-'),
-      'copilot\'s skills directory has no meaning in opencode (RULES-10)',
+      "copilot's skills directory has no meaning in opencode (RULES-10)",
     );
     assert.ok(
       !content.includes('ONLY:'),
@@ -7624,7 +8526,8 @@ test('RULES-11: the copilot block text is unchanged by the template unification'
     assert.strictEqual(
       result.status,
       0,
-      'copilot local install must exit 0 (RULES-11)\nstderr: ' + (result.stderr || ''),
+      'copilot local install must exit 0 (RULES-11)\nstderr: ' +
+        (result.stderr || ''),
     );
 
     const content = fs.readFileSync(
@@ -7712,8 +8615,16 @@ test('SEED-02: a pre-existing key survives the seed untouched', () => {
     installOpencode(tmpDir, 'local');
 
     const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    assert.strictEqual(parsed.theme, 'x', 'the user key is the user\'s (SEED-02)');
-    assert.strictEqual(parsed.$schema, OC_SCHEMA, 'and the seed key is added (SEED-02)');
+    assert.strictEqual(
+      parsed.theme,
+      'x',
+      "the user key is the user's (SEED-02)",
+    );
+    assert.strictEqual(
+      parsed.$schema,
+      OC_SCHEMA,
+      'and the seed key is added (SEED-02)',
+    );
   } finally {
     cleanup(tmpDir);
   }
@@ -7798,7 +8709,7 @@ test('SEED-06: uninstall leaves opencode.json in place', () => {
 
     assert.ok(
       fs.existsSync(cfgPath),
-      'GSD added a key to the runtime\'s own config file — it does not own the ' +
+      "GSD added a key to the runtime's own config file — it does not own the " +
         'file (SEED-06)',
     );
     assert.strictEqual(
@@ -7878,9 +8789,13 @@ function seedExceptionFor(scope) {
 
 for (const scope of ['global', 'local']) {
   test(`SYMMETRY-01 (${scope}): an opencode install and uninstall round-trips an empty tree`, () => {
-    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, `gsd-sym-01-${scope}-`));
+    const tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, `gsd-sym-01-${scope}-`),
+    );
     try {
-      const { diff } = opencodeRoundTrip(tmpDir, scope, { withUserFiles: false });
+      const { diff } = opencodeRoundTrip(tmpDir, scope, {
+        withUserFiles: false,
+      });
       assert.deepStrictEqual(
         diff,
         { changed: [], added: [seedExceptionFor(scope)], removed: [] },
@@ -7893,9 +8808,13 @@ for (const scope of ['global', 'local']) {
   });
 
   test(`SYMMETRY-02 (${scope}): a tree of user files round-trips unchanged`, () => {
-    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, `gsd-sym-02-${scope}-`));
+    const tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, `gsd-sym-02-${scope}-`),
+    );
     try {
-      const { diff } = opencodeRoundTrip(tmpDir, scope, { withUserFiles: true });
+      const { diff } = opencodeRoundTrip(tmpDir, scope, {
+        withUserFiles: true,
+      });
       assert.deepStrictEqual(
         diff,
         { changed: [], added: [seedExceptionFor(scope)], removed: [] },
@@ -7936,7 +8855,9 @@ for (const scope of ['global', 'local']) {
   }
 
   test(`SYMMETRY-04 (${scope}): the project-root AGENTS.md comes back exactly as it was`, () => {
-    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, `gsd-sym-04-${scope}-`));
+    const tmpDir = fs.mkdtempSync(
+      path.join(BASE_TMPDIR, `gsd-sym-04-${scope}-`),
+    );
     try {
       opencodeRoundTrip(tmpDir, scope, { withUserFiles: true });
       assert.strictEqual(
@@ -7970,7 +8891,8 @@ function postPassWalk(dir, base, acc) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
     if (entry.isDirectory()) postPassWalk(abs, base, acc);
-    else if (entry.isFile()) acc.push(path.relative(base, abs).split(path.sep).join('/'));
+    else if (entry.isFile())
+      acc.push(path.relative(base, abs).split(path.sep).join('/'));
   }
   return acc;
 }
@@ -7978,7 +8900,11 @@ function postPassWalk(dir, base, acc) {
 /** Files under `dir` still carrying an unresolved registry-key placeholder. */
 function unresolvedRegistryPlaceholders(root, dir) {
   const offenders = [];
-  for (const rel of postPassWalk(path.join(root, ...dir.split('/')), root, [])) {
+  for (const rel of postPassWalk(
+    path.join(root, ...dir.split('/')),
+    root,
+    [],
+  )) {
     const text = fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8');
     const hit = text.match(POSTPASS_PLACEHOLDER_RE);
     if (hit) offenders.push(`${rel} :: ${hit[0]}`);
@@ -8002,7 +8928,9 @@ process.on('exit', () => {
 /** One local install per runtime, reused by every assertion below. */
 function postPassInstall(runtime) {
   if (postPassInstalls.has(runtime)) return postPassInstalls.get(runtime);
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, `gsd-postpass-${runtime}-`));
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, `gsd-postpass-${runtime}-`),
+  );
   postPassTmpDirs.push(tmpDir);
   const result = spawnSync(
     process.execPath,
@@ -8057,7 +8985,10 @@ test('POSTREACH-01: every runtime layout declares a non-empty post-pass director
 });
 
 test('POSTREACH-02: a claude install leaves no registry placeholder under agents/', () => {
-  const offenders = unresolvedRegistryPlaceholders(postPassInstall('claude'), 'agents');
+  const offenders = unresolvedRegistryPlaceholders(
+    postPassInstall('claude'),
+    'agents',
+  );
   assert.deepStrictEqual(
     offenders,
     [],
@@ -8080,7 +9011,11 @@ test('POSTREACH-03: a claude install leaves no registry placeholder under gsd-ng
 test('POSTREACH-04: a copilot install leaves no {{COMMAND_PREFIX}} under gsd-ng/workflows/', () => {
   const root = postPassInstall('copilot');
   const offenders = [];
-  for (const rel of postPassWalk(path.join(root, 'gsd-ng', 'workflows'), root, [])) {
+  for (const rel of postPassWalk(
+    path.join(root, 'gsd-ng', 'workflows'),
+    root,
+    [],
+  )) {
     const text = fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8');
     if (text.includes('{{COMMAND_PREFIX}}')) offenders.push(rel);
   }
@@ -8138,10 +9073,10 @@ test('POSTREACH-06: a file nested under gsd-ng/templates/codebase/ is processed'
 
 test('POSTREACH-07: a file with unbalanced ONLY markers is skipped, not corrupted', () => {
   const { resolveTemplateDir } = require('../bin/install.js');
-  const {
-    buildContext,
-  } = require('../gsd-ng/bin/lib/template-processor.cjs');
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-postpass-markers-'));
+  const { buildContext } = require('../gsd-ng/bin/lib/template-processor.cjs');
+  const tmpDir = fs.mkdtempSync(
+    path.join(BASE_TMPDIR, 'gsd-postpass-markers-'),
+  );
   try {
     const nested = path.join(tmpDir, 'deep', 'deeper');
     fs.mkdirSync(nested, { recursive: true });
@@ -8177,7 +9112,10 @@ test('POSTREACH-07: a file with unbalanced ONLY markers is skipped, not corrupte
 
 test('SWEEP-01: a claude install still renders the claude command prefix and tool name', () => {
   const root = postPassInstall('claude');
-  const planner = fs.readFileSync(path.join(root, 'agents', 'gsd-planner.md'), 'utf8');
+  const planner = fs.readFileSync(
+    path.join(root, 'agents', 'gsd-planner.md'),
+    'utf8',
+  );
   assert.ok(
     planner.includes('/gsd:plan-phase'),
     'a claude install must render /gsd:plan-phase, not the raw placeholder (SWEEP-01)',
@@ -8199,7 +9137,10 @@ test('SWEEP-01: a claude install still renders the claude command prefix and too
 
 test('SWEEP-02: an opencode install renders its own command prefix and tool name', () => {
   const root = postPassInstall('opencode');
-  const planner = fs.readFileSync(path.join(root, 'agent', 'gsd-planner.md'), 'utf8');
+  const planner = fs.readFileSync(
+    path.join(root, 'agent', 'gsd-planner.md'),
+    'utf8',
+  );
   assert.ok(
     planner.includes('/gsd-plan-phase'),
     'an opencode install must render /gsd-plan-phase in the same place (SWEEP-02)',

@@ -8,6 +8,10 @@ allowed-tools:
   - Bash
   - Glob
 ---
+
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Remove an unstarted future phase from the roadmap and renumber all subsequent phases to maintain a clean, linear sequence.
 
@@ -20,7 +24,7 @@ Output: Phase deleted, all subsequent phases renumbered, git commit as historica
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS
+Phase: the exact invocation text in the `<arguments>` block
 
 Roadmap and state are resolved in-workflow via `init phase-op` and targeted reads.
 </context>

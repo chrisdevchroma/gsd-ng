@@ -629,17 +629,19 @@ describe('RUNTIMES layout', () => {
     });
   });
 
-  test('opencode layout describes command/, agent/ and the plugin file rename', () => {
+  test('opencode layout describes the command manifest, agent/ and the plugin file rename', () => {
     const layout = RUNTIMES.opencode.layout;
-    assert.equal(layout.commands.dir, 'command');
-    assert.equal(layout.commands.pattern, 'gsd-<name>.md');
-    assert.equal(layout.commands.converter, 'opencodeCommand');
+    assert.equal(layout.commands, null);
+    assert.equal(layout.commandManifest.path, 'gsd-ng/opencode-commands.json');
     assert.equal(layout.agents.dir, 'agent');
     assert.equal(layout.agents.pattern, 'gsd-<name>.md');
     assert.equal(layout.agents.converter, 'opencodeAgent');
-    assert.equal(layout.plugin.dir, 'plugin');
+    assert.equal(layout.plugin.dir, 'plugins');
     assert.deepEqual(layout.plugin.files, [
       { from: 'hooks/gsd-opencode-plugin.js', to: 'gsd-core.js' },
+    ]);
+    assert.deepEqual(layout.retiredNamedArtifacts, [
+      { dir: 'plugin', files: ['gsd-core.js'] },
     ]);
   });
 
@@ -724,6 +726,7 @@ describe('patternToRemoval', () => {
   test('every layout write pattern yields a usable removal predicate', () => {
     for (const [name, entry] of realRuntimes()) {
       for (const kind of ['commands', 'agents']) {
+        if (!entry.layout[kind]) continue;
         const { prefix, suffix, entryType } = patternToRemoval(
           entry.layout[kind].pattern,
         );

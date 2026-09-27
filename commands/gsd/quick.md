@@ -13,7 +13,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Execute small, ad-hoc tasks with GSD guarantees (atomic commits, STATE.md tracking).
 
@@ -47,7 +49,7 @@ Flags are composable: `--discuss --research --verify` gives discussion + researc
 </execution_context>
 
 <context>
-$ARGUMENTS
+the exact invocation text in the `<arguments>` block
 
 Context files are resolved inside the workflow (`init quick`) and delegated via `<files_to_read>` blocks.
 </context>

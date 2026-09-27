@@ -8,6 +8,9 @@ allowed-tools:
   - Bash
 ---
 
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Add a new integer phase to the end of the current milestone in the roadmap.
 
@@ -23,7 +26,7 @@ Routes to the add-phase workflow which handles:
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (phase description)
+Arguments: the exact invocation text in the `<arguments>` block (phase description)
 
 Roadmap and state are resolved in-workflow via `init phase-op` and targeted tool calls.
 </context>

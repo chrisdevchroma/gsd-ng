@@ -10,6 +10,10 @@ allowed-tools:
   - Agent
   - Write
 ---
+
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Verify milestone achieved its definition of done. Check requirements coverage, cross-phase integration, and end-to-end flows.
 
@@ -21,7 +25,7 @@ Verify milestone achieved its definition of done. Check requirements coverage, c
 </execution_context>
 
 <context>
-Version: $ARGUMENTS (optional — defaults to current milestone)
+Version: the exact invocation text in the `<arguments>` block (optional — defaults to current milestone)
 
 Core planning files are resolved in-workflow (`init milestone-op`) and loaded only as needed.
 

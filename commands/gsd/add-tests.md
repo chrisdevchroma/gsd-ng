@@ -17,7 +17,9 @@ argument-instructions: |
   Example: {{COMMAND_PREFIX}}add-tests 12 focus on edge cases in the pricing module
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Generate unit and E2E tests for a completed phase, using its SUMMARY.md, CONTEXT.md, and VERIFICATION.md as specifications.
 
@@ -31,7 +33,7 @@ Output: Test files committed with message `test(phase-{N}): add unit and E2E tes
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS
+Phase: the exact invocation text in the `<arguments>` block
 
 @.planning/STATE.md
 @.planning/ROADMAP.md

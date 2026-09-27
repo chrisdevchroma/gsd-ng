@@ -14,7 +14,9 @@ allowed-tools:
   - mcp__context7__*
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Create a UI design contract (UI-SPEC.md) for a frontend phase.
 Spawns gsd-ui-researcher to gather design preferences and write the contract.
@@ -27,7 +29,7 @@ Flow: Validate → Research UI → Done
 </execution_context>
 
 <context>
-Phase number: $ARGUMENTS — optional, auto-detects next unplanned phase if omitted.
+Phase number: the exact invocation text in the `<arguments>` block — optional, auto-detects next unplanned phase if omitted.
 </context>
 
 <tool_usage>

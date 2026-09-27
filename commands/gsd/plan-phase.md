@@ -15,7 +15,9 @@ allowed-tools:
   - mcp__context7__*
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
 
@@ -56,7 +58,7 @@ Key constraints:
 </execution_context>
 
 <context>
-Phase number: $ARGUMENTS (optional — auto-detects next unplanned phase if omitted)
+Phase number: the exact invocation text in the `<arguments>` block (optional — auto-detects next unplanned phase if omitted)
 
 **Flags:**
 - `--research` — Force re-research even if RESEARCH.md exists

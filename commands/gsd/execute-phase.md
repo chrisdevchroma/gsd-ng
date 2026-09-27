@@ -14,7 +14,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Execute all plans in a phase using wave-based parallel execution.
 
@@ -29,7 +31,7 @@ Context budget: ~15% orchestrator, 100% fresh per subagent.
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS
+Phase: the exact invocation text in the `<arguments>` block
 
 **Flags:**
 - `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.

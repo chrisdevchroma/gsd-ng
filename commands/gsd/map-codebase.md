@@ -12,7 +12,9 @@ allowed-tools:
   - Agent
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Analyze existing codebase using parallel gsd-codebase-mapper agents to produce structured codebase documents.
 
@@ -52,7 +54,7 @@ Key constraints:
 </execution_context>
 
 <context>
-Focus area: $ARGUMENTS (optional - if provided, tells agents to focus on specific subsystem)
+Focus area: the exact invocation text in the `<arguments>` block (optional - if provided, tells agents to focus on specific subsystem)
 
 **Load project state if exists:**
 Check for .planning/STATE.md - loads context if project already initialized

@@ -825,6 +825,7 @@ milestone: v1.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
+  summarizeMetricsRows,
   stateExtractField,
   stateReplaceField,
 } = require('../gsd-ng/bin/lib/state.cjs');
@@ -1988,6 +1989,56 @@ describe('cmdStateUpdateProgress (state update-progress)', () => {
     '| Phase | Plans | Total | Avg/Plan |',
     '|-------|-------|-------|----------|',
   ];
+
+  const metricsRowCorpus = (eol = '\n') =>
+    [
+      '| Phase | Plans | Total | Avg/Plan |',
+      '|-------|-------|-------|----------|',
+      '| - | - | - | - |',
+      'None yet',
+      '| Phase 70 P01 | 5min | 2 tasks | 3 files |',
+      '| Phase 70 P02 | multi-session | 1 tasks | 1 files |',
+      '| malformed | row |',
+    ].join(eol);
+
+  test('metrics rows have one LF/CRLF interpretation', () => {
+    const expected = { plans: 2, minutes: 5, timed: 1 };
+    assert.deepStrictEqual(summarizeMetricsRows(metricsRowCorpus()), expected);
+    assert.deepStrictEqual(
+      summarizeMetricsRows(metricsRowCorpus('\r\n')),
+      expected,
+    );
+  });
+
+  test('update-progress counts only valid timed and untimed metric rows', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      [
+        ...velocityHeader,
+        '**Velocity:**',
+        '- Total plans completed: 99',
+        '- Average duration: 99 min',
+        '- Total execution time: 99 min',
+        '',
+        ...velocityTableHeader,
+        ...metricsRowCorpus().split('\n').slice(2),
+        '',
+      ].join('\n'),
+    );
+
+    const result = runGsdTools('state update-progress --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.velocity_updated, true, result.output);
+
+    const updated = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      'utf-8',
+    );
+    assert.match(updated, /Total plans completed: 2/);
+    assert.match(updated, /Average duration: 5 min/);
+    assert.match(updated, /Total execution time: 5 min/);
+  });
 
   test('recomputes the velocity block from the metrics table', () => {
     fs.writeFileSync(

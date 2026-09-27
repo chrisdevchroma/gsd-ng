@@ -13,7 +13,9 @@ allowed-tools:
   - Agent
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Validate built features through conversational testing with persistent state.
 
@@ -54,7 +56,7 @@ Key constraints:
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS (optional)
+Phase: the exact invocation text in the `<arguments>` block (optional)
 - If provided: Test specific phase (e.g., "4")
 - If not provided: Check for active sessions or prompt for phase
 

@@ -8,6 +8,9 @@ allowed-tools:
   - Bash
 ---
 
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Insert a decimal phase for urgent work discovered mid-milestone that must be completed between existing integer phases.
 
@@ -21,7 +24,7 @@ Purpose: Handle urgent work discovered during execution without renumbering enti
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (format: <after-phase-number> <description>)
+Arguments: the exact invocation text in the `<arguments>` block (format: <after-phase-number> <description>)
 
 Roadmap and state are resolved in-workflow via `init phase-op` and targeted tool calls.
 </context>
