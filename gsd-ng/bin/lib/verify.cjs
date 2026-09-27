@@ -108,6 +108,253 @@ function runtimeMemoryDir(cwd, spec) {
   return path.join(cwd, ...spec.MEMORY_DIR.replace(/\/+$/, '').split('/'));
 }
 
+const PROJECT_RULE_FILENAMES = new Set([
+  'claude.md',
+  'agents.md',
+  'copilot-instructions.md',
+]);
+const PROJECT_RULE_IMPORT_DEPTH = 4;
+const PROJECT_RULE_NODE_LIMIT = 32;
+
+function maskProjectRuleCode(content) {
+  const maskLine = (line) => line.replace(/[^\r\n]/g, ' ');
+  const lines = String(content).match(/[^\r\n]*(?:\r?\n|$)/g) || [];
+  let fence = null;
+  const withoutFences = lines
+    .map((line) => {
+      const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (!fence && marker) {
+        fence = { char: marker[1][0], length: marker[1].length };
+        return maskLine(line);
+      }
+      if (fence) {
+        const closing = line.match(/^ {0,3}(`+|~+)[ \t]*(?:\r?\n)?$/);
+        if (
+          closing &&
+          closing[1][0] === fence.char &&
+          closing[1].length >= fence.length
+        ) {
+          fence = null;
+        }
+        return maskLine(line);
+      }
+      return line;
+    })
+    .join('');
+  return withoutFences.replace(/(`+)[^`\r\n]*\1/g, (match) => maskLine(match));
+}
+
+function projectRuleImportEdges(content) {
+  const masked = maskProjectRuleCode(content);
+  const edges = [];
+  const atPattern = /(^|[\s([{])@([^\s<>()\[\]{}'"]+)/gm;
+  let match;
+  while ((match = atPattern.exec(masked)) !== null) {
+    const ref = match[2].replace(/[.,;!?]+$/, '');
+    if (ref) edges.push({ index: match.index + match[1].length, ref });
+  }
+
+  const linkPattern =
+    /(^|[^!])\[[^\]\r\n]*\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^)]*["'])?\s*\)/gm;
+  while ((match = linkPattern.exec(masked)) !== null) {
+    const ref = match[2];
+    const pathPart = ref.split(/[?#]/, 1)[0].replace(/\\/g, '/');
+    if (
+      !PROJECT_RULE_FILENAMES.has(path.posix.basename(pathPart).toLowerCase())
+    ) {
+      continue;
+    }
+    edges.push({ index: match.index + match[1].length, ref });
+  }
+
+  return edges.sort((a, b) => a.index - b.index);
+}
+
+function projectRuleMemorySections(content) {
+  const flags = MEMORIES_SECTION.flags.includes('g')
+    ? MEMORIES_SECTION.flags
+    : MEMORIES_SECTION.flags + 'g';
+  return [
+    ...String(content).matchAll(new RegExp(MEMORIES_SECTION.source, flags)),
+  ];
+}
+
+function resolveProjectRuleGraph(cwd, projectRulesFile) {
+  const nodes = [];
+  const diagnostics = [];
+  const visited = new Set();
+  let complete = true;
+
+  const recordDiagnostic = (owner, ref, reason) => {
+    complete = false;
+    diagnostics.push({ owner, ref, reason });
+  };
+
+  const visit = (absolutePath, relativePath, depth) => {
+    let content;
+    try {
+      content = fs.readFileSync(absolutePath, 'utf-8');
+    } catch {
+      recordDiagnostic(relativePath, relativePath, 'target is not readable');
+      return;
+    }
+
+    visited.add(absolutePath);
+    const memoriesSections = projectRuleMemorySections(content);
+    nodes.push({
+      absolutePath,
+      relativePath,
+      content,
+      memoriesSection: memoriesSections[0] || null,
+      memoriesSectionCount: memoriesSections.length,
+    });
+
+    for (const edge of projectRuleImportEdges(content)) {
+      if (
+        /^[A-Za-z][A-Za-z0-9+.-]*:/.test(edge.ref) ||
+        edge.ref.startsWith('//')
+      ) {
+        recordDiagnostic(
+          relativePath,
+          edge.ref,
+          'external URL or unsupported scheme',
+        );
+        continue;
+      }
+
+      const requested = path.isAbsolute(edge.ref)
+        ? path.resolve(edge.ref)
+        : path.resolve(path.dirname(absolutePath), edge.ref);
+      const candidate = path.relative(cwd, requested);
+      const checked = validatePath(candidate, cwd);
+      if (!checked.safe) {
+        recordDiagnostic(relativePath, edge.ref, 'path escapes project root');
+        continue;
+      }
+      if (!fs.existsSync(checked.resolved)) {
+        recordDiagnostic(relativePath, edge.ref, 'target does not exist');
+        continue;
+      }
+
+      let stat;
+      try {
+        stat = fs.statSync(checked.resolved);
+      } catch {
+        recordDiagnostic(relativePath, edge.ref, 'target is not readable');
+        continue;
+      }
+      if (!stat.isFile()) {
+        recordDiagnostic(
+          relativePath,
+          edge.ref,
+          'target is not a regular file',
+        );
+        continue;
+      }
+      try {
+        fs.accessSync(checked.resolved, fs.constants.R_OK);
+      } catch {
+        recordDiagnostic(relativePath, edge.ref, 'target is not readable');
+        continue;
+      }
+
+      if (visited.has(checked.resolved)) continue;
+      if (depth >= PROJECT_RULE_IMPORT_DEPTH) {
+        recordDiagnostic(
+          relativePath,
+          edge.ref,
+          `import depth limit ${PROJECT_RULE_IMPORT_DEPTH} exceeded`,
+        );
+        continue;
+      }
+      if (nodes.length >= PROJECT_RULE_NODE_LIMIT) {
+        recordDiagnostic(
+          relativePath,
+          edge.ref,
+          `node limit ${PROJECT_RULE_NODE_LIMIT} exceeded`,
+        );
+        continue;
+      }
+
+      const childRelative = path
+        .relative(cwd, checked.resolved)
+        .split(path.sep)
+        .join('/');
+      visit(checked.resolved, childRelative, depth + 1);
+    }
+  };
+
+  const entry = validatePath(projectRulesFile, cwd);
+  if (!entry.safe) {
+    recordDiagnostic(
+      projectRulesFile,
+      projectRulesFile,
+      'path escapes project root',
+    );
+  } else {
+    visit(entry.resolved, projectRulesFile.split(path.sep).join('/'), 0);
+  }
+  return { nodes, complete, diagnostics };
+}
+
+function projectRuleMemoryRepair(graph) {
+  if (!graph.complete) {
+    return { repair: null, reason: 'the project-rule graph is incomplete' };
+  }
+
+  const sectionCount = graph.nodes.reduce(
+    (total, node) => total + node.memoriesSectionCount,
+    0,
+  );
+  if (sectionCount > 1) {
+    return {
+      repair: null,
+      reason: 'more than one Memories section owns the generated list',
+    };
+  }
+  if (sectionCount === 1) {
+    const owner = graph.nodes.find((node) => node.memoriesSectionCount === 1);
+    if (owner.content.includes(MANUAL_INDEX_MARKER)) {
+      return {
+        repair: null,
+        reason: `the Memories owner is marked ${MANUAL_INDEX_MARKER}`,
+      };
+    }
+    return {
+      repair: {
+        action: 'syncCLAUDEmdMemories',
+        rulesPath: owner.relativePath,
+        ownerMode: 'section',
+      },
+      reason: null,
+    };
+  }
+
+  if (graph.nodes.length === 1) {
+    const owner = graph.nodes[0];
+    if (owner.content.includes(MANUAL_INDEX_MARKER)) {
+      return {
+        repair: null,
+        reason: `the project rules file is marked ${MANUAL_INDEX_MARKER}`,
+      };
+    }
+    return {
+      repair: {
+        action: 'syncCLAUDEmdMemories',
+        rulesPath: owner.relativePath,
+        ownerMode: 'append',
+      },
+      reason: null,
+    };
+  }
+
+  return {
+    repair: null,
+    reason:
+      'no Memories section owns the generated list in this multi-file graph',
+  };
+}
+
 function cmdVerifySummary(cwd, summaryPath, checkFileCount) {
   if (!summaryPath) {
     error('summary-path required');
@@ -1077,6 +1324,133 @@ function parseRoadmapPhaseSections(milestoneContent) {
   }));
 }
 
+function roadmapSectionPlanningState(body) {
+  const concretePlans = [...body.matchAll(ROADMAP_PLAN_ENTRY)].length > 0;
+  const plansLine = body.match(
+    /^[ \t]*(?:\*\*Plans:\*\*|\*\*Plans\*\*:|Plans:)[ \t]*([^\n]*)$/im,
+  );
+  let plans = 'unknown';
+  if (plansLine) {
+    const value = plansLine[1].trim();
+    if (/^TBD\b/i.test(value)) plans = 'tbd';
+    else if (/^0[ \t]+plans?\b/i.test(value)) plans = 'zero';
+    else if (
+      /^[1-9]\d*[ \t]+plans?\b/i.test(value) ||
+      /^\d+[ \t]*\/[ \t]*[1-9]\d*\b/.test(value)
+    ) {
+      plans = 'planned';
+    }
+  }
+  return { plans, concretePlans };
+}
+
+function buildLiveRoadmapPhaseRecords(roadmapContent) {
+  const liveContent = extractCurrentMilestone(roadmapContent);
+  const records = new Map();
+  const recordFor = (raw) => {
+    const phase = normalizePhaseName(raw);
+    if (!records.has(phase)) {
+      records.set(phase, {
+        phase,
+        raw,
+        checked: null,
+        sections: [],
+      });
+    }
+    return records.get(phase);
+  };
+
+  for (const entry of parsePhaseCheckboxes(liveContent)) {
+    const record = recordFor(entry.num);
+    record.checked = record.checked === true || entry.checked;
+  }
+  for (const section of parseRoadmapPhaseSections(liveContent)) {
+    recordFor(section.num).sections.push(
+      roadmapSectionPlanningState(section.body),
+    );
+  }
+  return [...records.values()];
+}
+
+function livePhaseRequiresDirectory(record) {
+  if (record.checked !== false) return true;
+  if (record.sections.length === 0) return false;
+  return record.sections.some(
+    (section) =>
+      section.concretePlans ||
+      (section.plans !== 'tbd' && section.plans !== 'zero'),
+  );
+}
+
+function explicitRoadmapPhaseIds(content) {
+  const phases = new Set();
+  for (const entry of parsePhaseCheckboxes(content)) {
+    phases.add(normalizePhaseName(entry.num));
+  }
+  for (const section of parseRoadmapPhaseSections(content)) {
+    phases.add(normalizePhaseName(section.num));
+  }
+  return phases;
+}
+
+function buildPhaseInventory(cwd, roadmapContent) {
+  const known = explicitRoadmapPhaseIds(roadmapContent);
+  const diagnostics = [];
+  let complete = true;
+  const { milestones, milestonesFile } = planningPaths(cwd);
+  const recordFailure = (source, reason) => {
+    complete = false;
+    diagnostics.push({ source, reason });
+  };
+  const addRoadmap = (content) => {
+    for (const phase of explicitRoadmapPhaseIds(content)) known.add(phase);
+  };
+
+  if (fs.existsSync(milestones)) {
+    let entries = [];
+    try {
+      entries = fs
+        .readdirSync(milestones, { withFileTypes: true })
+        .filter((entry) => /^v.+-ROADMAP\.md$/i.test(entry.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch (err) {
+      recordFailure('.planning/milestones', err.code || err.message);
+    }
+    for (const entry of entries) {
+      const relative = path.posix.join('.planning/milestones', entry.name);
+      if (!entry.isFile()) {
+        recordFailure(relative, 'expected a regular file');
+        continue;
+      }
+      try {
+        addRoadmap(fs.readFileSync(path.join(milestones, entry.name), 'utf-8'));
+      } catch (err) {
+        recordFailure(relative, err.code || err.message);
+      }
+    }
+  }
+
+  if (fs.existsSync(milestonesFile)) {
+    try {
+      if (!fs.statSync(milestonesFile).isFile()) {
+        recordFailure('.planning/MILESTONES.md', 'expected a regular file');
+      } else {
+        const content = fs.readFileSync(milestonesFile, 'utf-8');
+        const phasePattern =
+          /\bPhase[ \t]+(\d+[A-Z]?(?:\.\d+)*)(?![\dA-Za-z]|\.\d)/gi;
+        let match;
+        while ((match = phasePattern.exec(content)) !== null) {
+          known.add(normalizePhaseName(match[1]));
+        }
+      }
+    } catch (err) {
+      recordFailure('.planning/MILESTONES.md', err.code || err.message);
+    }
+  }
+
+  return { known, complete, diagnostics };
+}
+
 /**
  * Ways a roadmap contradicts itself, independent of what is on disk:
  *
@@ -1908,13 +2282,8 @@ function runHealth(cwd, options) {
   // Inline subset of cmdValidateConsistency
   if (fs.existsSync(roadmapPath)) {
     const roadmapContentRaw = fs.readFileSync(roadmapPath, 'utf-8');
-    const roadmapContent = extractCurrentMilestone(roadmapContentRaw);
-    const roadmapPhases = new Set();
-    const phasePattern = new RegExp(ROADMAP_PHASE_HEADER_SOURCE, 'gi');
-    let m;
-    while ((m = phasePattern.exec(roadmapContent)) !== null) {
-      roadmapPhases.add(m[1]);
-    }
+    const livePhases = buildLiveRoadmapPhaseRecords(roadmapContentRaw);
+    const inventory = buildPhaseInventory(cwd, roadmapContentRaw);
 
     const diskPhases = new Set();
     try {
@@ -1922,34 +2291,42 @@ function runHealth(cwd, options) {
       for (const e of entries) {
         if (e.isDirectory()) {
           const dm = e.name.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
-          if (dm) diskPhases.add(dm[1]);
+          if (dm) diskPhases.add(normalizePhaseName(dm[1]));
         }
       }
     } catch {}
 
     // Phases in ROADMAP but not on disk
-    for (const p of roadmapPhases) {
-      const padded = String(parseInt(p, 10)).padStart(2, '0');
-      if (!diskPhases.has(p) && !diskPhases.has(padded)) {
+    for (const record of livePhases) {
+      if (livePhaseRequiresDirectory(record) && !diskPhases.has(record.phase)) {
         addIssue(
           'warning',
           'W006',
-          `Phase ${p} in ROADMAP.md but no directory on disk`,
+          `Phase ${record.raw} in ROADMAP.md but no directory on disk`,
           'Create phase directory or remove from roadmap',
         );
       }
     }
 
-    // Phases on disk but not in ROADMAP
-    for (const p of diskPhases) {
-      const unpadded = String(parseInt(p, 10));
-      if (!roadmapPhases.has(p) && !roadmapPhases.has(unpadded)) {
-        addIssue(
-          'warning',
-          'W007',
-          `Phase ${p} exists on disk but not in ROADMAP.md`,
-          'Add to roadmap or remove directory',
-        );
+    for (const diagnostic of inventory.diagnostics) {
+      addIssue(
+        'info',
+        'I002',
+        `Phase inventory incomplete: could not read ${diagnostic.source} (${diagnostic.reason}); orphan phase directories were not checked`,
+        'Restore the milestone record as a readable regular file, then run health again',
+      );
+    }
+
+    if (inventory.complete) {
+      for (const p of diskPhases) {
+        if (!inventory.known.has(p)) {
+          addIssue(
+            'warning',
+            'W007',
+            `Phase ${p} exists on disk but is absent from roadmap and milestone records`,
+            'Add the phase to an explicit roadmap or milestone record, or remove the directory',
+          );
+        }
       }
     }
   }
@@ -1962,6 +2339,7 @@ function runHealth(cwd, options) {
   const memoryDir = runtimeMemoryDir(cwd, runtimeSpec);
   const memoryDirExists = fs.existsSync(memoryDir);
   const projectRulesExists = fs.existsSync(projectRulesPath);
+  let projectRuleGraph = null;
 
   if (!projectRulesExists) {
     addIssue(
@@ -1971,51 +2349,71 @@ function runHealth(cwd, options) {
       `Run /gsd:health --repair to generate ${projectRulesFile} with Memories section`,
       'writeCLAUDEmd',
     );
+  } else {
+    projectRuleGraph = resolveProjectRuleGraph(cwd, projectRulesFile);
+    for (const diagnostic of projectRuleGraph.diagnostics) {
+      addIssue(
+        'info',
+        'I003',
+        `Project rules graph incomplete: ${diagnostic.owner} imports ${diagnostic.ref} (${diagnostic.reason})`,
+        'Restore a readable local project-rule import inside the project root, then run health again',
+      );
+    }
   }
 
   // ─── Check 10-12: Memory-related checks (gate on project rules file + memory dir) ──
   if (projectRulesExists && memoryDirExists) {
-    const claudeContent = fs.readFileSync(projectRulesPath, 'utf-8');
+    const ruleNodes = projectRuleGraph.nodes;
+    const memoryRepair = projectRuleMemoryRepair(projectRuleGraph);
+    const repairFix = (instruction) =>
+      memoryRepair.reason
+        ? `${instruction}. Automatic repair unavailable because ${memoryRepair.reason}`
+        : instruction;
     const memFiles = fs
       .readdirSync(memoryDir)
       .filter((f) => f.endsWith('.md') && f !== 'MEMORY.md');
 
     // Check 10: Orphaned memory files not referenced in the project rules file
-    const rulesAreManual = claudeContent.includes(MANUAL_INDEX_MARKER);
-    const orphaned = memFiles.filter(
-      (f) => !claudeContent.includes(`${memoryDirRel}${f}`),
+    const rulesAreManual = ruleNodes.some((node) =>
+      node.content.includes(MANUAL_INDEX_MARKER),
     );
-    if (orphaned.length > 0 && !rulesAreManual) {
+    const orphaned = memFiles.filter(
+      (f) =>
+        !ruleNodes.some((node) => node.content.includes(`${memoryDirRel}${f}`)),
+    );
+    if (projectRuleGraph.complete && orphaned.length > 0 && !rulesAreManual) {
       addIssue(
         'warning',
         'W011',
         `${orphaned.length} memory file(s) not referenced in ${projectRulesFile}: ${orphaned.join(', ')}`,
-        'Run /gsd:health --repair to add missing references',
-        'syncCLAUDEmdMemories',
+        repairFix('Run /gsd:health --repair to add missing references'),
+        memoryRepair.repair,
       );
     }
 
     // Check 11: Stale memory refs in the project rules file
-    const refPattern = new RegExp(
-      `\\[${escapeRegex(memoryDirRel)}([^\\]]+)\\]`,
-      'g',
-    );
-    const referencedFiles = [];
-    let refMatch;
-    while ((refMatch = refPattern.exec(claudeContent)) !== null) {
-      referencedFiles.push(refMatch[1]);
-    }
-    const stale = referencedFiles.filter(
-      (f) => !fs.existsSync(path.join(memoryDir, f)),
-    );
-    if (stale.length > 0) {
-      addIssue(
-        'warning',
-        'W012',
-        `${projectRulesFile} references ${stale.length} memory file(s) that do not exist: ${stale.join(', ')}`,
-        'Run /gsd:health --repair to remove stale references',
-        'syncCLAUDEmdMemories',
+    for (const node of ruleNodes) {
+      const refPattern = new RegExp(
+        `\\[${escapeRegex(memoryDirRel)}([^\\]]+)\\]`,
+        'g',
       );
+      const referencedFiles = [];
+      let refMatch;
+      while ((refMatch = refPattern.exec(node.content)) !== null) {
+        referencedFiles.push(refMatch[1]);
+      }
+      const stale = referencedFiles.filter(
+        (f) => !fs.existsSync(path.join(memoryDir, f)),
+      );
+      if (stale.length > 0) {
+        addIssue(
+          'warning',
+          'W012',
+          `${node.relativePath} references ${stale.length} memory file(s) that do not exist: ${stale.join(', ')}`,
+          repairFix('Run /gsd:health --repair to remove stale references'),
+          memoryRepair.repair,
+        );
+      }
     }
 
     // Check 12: MEMORY.md drift
@@ -2489,36 +2887,88 @@ function runHealth(cwd, options) {
             break;
           }
           case 'syncCLAUDEmdMemories': {
-            const syncRulesFile = resolveRuntimeSpec().PROJECT_RULES_FILE;
-            const syncRulesPath = path.join(cwd, syncRulesFile);
-            if (isManuallyMaintained(syncRulesPath)) {
+            const syncRulesFile =
+              repair && typeof repair === 'object' ? repair.rulesPath : null;
+            const refuse = (note) => {
               repairActions.push({
-                action: repair,
+                action,
                 success: false,
                 path: syncRulesFile,
-                note: `${syncRulesFile} is marked ${MANUAL_INDEX_MARKER} — its Memories section is curated by hand, so regenerating it would discard that curation. Edit it directly, or drop the marker to opt back in.`,
+                note,
               });
+            };
+            if (!syncRulesFile) {
+              refuse(
+                'No project-rules owner path was captured during detection',
+              );
               break;
             }
-            if (fs.existsSync(syncRulesPath)) {
-              let content = fs.readFileSync(syncRulesPath, 'utf-8');
-              const newSection = generateMemoriesSection(cwd);
-              const section = content.match(MEMORIES_SECTION);
-              if (section) {
-                content =
-                  content.slice(0, section.index) +
-                  newSection +
-                  content.slice(section.index + section[0].length);
-              } else {
-                content += '\n\n' + newSection;
-              }
-              fs.writeFileSync(syncRulesPath, content, 'utf-8');
-              repairActions.push({
-                action: repair,
-                success: true,
-                path: syncRulesFile,
-              });
+            if (
+              options &&
+              typeof options.beforeMemoryRulesRepair === 'function'
+            ) {
+              options.beforeMemoryRulesRepair(repair);
             }
+            const checked = validatePath(syncRulesFile, cwd);
+            if (!checked.safe) {
+              refuse(
+                'Captured project-rules owner no longer stays inside the project root',
+              );
+              break;
+            }
+            let stat;
+            try {
+              stat = fs.statSync(checked.resolved);
+            } catch {
+              refuse('Captured project-rules owner is no longer readable');
+              break;
+            }
+            if (!stat.isFile()) {
+              refuse(
+                'Captured project-rules owner is no longer a regular file',
+              );
+              break;
+            }
+
+            const currentGraph = resolveProjectRuleGraph(cwd, projectRulesFile);
+            const currentOwner = projectRuleMemoryRepair(currentGraph);
+            if (
+              !currentOwner.repair ||
+              currentOwner.repair.rulesPath !== syncRulesFile ||
+              currentOwner.repair.ownerMode !== repair.ownerMode
+            ) {
+              refuse(
+                `Project-rules ownership changed before repair${currentOwner.reason ? `: ${currentOwner.reason}` : ''}`,
+              );
+              break;
+            }
+
+            const content = fs.readFileSync(checked.resolved, 'utf-8');
+            if (content.includes(MANUAL_INDEX_MARKER)) {
+              refuse(
+                `${syncRulesFile} is marked ${MANUAL_INDEX_MARKER}; its Memories section is curated by hand`,
+              );
+              break;
+            }
+            const newSection = generateMemoriesSection(cwd);
+            const section = content.match(MEMORIES_SECTION);
+            const newContent = section
+              ? content.slice(0, section.index) +
+                newSection +
+                content.slice(section.index + section[0].length)
+              : content + '\n\n' + newSection;
+            if (newContent === content) {
+              refuse(
+                'The revalidated owner already contains the generated Memories section',
+              );
+              break;
+            }
+            fs.writeFileSync(checked.resolved, newContent, 'utf-8');
+            repairActions.push({
+              action,
+              success: true,
+              path: syncRulesFile,
+            });
             break;
           }
           case 'syncMemoryMd': {

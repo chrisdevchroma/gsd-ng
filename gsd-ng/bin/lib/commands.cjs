@@ -3976,38 +3976,98 @@ function cmdCleanup(cwd, options) {
  * @param {string} cwd - Working directory
  * @returns {{ isLocal: boolean, installPath: string, installedVersion: string } | null}
  */
-function detectInstallLocation(cwd) {
-  const homeDir = process.env.GSD_TEST_HOME || os.homedir();
+function validSnapshotBranch(branch) {
+  return (
+    typeof branch === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) &&
+    !branch.includes('..') &&
+    !branch.includes('//') &&
+    !branch.endsWith('/') &&
+    !branch.endsWith('.lock') &&
+    !branch.includes('@{')
+  );
+}
 
-  // Strips build metadata (semver §10) so compareSemVer sees a clean version.
-  const VERSION_RE = /^(\d+\.\d+\.\d+(?:-[\w.]+)?)/;
+function safeSnapshotRemote(remoteUrl) {
+  if (typeof remoteUrl !== 'string' || remoteUrl.trim() !== remoteUrl)
+    return null;
+  if (!remoteUrl || path.isAbsolute(remoteUrl) || remoteUrl.startsWith('.'))
+    return null;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(remoteUrl)) {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch {
+      return null;
+    }
+    if (!['https:', 'http:', 'ssh:', 'git:'].includes(parsed.protocol))
+      return null;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash)
+      return null;
+    return remoteUrl;
+  }
+  return /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$/.test(remoteUrl)
+    ? remoteUrl
+    : null;
+}
+
+function readInstallIdentity(versionPath, isLocal) {
+  try {
+    const installedVersionRaw = fs.readFileSync(versionPath, 'utf-8').trim();
+    const match = installedVersionRaw.match(
+      /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+([0-9A-Za-z.-]+))?$/,
+    );
+    if (!match) return null;
+    const installedHash = /^[0-9a-f]{7,64}$/i.test(match[2] || '')
+      ? match[2].toLowerCase()
+      : null;
+    let snapshotSource = null;
+    if (installedHash) {
+      try {
+        const configHome = path.dirname(path.dirname(versionPath));
+        const manifest = JSON.parse(
+          fs.readFileSync(
+            path.join(configHome, 'gsd-file-manifest.json'),
+            'utf-8',
+          ),
+        );
+        const source = manifest && manifest.snapshot_source;
+        const remoteUrl = source && safeSnapshotRemote(source.remote_url);
+        if (remoteUrl && validSnapshotBranch(source.branch)) {
+          snapshotSource = { remote_url: remoteUrl, branch: source.branch };
+        }
+      } catch {}
+    }
+    return {
+      isLocal,
+      installPath: path.dirname(versionPath),
+      installedVersion: match[1],
+      installedVersionRaw,
+      installedHash,
+      snapshotSource,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function detectInstallLocation(cwd, testOverrides) {
+  const homeDir = process.env.GSD_TEST_HOME || os.homedir();
 
   // An engine running from an install answers for that install and no other.
   // The probes below find whichever registered runtime's config home matches
   // first, which is the wrong install as soon as two of them coexist.
-  const selfHome = selfLocatedConfigHome();
+  const selfHome =
+    (testOverrides && testOverrides.selfHome) || selfLocatedConfigHome();
   if (selfHome) {
     const selfVersionPath = path.join(selfHome, 'gsd-ng', 'VERSION');
-    try {
-      const m = fs
-        .readFileSync(selfVersionPath, 'utf-8')
-        .trim()
-        .match(VERSION_RE);
-      if (m) {
-        // Local means the config home sits directly under the working
-        // directory — the same shape the local probe below checks, including
-        // its guard against misreading a global install when cwd is the home
-        // directory itself.
-        const parent = path.dirname(selfHome);
-        return {
-          isLocal:
-            parent === path.resolve(cwd) &&
-            path.resolve(cwd) !== path.resolve(homeDir),
-          installPath: path.dirname(selfVersionPath),
-          installedVersion: m[1],
-        };
-      }
-    } catch {}
+    const parent = path.dirname(selfHome);
+    const selfIdentity = readInstallIdentity(
+      selfVersionPath,
+      parent === path.resolve(cwd) &&
+        path.resolve(cwd) !== path.resolve(homeDir),
+    );
+    if (selfIdentity) return selfIdentity;
   }
 
   // Both paths come from the runtime registry, never a fixed directory name:
@@ -4027,41 +4087,169 @@ function detectInstallLocation(cwd) {
 
   // Check local first
   if (fs.existsSync(localPath)) {
-    try {
-      const localVersion = fs.readFileSync(localPath, 'utf-8').trim();
-      const m = localVersion.match(VERSION_RE);
-      if (m) {
-        // Only treat as LOCAL if local path differs from global path
-        // (prevents misdetection when cwd === homeDir)
-        const localDir = path.dirname(localPath);
-        const globalDir = globalPath ? path.dirname(globalPath) : null;
-        if (localDir !== globalDir) {
-          return {
-            isLocal: true,
-            installPath: localDir,
-            installedVersion: m[1],
-          };
-        }
-      }
-    } catch {}
+    const localDir = path.dirname(localPath);
+    const globalDir = globalPath ? path.dirname(globalPath) : null;
+    if (localDir !== globalDir) {
+      const localIdentity = readInstallIdentity(localPath, true);
+      if (localIdentity) return localIdentity;
+    }
   }
 
   // Fall back to global
   if (globalPath && fs.existsSync(globalPath)) {
-    try {
-      const globalVersion = fs.readFileSync(globalPath, 'utf-8').trim();
-      const m = globalVersion.match(VERSION_RE);
-      if (m) {
-        return {
-          isLocal: false,
-          installPath: path.dirname(globalPath),
-          installedVersion: m[1],
-        };
-      }
-    } catch {}
+    const globalIdentity = readInstallIdentity(globalPath, false);
+    if (globalIdentity) return globalIdentity;
   }
 
   return null;
+}
+
+function _resolveRemoteSnapshotOid(source, exec = spawnSync) {
+  if (!source || !safeSnapshotRemote(source.remote_url)) return null;
+  if (!validSnapshotBranch(source.branch)) return null;
+  const expectedRef = `refs/heads/${source.branch}`;
+  let result;
+  try {
+    result = exec(
+      'git',
+      ['ls-remote', '--exit-code', '--refs', source.remote_url, expectedRef],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+      },
+    );
+  } catch {
+    return null;
+  }
+  if (!result || result.status !== 0 || result.error) return null;
+  const lines = String(result.stdout || '')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (lines.length !== 1) return null;
+  const match = lines[0].match(/^([0-9a-f]{40,64})\t(.+)$/i);
+  if (!match || match[2] !== expectedRef) return null;
+  return match[1].toLowerCase();
+}
+
+function _installPinnedSnapshot(args, testOverrides) {
+  const {
+    remoteUrl,
+    branch,
+    oid,
+    installFlag,
+    runtime,
+    expectedVersion,
+    installPath,
+    projectCwd,
+  } = args || {};
+  if (!safeSnapshotRemote(remoteUrl) || !validSnapshotBranch(branch)) {
+    return { success: false, error: 'Snapshot source validation failed' };
+  }
+  if (!/^[0-9a-f]{40,64}$/i.test(oid || '')) {
+    return { success: false, error: 'Snapshot OID validation failed' };
+  }
+  if (!['--local', '--global'].includes(installFlag)) {
+    return {
+      success: false,
+      error: 'Snapshot install scope validation failed',
+    };
+  }
+  if (!/^[a-z0-9-]+$/.test(runtime || '')) {
+    return { success: false, error: 'Snapshot runtime validation failed' };
+  }
+
+  const overrides = testOverrides || {};
+  const exec = overrides.spawn || spawnSync;
+  const tmpRoot = overrides.tmpRoot || os.tmpdir();
+  let tmpDir = null;
+  const run = (file, argv, options = {}) => {
+    let result;
+    try {
+      result = exec(file, argv, {
+        cwd: tmpDir,
+        encoding: 'utf8',
+        timeout: 120000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+        ...options,
+      });
+    } catch (e) {
+      throw new Error(
+        `${argv[0] || file} threw: ${e.message || 'unknown error'}`,
+      );
+    }
+    if (!result || result.status !== 0 || result.error) {
+      const detail =
+        (result && result.error && result.error.message) ||
+        (result && result.stderr && String(result.stderr).trim()) ||
+        (result && result.signal ? `signal ${result.signal}` : 'nonzero exit');
+      throw new Error(`${argv[0] || file} failed: ${detail}`);
+    }
+    return String(result.stdout || '').trim();
+  };
+
+  try {
+    tmpDir = fs.mkdtempSync(path.join(tmpRoot, 'gsd-update-'));
+    run('git', ['init', '--quiet', tmpDir]);
+    run('git', ['remote', 'add', 'snapshot', remoteUrl]);
+    run('git', [
+      'fetch',
+      '--no-tags',
+      'snapshot',
+      `refs/heads/${branch}:refs/remotes/snapshot/${branch}`,
+    ]);
+    const fetchedOid = run('git', ['rev-parse', 'FETCH_HEAD']).toLowerCase();
+    if (fetchedOid !== oid.toLowerCase()) {
+      throw new Error('FETCH_HEAD mismatch after branch movement');
+    }
+    run('git', ['checkout', '--detach', oid]);
+    const headOid = run('git', ['rev-parse', 'HEAD']).toLowerCase();
+    if (headOid !== oid.toLowerCase()) {
+      throw new Error('Checked-out HEAD mismatch');
+    }
+    run(
+      process.execPath,
+      [
+        path.join(tmpDir, 'bin', 'install.js'),
+        installFlag,
+        '--runtime',
+        runtime,
+      ],
+      { cwd: projectCwd, stdio: 'inherit' },
+    );
+
+    let rawVersion;
+    try {
+      rawVersion = fs
+        .readFileSync(path.join(installPath, 'VERSION'), 'utf8')
+        .trim();
+    } catch {
+      throw new Error('Installed VERSION is missing');
+    }
+    const versionMatch = rawVersion.match(
+      /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\+([0-9a-f]{7,64})$/i,
+    );
+    if (!versionMatch)
+      throw new Error('Installed VERSION has no snapshot hash');
+    if (versionMatch[1] !== expectedVersion) {
+      throw new Error('Installed VERSION base mismatch');
+    }
+    if (!oid.toLowerCase().startsWith(versionMatch[2].toLowerCase())) {
+      throw new Error('Installed VERSION hash mismatch');
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message || 'Snapshot update failed' };
+  } finally {
+    if (tmpDir) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {}
+    }
+  }
 }
 
 /**
@@ -4179,7 +4367,8 @@ function cmdUpdate(cwd, options, _testOverrides) {
     });
   }
 
-  const { isLocal, installedVersion } = installInfo;
+  const { isLocal, installedVersion, installedHash, snapshotSource } =
+    installInfo;
   const installed = installedVersion;
 
   const installedChannel = parseChannel(installed);
@@ -4320,12 +4509,30 @@ function cmdUpdate(cwd, options, _testOverrides) {
 
   // 3. Compare versions
   const cmp = compareSemVer(installed, latestVersion);
+  let hashUpdate = null;
   if (cmp === 0) {
-    return output({
-      status: 'already_current',
-      installed,
-      latest: latestVersion,
-    });
+    if (installedHash && snapshotSource) {
+      const resolveRemoteHash =
+        overrides.resolveRemoteHash || _resolveRemoteSnapshotOid;
+      let remoteHash = null;
+      try {
+        remoteHash = resolveRemoteHash(snapshotSource);
+      } catch {}
+      if (remoteHash && !remoteHash.startsWith(installedHash)) {
+        hashUpdate = {
+          reason: 'hash',
+          installed_hash: installedHash,
+          remote_hash: remoteHash,
+        };
+      }
+    }
+    if (!hashUpdate) {
+      return output({
+        status: 'already_current',
+        installed,
+        latest: latestVersion,
+      });
+    }
   }
   if (cmp > 0) {
     return output({
@@ -4344,6 +4551,7 @@ function cmdUpdate(cwd, options, _testOverrides) {
       update_source: updateSource,
       install_type: isLocal ? 'local' : 'global',
       update_available: true,
+      ...(hashUpdate || {}),
     });
   }
 
@@ -4357,6 +4565,17 @@ function cmdUpdate(cwd, options, _testOverrides) {
   const runtime = getEngineRuntime();
 
   if (overrides.dryExecute || process.env.GSD_TEST_DRY_EXECUTE) {
+    if (hashUpdate) {
+      return output({
+        status: 'update_available',
+        from: installed,
+        to: latestVersion,
+        source: 'snapshot',
+        reason: 'hash',
+        pinned_oid: hashUpdate.remote_hash,
+        executed: false,
+      });
+    }
     let installCommand;
     if (updateSource === 'npm') {
       installCommand = `npx -y ${installTarget} ${installFlag} --runtime ${runtime}`;
@@ -4372,7 +4591,28 @@ function cmdUpdate(cwd, options, _testOverrides) {
     });
   }
 
-  if (updateSource === 'npm') {
+  if (hashUpdate) {
+    const execSnapshotUpdate =
+      overrides.execSnapshotUpdate || _installPinnedSnapshot;
+    const execResult = execSnapshotUpdate({
+      remoteUrl: snapshotSource.remote_url,
+      branch: snapshotSource.branch,
+      oid: hashUpdate.remote_hash,
+      installFlag,
+      runtime,
+      expectedVersion: latestVersion,
+      installPath: installInfo.installPath,
+      projectCwd: cwd,
+    });
+    if (!execResult || execResult.success !== true) {
+      return output({
+        status: 'error',
+        message:
+          'Update failed: ' +
+          ((execResult && execResult.error) || 'snapshot verification failed'),
+      });
+    }
+  } else if (updateSource === 'npm') {
     /* c8 ignore start — network: `npx -y gsd-ng@<channel>` shells out to npm. Exercised via dryExecute/GSD_TEST_DRY_EXECUTE short-circuit above (cmdUpdate dry-execute returns updated with install_command (npm) test). */
     try {
       execSync(`npx -y ${installTarget} ${installFlag} --runtime ${runtime}`, {
@@ -4417,7 +4657,8 @@ function cmdUpdate(cwd, options, _testOverrides) {
     status: 'updated',
     from: installed,
     to: latestVersion,
-    source: updateSource,
+    source: hashUpdate ? 'snapshot' : updateSource,
+    ...(hashUpdate || {}),
   });
 }
 
@@ -4481,5 +4722,7 @@ module.exports = {
   detectInstallLocation,
   cmdUpdate,
   _downloadAndInstallTarball,
+  _resolveRemoteSnapshotOid,
+  _installPinnedSnapshot,
   compareSemVer,
 };

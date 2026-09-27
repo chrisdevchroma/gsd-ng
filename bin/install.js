@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 // Colors
 const cyan = '\x1b[36m';
@@ -313,9 +313,14 @@ function resolveInstalledVersion(baseVersion) {
   if (!fs.existsSync(path.join(src, '.git'))) return baseVersion;
 
   try {
-    const hash = execSync('git rev-parse --short HEAD', {
-      cwd: src, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000
-    }).toString().trim();
+    const hashResult = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: src,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+      timeout: 5000,
+      shell: false,
+    });
+    const hash = hashResult.status === 0 ? String(hashResult.stdout).trim() : '';
 
     if (!hash) return baseVersion;
 
@@ -323,9 +328,14 @@ function resolveInstalledVersion(baseVersion) {
     if (hasSnapshot) return `${baseVersion}+${hash}`;
 
     // Auto-snapshot: check if HEAD is exactly the release tag for this version
-    const exactTag = execSync(`git tag --points-at HEAD`, {
-      cwd: src, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000
-    }).toString().trim();
+    const tagResult = spawnSync('git', ['tag', '--points-at', 'HEAD'], {
+      cwd: src,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+      timeout: 5000,
+      shell: false,
+    });
+    const exactTag = tagResult.status === 0 ? String(tagResult.stdout).trim() : '';
 
     const releaseTags = exactTag.split('\n').filter(t => t.trim());
     const isTagged = releaseTags.some(t => t.trim() === `v${baseVersion}`);
@@ -340,10 +350,100 @@ function resolveInstalledVersion(baseVersion) {
   }
 }
 
+function validSnapshotBranch(branch) {
+  return (
+    typeof branch === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) &&
+    !branch.includes('..') &&
+    !branch.includes('//') &&
+    !branch.endsWith('/') &&
+    !branch.endsWith('.lock') &&
+    !branch.includes('@{')
+  );
+}
+
+function safeSnapshotRemote(remoteUrl) {
+  if (typeof remoteUrl !== 'string' || remoteUrl.trim() !== remoteUrl) return null;
+  if (!remoteUrl || path.isAbsolute(remoteUrl) || remoteUrl.startsWith('.')) return null;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(remoteUrl)) {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch {
+      return null;
+    }
+    if (!['https:', 'http:', 'ssh:', 'git:'].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    return remoteUrl;
+  }
+  if (/^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$/.test(remoteUrl)) {
+    return remoteUrl;
+  }
+  return null;
+}
+
+function resolveSnapshotSource(src, installedVersion, runGit) {
+  if (!/\+[0-9a-f]{7,64}$/i.test(String(installedVersion))) return null;
+  const execute =
+    runGit ||
+    ((args) =>
+      spawnSync('git', args, {
+        cwd: src,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        encoding: 'utf8',
+        timeout: 5000,
+        shell: false,
+      }));
+  const git = (args) => {
+    try {
+      const result = execute(args);
+      if (!result || result.status !== 0 || result.error) return null;
+      return String(result.stdout || '').trim();
+    } catch {
+      return null;
+    }
+  };
+  const remoteSource = (remote, branch) => {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(remote) || !validSnapshotBranch(branch)) {
+      return null;
+    }
+    const remoteUrl = safeSnapshotRemote(git(['config', '--get', `remote.${remote}.url`]));
+    return remoteUrl ? { remote_url: remoteUrl, branch } : null;
+  };
+
+  const attached = git(['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  if (attached) {
+    if (!validSnapshotBranch(attached)) return null;
+    const remote = git(['config', '--get', `branch.${attached}.remote`]);
+    const merge = git(['config', '--get', `branch.${attached}.merge`]);
+    const match = merge && merge.match(/^refs\/heads\/(.+)$/);
+    return match ? remoteSource(remote, match[1]) : null;
+  }
+
+  const refs = String(
+    git([
+      'for-each-ref',
+      '--format=%(refname)',
+      '--points-at',
+      'HEAD',
+      'refs/remotes/',
+    ]) || '',
+  )
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (refs.length !== 1) return null;
+  const match = refs[0].match(/^refs\/remotes\/([^/]+)\/(.+)$/);
+  return match ? remoteSource(match[1], match[2]) : null;
+}
+
 // Single source of truth for the installed version string — used by banner,
 // VERSION file writes (both runtimes), and the file manifest. Computed once
 // to avoid repeated git probes and guarantee consistency across all surfaces.
 const INSTALLED_VERSION = resolveInstalledVersion(pkg.version);
+const SNAPSHOT_SOURCE = resolveSnapshotSource(
+  path.join(__dirname, '..'),
+  INSTALLED_VERSION,
+);
 
 if (require.main === module) {
   console.log(buildBanner(INSTALLED_VERSION));
@@ -1030,6 +1130,7 @@ function writeManifest(configDir, version) {
     }
   }
   manifest.installed_hooks = [...recorded].sort();
+  if (SNAPSHOT_SOURCE) manifest.snapshot_source = SNAPSHOT_SOURCE;
 
   fs.writeFileSync(path.join(configDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2));
   return manifest;
@@ -3141,4 +3242,5 @@ module.exports = {
   stripProjectRules,
   rulesFilePath,
   seedConfigFile,
+  resolveSnapshotSource,
 };

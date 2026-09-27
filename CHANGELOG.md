@@ -18,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Same-version development installs now update to the exact checked branch commit and fail instead of reporting success when the branch, checkout, installer, or installed version does not match.
+- Phase health checks now distinguish unplanned future work from started phases that have lost their directory, recognize explicitly archived phase records, preserve decimal and letter-suffixed identities, and avoid declaring directories orphaned when archive evidence is incomplete.
+- Memory health checks now follow bounded local project-rule imports instead of inspecting only the runtime's pointer file. References and manual markers are evaluated across the effective rules graph, while repairs write only to a uniquely revalidated Memories owner and fail closed on incomplete or ambiguous imports.
 - Command arguments now cross every supported runtime through one lossless data boundary, including empty, multiline, quoted and shell-like input. Automatic workflow chains use explicit enter, preserve and reset transitions, so an argumentless downstream step can no longer clear an active chain and a fresh project can detect `--auto` before its planning configuration exists.
 - Health checks now resolve `related:` references as pending todos, completed todos, project documents, missing paths, unsafe paths or ambiguous names before offering a repair. Valid project documents are preserved, backlink checks apply only to todos, and automatic repair removes only references proven missing.
 - `phase add` and `phase insert` place roadmap details by phase-heading boundaries rather than optional horizontal rules. Integer additions follow the highest integer section, decimal insertions follow their complete sibling family, malformed topology fails before mutation, and a failed write leaves neither a partial roadmap update nor an orphan phase directory.

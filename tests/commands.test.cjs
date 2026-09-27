@@ -4586,7 +4586,7 @@ describe('update command — prerelease channel handling', () => {
 
   // ── B) detectInstallLocation — preserves prerelease suffix ──────────────────
 
-  test('B1: detectInstallLocation preserves -dev.N on local VERSION, drops +build', () => {
+  test('B1: detectInstallLocation preserves local snapshot identity and source', () => {
     const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
     const dir = createTempProject();
     const homeDir = createTempProject();
@@ -4595,12 +4595,28 @@ describe('update command — prerelease channel handling', () => {
       path.join(dir, '.claude', 'gsd-ng', 'VERSION'),
       '1.0.0-dev.7+30c9587\n',
     );
+    fs.writeFileSync(
+      path.join(dir, '.claude', 'gsd-file-manifest.json'),
+      JSON.stringify({
+        schema_version: 2,
+        snapshot_source: {
+          remote_url: 'https://example.com/gsd-ng.git',
+          branch: 'develop',
+        },
+      }),
+    );
     process.env.GSD_TEST_HOME = homeDir;
     try {
       const r = detectInstallLocation(dir);
       assert.ok(r);
       assert.strictEqual(r.isLocal, true);
       assert.strictEqual(r.installedVersion, '1.0.0-dev.7');
+      assert.strictEqual(r.installedVersionRaw, '1.0.0-dev.7+30c9587');
+      assert.strictEqual(r.installedHash, '30c9587');
+      assert.deepStrictEqual(r.snapshotSource, {
+        remote_url: 'https://example.com/gsd-ng.git',
+        branch: 'develop',
+      });
     } finally {
       delete process.env.GSD_TEST_HOME;
       cleanup(dir);
@@ -4608,7 +4624,7 @@ describe('update command — prerelease channel handling', () => {
     }
   });
 
-  test('B2: detectInstallLocation preserves -dev.N on global VERSION', () => {
+  test('B2: detectInstallLocation preserves global snapshot identity and source', () => {
     const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
     const dir = createTempProject();
     const homeDir = createTempProject();
@@ -4617,12 +4633,27 @@ describe('update command — prerelease channel handling', () => {
       path.join(homeDir, '.claude', 'gsd-ng', 'VERSION'),
       '1.0.0-dev.7+30c9587\n',
     );
+    fs.writeFileSync(
+      path.join(homeDir, '.claude', 'gsd-file-manifest.json'),
+      JSON.stringify({
+        snapshot_source: {
+          remote_url: 'git@github.com:example/gsd-ng.git',
+          branch: 'develop',
+        },
+      }),
+    );
     process.env.GSD_TEST_HOME = homeDir;
     try {
       const r = detectInstallLocation(dir);
       assert.ok(r);
       assert.strictEqual(r.isLocal, false);
       assert.strictEqual(r.installedVersion, '1.0.0-dev.7');
+      assert.strictEqual(r.installedVersionRaw, '1.0.0-dev.7+30c9587');
+      assert.strictEqual(r.installedHash, '30c9587');
+      assert.deepStrictEqual(r.snapshotSource, {
+        remote_url: 'git@github.com:example/gsd-ng.git',
+        branch: 'develop',
+      });
     } finally {
       delete process.env.GSD_TEST_HOME;
       cleanup(dir);
@@ -4641,6 +4672,61 @@ describe('update command — prerelease channel handling', () => {
       const r = detectInstallLocation(dir);
       assert.ok(r);
       assert.strictEqual(r.installedVersion, '1.2.3');
+      assert.strictEqual(r.installedVersionRaw, '1.2.3');
+      assert.strictEqual(r.installedHash, null);
+      assert.strictEqual(r.snapshotSource, null);
+    } finally {
+      delete process.env.GSD_TEST_HOME;
+      cleanup(dir);
+      cleanup(homeDir);
+    }
+  });
+
+  test('detectInstallLocation ignores malformed and credential-bearing source metadata', () => {
+    const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
+    const cases = [
+      '{broken',
+      JSON.stringify({ snapshot_source: { remote_url: 'https://token@example.com/repo', branch: 'develop' } }),
+      JSON.stringify({ snapshot_source: { remote_url: 'https://example.com/repo', branch: '../main' } }),
+    ];
+    for (const manifest of cases) {
+      const dir = createTempProject();
+      const homeDir = createTempProject();
+      fs.mkdirSync(path.join(dir, '.claude', 'gsd-ng'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'gsd-ng', 'VERSION'), '1.0.0-dev.7+30c9587');
+      fs.writeFileSync(path.join(dir, '.claude', 'gsd-file-manifest.json'), manifest);
+      process.env.GSD_TEST_HOME = homeDir;
+      try {
+        assert.strictEqual(detectInstallLocation(dir).snapshotSource, null);
+      } finally {
+        delete process.env.GSD_TEST_HOME;
+        cleanup(dir);
+        cleanup(homeDir);
+      }
+    }
+  });
+
+  test('detectInstallLocation supports the self-located config-home branch', () => {
+    const { detectInstallLocation } = require('../gsd-ng/bin/lib/commands.cjs');
+    const dir = createTempProject();
+    const homeDir = createTempProject();
+    const selfHome = path.join(dir, '.opencode');
+    seedInstall(selfHome, '1.0.0-dev.7+30c9587');
+    fs.writeFileSync(
+      path.join(selfHome, 'gsd-file-manifest.json'),
+      JSON.stringify({
+        snapshot_source: {
+          remote_url: 'git@example.com:gsd-ng.git',
+          branch: 'develop',
+        },
+      }),
+    );
+    process.env.GSD_TEST_HOME = homeDir;
+    try {
+      const r = detectInstallLocation(dir, { selfHome });
+      assert.strictEqual(r.installPath, path.join(selfHome, 'gsd-ng'));
+      assert.strictEqual(r.installedHash, '30c9587');
+      assert.strictEqual(r.snapshotSource.branch, 'develop');
     } finally {
       delete process.env.GSD_TEST_HOME;
       cleanup(dir);
@@ -4943,6 +5029,498 @@ describe('update command — prerelease channel handling', () => {
     const parsed = JSON.parse(captured_stdout);
     assert.strictEqual(parsed.status, 'update_available');
     assert.strictEqual(parsed.latest, '1.0.0');
+  });
+});
+
+describe('snapshot hash update decisions', () => {
+  let dir;
+  let homeDir;
+
+  beforeEach(() => {
+    dir = createTempProject();
+    homeDir = createTempProject();
+    process.env.GSD_TEST_HOME = homeDir;
+  });
+
+  afterEach(() => {
+    delete process.env.GSD_TEST_HOME;
+    cleanup(dir);
+    cleanup(homeDir);
+  });
+
+  function seedSnapshot(rawVersion, source) {
+    const configHome = path.join(dir, '.claude');
+    fs.mkdirSync(path.join(configHome, 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(configHome, 'gsd-ng', 'VERSION'), rawVersion);
+    if (source !== undefined) {
+      fs.writeFileSync(
+        path.join(configHome, 'gsd-file-manifest.json'),
+        JSON.stringify({ snapshot_source: source }),
+      );
+    }
+  }
+
+  function capture(overrides, dryRun = true) {
+    const { cmdUpdate } = require('../gsd-ng/bin/lib/commands.cjs');
+    const original = fs.writeSync;
+    let stdout = '';
+    fs.writeSync = function (fd, value, ...rest) {
+      if (fd === 1) {
+        stdout += String(value);
+        return Buffer.byteLength(value);
+      }
+      return original.call(fs, fd, value, ...rest);
+    };
+    try {
+      cmdUpdate(dir, { dryRun }, overrides);
+    } finally {
+      fs.writeSync = original;
+    }
+    return JSON.parse(stdout);
+  }
+
+  const source = {
+    remote_url: 'https://example.com/gsd-ng.git',
+    branch: 'develop',
+  };
+  const remoteOid = 'abcdef1234567890abcdef1234567890abcdef12';
+
+  test('snapshot hash mismatch returns additive update_available fields', () => {
+    seedSnapshot('1.0.0-dev.7+1234567', source);
+    const result = capture({
+      latestVersion: '1.0.0-dev.7',
+      updateSource: 'npm',
+      resolveRemoteHash: () => remoteOid,
+    });
+    assert.deepStrictEqual(result, {
+      status: 'update_available',
+      installed: '1.0.0-dev.7',
+      latest: '1.0.0-dev.7',
+      update_source: 'npm',
+      install_type: 'local',
+      update_available: true,
+      reason: 'hash',
+      installed_hash: '1234567',
+      remote_hash: remoteOid,
+    });
+  });
+
+  test('snapshot hash full and short-prefix matches remain already_current', () => {
+    for (const installedHash of [remoteOid, remoteOid.slice(0, 7)]) {
+      seedSnapshot(`1.0.0-dev.7+${installedHash}`, source);
+      assert.strictEqual(
+        capture({
+          latestVersion: '1.0.0-dev.7',
+          updateSource: 'npm',
+          resolveRemoteHash: () => remoteOid,
+        }).status,
+        'already_current',
+      );
+    }
+  });
+
+  test('snapshot hash resolver is skipped without equal authoritative identity', () => {
+    const cases = [
+      ['1.0.0-dev.7', source, '1.0.0-dev.7'],
+      ['1.0.0-dev.7+notasha', source, '1.0.0-dev.7'],
+      ['1.0.0-dev.7+1234567', undefined, '1.0.0-dev.7'],
+      ['1.0.0-dev.7+1234567', source, '1.0.0-dev.8'],
+      ['1.0.0-dev.8+1234567', source, '1.0.0-dev.7'],
+    ];
+    for (const [raw, metadata, latestVersion] of cases) {
+      cleanup(path.join(dir, '.claude'));
+      seedSnapshot(raw, metadata);
+      let calls = 0;
+      capture({
+        latestVersion,
+        updateSource: 'npm',
+        resolveRemoteHash: () => {
+          calls++;
+          return remoteOid;
+        },
+      });
+      assert.strictEqual(calls, 0, raw);
+    }
+  });
+
+  test('snapshot hash lookup failures retain semver fallback', () => {
+    seedSnapshot('1.0.0-dev.7+1234567', source);
+    for (const resolver of [
+      () => null,
+      () => {
+        throw new Error('offline');
+      },
+    ]) {
+      assert.strictEqual(
+        capture({
+          latestVersion: '1.0.0-dev.7',
+          updateSource: 'npm',
+          resolveRemoteHash: resolver,
+        }).status,
+        'already_current',
+      );
+    }
+  });
+
+  test('snapshot hash resolver uses exact non-shell git argv', () => {
+    const { _resolveRemoteSnapshotOid } = require('../gsd-ng/bin/lib/commands.cjs');
+    let call;
+    const hostileRemote = 'git@example.com:org/repo;echo-owned.git';
+    const result = _resolveRemoteSnapshotOid(
+      { remote_url: hostileRemote, branch: 'develop' },
+      (file, args, options) => {
+        call = { file, args, options };
+        return {
+          status: 0,
+          stdout: `${remoteOid}\trefs/heads/develop\n`,
+        };
+      },
+    );
+    assert.strictEqual(result, remoteOid);
+    assert.strictEqual(call.file, 'git');
+    assert.deepStrictEqual(call.args, [
+      'ls-remote',
+      '--exit-code',
+      '--refs',
+      hostileRemote,
+      'refs/heads/develop',
+    ]);
+    assert.strictEqual(call.options.shell, false);
+    assert.ok(call.options.timeout > 0);
+  });
+
+  test('snapshot hash resolver rejects malformed, multiple, and wrong-ref output', () => {
+    const { _resolveRemoteSnapshotOid } = require('../gsd-ng/bin/lib/commands.cjs');
+    for (const stdout of [
+      'garbage\n',
+      `${remoteOid}\trefs/heads/main\n`,
+      `${remoteOid}\trefs/heads/develop\n${remoteOid}\trefs/heads/develop\n`,
+      '1234567\trefs/heads/develop\n',
+    ]) {
+      assert.strictEqual(
+        _resolveRemoteSnapshotOid(source, () => ({ status: 0, stdout })),
+        null,
+      );
+    }
+    assert.strictEqual(
+      _resolveRemoteSnapshotOid(source, () => ({ status: 1, stdout: '' })),
+      null,
+    );
+    assert.strictEqual(_resolveRemoteSnapshotOid(null, () => null), null);
+    assert.strictEqual(
+      _resolveRemoteSnapshotOid({ ...source, branch: '../main' }, () => null),
+      null,
+    );
+    assert.strictEqual(
+      _resolveRemoteSnapshotOid(source, () => {
+        throw new Error('offline');
+      }),
+      null,
+    );
+    assert.strictEqual(_resolveRemoteSnapshotOid(source, () => null), null);
+    assert.strictEqual(
+      _resolveRemoteSnapshotOid(source, () => ({
+        status: 0,
+        stdout: '',
+        error: new Error('timeout'),
+      })),
+      null,
+    );
+  });
+});
+
+describe('pinned snapshot update execution', () => {
+  let root;
+  const oid = 'abcdef1234567890abcdef1234567890abcdef12';
+  const otherOid = '1234567890abcdef1234567890abcdef12345678';
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-pinned-update-'));
+  });
+
+  afterEach(() => cleanup(root));
+
+  function runPinned(options = {}) {
+    const { _installPinnedSnapshot } = require('../gsd-ng/bin/lib/commands.cjs');
+    const installPath = path.join(root, 'installed', 'gsd-ng');
+    const calls = [];
+    const spawn = (file, args, spawnOptions) => {
+      calls.push({ file, args, options: spawnOptions });
+      const key =
+        file === process.execPath
+          ? 'install'
+          : args[0] === 'rev-parse'
+            ? `rev-parse ${args[1]}`
+            : args[0];
+      if (options.throwStep === key) throw new Error(`${key} threw`);
+      if (options.failStep === key) {
+        return options.timeoutStep === key
+          ? { status: null, signal: 'SIGTERM', error: new Error('timeout') }
+          : { status: 1, stderr: `${key} failed` };
+      }
+      if (key === 'rev-parse FETCH_HEAD') {
+        return { status: 0, stdout: `${options.fetchedOid || oid}\n` };
+      }
+      if (key === 'rev-parse HEAD') {
+        return { status: 0, stdout: `${options.headOid || oid}\n` };
+      }
+      if (key === 'install') {
+        if (options.installedVersion !== null) {
+          fs.mkdirSync(installPath, { recursive: true });
+          fs.writeFileSync(
+            path.join(installPath, 'VERSION'),
+            options.installedVersion || `1.0.0-dev.7+${oid.slice(0, 7)}`,
+          );
+        }
+        return { status: 0 };
+      }
+      return { status: 0, stdout: '' };
+    };
+    const result = _installPinnedSnapshot(
+      {
+        remoteUrl: 'git@example.com:org/repo;still-one-arg.git',
+        branch: 'develop',
+        oid,
+        installFlag: options.installFlag || '--local',
+        runtime: options.runtime || 'claude',
+        expectedVersion: '1.0.0-dev.7',
+        installPath,
+        projectCwd: root,
+      },
+      { spawn, tmpRoot: root },
+    );
+    return { result, calls, installPath };
+  }
+
+  test('pinned snapshot fetches and installs the exact checked OID', () => {
+    const { result, calls } = runPinned();
+    assert.deepStrictEqual(result, { success: true });
+    const fetch = calls.find((call) => call.args[0] === 'fetch');
+    assert.deepStrictEqual(fetch.args.slice(1), [
+      '--no-tags',
+      'snapshot',
+      'refs/heads/develop:refs/remotes/snapshot/develop',
+    ]);
+    const checkout = calls.find((call) => call.args[0] === 'checkout');
+    assert.deepStrictEqual(checkout.args, ['checkout', '--detach', oid]);
+    const installer = calls.find((call) => call.file === process.execPath);
+    assert.deepStrictEqual(installer.args.slice(1), [
+      '--local',
+      '--runtime',
+      'claude',
+    ]);
+    assert.strictEqual(installer.options.cwd, root);
+    for (const call of calls) assert.strictEqual(call.options.shell, false);
+    assert.deepStrictEqual(fs.readdirSync(root), ['installed']);
+  });
+
+  test('pinned snapshot forwards every runtime and install scope', () => {
+    for (const runtime of ['claude', 'copilot', 'opencode']) {
+      for (const installFlag of ['--local', '--global']) {
+        const { result, calls } = runPinned({ runtime, installFlag });
+        assert.strictEqual(result.success, true);
+        const installer = calls.find((call) => call.file === process.execPath);
+        assert.deepStrictEqual(installer.args.slice(1), [
+          installFlag,
+          '--runtime',
+          runtime,
+        ]);
+      }
+    }
+  });
+
+  test('pinned snapshot rejects races and process failures and always cleans up', () => {
+    const cases = [
+      { fetchedOid: otherOid },
+      { failStep: 'fetch' },
+      { failStep: 'checkout' },
+      { headOid: otherOid },
+      { failStep: 'install' },
+      { throwStep: 'install' },
+      { failStep: 'install', timeoutStep: 'install' },
+    ];
+    for (const options of cases) {
+      const { result } = runPinned(options);
+      assert.strictEqual(result.success, false, JSON.stringify(options));
+      assert.match(result.error, /failed|mismatch|threw|timeout/i);
+      assert.deepStrictEqual(fs.readdirSync(root), ['installed'].filter(() => fs.existsSync(path.join(root, 'installed'))));
+      cleanup(path.join(root, 'installed'));
+    }
+  });
+
+  test('pinned snapshot proves the installed VERSION before success', () => {
+    for (const installedVersion of [
+      null,
+      '1.0.0-dev.7',
+      `1.0.0-dev.8+${oid.slice(0, 7)}`,
+      `1.0.0-dev.7+${otherOid.slice(0, 7)}`,
+      'malformed',
+    ]) {
+      const { result } = runPinned({ installedVersion });
+      assert.strictEqual(result.success, false, String(installedVersion));
+      assert.match(result.error, /installed VERSION/i);
+      cleanup(path.join(root, 'installed'));
+    }
+  });
+
+  test('pinned snapshot rejects invalid source, OID, scope, and runtime inputs', () => {
+    const { _installPinnedSnapshot } = require('../gsd-ng/bin/lib/commands.cjs');
+    const base = {
+      remoteUrl: 'https://example.com/gsd-ng.git',
+      branch: 'develop',
+      oid,
+      installFlag: '--local',
+      runtime: 'claude',
+      expectedVersion: '1.0.0-dev.7',
+      installPath: path.join(root, 'installed', 'gsd-ng'),
+      projectCwd: root,
+    };
+    for (const args of [
+      undefined,
+      { ...base, remoteUrl: 'https://token@example.com/repo' },
+      { ...base, branch: '../main' },
+      { ...base, oid: 'short' },
+      { ...base, installFlag: '--elsewhere' },
+      { ...base, runtime: 'BAD RUNTIME' },
+    ]) {
+      const result = _installPinnedSnapshot(args, {
+        spawn: () => {
+          throw new Error('must not execute');
+        },
+        tmpRoot: root,
+      });
+      assert.strictEqual(result.success, false);
+      assert.match(result.error, /validation failed/i);
+    }
+  });
+
+  test('snapshot hash execute uses pinned executor and never semver installers', () => {
+    const configHome = path.join(root, '.claude');
+    fs.mkdirSync(path.join(configHome, 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(configHome, 'gsd-ng', 'VERSION'), '1.0.0-dev.7+1234567');
+    fs.writeFileSync(
+      path.join(configHome, 'gsd-file-manifest.json'),
+      JSON.stringify({
+        snapshot_source: {
+          remote_url: 'https://example.com/gsd-ng.git',
+          branch: 'develop',
+        },
+      }),
+    );
+    process.env.GSD_TEST_HOME = path.join(root, 'home');
+    let pinnedArgs;
+    let releaseCalls = 0;
+    const { cmdUpdate } = require('../gsd-ng/bin/lib/commands.cjs');
+    const original = fs.writeSync;
+    let stdout = '';
+    fs.writeSync = (fd, value, ...rest) => {
+      if (fd === 1) {
+        stdout += String(value);
+        return Buffer.byteLength(value);
+      }
+      return original.call(fs, fd, value, ...rest);
+    };
+    try {
+      cmdUpdate(root, {}, {
+        latestVersion: '1.0.0-dev.7',
+        updateSource: 'npm',
+        resolveRemoteHash: () => oid,
+        execSnapshotUpdate: (args) => {
+          pinnedArgs = args;
+          return { success: true };
+        },
+        execUpdate: () => {
+          releaseCalls++;
+          return { success: true };
+        },
+      });
+    } finally {
+      fs.writeSync = original;
+      delete process.env.GSD_TEST_HOME;
+    }
+    const result = JSON.parse(stdout);
+    assert.strictEqual(result.status, 'updated');
+    assert.strictEqual(result.reason, 'hash');
+    assert.strictEqual(pinnedArgs.oid, oid);
+    assert.strictEqual(pinnedArgs.installFlag, '--local');
+    assert.strictEqual(releaseCalls, 0);
+  });
+
+  test('snapshot hash execute reports pinned executor failures', () => {
+    const configHome = path.join(root, '.claude');
+    fs.mkdirSync(path.join(configHome, 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(configHome, 'gsd-ng', 'VERSION'), '1.0.0-dev.7+1234567');
+    fs.writeFileSync(
+      path.join(configHome, 'gsd-file-manifest.json'),
+      JSON.stringify({ snapshot_source: { remote_url: 'https://example.com/repo', branch: 'develop' } }),
+    );
+    process.env.GSD_TEST_HOME = path.join(root, 'home');
+    const { cmdUpdate } = require('../gsd-ng/bin/lib/commands.cjs');
+    for (const executorResult of [
+      null,
+      { success: false },
+      { success: false, error: 'checkout failed' },
+    ]) {
+      const original = fs.writeSync;
+      let stdout = '';
+      fs.writeSync = (fd, value, ...rest) => {
+        if (fd === 1) {
+          stdout += String(value);
+          return Buffer.byteLength(value);
+        }
+        return original.call(fs, fd, value, ...rest);
+      };
+      try {
+        cmdUpdate(root, {}, {
+          latestVersion: '1.0.0-dev.7',
+          updateSource: 'npm',
+          resolveRemoteHash: () => oid,
+          execSnapshotUpdate: () => executorResult,
+        });
+      } finally {
+        fs.writeSync = original;
+      }
+      const result = JSON.parse(stdout);
+      assert.strictEqual(result.status, 'error');
+      assert.match(result.message, /Update failed/);
+    }
+    delete process.env.GSD_TEST_HOME;
+  });
+
+  test('pinned snapshot dry execute describes the OID without claiming updated', () => {
+    const configHome = path.join(root, '.claude');
+    fs.mkdirSync(path.join(configHome, 'gsd-ng'), { recursive: true });
+    fs.writeFileSync(path.join(configHome, 'gsd-ng', 'VERSION'), '1.0.0-dev.7+1234567');
+    fs.writeFileSync(
+      path.join(configHome, 'gsd-file-manifest.json'),
+      JSON.stringify({ snapshot_source: { remote_url: 'https://example.com/repo', branch: 'develop' } }),
+    );
+    process.env.GSD_TEST_HOME = path.join(root, 'home');
+    const { cmdUpdate } = require('../gsd-ng/bin/lib/commands.cjs');
+    const original = fs.writeSync;
+    let stdout = '';
+    fs.writeSync = (fd, value, ...rest) => {
+      if (fd === 1) {
+        stdout += String(value);
+        return Buffer.byteLength(value);
+      }
+      return original.call(fs, fd, value, ...rest);
+    };
+    try {
+      cmdUpdate(root, {}, {
+        latestVersion: '1.0.0-dev.7',
+        updateSource: 'npm',
+        resolveRemoteHash: () => oid,
+        dryExecute: true,
+      });
+    } finally {
+      fs.writeSync = original;
+      delete process.env.GSD_TEST_HOME;
+    }
+    const result = JSON.parse(stdout);
+    assert.strictEqual(result.status, 'update_available');
+    assert.strictEqual(result.pinned_oid, oid);
+    assert.strictEqual(result.executed, false);
   });
 });
 

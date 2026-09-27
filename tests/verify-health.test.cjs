@@ -17,6 +17,7 @@ const {
   waitForReadyFlag,
   resolveTmpDir,
 } = require('./helpers.cjs');
+const { cmdValidateHealth } = require('../gsd-ng/bin/lib/verify.cjs');
 
 // ─── Helpers for setting up minimal valid projects ────────────────────────────
 
@@ -133,6 +134,41 @@ function writeValidConfigJson(tmpDir) {
     path.join(tmpDir, '.planning', 'config.json'),
     JSON.stringify({ model_profile: 'balanced', commit_docs: true }, null, 2),
   );
+}
+
+function writeProjectRuleGraph(tmpDir, files) {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const filePath = path.join(tmpDir, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, 'utf-8');
+  }
+}
+
+function projectRuleGraphDiagnostics(tmpDir) {
+  const result = runGsdTools('validate health', tmpDir);
+  assert.ok(result.success, `Command failed: ${result.error}`);
+  return JSON.parse(result.output).info.filter((issue) => issue.code === 'I003');
+}
+
+function runHealthWithMemoryRepairMutation(tmpDir, mutate) {
+  const originalWriteSync = fs.writeSync;
+  let output = '';
+  fs.writeSync = function captureHealthOutput(fd, data, ...args) {
+    if (fd === 1) {
+      output += Buffer.isBuffer(data) ? data.toString('utf-8') : String(data);
+      return Buffer.byteLength(data);
+    }
+    return originalWriteSync.call(fs, fd, data, ...args);
+  };
+  try {
+    cmdValidateHealth(tmpDir, {
+      repair: true,
+      beforeMemoryRulesRepair: mutate,
+    });
+  } finally {
+    fs.writeSync = originalWriteSync;
+  }
+  return JSON.parse(output);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -465,6 +501,269 @@ describe('validate health command', () => {
       output.warnings.some((w) => w.code === 'W007'),
       `Expected W007 in warnings: ${JSON.stringify(output.warnings)}`,
     );
+  });
+
+  function w006Warnings(roadmap, phaseDirs = []) {
+    writeMinimalProjectMd(tmpDir);
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n${roadmap}\n`,
+    );
+    writeMinimalStateMd(tmpDir, '# Session State\n\nNo phase refs.\n');
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n');
+    const phasesDir = path.join(tmpDir, '.planning', 'phases');
+    cleanupSubdir(tmpDir, '.planning', 'phases');
+    fs.mkdirSync(phasesDir, { recursive: true });
+    for (const dir of phaseDirs) {
+      fs.mkdirSync(path.join(phasesDir, dir), {
+        recursive: true,
+      });
+    }
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output).warnings.filter((w) => w.code === 'W006');
+  }
+
+  test('W006 skips only an affirmatively unplanned phase', () => {
+    const cases = [
+      {
+        name: 'bare checkbox only',
+        roadmap: '- [ ] Phase 5: Future',
+        warns: false,
+      },
+      {
+        name: 'bold checkbox only',
+        roadmap: '- [ ] **Phase 5: Future**',
+        warns: false,
+      },
+      {
+        name: 'unchecked plans TBD',
+        roadmap:
+          '- [ ] **Phase 5: Future**\n\n### Phase 5: Future\n**Plans:** TBD',
+        warns: false,
+      },
+      {
+        name: 'unchecked zero plans',
+        roadmap:
+          '- [ ] Phase 5: Future\n\n### Phase 5: Future\n**Plans:** 0 plans',
+        warns: false,
+      },
+      {
+        name: 'checked checkbox',
+        roadmap: '- [x] **Phase 5: Started**',
+        warns: true,
+      },
+      {
+        name: 'positive plan count',
+        roadmap:
+          '- [ ] Phase 5: Planned\n\n### Phase 5: Planned\n**Plans:** 1 plan',
+        warns: true,
+      },
+      {
+        name: 'concrete plan entry',
+        roadmap:
+          '- [ ] **Phase 5: Planned**\n\n### Phase 5: Planned\n**Plans:** 0 plans\n- [ ] 05-01-PLAN.md',
+        warns: true,
+      },
+      {
+        name: 'ambiguous details',
+        roadmap: '### Phase 5: Started-looking\n**Goal:** Do the work',
+        warns: true,
+      },
+    ];
+
+    for (const fixture of cases) {
+      const found = w006Warnings(fixture.roadmap);
+      assert.strictEqual(
+        found.length > 0,
+        fixture.warns,
+        `${fixture.name}: ${JSON.stringify(found)}`,
+      );
+    }
+  });
+
+  test('W006 phase identity normalizes padding without suffix aliases', () => {
+    const matching = [
+      ['3', '03-integer'],
+      ['03', '03-padded'],
+      ['3.1', '03.1-decimal'],
+      ['3A', '03A-letter'],
+      ['3A.1', '03A.1-letter-decimal'],
+    ];
+    for (const [phase, dir] of matching) {
+      const found = w006Warnings(`### Phase ${phase}: Started`, [dir]);
+      assert.strictEqual(
+        found.length,
+        0,
+        `${phase} should match ${dir}: ${JSON.stringify(found)}`,
+      );
+    }
+
+    const distinct = [
+      ['68', '68.1-decimal'],
+      ['68', '68A-letter'],
+      ['68.1', '68-integer'],
+      ['68.1', '68A-letter'],
+      ['68A', '68-integer'],
+      ['68A', '68.1-decimal'],
+    ];
+    for (const [phase, dir] of distinct) {
+      const found = w006Warnings(`### Phase ${phase}: Started`, [dir]);
+      assert.strictEqual(
+        found.length,
+        1,
+        `${phase} must not match ${dir}: ${JSON.stringify(found)}`,
+      );
+    }
+  });
+
+  function phaseInventoryHealth({ roadmap, phaseDirs, archives, milestones }) {
+    writeMinimalProjectMd(tmpDir);
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap\n\n${roadmap || 'No live phases.'}\n`,
+    );
+    writeMinimalStateMd(tmpDir, '# Session State\n\nNo phase refs.\n');
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n');
+
+    const phasesDir = path.join(tmpDir, '.planning', 'phases');
+    cleanupSubdir(tmpDir, '.planning', 'phases');
+    fs.mkdirSync(phasesDir, { recursive: true });
+    for (const dir of phaseDirs || []) {
+      fs.mkdirSync(path.join(phasesDir, dir), { recursive: true });
+    }
+
+    const archiveDir = path.join(tmpDir, '.planning', 'milestones');
+    cleanupSubdir(tmpDir, '.planning', 'milestones');
+    if (archives) {
+      fs.mkdirSync(archiveDir, { recursive: true });
+      for (const [name, content] of Object.entries(archives)) {
+        const archivePath = path.join(archiveDir, name);
+        if (content === null) fs.mkdirSync(archivePath, { recursive: true });
+        else fs.writeFileSync(archivePath, content);
+      }
+    }
+
+    const milestonesPath = path.join(tmpDir, '.planning', 'MILESTONES.md');
+    cleanupSubdir(tmpDir, '.planning', 'MILESTONES.md');
+    if (milestones !== undefined) {
+      fs.writeFileSync(milestonesPath, milestones);
+    }
+
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output);
+  }
+
+  test('W007 recognizes explicit live and archived phase inventory', () => {
+    const output = phaseInventoryHealth({
+      roadmap: [
+        '<details>',
+        '<summary>Shipped history</summary>',
+        '### Phase 3: Collapsed',
+        '</details>',
+        '- [ ] Phase 3A.1: Future',
+      ].join('\n'),
+      phaseDirs: [
+        '03-collapsed',
+        '03A.1-live',
+        '04.1-archive',
+        '05A-archive',
+        '06-shipped-record',
+      ],
+      archives: {
+        'v2.0-beta-ROADMAP.md': '# Archive\n\n### Phase 4.1: Decimal\n',
+        'v1.0-ROADMAP.md': '# Archive\n\n- [x] **Phase 05A: Letter**\n',
+      },
+      milestones:
+        '# Milestones\n\n## v2.0 Release (Shipped: 2026-01-01)\n\nIncluded Phase 6.\n',
+    });
+
+    assert.deepStrictEqual(
+      output.warnings.filter((w) => w.code === 'W007'),
+      [],
+      JSON.stringify(output.warnings),
+    );
+  });
+
+  test('W007 never treats milestone counts or unrelated archives as IDs', () => {
+    const countOnly = phaseInventoryHealth({
+      phaseDirs: ['99-orphan'],
+      milestones:
+        '# Milestones\n\n## v1.0 Release (Shipped: 2026-01-01)\n\n**Phases completed:** 99 phases, 10 plans, 20 tasks\n',
+    });
+    assert.strictEqual(
+      countOnly.warnings.filter((w) => w.code === 'W007').length,
+      1,
+      JSON.stringify(countOnly.warnings),
+    );
+
+    const unrelated = phaseInventoryHealth({
+      phaseDirs: ['99-orphan'],
+      archives: {
+        'v1.0-ROADMAP.md': '# Archive\n\n### Phase 98: Other\n',
+      },
+    });
+    assert.strictEqual(
+      unrelated.warnings.filter((w) => w.code === 'W007').length,
+      1,
+      JSON.stringify(unrelated.warnings),
+    );
+
+    const noArchiveDirectory = phaseInventoryHealth({
+      phaseDirs: ['99-orphan'],
+    });
+    assert.strictEqual(
+      noArchiveDirectory.warnings.filter((w) => w.code === 'W007').length,
+      1,
+      JSON.stringify(noArchiveDirectory.warnings),
+    );
+  });
+
+  test('W007 milestone inventory preserves suffixed phase identity', () => {
+    const distinct = [
+      ['68', '68.1-decimal'],
+      ['68', '68A-letter'],
+      ['68.1', '68-integer'],
+      ['68A', '68-integer'],
+      ['68A.1', '68A-letter'],
+    ];
+    for (const [known, dir] of distinct) {
+      const output = phaseInventoryHealth({
+        roadmap: `- [ ] Phase ${known}: Known`,
+        phaseDirs: [dir],
+      });
+      assert.strictEqual(
+        output.warnings.filter((w) => w.code === 'W007').length,
+        1,
+        `${known} must not authorize ${dir}: ${JSON.stringify(output.warnings)}`,
+      );
+    }
+  });
+
+  test('incomplete milestone inventory suppresses W007 with a diagnostic', () => {
+    const output = phaseInventoryHealth({
+      roadmap: '### Phase 5: Missing started phase',
+      phaseDirs: ['99-orphan'],
+      archives: { 'v1.0-ROADMAP.md': null },
+    });
+
+    assert.ok(
+      output.warnings.some((w) => w.code === 'W006'),
+      `W006 should remain active: ${JSON.stringify(output.warnings)}`,
+    );
+    assert.ok(
+      !output.warnings.some((w) => w.code === 'W007'),
+      `W007 should be suppressed: ${JSON.stringify(output.warnings)}`,
+    );
+    const diagnostic = output.info.find((item) =>
+      item.message.includes('v1.0-ROADMAP.md'),
+    );
+    assert.ok(diagnostic, `Expected inventory diagnostic: ${JSON.stringify(output)}`);
+    assert.strictEqual(diagnostic.repairable, false);
   });
 
   // ─── Check 5b: Nyquist validation key presence (W008) ─────────────────────
@@ -1631,6 +1930,653 @@ describe('validate health — memory checks (W010-W014)', () => {
       `Should not have W013 when memory dir missing: ${JSON.stringify(output.warnings)}`,
     );
   });
+});
+
+describe('validate health — project rule import graph', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalRoadmap(tmpDir, ['1']);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), {
+      recursive: true,
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('rule graph direct file has no import diagnostics', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '# Project\n\nDirect rules.\n',
+    });
+    assert.deepStrictEqual(projectRuleGraphDiagnostics(tmpDir), []);
+  });
+
+  test('rule graph traverses nested imports in lexical source order', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '# Project\n\n@rules/first.md\n@rules/second.md\n',
+      'rules/first.md': '@missing-first.md\n',
+      'rules/second.md': '@missing-second.md\n',
+    });
+    assert.deepStrictEqual(
+      projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+      [
+        'Project rules graph incomplete: rules/first.md imports missing-first.md (target does not exist)',
+        'Project rules graph incomplete: rules/second.md imports missing-second.md (target does not exist)',
+      ],
+    );
+  });
+
+  test('rule graph treats cycles and duplicate canonical targets as complete', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/a.md\n@rules/alias.md\n',
+      'rules/a.md': '@../CLAUDE.md\n',
+    });
+    fs.symlinkSync('a.md', path.join(tmpDir, 'rules', 'alias.md'));
+    assert.deepStrictEqual(projectRuleGraphDiagnostics(tmpDir), []);
+  });
+
+  test('project rule imports inside inline and fenced code are ignored', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '# Project\n\n`@missing-inline.md`\n\n```text\n@missing-fenced.md\n```\n',
+    });
+    assert.deepStrictEqual(projectRuleGraphDiagnostics(tmpDir), []);
+  });
+
+  test('rule graph ignores arbitrary Markdown links', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '[Notes](docs/notes.md)\n',
+    });
+    assert.deepStrictEqual(projectRuleGraphDiagnostics(tmpDir), []);
+  });
+
+  test('project rule import follows a recognized Markdown pointer', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '[Project rules](rules/AGENTS.md)\n',
+      'rules/AGENTS.md': '@missing-owner.md\n',
+    });
+    assert.deepStrictEqual(
+      projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+      [
+        'Project rules graph incomplete: rules/AGENTS.md imports missing-owner.md (target does not exist)',
+      ],
+    );
+  });
+
+  test('import confinement rejects URLs and unsupported schemes in source order', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '@https://example.com/CLAUDE.md\n@ssh://example.com/AGENTS.md\n',
+    });
+    assert.deepStrictEqual(
+      projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+      [
+        'Project rules graph incomplete: CLAUDE.md imports https://example.com/CLAUDE.md (external URL or unsupported scheme)',
+        'Project rules graph incomplete: CLAUDE.md imports ssh://example.com/AGENTS.md (external URL or unsupported scheme)',
+      ],
+    );
+  });
+
+  test('import confinement rejects traversal and outside absolute paths', () => {
+    const outside = path.join(path.dirname(tmpDir), 'outside-rules.md');
+    fs.writeFileSync(outside, '# Outside\n', 'utf-8');
+    try {
+      writeProjectRuleGraph(tmpDir, {
+        'CLAUDE.md': `@../outside-rules.md\n@${outside}\n`,
+      });
+      assert.deepStrictEqual(
+        projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+        [
+          'Project rules graph incomplete: CLAUDE.md imports ../outside-rules.md (path escapes project root)',
+          `Project rules graph incomplete: CLAUDE.md imports ${outside} (path escapes project root)`,
+        ],
+      );
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
+  test('import confinement rejects symlink escapes, directories, and missing targets', () => {
+    const outside = path.join(path.dirname(tmpDir), 'outside-owner.md');
+    fs.writeFileSync(outside, '# Outside\n', 'utf-8');
+    fs.mkdirSync(path.join(tmpDir, 'rules'));
+    fs.symlinkSync(outside, path.join(tmpDir, 'rules', 'escape.md'));
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '@rules/escape.md\n@rules\n@rules/missing.md\n',
+    });
+    try {
+      assert.deepStrictEqual(
+        projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+        [
+          'Project rules graph incomplete: CLAUDE.md imports rules/escape.md (path escapes project root)',
+          'Project rules graph incomplete: CLAUDE.md imports rules (target is not a regular file)',
+          'Project rules graph incomplete: CLAUDE.md imports rules/missing.md (target does not exist)',
+        ],
+      );
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
+  test('project rule import reports an unreadable target', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/private.md\n',
+      'rules/private.md': '# Private\n',
+    });
+    const privatePath = path.join(tmpDir, 'rules', 'private.md');
+    fs.chmodSync(privatePath, 0o000);
+    try {
+      assert.deepStrictEqual(
+        projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+        [
+          'Project rules graph incomplete: CLAUDE.md imports rules/private.md (target is not readable)',
+        ],
+      );
+    } finally {
+      fs.chmodSync(privatePath, 0o600);
+    }
+  });
+
+  test('rule graph stops after four import edges', () => {
+    const files = { 'CLAUDE.md': '@rules/1.md\n' };
+    for (let i = 1; i <= 5; i++) {
+      files[`rules/${i}.md`] = `@${i + 1}.md\n`;
+    }
+    writeProjectRuleGraph(tmpDir, files);
+    assert.deepStrictEqual(
+      projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+      [
+        'Project rules graph incomplete: rules/4.md imports 5.md (import depth limit 4 exceeded)',
+      ],
+    );
+  });
+
+  test('rule graph caps loaded nodes at 32', () => {
+    const refs = [];
+    const files = {};
+    for (let i = 1; i <= 32; i++) {
+      refs.push(`@rules/${i}.md`);
+      files[`rules/${i}.md`] = `# Rule ${i}\n`;
+    }
+    files['CLAUDE.md'] = refs.join('\n') + '\n';
+    writeProjectRuleGraph(tmpDir, files);
+    assert.deepStrictEqual(
+      projectRuleGraphDiagnostics(tmpDir).map((issue) => issue.message),
+      [
+        'Project rules graph incomplete: CLAUDE.md imports rules/32.md (node limit 32 exceeded)',
+      ],
+    );
+  });
+});
+
+describe('validate health — imported memory evidence', () => {
+  let tmpDir;
+  let markerDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalRoadmap(tmpDir, ['1']);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), {
+      recursive: true,
+    });
+    markerDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-memory-marker-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+    cleanup(markerDir);
+  });
+
+  function useRuntime(runtime) {
+    fs.writeFileSync(path.join(markerDir, '.runtime'), `${runtime}\n`, 'utf-8');
+  }
+
+  function writeRuntimeMemory(relativeDir, filename) {
+    const memoryDir = path.join(tmpDir, relativeDir);
+    fs.mkdirSync(memoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(memoryDir, filename),
+      '---\nname: Imported\ndescription: Imported memory\ntype: feedback\n---\n\nBody.\n',
+      'utf-8',
+    );
+  }
+
+  function health(args = 'validate health') {
+    const result = runGsdTools(args, tmpDir, {
+      GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+    });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output);
+  }
+
+  function warnings(output, code) {
+    return output.warnings.filter((warning) => warning.code === code);
+  }
+
+  test('imported memory owner supplies all W011 references', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'feedback_one.md');
+    writeRuntimeMemory('.claude/memory', 'feedback_two.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/AGENTS.md\n',
+      'rules/AGENTS.md':
+        '## Memories\n\n- [.claude/memory/feedback_one.md](.claude/memory/feedback_one.md)\n- [.claude/memory/feedback_two.md](.claude/memory/feedback_two.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('imported memory references may be split across graph nodes', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'feedback_one.md');
+    writeRuntimeMemory('.claude/memory', 'feedback_two.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/first.md\n@rules/second.md\n',
+      'rules/first.md':
+        '- [.claude/memory/feedback_one.md](.claude/memory/feedback_one.md)\n',
+      'rules/second.md':
+        '- [.claude/memory/feedback_two.md](.claude/memory/feedback_two.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('imported manual marker suppresses absence-based W011', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'curated.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/AGENTS.md\n',
+      'rules/AGENTS.md': '<!-- gsd:manual -->\n## Memories\n\nCurated.\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('W012 names each imported source with stale references in graph order', () => {
+    useRuntime('claude');
+    fs.mkdirSync(path.join(tmpDir, '.claude', 'memory'), { recursive: true });
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/first.md\n@rules/second.md\n',
+      'rules/first.md':
+        '- [.claude/memory/gone-a.md](.claude/memory/gone-a.md)\n',
+      'rules/second.md':
+        '- [.claude/memory/gone-b.md](.claude/memory/gone-b.md)\n- [.claude/memory/gone-c.md](.claude/memory/gone-c.md)\n',
+    });
+    const found = warnings(health(), 'W012');
+    assert.deepStrictEqual(
+      found.map((warning) => warning.message),
+      [
+        'rules/first.md references 1 memory file(s) that do not exist: gone-a.md',
+        'rules/second.md references 2 memory file(s) that do not exist: gone-b.md, gone-c.md',
+      ],
+    );
+    assert.ok(found.every((warning) => warning.repairable === false));
+  });
+
+  test('incomplete imported memory graph is explicit and makes absence nonrepairable', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'unseen.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '- [.claude/memory/gone.md](.claude/memory/gone.md)\n@rules/missing.md\n',
+    });
+    const output = health();
+    assert.strictEqual(output.info.filter((issue) => issue.code === 'I003').length, 1);
+    assert.deepStrictEqual(warnings(output, 'W011'), []);
+    const stale = warnings(output, 'W012');
+    assert.strictEqual(stale.length, 1);
+    assert.strictEqual(stale[0].repairable, false);
+  });
+
+  test('imported memory evidence uses the OpenCode memory directory', () => {
+    useRuntime('opencode');
+    writeRuntimeMemory('.opencode/memory', 'open.md');
+    writeProjectRuleGraph(tmpDir, {
+      'AGENTS.md': '[Rules](CLAUDE.md)\n',
+      'CLAUDE.md':
+        '## Memories\n\n- [.opencode/memory/open.md](.opencode/memory/open.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('imported memory evidence uses the Copilot memory directory', () => {
+    useRuntime('copilot');
+    writeRuntimeMemory('.github/memory', 'copilot.md');
+    writeProjectRuleGraph(tmpDir, {
+      '.github/copilot-instructions.md': '[Rules](../CLAUDE.md)\n',
+      'CLAUDE.md':
+        '## Memories\n\n- [.github/memory/copilot.md](.github/memory/copilot.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('imported memory evidence uses the Claude memory directory', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'claude.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '[Rules](rules/AGENTS.md)\n',
+      'rules/AGENTS.md':
+        '## Memories\n\n- [.claude/memory/claude.md](.claude/memory/claude.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W011'), []);
+  });
+
+  test('W013 generated MEMORY.md stays clean', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'generated.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '## Memories\n\n- [.claude/memory/generated.md](.claude/memory/generated.md)\n',
+    });
+    const repaired = health('validate health --repair');
+    assert.ok(
+      (repaired.repairs_performed || []).some(
+        (repair) => repair.action === 'syncMemoryMd' && repair.success,
+      ),
+    );
+    assert.deepStrictEqual(warnings(health(), 'W013'), []);
+  });
+
+  test('W013 missing MEMORY.md output stays unchanged', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'missing-index.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '## Memories\n\n- [.claude/memory/missing-index.md](.claude/memory/missing-index.md)\n',
+    });
+    assert.deepStrictEqual(
+      warnings(health(), 'W013').map((warning) => ({
+        message: warning.message,
+        repairable: warning.repairable,
+      })),
+      [
+        {
+          message: 'MEMORY.md does not exist but .claude/memory/ contains files',
+          repairable: true,
+        },
+      ],
+    );
+  });
+
+  test('W013 stale MEMORY.md output stays unchanged', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'stale-index.md');
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'memory', 'MEMORY.md'),
+      '# Memory Index\n\nStale.\n',
+      'utf-8',
+    );
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '## Memories\n\n- [.claude/memory/stale-index.md](.claude/memory/stale-index.md)\n',
+    });
+    assert.deepStrictEqual(
+      warnings(health(), 'W013').map((warning) => warning.message),
+      ['MEMORY.md is out of sync with .claude/memory/ contents'],
+    );
+  });
+
+  test('W013 manual MEMORY.md output stays unchanged', () => {
+    useRuntime('claude');
+    writeRuntimeMemory('.claude/memory', 'manual-index.md');
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'memory', 'MEMORY.md'),
+      '<!-- gsd:manual -->\n# Curated\n',
+      'utf-8',
+    );
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md':
+        '## Memories\n\n- [.claude/memory/manual-index.md](.claude/memory/manual-index.md)\n',
+    });
+    assert.deepStrictEqual(warnings(health(), 'W013'), []);
+  });
+});
+
+describe('validate health — memory repair owner', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalRoadmap(tmpDir, ['1']);
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 1 in progress.\n');
+    writeValidConfigJson(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(tmpDir, '.claude', 'memory'), { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeMemory(filename) {
+    fs.writeFileSync(
+      path.join(tmpDir, '.claude', 'memory', filename),
+      '---\nname: Owner\ndescription: Owner memory\ntype: feedback\n---\n\nBody.\n',
+      'utf-8',
+    );
+  }
+
+  function health(args = 'validate health') {
+    const result = runGsdTools(args, tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output);
+  }
+
+  function memoryWarnings(output) {
+    return output.warnings.filter(
+      (warning) => warning.code === 'W011' || warning.code === 'W012',
+    );
+  }
+
+  function memoryRepair(output) {
+    return (output.repairs_performed || []).find(
+      (repair) => repair.action === 'syncCLAUDEmdMemories',
+    );
+  }
+
+  test('memory repair owner updates an imported owner for W011 only', () => {
+    writeMemory('missing.md');
+    const pointer = '[Rules](rules/AGENTS.md)\n';
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': pointer,
+      'rules/AGENTS.md': '## Memories\n\nNo entries.\n',
+    });
+    const output = health('validate health --repair');
+    const repair = memoryRepair(output);
+    assert.ok(repair && repair.success, JSON.stringify(output));
+    assert.strictEqual(repair.path, 'rules/AGENTS.md');
+    assert.strictEqual(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'), pointer);
+    assert.match(
+      fs.readFileSync(path.join(tmpDir, 'rules', 'AGENTS.md'), 'utf-8'),
+      /missing\.md/,
+    );
+  });
+
+  test('memory repair owner updates an imported owner for W012 only', () => {
+    const pointer = '@rules/AGENTS.md\n';
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': pointer,
+      'rules/AGENTS.md':
+        '## Memories\n\n- [.claude/memory/gone.md](.claude/memory/gone.md)\n',
+    });
+    const output = health('validate health --repair');
+    const repair = memoryRepair(output);
+    assert.ok(repair && repair.success, JSON.stringify(output));
+    assert.strictEqual(repair.path, 'rules/AGENTS.md');
+    assert.strictEqual(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'), pointer);
+    assert.doesNotMatch(
+      fs.readFileSync(path.join(tmpDir, 'rules', 'AGENTS.md'), 'utf-8'),
+      /gone\.md/,
+    );
+  });
+
+  test('memory repair owner refuses two Memories sections', () => {
+    writeMemory('missing.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/first.md\n@rules/second.md\n',
+      'rules/first.md': '## Memories\n\nFirst.\n',
+      'rules/second.md': '## Memories\n\nSecond.\n',
+    });
+    const before = [
+      fs.readFileSync(path.join(tmpDir, 'rules', 'first.md'), 'utf-8'),
+      fs.readFileSync(path.join(tmpDir, 'rules', 'second.md'), 'utf-8'),
+    ];
+    const output = health('validate health --repair');
+    assert.ok(memoryWarnings(output).every((warning) => !warning.repairable));
+    assert.strictEqual(memoryRepair(output), undefined);
+    assert.deepStrictEqual(
+      [
+        fs.readFileSync(path.join(tmpDir, 'rules', 'first.md'), 'utf-8'),
+        fs.readFileSync(path.join(tmpDir, 'rules', 'second.md'), 'utf-8'),
+      ],
+      before,
+    );
+  });
+
+  test('memory repair owner refuses an incomplete graph', () => {
+    writeMemory('missing.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/owner.md\n@rules/missing.md\n',
+      'rules/owner.md': '## Memories\n\nEmpty.\n',
+    });
+    const output = health('validate health --repair');
+    assert.strictEqual(memoryRepair(output), undefined);
+    assert.ok(output.info.some((issue) => issue.code === 'I003'));
+  });
+
+  test('memory repair owner refuses a multi-file graph with no owner', () => {
+    writeMemory('missing.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/more.md\n',
+      'rules/more.md': '# More rules\n',
+    });
+    const output = health('validate health --repair');
+    const warning = memoryWarnings(output).find((issue) => issue.code === 'W011');
+    assert.ok(warning && warning.repairable === false, JSON.stringify(output));
+    assert.strictEqual(memoryRepair(output), undefined);
+  });
+
+  test('memory repair owner refuses an imported manual owner', () => {
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/owner.md\n',
+      'rules/owner.md':
+        '<!-- gsd:manual -->\n## Memories\n\n- [.claude/memory/gone.md](.claude/memory/gone.md)\n',
+    });
+    const output = health('validate health --repair');
+    const warning = memoryWarnings(output).find((issue) => issue.code === 'W012');
+    assert.ok(warning && warning.repairable === false, JSON.stringify(output));
+    assert.strictEqual(memoryRepair(output), undefined);
+  });
+
+  test('memory repair owner preserves direct one-file replacement', () => {
+    writeMemory('direct.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '## Memories\n\nEmpty.\n',
+    });
+    const output = health('validate health --repair');
+    assert.ok(memoryRepair(output)?.success, JSON.stringify(output));
+    assert.match(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'), /direct\.md/);
+  });
+
+  test('memory repair owner preserves direct one-file append', () => {
+    writeMemory('appended.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '# Project\n\nNo section.\n',
+    });
+    const output = health('validate health --repair');
+    assert.ok(memoryRepair(output)?.success, JSON.stringify(output));
+    assert.match(
+      fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'),
+      /## Memories[\s\S]*appended\.md/,
+    );
+  });
+
+  test('memory repair owner is idempotent on a second run', () => {
+    writeMemory('stable.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/owner.md\n',
+      'rules/owner.md': '## Memories\n\nEmpty.\n',
+    });
+    assert.ok(memoryRepair(health('validate health --repair'))?.success);
+    const afterFirst = fs.readFileSync(path.join(tmpDir, 'rules', 'owner.md'), 'utf-8');
+    const second = health('validate health --repair');
+    assert.strictEqual(memoryRepair(second), undefined);
+    assert.strictEqual(
+      fs.readFileSync(path.join(tmpDir, 'rules', 'owner.md'), 'utf-8'),
+      afterFirst,
+    );
+  });
+
+  test('memory repair owner refuses a symlink escape introduced after detection', () => {
+    writeMemory('missing.md');
+    writeProjectRuleGraph(tmpDir, {
+      'CLAUDE.md': '@rules/owner.md\n',
+      'rules/owner.md': '## Memories\n\nEmpty.\n',
+    });
+    const pointer = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+    const outside = path.join(path.dirname(tmpDir), 'drift-owner.md');
+    fs.writeFileSync(outside, '## Memories\n\nOutside.\n', 'utf-8');
+    try {
+      const output = runHealthWithMemoryRepairMutation(tmpDir, () => {
+        fs.unlinkSync(path.join(tmpDir, 'rules', 'owner.md'));
+        fs.symlinkSync(outside, path.join(tmpDir, 'rules', 'owner.md'));
+      });
+      const repair = memoryRepair(output);
+      assert.ok(repair && repair.success === false, JSON.stringify(output));
+      assert.strictEqual(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'), pointer);
+      assert.strictEqual(fs.readFileSync(outside, 'utf-8'), '## Memories\n\nOutside.\n');
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
+  for (const drift of [
+    {
+      name: 'removed',
+      content: '# Owner without the section\n',
+    },
+    {
+      name: 'duplicated',
+      content: '## Memories\n\nFirst.\n\n## Memories\n\nSecond.\n',
+    },
+    {
+      name: 'marked manual',
+      content: '<!-- gsd:manual -->\n## Memories\n\nCurated.\n',
+    },
+  ]) {
+    test(`memory repair owner refuses an owner ${drift.name} after detection`, () => {
+      writeMemory('missing.md');
+      writeProjectRuleGraph(tmpDir, {
+        'CLAUDE.md': '@rules/owner.md\n',
+        'rules/owner.md': '## Memories\n\nEmpty.\n',
+      });
+      const pointer = fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8');
+      const output = runHealthWithMemoryRepairMutation(tmpDir, () => {
+        fs.writeFileSync(
+          path.join(tmpDir, 'rules', 'owner.md'),
+          drift.content,
+          'utf-8',
+        );
+      });
+      const repair = memoryRepair(output);
+      assert.ok(repair && repair.success === false, JSON.stringify(output));
+      assert.strictEqual(fs.readFileSync(path.join(tmpDir, 'CLAUDE.md'), 'utf-8'), pointer);
+      assert.strictEqual(
+        fs.readFileSync(path.join(tmpDir, 'rules', 'owner.md'), 'utf-8'),
+        drift.content,
+      );
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
