@@ -22,11 +22,13 @@
  * Kill switch: GSD_DISABLE_BASH_HOOK=1 — exits immediately (checked FIRST, before stdin read)
  * Debug logging: GSD_HOOK_DEBUG=1 — writes verbose logs to stderr
  *
- * Settings layers read (CLAUDE_PROJECT_DIR and CLAUDE_SETTINGS_PATH env vars):
+ * Settings layers read (project-root and CLAUDE_SETTINGS_PATH env vars).
+ * The project root is GSD_PROJECT_DIR, falling back to the harness-native
+ * CLAUDE_PROJECT_DIR:
  *   Layer 1: $CLAUDE_SETTINGS_PATH || ~/.claude/settings.json
  *   Layer 2: ~/.claude/settings.local.json
- *   Layer 3: $CLAUDE_PROJECT_DIR/.claude/settings.json
- *   Layer 4: $CLAUDE_PROJECT_DIR/.claude/settings.local.json
+ *   Layer 3: $GSD_PROJECT_DIR/.claude/settings.json
+ *   Layer 4: $GSD_PROJECT_DIR/.claude/settings.local.json
  */
 
 'use strict';
@@ -1389,8 +1391,11 @@ function commandMatchesPattern(command, pattern) {
  * Read and merge permissions from all 4 settings layers:
  *   Layer 1: $CLAUDE_SETTINGS_PATH || <global config dir>/settings.json
  *   Layer 2: <global config dir>/settings.local.json
- *   Layer 3: $CLAUDE_PROJECT_DIR/<local config dir>/settings.json
- *   Layer 4: $CLAUDE_PROJECT_DIR/<local config dir>/settings.local.json
+ *   Layer 3: <project root>/<local config dir>/settings.json
+ *   Layer 4: <project root>/<local config dir>/settings.local.json
+ *
+ * The project root is $GSD_PROJECT_DIR when exported, falling back to the
+ * harness-native $CLAUDE_PROJECT_DIR.
  *
  * The config dirs default to Claude's — `~/.claude` and `.claude` — so a caller
  * that names neither resolves exactly the four paths it always did. A caller
@@ -1441,8 +1446,9 @@ function loadMergedSettings(envOverride, options) {
   const layer2Path = path.join(globalConfigDir, 'settings.local.json');
   const layer2 = loadSettings(layer2Path);
 
-  // Layers 3 & 4 require CLAUDE_PROJECT_DIR
-  const projectDir = env.CLAUDE_PROJECT_DIR || '';
+  // Layers 3 & 4 require a project root: GSD_PROJECT_DIR wins, and the
+  // harness-native CLAUDE_PROJECT_DIR answers where GSD_PROJECT_DIR is unset.
+  const projectDir = env.GSD_PROJECT_DIR || env.CLAUDE_PROJECT_DIR || '';
   const layer3 = projectDir
     ? loadSettings(path.join(projectDir, localConfigDirName, 'settings.json'))
     : {};

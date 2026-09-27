@@ -19,6 +19,10 @@ const path = require('path');
  *     and are dropped by the consumer.
  *   - `COLOR_MAP` — colour words the source uses translated to the values the
  *     runtime's own schema accepts, where it constrains them.
+ *   - `projectDirEnv` - the project-root variable the runtime's own harness
+ *     exports, folded into the installed fallback chain behind `GSD_PROJECT_DIR`,
+ *     or `null` where the harness exports none. `projectRootChain()` is its only
+ *     reader; no installed line is written from a runtime-name comparison.
  */
 const RUNTIMES = {
   claude: {
@@ -35,7 +39,12 @@ const RUNTIMES = {
     // cannot drift.
     CONFIG_DIR: '.claude',
     RUNTIME_LABEL: 'Claude Code',
-    PROJECT_DIR_ENV: 'CLAUDE_PROJECT_DIR',
+    PROJECT_DIR_ENV: 'GSD_PROJECT_DIR',
+
+    // Claude Code exports its own project-root variable, so the installed chain
+    // folds it in behind GSD_PROJECT_DIR and existing installs keep working
+    // with no user action.
+    projectDirEnv: 'CLAUDE_PROJECT_DIR',
 
     configHome: {
       envVar: 'CLAUDE_CONFIG_DIR',
@@ -113,7 +122,10 @@ const RUNTIMES = {
     MEMORY_DIR: '.github/memory/',
     CONFIG_DIR: '.github',
     RUNTIME_LABEL: 'Copilot CLI',
-    PROJECT_DIR_ENV: 'CLAUDE_PROJECT_DIR',
+    PROJECT_DIR_ENV: 'GSD_PROJECT_DIR',
+
+    // The Copilot CLI exports no project-root variable of its own.
+    projectDirEnv: null,
 
     configHome: {
       envVar: 'COPILOT_CONFIG_DIR',
@@ -204,11 +216,12 @@ const RUNTIMES = {
     MEMORY_DIR: '.opencode/memory/',
     CONFIG_DIR: '.opencode',
     RUNTIME_LABEL: 'OpenCode',
-    // OpenCode sets no project-directory variable of its own. The existing
-    // ${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)} fallback resolves
-    // correctly when the variable is unset, so this stays a cosmetic leak rather
-    // than an invented variable nothing exports.
-    PROJECT_DIR_ENV: 'CLAUDE_PROJECT_DIR',
+    PROJECT_DIR_ENV: 'GSD_PROJECT_DIR',
+
+    // OpenCode exports no project-root variable of its own. The canonical
+    // chain resolves through git and pwd without borrowing another harness's
+    // identity, so the installed chain names only GSD variables.
+    projectDirEnv: null,
 
     configHome: {
       envVar: 'OPENCODE_CONFIG_DIR',
@@ -318,6 +331,51 @@ const RUNTIMES = {
 };
 
 /**
+ * The project-root resolution chain, as one pair of registry-derived strings.
+ *
+ * `CANONICAL_PROJECT_ROOT` is the harness-neutral chain the source writes:
+ * `GSD_PROJECT_DIR` first, so an explicit user export wins in every runtime,
+ * then git, then pwd. It is legal bash on any harness as written.
+ *
+ * A runtime whose own harness exports a project-root variable gets that
+ * variable folded in behind `GSD_PROJECT_DIR` by `projectRootChain`, so an
+ * install for it resolves the harness's own answer without the source naming
+ * it. Runtimes with no such variable install the canonical chain unchanged,
+ * which is why no installed chain for them mentions another harness.
+ */
+const PROJECT_ROOT_FALLBACK =
+  '$(git rev-parse --show-toplevel 2>/dev/null || pwd)';
+const CANONICAL_PROJECT_ROOT =
+  '${GSD_PROJECT_DIR:-' + PROJECT_ROOT_FALLBACK + '}';
+
+/**
+ * The project-root fallback chain installed for a runtime, as a complete
+ * `${...}` shell expression (no trailing slash or path).
+ *
+ * @param {string} runtime - Runtime name (e.g. 'claude', 'opencode')
+ * @returns {string} The runtime chain, or the canonical chain when the
+ *   runtime is unknown or declares no `projectDirEnv`
+ */
+function projectRootChain(runtime) {
+  const row = Object.prototype.hasOwnProperty.call(RUNTIMES, runtime)
+    ? RUNTIMES[runtime]
+    : {};
+  const lead = row.PROJECT_DIR_ENV || 'GSD_PROJECT_DIR';
+  if (row.projectDirEnv) {
+    return (
+      '${' +
+      lead +
+      ':-${' +
+      row.projectDirEnv +
+      ':-' +
+      PROJECT_ROOT_FALLBACK +
+      '}}'
+    );
+  }
+  return '${' + lead + ':-' + PROJECT_ROOT_FALLBACK + '}';
+}
+
+/**
  * Derive the predicate that removes what a layout write pattern created.
  *
  * The pattern is the single source: `gsd-<name>.md` gives prefix `gsd-` and
@@ -346,6 +404,7 @@ function patternToRemoval(pattern) {
  * 1. Validates balanced ONLY markers
  * 2. Resolves <!-- ONLY:runtime --> conditional blocks (keep matching, strip non-matching)
  * 3. Substitutes {{VAR}} using a replacer function (avoids $ backreference bugs)
+ * 4. Folds the canonical project-root chain into the active runtime's chain
  *
  * @param {string} content - Template content
  * @param {object} context - Must include `runtime` key; additional keys used as variables
@@ -380,6 +439,14 @@ function processTemplate(content, context) {
     if (key in context) return String(context[key]);
     return match; // leave unresolved as-is
   });
+
+  // 4. Fold the runtime's native project-root variable into any canonical
+  // chain. A no-op where the runtime declares none, so only the claude tree
+  // grows a CLAUDE_PROJECT_DIR segment. The upgraded chain no longer
+  // contains the canonical string, so re-processing is stable.
+  out = out
+    .split(CANONICAL_PROJECT_ROOT)
+    .join(projectRootChain(context.runtime));
 
   return out;
 }
@@ -495,4 +562,6 @@ module.exports = {
   patternToRemoval,
   injectAppendToFile,
   fillBetweenMarkers,
+  projectRootChain,
+  CANONICAL_PROJECT_ROOT,
 };

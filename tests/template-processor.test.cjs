@@ -11,6 +11,8 @@ const {
   RUNTIMES,
   fillBetweenMarkers,
   patternToRemoval,
+  projectRootChain,
+  CANONICAL_PROJECT_ROOT,
 } = require('../gsd-ng/bin/lib/template-processor.cjs');
 const { resolveTmpDir, cleanup } = require('./helpers.cjs');
 
@@ -386,12 +388,12 @@ describe('RUNTIMES spec parity', () => {
     });
   }
 
-  test('every runtime carries RUNTIME_LABEL and PROJECT_DIR_ENV', () => {
+  test('every runtime carries RUNTIME_LABEL and the neutral PROJECT_DIR_ENV', () => {
     for (const [name, entry] of realRuntimes()) {
       assert.equal(typeof entry.RUNTIME_LABEL, 'string', `${name}.RUNTIME_LABEL`);
       assert.equal(
-        typeof entry.PROJECT_DIR_ENV,
-        'string',
+        entry.PROJECT_DIR_ENV,
+        'GSD_PROJECT_DIR',
         `${name}.PROJECT_DIR_ENV`,
       );
     }
@@ -425,6 +427,90 @@ describe('RUNTIMES spec parity', () => {
     assert.equal(
       processTemplate('{{CONFIG_DIR}}/skills/', buildContext('copilot')),
       '.github/skills/',
+    );
+  });
+});
+
+// --- project root chain ---
+
+describe('project root chain', () => {
+  const FALLBACK = '$(git rev-parse --show-toplevel 2>/dev/null || pwd)';
+
+  test('the canonical chain is GSD_PROJECT_DIR with the git and pwd fallback', () => {
+    assert.equal(CANONICAL_PROJECT_ROOT, '${GSD_PROJECT_DIR:-' + FALLBACK + '}');
+  });
+
+  test('every runtime chain leads with GSD_PROJECT_DIR', () => {
+    for (const [name] of realRuntimes()) {
+      assert.ok(
+        projectRootChain(name).startsWith('${GSD_PROJECT_DIR:-'),
+        `${name}: chain does not lead with GSD_PROJECT_DIR`,
+      );
+    }
+  });
+
+  test('claude folds its harness-native variable behind GSD_PROJECT_DIR', () => {
+    assert.equal(RUNTIMES.claude.projectDirEnv, 'CLAUDE_PROJECT_DIR');
+    assert.equal(
+      projectRootChain('claude'),
+      '${GSD_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-' + FALLBACK + '}}',
+    );
+  });
+
+  test('every runtime declares a projectDirEnv spec', () => {
+    const missing = realRuntimes()
+      .filter(
+        ([, entry]) =>
+          !Object.prototype.hasOwnProperty.call(entry, 'projectDirEnv'),
+      )
+      .map(([name]) => name);
+    assert.deepEqual(missing, [], `runtimes missing projectDirEnv: ${missing}`);
+  });
+
+  test('copilot and opencode render the neutral chain, naming no other harness', () => {
+    for (const name of ['copilot', 'opencode']) {
+      assert.equal(RUNTIMES[name].projectDirEnv, null, `${name}.projectDirEnv`);
+      assert.equal(projectRootChain(name), CANONICAL_PROJECT_ROOT);
+      assert.ok(
+        !projectRootChain(name).includes('CLAUDE'),
+        `${name} chain must not name a foreign harness variable`,
+      );
+    }
+  });
+
+  test('an unknown runtime resolves to the neutral chain', () => {
+    assert.equal(projectRootChain('no-such-runtime'), CANONICAL_PROJECT_ROOT);
+  });
+
+  test('processTemplate upgrades a canonical chain to the claude chain', () => {
+    const src = 'PROJECT_ROOT="' + CANONICAL_PROJECT_ROOT + '"';
+    assert.equal(
+      processTemplate(src, buildContext('claude')),
+      'PROJECT_ROOT="' + projectRootChain('claude') + '"',
+    );
+  });
+
+  test('processTemplate keeps the canonical chain neutral for copilot and opencode', () => {
+    const src = 'PROJECT_ROOT="' + CANONICAL_PROJECT_ROOT + '"';
+    for (const runtime of ['copilot', 'opencode']) {
+      assert.equal(processTemplate(src, buildContext(runtime)), src);
+    }
+  });
+
+  test('the upgraded claude chain is stable when processed again', () => {
+    const once = processTemplate(CANONICAL_PROJECT_ROOT, buildContext('claude'));
+    assert.equal(processTemplate(once, buildContext('claude')), once);
+  });
+
+  test('chain quoting survives: one surrounding quote pair, none doubled', () => {
+    const line = processTemplate(
+      'node "' + CANONICAL_PROJECT_ROOT + '/gsd-ng/bin/gsd-tools.cjs" state load',
+      buildContext('claude'),
+    );
+    assert.ok(!line.includes('""'), 'no doubled double-quote in: ' + line);
+    assert.equal(
+      line,
+      'node "' + projectRootChain('claude') + '/gsd-ng/bin/gsd-tools.cjs" state load',
     );
   });
 });

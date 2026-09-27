@@ -31,6 +31,11 @@
  *   - a global claude install bakes its absolute target path into the
  *     settings.json hook commands, so the temp dir path is replaced with a
  *     token.
+ *   - the manifest's own per-file hashes are raw, so any tracked file whose
+ *     content bakes the install-time absolute path (opencode global commands
+ *     use @file references) is re-keyed to that file's normalised-tree hash
+ *     before hashing; the record stays content-sensitive but not
+ *     path-sensitive.
  *   - line endings are folded to newline-only before hashing.
  *
  * Permission and sandbox seeding are switched off by installer flag rather
@@ -134,13 +139,49 @@ function captureTree(targetDir, opts = {}) {
   );
 
   const tree = {};
+  const pathBaked = new Set();
   for (const rel of listRelPaths(targetDir, targetDir, []).sort()) {
     const buf = fs.readFileSync(path.join(targetDir, rel));
-    tree[rel] = crypto
-      .createHash('sha256')
-      .update(normalizeContent(rel, buf, replacePaths))
-      .digest('hex');
+    const norm = normalizeContent(rel, buf, replacePaths);
+    if (rel !== MANIFEST_RELPATH && norm.includes(TMPDIR_PLACEHOLDER)) {
+      pathBaked.add(rel);
+    }
+    tree[rel] = crypto.createHash('sha256').update(norm).digest('hex');
   }
+
+  // The manifest records raw content hashes. Some runtimes bake the
+  // install-time absolute path into installed files (opencode global commands
+  // carry @file references), so those raw hashes vary with the capture temp
+  // dir and cannot be a stable record. For every tracked file whose
+  // normalised content carries the temp-dir token, re-key the recorded value
+  // to that file's normalised-tree hash: still content-sensitive, no longer
+  // path-sensitive. Everything else keeps its raw manifest hash.
+  if (Object.prototype.hasOwnProperty.call(tree, MANIFEST_RELPATH)) {
+    const manifestBuf = normalizeContent(
+      MANIFEST_RELPATH,
+      fs.readFileSync(path.join(targetDir, MANIFEST_RELPATH)),
+      replacePaths,
+    );
+    const manifest = JSON.parse(manifestBuf.toString('utf8'));
+    let rekeyed = false;
+    for (const section of ['files', 'files_normalized']) {
+      const map = manifest[section];
+      if (!map || typeof map !== 'object') continue;
+      for (const [rel, raw] of Object.entries(map)) {
+        if (pathBaked.has(rel) && raw !== tree[rel]) {
+          map[rel] = tree[rel];
+          rekeyed = true;
+        }
+      }
+    }
+    if (rekeyed) {
+      tree[MANIFEST_RELPATH] = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(manifest, null, 2))
+        .digest('hex');
+    }
+  }
+
   return tree;
 }
 
@@ -270,6 +311,8 @@ const TREE_CASES = [
   { id: 'TREE-08', runtime: 'claude', scope: 'local' },
   { id: 'TREE-09', runtime: 'copilot', scope: 'global' },
   { id: 'TREE-10', runtime: 'copilot', scope: 'local' },
+  { id: 'TREE-11', runtime: 'opencode', scope: 'global' },
+  { id: 'TREE-12', runtime: 'opencode', scope: 'local' },
 ];
 
 for (const { id, runtime, scope } of TREE_CASES) {

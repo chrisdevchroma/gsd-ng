@@ -13,6 +13,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The context-monitor bridge file is now `gsd-ctx-{session_id}.json` instead of `claude-ctx-{session_id}.json` in the OS temp directory. The bridge is harness-neutral machinery — a statusline writes it, the context monitor and workflow launch checks read it — so the vendor-specific name no longer fit. The statusline writer and every reader moved in the same change, and readers fall back to the legacy `claude-ctx` path when the new file is absent, so mixed installs (an updated reader beside a not-yet-reinstalled statusline) keep working. The fallback is transitional and will be dropped in a later release.
 
+- Installed path chains no longer borrow another harness's identity. Every installed command resolves the project root through a harness-neutral `GSD_PROJECT_DIR`: an explicit `export GSD_PROJECT_DIR=/your/project` now wins in every runtime, a Claude Code install additionally keeps its native `CLAUDE_PROJECT_DIR` working with no user action, and OpenCode and Copilot installs resolve through `git rev-parse` without any `CLAUDE_PROJECT_DIR` reference in the installed files.
+
 ### Fixed
 
 - The launch-time context check in `/gsd:check-todos` now resolves the bridge file the same way its writer does — `${TMPDIR:-/tmp}` instead of a literal `/tmp` — so context warnings fire on macOS and remapped-TMPDIR systems instead of silently reading zero. The session-id extraction was made BSD-sed portable (the previous `grep -P` silently yielded nothing on macOS), and the bridge path reaches `node` via an environment variable instead of string interpolation into JS source.
