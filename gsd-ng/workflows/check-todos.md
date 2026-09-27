@@ -97,7 +97,7 @@ Read the todo file completely. Display:
 
 If `files` field has entries, read and briefly summarize each.
 
-**UI rendering note:** The {{USER_QUESTION_TOOL}} dialog that follows (offer_actions) can occlude preceding text in the Claude Code UI when the preceding text is long. If the Problem or Solution content is more than ~4-5 lines, truncate to a 2-3 sentence summary rather than reproducing the full text. The user already knows what the todo is — keep the display concise.
+**UI rendering note:** Some harness UIs render the {{USER_QUESTION_TOOL}} dialog that follows (offer_actions) in a way that occludes long preceding text (first observed in Claude Code). If the Problem or Solution content is more than ~4-5 lines, truncate to a 2-3 sentence summary rather than reproducing the full text. The user already knows what the todo is — keep the display concise.
 </step>
 
 <step name="check_roadmap">

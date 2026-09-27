@@ -5,7 +5,7 @@
 > - `@~/.claude/gsd-ng/references/checkpoints-standard.md` — writing guidelines
 ```xml
 <task type="checkpoint:human-verify" gate="blocking">
-  <what-built>[What Claude automated and deployed/built]</what-built>
+  <what-built>[What the agent automated and deployed/built]</what-built>
   <how-to-verify>
     [Exact steps to test - URLs, commands, expected behavior]
   </how-to-verify>
@@ -135,12 +135,12 @@
 ```
 ```xml
 <task type="checkpoint:human-action" gate="blocking">
-  <action>[What human must do - Claude already did everything automatable]</action>
+  <action>[What human must do - the agent already did everything automatable]</action>
   <instructions>
-    [What Claude already automated]
+    [What the agent already automated]
     [The ONE thing requiring human action]
   </instructions>
-  <verification>[What Claude can check afterward]</verification>
+  <verification>[What the agent can check afterward]</verification>
   <resume-signal>[How to continue]</resume-signal>
 </task>
 ```
@@ -170,7 +170,7 @@
   <verify>vercel ls shows deployment, curl returns 200</verify>
 </task>
 
-<!-- If vercel returns "Error: Not authenticated", Claude creates checkpoint on the fly -->
+<!-- If vercel returns "Error: Not authenticated", the agent creates checkpoint on the fly -->
 
 <task type="checkpoint:human-action" gate="blocking">
   <action>Authenticate Vercel CLI so I can continue deployment</action>
@@ -183,7 +183,7 @@
   <resume-signal>Type "done" when authenticated</resume-signal>
 </task>
 
-<!-- After authentication, Claude retries the deployment -->
+<!-- After authentication, the agent retries the deployment -->
 
 <task type="auto">
   <name>Retry Vercel deployment</name>
@@ -269,7 +269,7 @@ I'll verify: vercel whoami returns your account
   <instructions>Go to dashboard.convex.dev → Settings → Environment Variables → Add</instructions>
 </task>
 
-<!-- RIGHT: Claude asks for value, then adds via CLI -->
+<!-- RIGHT: The agent asks for value, then adds via CLI -->
 <task type="checkpoint:human-action">
   <action>Provide your OpenAI API key</action>
   <instructions>
@@ -336,7 +336,7 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
   <done>Redis database created and configured</done>
 </task>
 
-<!-- NO CHECKPOINT NEEDED - Claude automated everything and verified programmatically -->
+<!-- NO CHECKPOINT NEEDED - the agent automated everything and verified programmatically -->
 ```
 
 ### Example 2: Full Auth Flow (Single checkpoint at end)
@@ -401,9 +401,9 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
 </task>
 ```
 
-**Why bad:** Claude can run `npm run dev`. User should only visit URLs, not execute commands.
+**Why bad:** The agent can run `npm run dev`. User should only visit URLs, not execute commands.
 
-### Good: Claude starts server, user visits
+### Good: The agent starts server, user visits
 
 ```xml
 <task type="auto">
@@ -422,7 +422,7 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
 </task>
 ```
 
-### Bad: Asking human to deploy / Good: Claude automates
+### Bad: Asking human to deploy / Good: The agent automates
 
 ```xml
 <!-- BAD: Asking user to deploy via dashboard -->
@@ -431,7 +431,7 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
   <instructions>Visit vercel.com/new → Import repo → Click Deploy → Copy URL</instructions>
 </task>
 
-<!-- GOOD: Claude deploys, user verifies -->
+<!-- GOOD: The agent deploys, user verifies -->
 <task type="auto">
   <name>Deploy to Vercel</name>
   <action>Run `vercel --yes`. Capture URL.</action>
@@ -500,7 +500,7 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
 </task>
 ```
 
-**Why bad:** Claude can run these commands. User should never execute CLI commands.
+**Why bad:** The agent can run these commands. User should never execute CLI commands.
 
 ### Bad: Asking user to copy values between services
 
@@ -511,6 +511,6 @@ timeout 30 bash -c 'until curl -s localhost:3000 > /dev/null 2>&1; do sleep 1; d
 </task>
 ```
 
-**Why bad:** Stripe has an API. Claude should create the webhook via API and write to .env directly.
+**Why bad:** Stripe has an API. The agent should create the webhook via API and write to .env directly.
 
 </anti_patterns>

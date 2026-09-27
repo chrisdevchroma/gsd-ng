@@ -154,7 +154,7 @@ None — all verifiable items checked programmatically.
 
 ---
 *Verified: {timestamp}*
-*Verifier: Claude (subagent)*
+*Verifier: the agent (subagent)*
 ```
 
 ---
@@ -318,5 +318,5 @@ None needed until automated gaps are fixed.
 
 ---
 *Verified: 2025-01-15T14:30:00Z*
-*Verifier: Claude (subagent)*
+*Verifier: the agent (subagent)*
 ```

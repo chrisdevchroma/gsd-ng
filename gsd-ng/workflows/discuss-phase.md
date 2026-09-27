@@ -13,7 +13,7 @@ You are a thinking partner, not an interviewer. The user is the visionary — yo
 
 2. **gsd-planner** — Reads CONTEXT.md to know WHAT decisions are locked
    - "Pull-to-refresh on mobile" → planner includes that in task specs
-   - "Claude's Discretion: loading skeleton" → planner can decide approach
+   - "Agent's Discretion: loading skeleton" → planner can decide approach
 
 **Your job:** Capture decisions clearly enough that downstream agents can act on them without asking the user again.
 
@@ -21,7 +21,7 @@ You are a thinking partner, not an interviewer. The user is the visionary — yo
 </downstream_awareness>
 
 <philosophy>
-**User = founder/visionary. Claude = builder.**
+**User = founder/visionary. Agent = builder.**
 
 The user knows:
 - How they imagine it working
@@ -98,7 +98,7 @@ Phase: "API documentation"
 
 **The key question:** What decisions would change the outcome that the user should weigh in on?
 
-**Claude handles these (don't ask):**
+**The agent handles these (don't ask):**
 - Technical implementation details
 - Architecture patterns
 - Performance optimization
@@ -510,7 +510,7 @@ Gray areas:
 <step name="present_gray_areas">
 Present the domain boundary, prior decisions, and gray areas to user.
 
-**UI rendering constraint:** Do NOT output a long text block before the {{USER_QUESTION_TOOL}} call — the Claude Code dialog can occlude preceding text. Instead, embed context summary directly in the `question` string. Keep any preceding output to one short line maximum (e.g., `Phase [X]: [Name]`).
+**UI rendering constraint:** Do NOT output a long text block before the {{USER_QUESTION_TOOL}} call. Some harness UIs render the dialog on top of preceding text (first observed in Claude Code), so long analysis written just before the call may never be seen. Instead, embed context summary directly in the `question` string. Keep any preceding output to one short line maximum (e.g., `Phase [X]: [Name]`).
 
 **Build the question string** by combining domain and prior decisions:
 
@@ -600,7 +600,7 @@ For each selected area, conduct a focused discussion loop.
 
 Each answer (or answer set, in batch mode) should reveal the next question or next batch.
 
-**Auto mode (`--auto`):** For each area, Claude selects the recommended option (first option, or the one explicitly marked "recommended") for every question without using {{USER_QUESTION_TOOL}}. Log each auto-selected choice:
+**Auto mode (`--auto`):** For each area, the agent selects the recommended option (first option, or the one explicitly marked "recommended") for every question without using {{USER_QUESTION_TOOL}}. Log each auto-selected choice:
 ```
 [auto] [Area] — Q: "[question text]" → Selected: "[chosen option]" (recommended default)
 ```
@@ -628,7 +628,7 @@ After all areas are auto-resolved, skip the "Explore more gray areas" prompt and
      - List (simpler, would be a new pattern)
      - Timeline (needs new Timeline component — none exists yet)
      ```
-   - Include "You decide" as an option when reasonable — captures Claude discretion
+   - Include "You decide" as an option when reasonable — captures the agent's discretion
    - **Context7 for library choices:** When a gray area involves library selection (e.g., "magic links" → query next-auth docs) or API approach decisions, use `mcp__context7__*` tools to fetch current documentation and inform the options. Don't use Context7 for every question — only when library-specific knowledge improves the options.
 
    **Batch mode (`--batch`): Ask 2-5 numbered questions in one plain-text turn**
@@ -739,8 +739,8 @@ mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
 ### [Category 2 that was discussed]
 - [Decision or preference captured]
 
-### Claude's Discretion
-[Areas where user said "you decide" — note that Claude has flexibility here]
+### Agent's Discretion
+[Areas where user said "you decide" — note that the agent has flexibility here]
 
 </decisions>
 

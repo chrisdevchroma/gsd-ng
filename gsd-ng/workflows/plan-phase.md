@@ -84,7 +84,7 @@ Generating CONTEXT.md from requirements...
 3. Parse the PRD content and generate CONTEXT.md. The orchestrator should:
    - Extract all requirements, user stories, acceptance criteria, and constraints from the PRD
    - Map each to a locked decision (everything in the PRD is treated as a locked decision)
-   - Identify any areas the PRD doesn't cover and mark as "Claude's Discretion"
+   - Identify any areas the PRD doesn't cover and mark as "Agent's Discretion"
    - **Extract canonical refs** using `roadmap get-phase` (already called in step 3 — use `section` field from `PHASE_INFO` JSON), plus any specs/ADRs referenced in the PRD — expand to full file paths (MANDATORY)
    - Create CONTEXT.md in the phase directory
 
@@ -110,7 +110,7 @@ Generating CONTEXT.md from requirements...
 ### [Category derived from content]
 - [Requirement as locked decision]
 
-### Claude's Discretion
+### Agent's Discretion
 [Areas not covered by PRD — implementation details, technical choices]
 
 </decisions>

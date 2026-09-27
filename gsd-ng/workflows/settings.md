@@ -188,7 +188,7 @@ Use {{USER_QUESTION_TOOL}} with current values pre-selected:
     multiSelect: false,
     options: [
       { label: "Yes (Recommended)", description: "Warn when context usage exceeds 65%. Helps avoid losing work." },
-      { label: "No", description: "Disable warnings. Allows Claude to reach auto-compact naturally. Good for long unattended runs." }
+      { label: "No", description: "Disable warnings. Lets the agent reach auto-compact (a Claude Code behavior) naturally. Good for long unattended runs." }
     ]
   },
   {

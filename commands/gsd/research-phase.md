@@ -89,7 +89,7 @@ For this phase, discover:
 - What's the established architecture pattern?
 - What libraries form the standard stack?
 - What problems do people commonly hit?
-- What's SOTA vs what Claude's training thinks is SOTA?
+- What's SOTA vs what the agent's training thinks is SOTA?
 - What should NOT be hand-rolled?
 </key_insight>
 

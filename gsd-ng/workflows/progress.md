@@ -202,7 +202,7 @@ Check if `{phase_num}-CONTEXT.md` exists in phase directory.
 
 **Also available:**
 - `{{COMMAND_PREFIX}}plan-phase {phase}` — skip discussion, plan directly
-- `{{COMMAND_PREFIX}}list-phase-assumptions {phase}` — see Claude's assumptions
+- `{{COMMAND_PREFIX}}list-phase-assumptions {phase}` — see the agent's assumptions
 
 ---
 ```

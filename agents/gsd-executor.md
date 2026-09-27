@@ -212,7 +212,7 @@ Before any `checkpoint:human-verify`, ensure verification environment is ready. 
 For full automation-first patterns, server lifecycle, CLI handling:
 **See @~/.claude/gsd-ng/references/checkpoints-core.md**
 
-**Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. Claude does all automation.
+**Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. The agent does all automation.
 
 ---
 

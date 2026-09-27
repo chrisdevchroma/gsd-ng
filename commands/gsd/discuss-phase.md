@@ -1,6 +1,6 @@
 ---
 name: gsd:discuss-phase
-description: Gather phase context through adaptive questioning before planning. Use --auto to skip interactive questions (Claude picks recommended defaults).
+description: Gather phase context through adaptive questioning before planning. Use --auto to skip interactive questions (the agent picks recommended defaults).
 argument-hint: "<phase> [--auto]"
 allowed-tools:
   - Read
@@ -100,7 +100,7 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 - If more → ask 4 more, check again
 - After all areas → "Ready to create context?"
 
-**Do NOT ask about (Claude handles these):**
+**Do NOT ask about (the agent handles these):**
 - Technical implementation
 - Architecture choices
 - Performance concerns

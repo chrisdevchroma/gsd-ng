@@ -5,7 +5,7 @@
 > - `@~/.claude/gsd-ng/references/checkpoints-deep.md` — full examples
 <execution_protocol>
 
-When Claude encounters `type="checkpoint:*"`:
+When the agent encounters `type="checkpoint:*"`:
 
 1. **Stop immediately** - do not proceed to next task
 2. **Display checkpoint clearly** using the format below
@@ -17,9 +17,9 @@ When Claude encounters `type="checkpoint:*"`:
 
 <authentication_gates>
 
-**Auth gate = Claude tried CLI/API, got auth error.** Not a failure — a gate requiring human input to unblock.
+**Auth gate = the agent tried CLI/API, got auth error.** Not a failure — a gate requiring human input to unblock.
 
-**Pattern:** Claude tries automation → auth error → creates checkpoint:human-action → user authenticates → Claude retries → continues
+**Pattern:** The agent tries automation → auth error → creates checkpoint:human-action → user authenticates → the agent retries → continues
 
 **Gate protocol:**
 1. Recognize it's not a failure - missing auth is expected
@@ -31,14 +31,14 @@ When Claude encounters `type="checkpoint:*"`:
 7. Continue normally
 
 **Key distinction:**
-- Pre-planned checkpoint: "I need you to do X" (wrong - Claude should automate)
+- Pre-planned checkpoint: "I need you to do X" (wrong - the agent should automate)
 - Auth gate: "I tried to automate X but need credentials" (correct - unblocks automation)
 
 </authentication_gates>
 
 <automation_reference>
 
-**The rule:** If it has CLI/API, Claude does it. Never ask human to perform automatable work.
+**The rule:** If it has CLI/API, the agent does it. Never ask human to perform automatable work.
 
 ## Service CLI Reference
 
@@ -114,7 +114,7 @@ When Claude encounters `type="checkpoint:*"`:
 
 ## Automatable Quick Reference
 
-| Action | Automatable? | Claude does it? |
+| Action | Automatable? | Agent does it? |
 |--------|--------------|-----------------|
 | Deploy to Vercel | Yes (`vercel`) | YES |
 | Create Stripe webhook | Yes (API) | YES |
@@ -143,13 +143,13 @@ When Claude encounters `type="checkpoint:*"`:
 - Provide context: why this checkpoint exists
 
 **DON'T:**
-- Ask human to do work Claude can automate ❌
+- Ask human to do work the agent can automate ❌
 - Assume knowledge: "Configure the usual settings" ❌
 - Skip steps: "Set up database" (too vague) ❌
 - Mix multiple verifications in one checkpoint ❌
 
 **Placement:**
-- **After automation completes** - not before Claude does the work
+- **After automation completes** - not before the agent does the work
 - **After UI buildout** - before declaring phase complete
 - **Before dependent work** - decisions before implementation
 - **At integration points** - after configuring external services

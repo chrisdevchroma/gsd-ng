@@ -34,7 +34,7 @@ You are NOT the executor or verifier — you verify plans WILL work before execu
 | Section | How You Use It |
 |---------|----------------|
 | `## Decisions` | LOCKED — plans MUST implement these exactly. Flag if contradicted. |
-| `## Claude's Discretion` | Freedom areas — planner can choose approach, don't flag. |
+| `## Agent's Discretion` | Freedom areas — planner can choose approach, don't flag. |
 | `## Deferred Ideas` | Out of scope — plans must NOT include these. Flag if present. |
 
 If CONTEXT.md exists, add verification dimension: **Context Compliance**
@@ -263,7 +263,7 @@ issue:
 **Only check if CONTEXT.md was provided in the verification context.**
 
 **Process:**
-1. Parse CONTEXT.md sections: Decisions, Claude's Discretion, Deferred Ideas
+1. Parse CONTEXT.md sections: Decisions, Agent's Discretion, Deferred Ideas
 2. For each locked Decision, find implementing task(s)
 3. Verify no tasks implement Deferred Ideas (scope creep)
 4. Verify Discretion areas are handled (planner's choice is valid)
@@ -405,7 +405,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 **Only check if CONTEXT.md was provided in the verification context.**
 
 **Process:**
-1. Parse the `<decisions>` section of CONTEXT.md. Stop reading at `### Claude's Discretion` — do NOT check items in that subsection.
+1. Parse the `<decisions>` section of CONTEXT.md. Stop reading at `### Agent's Discretion` — do NOT check items in that subsection.
 2. For each decision bullet in locked decisions:
    a. Extract file path tokens: tokens that look like file paths (contain `/` or `./`, or end with a recognizable source/config extension like `.js`, `.ts`, `.md`, `.json`, `.yaml`, `.cjs`). Exclude abbreviations like `e.g.`, `i.e.`, and version strings like `v1.0`.
    b. If no file path tokens found: skip this decision in D10 (handled by D11)
@@ -454,7 +454,7 @@ issue:
 ```
 ## Dimension 10: Decision Coverage
 
-Decisions scanned: {N} (stopped at Claude's Discretion)
+Decisions scanned: {N} (stopped at Agent's Discretion)
 File paths extracted: {M}
 Canonical refs checked: {K}
 
@@ -483,7 +483,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 **Positioned last** — runs after all programmatic checks pass.
 
 **Process:**
-1. Enumerate every locked decision from CONTEXT.md `<decisions>` (stop before `### Claude's Discretion`)
+1. Enumerate every locked decision from CONTEXT.md `<decisions>` (stop before `### Agent's Discretion`)
 2. Enumerate every requirement ID from CONTEXT.md (from `<decisions>` or from ROADMAP.md `**Requirements**:` field)
 3. For each item: state which plan covers it and how. Format:
    - COVERED: "Plan 01 Task 2 — adds depends_on extraction to cmdRoadmapGetPhase"
@@ -695,7 +695,7 @@ Thresholds: 2-3 tasks/plan good, 4 warning, 5+ blocker (split required).
 
 ## Step 10: Decision Coverage (if CONTEXT.md provided)
 
-Run Dimension 10 check: parse `<decisions>` section (stop at `### Claude's Discretion`), extract file path tokens from each locked decision, verify each path appears in at least one plan's `files_modified`. Also verify each `<canonical_refs>` file appears in at least one plan's `read_first`.
+Run Dimension 10 check: parse `<decisions>` section (stop at `### Agent's Discretion`), extract file path tokens from each locked decision, verify each path appears in at least one plan's `files_modified`. Also verify each `<canonical_refs>` file appears in at least one plan's `read_first`.
 
 ## Step 11: NL Coverage Check (if CONTEXT.md provided)
 

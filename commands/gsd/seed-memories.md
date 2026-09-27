@@ -30,7 +30,7 @@ This skill is re-runnable; runtime topology may have changed since install. All 
 
    Check workspace topology:
 <!-- ONLY:claude -->
-   - If `.claude/` directory exists at workspace root → runtime is Claude.
+   - If `.claude/` directory exists at workspace root → runtime is Claude Code.
 <!-- /ONLY:claude -->
 <!-- ONLY:copilot -->
    - If `{{PROJECT_RULES_FILE}}` exists at workspace root → runtime is Copilot.
@@ -49,7 +49,7 @@ This skill is re-runnable; runtime topology may have changed since install. All 
    - For non-standalone workspaces: `## GSD\n\n**Workspace type:** {type}\n**Detection signal:** {signal}`
    - For standalone workspaces: `## GSD\n\n**Workspace type:** standalone`
 <!-- ONLY:claude -->
-   - **Heading-based (Claude):** If the project rules file already has a `## GSD` section, replace it in-place. If not, insert it before the `## Memories` section.
+   - **Heading-based (Claude Code):** If the project rules file already has a `## GSD` section, replace it in-place. If not, insert it before the `## Memories` section.
 <!-- /ONLY:claude -->
 <!-- ONLY:copilot -->
    - **Marker-based (Copilot):** Write the GSD + Memories content inside the `<!-- GSD Configuration -->` / `<!-- /GSD Configuration -->` marker pair using insert/replace-in-place logic. If the markers are absent, append the marker block at end of file. This preserves existing non-GSD content in `{{PROJECT_RULES_FILE}}`.
