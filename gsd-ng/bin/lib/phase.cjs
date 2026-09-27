@@ -980,6 +980,63 @@ function currentMilestoneStartLine(content) {
   return line + 1;
 }
 
+function parseCurrentMilestonePhaseSections(rawContent) {
+  const milestoneStart = currentMilestoneOffset(rawContent);
+  const milestone = rawContent.slice(milestoneStart);
+  const sections = [];
+  const ambiguous = [];
+  const headingPattern =
+    /^(#{2,4})[ \t]+Phase[ \t]+(\d+[A-Za-z]?(?:\.\d+)*)[ \t]*:.*(?:\n|$)/gim;
+  const phaseLikePattern =
+    /^(#{2,4})[ \t]+Phase[ \t]+(\d+[A-Za-z]?(?:\.\d+)*)(.*)$/gim;
+  let match;
+
+  while ((match = headingPattern.exec(milestone)) !== null) {
+    const identifier = normalizePhaseName(match[2]);
+    sections.push({
+      identifier,
+      integerBase: parseInt(identifier, 10),
+      headingStart: milestoneStart + match.index,
+      headingEnd: milestoneStart + headingPattern.lastIndex,
+      bodyEnd: rawContent.length,
+    });
+  }
+
+  while ((match = phaseLikePattern.exec(milestone)) !== null) {
+    if (!/^\s*:/.test(match[3])) {
+      ambiguous.push(match[0].trim());
+    }
+  }
+
+  for (let i = 0; i < sections.length - 1; i++) {
+    sections[i].bodyEnd = sections[i + 1].headingStart;
+  }
+
+  return { milestoneStart, sections, ambiguous };
+}
+
+function validatePhaseSectionTopology(rawContent, index) {
+  if (index.ambiguous.length > 0) {
+    error(`Ambiguous phase heading in ROADMAP.md: ${index.ambiguous[0]}`);
+  }
+
+  const seen = new Set();
+  for (const section of index.sections) {
+    if (seen.has(section.identifier)) {
+      error(`Duplicate phase heading in ROADMAP.md: ${section.identifier}`);
+    }
+    seen.add(section.identifier);
+  }
+
+  const current = rawContent.slice(index.milestoneStart);
+  if (
+    index.sections.length === 0 &&
+    new RegExp(phaseCheckboxLinePattern(), 'im').test(current)
+  ) {
+    error('No canonical phase detail sections found in current milestone');
+  }
+}
+
 /**
  * Insert a `- [ ] **Phase N: Description**` checkbox line into the phases list
  * section of ROADMAP.md content.
@@ -991,7 +1048,13 @@ function currentMilestoneStartLine(content) {
  *   null for appends (phase add).
  * @returns {string} Updated ROADMAP.md content
  */
-function insertCheckboxLine(rawContent, phaseNum, description, afterPhase) {
+function insertCheckboxLine(
+  rawContent,
+  phaseNum,
+  description,
+  afterPhase,
+  includeDescendants = false,
+) {
   const checkboxLine = `- [ ] **Phase ${phaseNum}: ${description}**`;
   const lines = rawContent.split('\n');
   // The list being appended to is the current milestone's. Scanning from the top
@@ -1000,16 +1063,18 @@ function insertCheckboxLine(rawContent, phaseNum, description, afterPhase) {
   const first = currentMilestoneStartLine(rawContent);
 
   if (afterPhase != null) {
-    // For insert: the parent phase's checkbox line, or the last decimal of that
-    // parent (e.g. 36.1, 36.2) — one pattern covers both.
-    const parentPattern = new RegExp(
-      phaseCheckboxLinePattern(afterPhase, { withDecimals: true }),
-      'i',
-    );
+    const normalizedAfter = normalizePhaseName(afterPhase);
+    const anyCheckbox = new RegExp(phaseCheckboxLinePattern(), 'i');
     let insertAfterIdx = -1;
 
     for (let i = first; i < lines.length; i++) {
-      if (parentPattern.test(lines[i])) {
+      const match = lines[i].match(anyCheckbox);
+      if (!match) continue;
+      const identifier = normalizePhaseName(match[2]);
+      if (
+        identifier === normalizedAfter ||
+        (includeDescendants && identifier.startsWith(`${normalizedAfter}.`))
+      ) {
         insertAfterIdx = i;
       }
     }
@@ -1049,6 +1114,36 @@ function insertCheckboxLine(rawContent, phaseNum, description, afterPhase) {
   return lines.join('\n');
 }
 
+function publishRoadmapWithPhaseDirectory(
+  roadmapPath,
+  updatedContent,
+  phasesDir,
+  dirPath,
+) {
+  if (fs.existsSync(dirPath)) {
+    error(`Phase directory already exists: ${path.basename(dirPath)}`);
+  }
+
+  const createdPhasesDir = !fs.existsSync(phasesDir);
+  let createdDirectory = false;
+  try {
+    fs.mkdirSync(dirPath, { recursive: true });
+    createdDirectory = true;
+    fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
+    writeFileAtomic(roadmapPath, updatedContent);
+  } catch (err) {
+    if (createdDirectory) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+    if (createdPhasesDir) {
+      try {
+        fs.rmdirSync(phasesDir);
+      } catch {}
+    }
+    throw err;
+  }
+}
+
 // Locked: the new phase number is the highest one this read of the roadmap can
 // see. An unserialised writer landing in between takes the whole new section and
 // its checkbox with it, and nothing recomputes them afterwards.
@@ -1064,51 +1159,52 @@ function cmdPhaseAdd(cwd, description) {
     }
 
     const rawContent = fs.readFileSync(roadmapPath, 'utf-8');
-    const content = extractCurrentMilestone(rawContent);
     const slug = generateSlugInternal(description);
-
-    // Find highest integer phase number (in current milestone only)
-    const phasePattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*:/gi;
-    let maxPhase = 0;
-    let m;
-    while ((m = phasePattern.exec(content)) !== null) {
-      const num = parseInt(m[1], 10);
-      if (num > maxPhase) maxPhase = num;
+    const index = parseCurrentMilestonePhaseSections(rawContent);
+    validatePhaseSectionTopology(rawContent, index);
+    const integerSections = index.sections.filter((section) =>
+      /^\d+$/.test(section.identifier),
+    );
+    if (index.sections.length > 0 && integerSections.length === 0) {
+      error('No integer phase heading found in current milestone');
     }
+    const highestInteger = integerSections.reduce(
+      (highest, section) =>
+        !highest || section.integerBase > highest.integerBase
+          ? section
+          : highest,
+      null,
+    );
+    const maxPhase = highestInteger ? highestInteger.integerBase : 0;
 
     const newPhaseNum = maxPhase + 1;
     const paddedNum = String(newPhaseNum).padStart(2, '0');
     const dirName = `${paddedNum}-${slug}`;
     const dirPath = path.join(phasesDir, dirName);
 
-    // Create directory with .gitkeep so git tracks empty folders
-    fs.mkdirSync(dirPath, { recursive: true });
-    fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
-
     // Build phase entry
     const phaseEntry = `\n### Phase ${newPhaseNum}: ${description}\n\n**Goal:** [To be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${maxPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /gsd:plan-phase ${newPhaseNum} to break down)\n`;
 
-    // Find insertion point: before last "---" or at end
-    let updatedContent;
-    const lastSeparator = rawContent.lastIndexOf('\n---');
-    if (lastSeparator > 0) {
-      updatedContent =
-        rawContent.slice(0, lastSeparator) +
-        phaseEntry +
-        rawContent.slice(lastSeparator);
-    } else {
-      updatedContent = rawContent + phaseEntry;
-    }
+    const insertIdx = highestInteger
+      ? highestInteger.bodyEnd
+      : rawContent.length;
+    let updatedContent =
+      rawContent.slice(0, insertIdx) + phaseEntry + rawContent.slice(insertIdx);
 
     // Insert checkbox summary line in the phases list at the top of ROADMAP.md
     updatedContent = insertCheckboxLine(
       updatedContent,
       newPhaseNum,
       description,
-      null,
+      highestInteger ? highestInteger.identifier : null,
     );
 
-    writeFileAtomic(roadmapPath, updatedContent);
+    publishRoadmapWithPhaseDirectory(
+      roadmapPath,
+      updatedContent,
+      phasesDir,
+      dirPath,
+    );
 
     const result = {
       phase_number: newPhaseNum,
@@ -1137,70 +1233,72 @@ function cmdPhaseInsert(cwd, afterPhase, description) {
     }
 
     const rawContent = fs.readFileSync(roadmapPath, 'utf-8');
-    const content = extractCurrentMilestone(rawContent);
     const slug = generateSlugInternal(description);
+    const index = parseCurrentMilestonePhaseSections(rawContent);
+    validatePhaseSectionTopology(rawContent, index);
 
-    // Normalize input then strip leading zeros for flexible matching
     const normalizedAfter = normalizePhaseName(afterPhase);
-    const unpadded = normalizedAfter.replace(/^0+/, '');
-    const afterPhaseEscaped = unpadded.replace(/\./g, '\\.');
-    const targetPattern = new RegExp(
-      `#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:`,
-      'i',
+    const parentIndex = index.sections.findIndex(
+      (section) => section.identifier === normalizedAfter,
     );
-    if (!targetPattern.test(content)) {
+    if (parentIndex < 0) {
       error(`Phase ${afterPhase} not found in ROADMAP.md`);
     }
 
-    // Calculate next decimal using existing logic
-    const normalizedBase = normalizePhaseName(afterPhase);
+    let lastFamilyIndex = parentIndex;
+    while (
+      lastFamilyIndex + 1 < index.sections.length &&
+      index.sections[lastFamilyIndex + 1].identifier.startsWith(
+        `${normalizedAfter}.`,
+      )
+    ) {
+      lastFamilyIndex++;
+    }
+    const laterFamily = index.sections
+      .slice(lastFamilyIndex + 1)
+      .find((section) => section.identifier.startsWith(`${normalizedAfter}.`));
+    if (laterFamily) {
+      error(
+        `Ambiguous phase family in ROADMAP.md: ${laterFamily.identifier} is separated from Phase ${afterPhase}`,
+      );
+    }
+
+    // Include directories for compatibility with an already-scaffolded decimal
+    // that has not gained its details section yet.
     let existingDecimals = [];
+
+    const decimalPattern = new RegExp(
+      `^${escapeRegex(normalizedAfter)}\\.(\\d+)$`,
+      'i',
+    );
+    for (const section of index.sections) {
+      const dm = section.identifier.match(decimalPattern);
+      if (dm) existingDecimals.push(parseInt(dm[1], 10));
+    }
 
     try {
       const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
       const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-      const decimalPattern = new RegExp(`^${normalizedBase}\\.(\\d+)`);
+      const directoryDecimalPattern = new RegExp(
+        `^${escapeRegex(normalizedAfter)}\\.(\\d+)(?:-|$)`,
+        'i',
+      );
       for (const dir of dirs) {
-        const dm = dir.match(decimalPattern);
+        const dm = dir.match(directoryDecimalPattern);
         if (dm) existingDecimals.push(parseInt(dm[1], 10));
       }
     } catch {}
 
     const nextDecimal =
       existingDecimals.length === 0 ? 1 : Math.max(...existingDecimals) + 1;
-    const decimalPhase = `${normalizedBase}.${nextDecimal}`;
+    const decimalPhase = `${normalizedAfter}.${nextDecimal}`;
     const dirName = `${decimalPhase}-${slug}`;
     const dirPath = path.join(phasesDir, dirName);
-
-    // Create directory with .gitkeep so git tracks empty folders
-    fs.mkdirSync(dirPath, { recursive: true });
-    fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
 
     // Build phase entry
     const phaseEntry = `\n### Phase ${decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${afterPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /gsd:plan-phase ${decimalPhase} to break down)\n`;
 
-    // Insert after the target phase section
-    const headerPattern = new RegExp(
-      `(#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:[^\\n]*\\n)`,
-      'i',
-    );
-    const headerMatch = rawContent.match(headerPattern);
-    if (!headerMatch) {
-      error(`Could not find Phase ${afterPhase} header`);
-    }
-
-    const headerIdx = rawContent.indexOf(headerMatch[0]);
-    const afterHeader = rawContent.slice(headerIdx + headerMatch[0].length);
-    const nextPhaseMatch = afterHeader.match(
-      /\n#{2,4}\s+Phase\s+\d+[A-Z]?(?:\.\d+)*/i,
-    );
-
-    let insertIdx;
-    if (nextPhaseMatch) {
-      insertIdx = headerIdx + headerMatch[0].length + nextPhaseMatch.index;
-    } else {
-      insertIdx = rawContent.length;
-    }
+    const insertIdx = index.sections[lastFamilyIndex].bodyEnd;
 
     let updatedContent =
       rawContent.slice(0, insertIdx) + phaseEntry + rawContent.slice(insertIdx);
@@ -1210,10 +1308,16 @@ function cmdPhaseInsert(cwd, afterPhase, description) {
       updatedContent,
       decimalPhase,
       description + ' (INSERTED)',
-      afterPhase,
+      normalizedAfter,
+      true,
     );
 
-    writeFileAtomic(roadmapPath, updatedContent);
+    publishRoadmapWithPhaseDirectory(
+      roadmapPath,
+      updatedContent,
+      phasesDir,
+      dirPath,
+    );
 
     const result = {
       phase_number: decimalPhase,

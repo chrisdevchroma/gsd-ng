@@ -715,12 +715,13 @@ function summarizeMetricsRows(tableBody) {
       .split('|')
       .slice(1, -1)
       .map((cell) => cell.trim());
-    if (cells.length < 2) continue;
+    if (cells.length < 4) continue;
     // Separator rows and the template's `| - | - | - | - |` placeholder.
     if (cells.every((cell) => cell === '' || /^:?-{3,}:?$/.test(cell)))
       continue;
     if (cells.every((cell) => cell === '' || cell === '-')) continue;
     if (/none yet/i.test(line)) continue;
+    if (!/^Phase\s+.+\s+P\S+$/i.test(cells[0])) continue;
     plans++;
     const parsed = parseDurationMinutes(cells[1]);
     if (parsed !== null) {
@@ -1899,6 +1900,7 @@ module.exports = {
   findTableHeaderIndex,
   sectionPattern,
   tableSectionPattern,
+  summarizeMetricsRows,
   stateExtractField,
   stateReplaceField,
   stateReplaceFields,

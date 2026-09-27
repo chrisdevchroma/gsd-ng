@@ -47,6 +47,51 @@ function spawnDirectPhaseRemove(cwd, targetPhase, options) {
   };
 }
 
+function spawnDirectPhaseMutation(cwd, command, args, failWrite = false) {
+  const coreLib = path.join(path.dirname(PHASE_LIB), 'core.cjs');
+  const countPath = path.join(cwd, '.atomic-write-count');
+  const functionName = command === 'add' ? 'cmdPhaseAdd' : 'cmdPhaseInsert';
+  const code = `
+    const fs = require('fs');
+    const core = require(${JSON.stringify(coreLib)});
+    const originalWrite = core.writeFileAtomic;
+    let count = 0;
+    core.writeFileAtomic = (...writeArgs) => {
+      count++;
+      fs.writeFileSync(${JSON.stringify(countPath)}, String(count));
+      if (${JSON.stringify(failWrite)}) throw new Error('forced atomic write failure');
+      return originalWrite(...writeArgs);
+    };
+    const phase = require(${JSON.stringify(PHASE_LIB)});
+    phase[${JSON.stringify(functionName)}](${JSON.stringify(cwd)}, ...${JSON.stringify(args)});
+  `;
+  const result = spawnSync(process.execPath, ['-e', code], {
+    encoding: 'utf-8',
+  });
+  return {
+    status: result.status,
+    stdout: (result.stdout || '').trim(),
+    stderr: (result.stderr || '').trim(),
+    writes: fs.existsSync(countPath)
+      ? Number(fs.readFileSync(countPath, 'utf-8'))
+      : 0,
+  };
+}
+
+function listPhaseTree(cwd) {
+  const root = path.join(cwd, '.planning', 'phases');
+  const entries = [];
+  const visit = (dir, relative) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const childRelative = path.join(relative, entry.name);
+      entries.push(childRelative);
+      if (entry.isDirectory()) visit(path.join(dir, entry.name), childRelative);
+    }
+  };
+  visit(root, '');
+  return entries.sort();
+}
+
 describe('phases list command', () => {
   let tmpDir;
 
@@ -820,6 +865,145 @@ describe('phase add command', () => {
       'new phase entry should include Requirements TBD',
     );
   });
+
+  test('phase add uses the highest integer section boundary without separators', () => {
+    const before = `# Roadmap
+
+- [ ] **Phase 1: Foundation**
+- [ ] **Phase 7: Latest**
+- [ ] **Phase 6: Historical**
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 7: Latest
+**Goal:** Latest numbered work
+
+---
+
+This rule belongs to Phase 7.
+
+### Phase 6: Historical
+**Goal:** Intentionally out of order
+`;
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      before,
+    );
+
+    const result = runGsdTools('phase add Next Release --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
+    assert.strictEqual(JSON.parse(result.output).phase_number, 8);
+    assert.ok(
+      roadmap.indexOf('### Phase 7: Latest') <
+        roadmap.indexOf('This rule belongs to Phase 7.'),
+      'horizontal rule content should remain in Phase 7',
+    );
+    assert.ok(
+      roadmap.indexOf('This rule belongs to Phase 7.') <
+        roadmap.indexOf('### Phase 8: Next Release'),
+      'new details should follow the complete highest-integer body',
+    );
+    assert.ok(
+      roadmap.indexOf('### Phase 8: Next Release') <
+        roadmap.indexOf('### Phase 6: Historical'),
+      'unrelated out-of-order history should stay where it was',
+    );
+  });
+
+  test('phase add ignores archived milestone headings', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+<details>
+<summary>v0.9 - SHIPPED</summary>
+
+### Phase 99: Archived
+**Goal:** Old work
+
+</details>
+
+- [ ] **Phase 1: Current**
+
+### Phase 1: Current
+**Goal:** Live work
+`,
+    );
+
+    const result = runGsdTools('phase add Current Next --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(JSON.parse(result.output).phase_number, 2);
+
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
+    assert.ok(
+      roadmap.indexOf('### Phase 2: Current Next') >
+        roadmap.indexOf('### Phase 1: Current'),
+      'new details should be placed in the live milestone',
+    );
+  });
+
+  test('phase add rejects duplicate canonical detail headings', () => {
+    const before = `# Roadmap
+
+### Phase 1: First
+**Goal:** One
+
+### Phase 01: Duplicate
+**Goal:** Also one
+`;
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      before,
+    );
+
+    const result = runGsdTools('phase add Unsafe Addition', tmpDir);
+    assert.ok(!result.success, 'duplicate topology should fail');
+    assert.match(result.error, /duplicate phase heading.*01/i);
+    assert.strictEqual(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8'),
+      before,
+      'duplicate topology must not change ROADMAP.md',
+    );
+    assert.deepStrictEqual(
+      fs.readdirSync(path.join(tmpDir, '.planning', 'phases')),
+      [],
+      'duplicate topology must not create a phase directory',
+    );
+  });
+
+  test('phase add rejects a phase-like heading with an ambiguous boundary', () => {
+    const before = `# Roadmap
+
+### Phase 1 - Missing canonical colon
+**Goal:** Ambiguous body
+
+### Phase 2: Valid
+**Goal:** Valid body
+`;
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      before,
+    );
+
+    const result = runGsdTools('phase add Unsafe Addition', tmpDir);
+    assert.ok(!result.success, 'ambiguous topology should fail');
+    assert.match(result.error, /ambiguous phase heading.*Phase 1/i);
+    assert.strictEqual(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8'),
+      before,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1007,6 +1191,212 @@ describe('phase insert command', () => {
       'roadmap should include inserted phase',
     );
   });
+
+  test('phase insert follows roadmap siblings before the next integer section', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] **Phase 1: Foundation**
+- [ ] **Phase 1.1: First Fix**
+- [ ] **Phase 1.2: Second Fix**
+- [ ] **Phase 2: API**
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 1.1: First Fix
+**Goal:** First
+
+### Phase 1.2: Second Fix
+**Goal:** Second
+
+---
+
+This rule belongs to Phase 1.2.
+
+### Phase 2: API
+**Goal:** Build API
+`,
+    );
+
+    const result = runGsdTools('phase insert 1 Third Fix --json', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(JSON.parse(result.output).phase_number, '01.3');
+
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
+    );
+    assert.ok(
+      roadmap.indexOf('This rule belongs to Phase 1.2.') <
+        roadmap.indexOf('### Phase 01.3: Third Fix (INSERTED)'),
+      'inserted details should follow the complete last sibling body',
+    );
+    assert.ok(
+      roadmap.indexOf('### Phase 01.3: Third Fix (INSERTED)') <
+        roadmap.indexOf('### Phase 2: API'),
+      'inserted details should precede the next integer phase',
+    );
+    assert.ok(
+      roadmap.indexOf('**Phase 1.2: Second Fix**') <
+        roadmap.indexOf('**Phase 01.3: Third Fix (INSERTED)**'),
+      'inserted checklist entry should follow every sibling',
+    );
+    assert.ok(
+      roadmap.indexOf('**Phase 01.3: Third Fix (INSERTED)**') <
+        roadmap.indexOf('**Phase 2: API**'),
+      'inserted checklist entry should precede the next integer',
+    );
+  });
+
+  test('phase insert rejects a missing parent before mutation', () => {
+    const before = `# Roadmap
+
+### Phase 1: Foundation
+**Goal:** Setup
+`;
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      before,
+    );
+
+    const result = runGsdTools('phase insert 9 Missing Parent', tmpDir);
+    assert.ok(!result.success, 'missing parent should fail');
+    assert.match(result.error, /Phase 9.*not found/i);
+    assert.strictEqual(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8'),
+      before,
+    );
+    assert.deepStrictEqual(
+      fs.readdirSync(path.join(tmpDir, '.planning', 'phases')),
+      [],
+    );
+  });
+});
+
+describe('phase add and phase insert atomic publication', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeBaseRoadmap() {
+    const content = `# Roadmap
+
+- [ ] **Phase 1: Foundation**
+- [ ] **Phase 2: API**
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal:** Setup
+
+### Phase 2: API
+**Goal:** Build API
+`;
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      content,
+    );
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-foundation'), {
+      recursive: true,
+    });
+    return content;
+  }
+
+  for (const scenario of [
+    {
+      command: 'add',
+      args: ['Dashboard'],
+      cli: 'phase add Dashboard --json',
+      detail: /^### Phase 3: Dashboard$/gm,
+      checkbox: /^- \[ \] \*\*Phase 3: Dashboard\*\*$/gm,
+      directory: '03-dashboard',
+    },
+    {
+      command: 'insert',
+      args: ['1', 'Hotfix'],
+      cli: 'phase insert 1 Hotfix --json',
+      detail: /^### Phase 01\.1: Hotfix \(INSERTED\)$/gm,
+      checkbox: /^- \[ \] \*\*Phase 01\.1: Hotfix \(INSERTED\)\*\*$/gm,
+      directory: '01.1-hotfix',
+    },
+  ]) {
+    test(`phase ${scenario.command} rolls back its directory when publication fails`, () => {
+      const beforeRoadmap = writeBaseRoadmap();
+      const beforeTree = listPhaseTree(tmpDir);
+
+      const failed = spawnDirectPhaseMutation(
+        tmpDir,
+        scenario.command,
+        scenario.args,
+        true,
+      );
+      assert.notStrictEqual(failed.status, 0, 'forced write should fail');
+      assert.match(failed.stderr, /forced atomic write failure/);
+      assert.strictEqual(failed.writes, 1, 'publication should be attempted once');
+      assert.strictEqual(
+        fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8'),
+        beforeRoadmap,
+        'failed publication must preserve exact roadmap bytes',
+      );
+      assert.deepStrictEqual(
+        listPhaseTree(tmpDir),
+        beforeTree,
+        'failed publication must remove only its newly-created directory',
+      );
+
+      const retry = runGsdTools(scenario.cli, tmpDir);
+      assert.ok(retry.success, `Retry failed: ${retry.error}`);
+      const roadmap = fs.readFileSync(
+        path.join(tmpDir, '.planning', 'ROADMAP.md'),
+        'utf-8',
+      );
+      assert.strictEqual(
+        (roadmap.match(scenario.detail) || []).length,
+        1,
+        'retry should create exactly one details section',
+      );
+      assert.strictEqual(
+        (roadmap.match(scenario.checkbox) || []).length,
+        1,
+        'retry should create exactly one checklist entry',
+      );
+      assert.ok(
+        fs.existsSync(
+          path.join(tmpDir, '.planning', 'phases', scenario.directory),
+        ),
+        'retry should create the phase directory',
+      );
+    });
+
+    test(`phase ${scenario.command} publishes checklist and details with one atomic write`, () => {
+      writeBaseRoadmap();
+
+      const result = spawnDirectPhaseMutation(
+        tmpDir,
+        scenario.command,
+        scenario.args,
+      );
+      assert.strictEqual(result.status, 0, result.stderr);
+      assert.strictEqual(result.writes, 1, 'roadmap should be published once');
+
+      const roadmap = fs.readFileSync(
+        path.join(tmpDir, '.planning', 'ROADMAP.md'),
+        'utf-8',
+      );
+      assert.strictEqual((roadmap.match(scenario.detail) || []).length, 1);
+      assert.strictEqual((roadmap.match(scenario.checkbox) || []).length, 1);
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3503,23 +3893,18 @@ describe('cmdPhaseInsert edge cases', () => {
     );
   });
 
-  test('errors when target phase header has no trailing newline', () => {
-    // Hits L588-590: headerMatch null. The targetPattern (no trailing \n) and
-    // headerPattern ([^\n]*\n required) diverge when phase header is the
-    // final line of the file with no trailing newline.
+  test('accepts a target phase header with no trailing newline', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n### Phase 1: Foo',
     );
     const r = runGsdTools(['phase', 'insert', '1', 'Hot', 'Fix'], tmpDir);
-    assert.ok(
-      !r.success,
-      'should fail when target header has no trailing newline',
+    assert.ok(r.success, `Command failed: ${r.error}`);
+    const roadmap = fs.readFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      'utf-8',
     );
-    assert.ok(
-      /Could not find Phase 1 header/.test(r.error),
-      `error should mention header lookup failure (got: ${r.error})`,
-    );
+    assert.match(roadmap, /### Phase 01\.1: Hot Fix \(INSERTED\)/);
   });
 
   test('appends at end of document when no following phase exists', () => {

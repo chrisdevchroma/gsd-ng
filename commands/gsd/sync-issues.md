@@ -8,7 +8,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Sync GSD planning state with external issue trackers (GitHub, GitLab, Forgejo, Gitea).
 
@@ -25,7 +27,7 @@ Routes to the sync-issues workflow which handles:
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (optional phase filter)
+Arguments: the exact invocation text in the `<arguments>` block (optional phase filter)
 </context>
 
 <tool_usage>

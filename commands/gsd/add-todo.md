@@ -9,7 +9,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Capture an idea, task, or issue that surfaces during a GSD session as a structured todo for later work.
 
@@ -28,7 +30,7 @@ Routes to the add-todo workflow which handles:
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (optional todo description)
+Arguments: the exact invocation text in the `<arguments>` block (optional todo description)
 
 State is resolved in-workflow via `init todos` and targeted reads.
 </context>

@@ -2,31 +2,41 @@
 const { output, error } = require('./core.cjs');
 const { setConfigValue } = require('./config.cjs');
 
+const CHAIN_OPERATIONS = new Set(['enter', 'preserve', 'reset']);
+
 /**
- * Guard: sync-chain — Sync auto-chain flag with invocation intent.
+ * Detect standalone automatic-mode intent without consulting project state.
+ * Invocation text remains prompt data; this helper has no filesystem effects.
  *
- * If user invoked without --auto, clear the ephemeral _auto_chain_active flag
- * from any previous interrupted --auto chain. This prevents stale flags from
- * causing unwanted auto-advance.
- *
- * Replaces inline bash guard blocks in execute-phase.md, plan-phase.md,
- * discuss-phase.md that used `if [[ "$ARGUMENTS" != *"--auto"* ]]` which
- * broke due to Claude Code Bash tool escaping != to \!=.
+ * @param {string} argumentsStr - Exact invocation text from the inert block
+ * @returns {boolean} whether a standalone --auto token is present
+ */
+function hasStandaloneAuto(argumentsStr) {
+  return (argumentsStr || '').split(/\s+/).includes('--auto');
+}
+
+/**
+ * Guard: sync-chain — Apply one explicit auto-chain lifecycle transition.
  *
  * @param {string} cwd - Working directory
- * @param {string} argumentsStr - Raw $ARGUMENTS string from workflow
+ * @param {'enter'|'preserve'|'reset'} operation - Static transition selected
+ *   by the workflow, never raw invocation text
  */
-function cmdGuardSyncChain(cwd, argumentsStr) {
-  // Check for --auto as a standalone token (not substring like --auto-advance)
-  const tokens = (argumentsStr || '').split(/\s+/);
-  const hasAuto = tokens.includes('--auto');
-
-  if (!hasAuto) {
-    // Clear stale auto-chain flag from previous --auto runs
-    setConfigValue(cwd, 'workflow._auto_chain_active', false);
+function cmdGuardSyncChain(cwd, operation) {
+  if (!CHAIN_OPERATIONS.has(operation)) {
+    error(
+      `guard sync-chain operation must be one of: enter, preserve, reset (received ${JSON.stringify(operation)})`,
+    );
   }
 
-  output({ synced: true, had_auto: hasAuto });
+  if (operation === 'preserve') {
+    output({ synced: true, operation });
+    return;
+  }
+
+  const active = operation === 'enter';
+  setConfigValue(cwd, 'workflow._auto_chain_active', active);
+  output({ synced: true, operation, active });
 }
 
 /**
@@ -54,4 +64,8 @@ function cmdGuardInitValid(jsonStr) {
   output({ valid: true });
 }
 
-module.exports = { cmdGuardSyncChain, cmdGuardInitValid };
+module.exports = {
+  hasStandaloneAuto,
+  cmdGuardSyncChain,
+  cmdGuardInitValid,
+};

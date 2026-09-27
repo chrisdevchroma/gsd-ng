@@ -10,7 +10,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <context>
 **Flags:**
 - `--auto` — Automatic mode. After config questions, runs research → requirements → roadmap without further interaction. Expects idea document via @ reference.

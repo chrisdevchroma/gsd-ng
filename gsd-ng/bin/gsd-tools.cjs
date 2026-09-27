@@ -460,7 +460,7 @@ const ARG_SCHEMAS = {
     progress: { positional: { min: 0, max: 0 }, flags: [] },
   },
   guard: {
-    // sync-chain omitted: takes a raw freeform arguments string, not discrete flags
+    'sync-chain': { positional: { min: 1, max: 1 }, flags: [] },
     'init-valid': { positional: { min: 1, max: 1 }, flags: [] },
   },
   test: {
@@ -2226,7 +2226,7 @@ async function main() {
       const subcommand = args[1];
       validateArgs('guard', subcommand, args.slice(2));
       if (subcommand === 'sync-chain') {
-        guard.cmdGuardSyncChain(cwd, args.slice(2).join(' '));
+        guard.cmdGuardSyncChain(cwd, args[2]);
       } else if (subcommand === 'init-valid') {
         guard.cmdGuardInitValid(args[2]);
       } else {

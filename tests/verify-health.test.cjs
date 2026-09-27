@@ -1813,7 +1813,8 @@ describe('validate health — orphan detection checks (W015-W018)', () => {
     assert.strictEqual(w017.repairable, true, 'W017 should be repairable');
   });
 
-  test('W018 is repairable', () => {
+  test('W018 is advisory and does not inflate repair counts', () => {
+    writeMinimalStateMd(tmpDir, '# Session State\n\nPhase 3 in progress.\n');
     writeRoadmapWithPhases(tmpDir, [
       { number: 3, complete: true, name: 'Complete Phase' },
     ]);
@@ -1828,7 +1829,71 @@ describe('validate health — orphan detection checks (W015-W018)', () => {
     const parsed = JSON.parse(result.output);
     const w018 = parsed.warnings.find((w) => w.code === 'W018');
     assert.ok(w018, `Expected W018: ${JSON.stringify(parsed.warnings)}`);
-    assert.strictEqual(w018.repairable, true, 'W018 should be repairable');
+    assert.strictEqual(w018.repairable, false, 'W018 should be advisory');
+    assert.strictEqual(
+      parsed.repairable_count,
+      0,
+      `W018 must not raise the repairable count: ${JSON.stringify(parsed)}`,
+    );
+
+    const repair = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(repair.success, `Command failed: ${repair.error}`);
+    const repaired = JSON.parse(repair.output);
+    assert.ok(
+      !(repaired.repairs_performed || []).some(
+        (action) => action.action === 'closePhaseTodo',
+      ),
+      `W018 must not queue a failed manual action: ${JSON.stringify(repaired.repairs_performed)}`,
+    );
+  });
+
+  test('warning repairability audit represents every W001-W027 code', () => {
+    const warningContract = {
+      W001: false,
+      W002: true,
+      W003: true,
+      W004: false,
+      W005: false,
+      W006: false,
+      W007: false,
+      W008: true,
+      W009: false,
+      W010: true,
+      W011: true,
+      W012: true,
+      W013: true,
+      W014: false,
+      W015: null,
+      W016: null,
+      W017: true,
+      W018: false,
+      W019: false,
+      W020: false,
+      W021: 'conditional',
+      W022: 'conditional',
+      W023: false,
+      W024: false,
+      W025: false,
+      W026: false,
+      W027: false,
+    };
+
+    assert.deepStrictEqual(
+      Object.keys(warningContract),
+      Array.from({ length: 27 }, (_, i) => `W${String(i + 1).padStart(3, '0')}`),
+    );
+    assert.strictEqual(warningContract.W015, null, 'W015 does not emit yet');
+    assert.strictEqual(warningContract.W016, null, 'W016 does not emit yet');
+
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'verify.cjs'),
+      'utf-8',
+    );
+    assert.match(
+      source,
+      /repairable:\s*Boolean\(repair\)/,
+      'issue metadata must derive repairability from its queued action',
+    );
   });
 });
 
@@ -1888,6 +1953,23 @@ describe('validate health — related link checks (W021-W022)', () => {
       path.join(completedDir, filename),
       `---\n${fmLines}\n---\n\nTodo content.\n`,
     );
+  }
+
+  function getRelatedWarnings(tmpDir) {
+    const result = runGsdTools('validate health', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output).warnings.filter(
+      (warning) => warning.code === 'W021' || warning.code === 'W022',
+    );
+  }
+
+  function readRelated(todoPath) {
+    const {
+      extractFrontmatter: readFrontmatter,
+    } = require('../gsd-ng/bin/lib/frontmatter.cjs');
+    const fm = readFrontmatter(fs.readFileSync(todoPath, 'utf-8'));
+    if (!fm.related) return [];
+    return Array.isArray(fm.related) ? fm.related : [fm.related];
   }
 
   // ─── W021: broken related links ───────────────────────────────────────────
@@ -1953,6 +2035,171 @@ describe('validate health — related link checks (W021-W022)', () => {
     const w021 = parsed.warnings.find((w) => w.code === 'W021');
     assert.ok(w021, `Expected W021: ${JSON.stringify(parsed.warnings)}`);
     assert.strictEqual(w021.repairable, true, 'W021 should be repairable');
+  });
+
+  test('W021 resolves path-qualified pending and completed todos', () => {
+    writePendingTodo(tmpDir, 'source.md', {
+      related:
+        '[.planning/todos/pending/pending.md, .planning/todos/completed/completed.md]',
+    });
+    writePendingTodo(tmpDir, 'pending.md', { title: 'Pending' });
+    writeCompletedTodo(tmpDir, 'completed.md', { title: 'Completed' });
+
+    const warnings = getRelatedWarnings(tmpDir);
+    assert.ok(
+      !warnings.some((warning) => warning.code === 'W021'),
+      JSON.stringify(warnings),
+    );
+  });
+
+  test('W021 accepts an existing project document related link', () => {
+    const documentPath = path.join(
+      tmpDir,
+      '.planning',
+      'phases',
+      '01-test',
+      '01-CONTEXT.md',
+    );
+    fs.writeFileSync(documentPath, '# Context\n');
+    writePendingTodo(tmpDir, 'source.md', {
+      related: '.planning/phases/01-test/01-CONTEXT.md',
+    });
+
+    const warnings = getRelatedWarnings(tmpDir);
+    assert.ok(
+      !warnings.some((warning) => warning.code === 'W021'),
+      JSON.stringify(warnings),
+    );
+  });
+
+  test('W021 reports only safely resolved absent paths as repairable missing links', () => {
+    const ref = '.planning/phases/01-test/missing.md';
+    writePendingTodo(tmpDir, 'source.md', { related: ref });
+
+    const warnings = getRelatedWarnings(tmpDir);
+    const warning = warnings.find((item) => item.code === 'W021');
+    assert.ok(warning, JSON.stringify(warnings));
+    assert.match(warning.message, /missing/i);
+    assert.ok(warning.message.includes(ref), warning.message);
+    assert.strictEqual(warning.repairable, true);
+  });
+
+  test('W021 reports traversal and absolute outside paths as unsafe and not repairable', () => {
+    const outsidePath = `${tmpDir}-outside-related.md`;
+    fs.writeFileSync(outsidePath, '# Outside\n');
+    try {
+      writePendingTodo(tmpDir, 'source.md', {
+        related: `[../${path.basename(outsidePath)}, ${outsidePath}]`,
+      });
+
+      const warnings = getRelatedWarnings(tmpDir).filter(
+        (warning) => warning.code === 'W021',
+      );
+      assert.strictEqual(warnings.length, 2, JSON.stringify(warnings));
+      for (const warning of warnings) {
+        assert.match(warning.message, /unsafe/i);
+        assert.strictEqual(warning.repairable, false);
+      }
+    } finally {
+      fs.rmSync(outsidePath, { force: true });
+    }
+  });
+
+  test('W021 reports a symlink escape as unsafe and not repairable', () => {
+    const outsidePath = `${tmpDir}-outside-related.md`;
+    const linkPath = path.join(tmpDir, '.planning', 'outside-link.md');
+    fs.writeFileSync(outsidePath, '# Outside\n');
+    fs.symlinkSync(outsidePath, linkPath);
+    try {
+      writePendingTodo(tmpDir, 'source.md', {
+        related: '.planning/outside-link.md',
+      });
+
+      const warning = getRelatedWarnings(tmpDir).find(
+        (item) => item.code === 'W021',
+      );
+      assert.ok(warning);
+      assert.match(warning.message, /unsafe/i);
+      assert.strictEqual(warning.repairable, false);
+    } finally {
+      fs.rmSync(outsidePath, { force: true });
+    }
+  });
+
+  test('W021 reports duplicate bare todo names as ambiguous and not repairable', () => {
+    writePendingTodo(tmpDir, 'source.md', { related: 'duplicate.md' });
+    writePendingTodo(tmpDir, 'duplicate.md', { title: 'Pending duplicate' });
+    writeCompletedTodo(tmpDir, 'duplicate.md', { title: 'Completed duplicate' });
+
+    const warning = getRelatedWarnings(tmpDir).find(
+      (item) => item.code === 'W021',
+    );
+    assert.ok(warning);
+    assert.match(warning.message, /ambiguous/i);
+    assert.ok(warning.message.includes('duplicate.md'), warning.message);
+    assert.strictEqual(warning.repairable, false);
+  });
+
+  test('W021 supports project-relative Windows separators', () => {
+    writePendingTodo(tmpDir, 'source.md', {
+      related: String.raw`.planning\todos\completed\completed.md`,
+    });
+    writeCompletedTodo(tmpDir, 'completed.md', { title: 'Completed' });
+
+    const warnings = getRelatedWarnings(tmpDir);
+    assert.ok(
+      !warnings.some((warning) => warning.code === 'W021'),
+      JSON.stringify(warnings),
+    );
+  });
+
+  test('W021 classifies every member of a mixed related link list', () => {
+    const outsidePath = `${tmpDir}-outside-related.md`;
+    fs.writeFileSync(outsidePath, '# Outside\n');
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, '.planning', 'phases', '01-test', '01-NOTES.md'),
+        '# Notes\n',
+      );
+      writePendingTodo(tmpDir, 'source.md', {
+        related:
+          '[pending.md, .planning/phases/01-test/01-NOTES.md, missing.md, ../outside-related.md, duplicate.md]',
+      });
+      writePendingTodo(tmpDir, 'pending.md', { title: 'Pending' });
+      writePendingTodo(tmpDir, 'duplicate.md', { title: 'Pending duplicate' });
+      writeCompletedTodo(tmpDir, 'duplicate.md', {
+        title: 'Completed duplicate',
+      });
+
+      const warnings = getRelatedWarnings(tmpDir).filter(
+        (warning) => warning.code === 'W021',
+      );
+      assert.strictEqual(warnings.length, 3, JSON.stringify(warnings));
+      assert.ok(
+        warnings.some(
+          (warning) =>
+            warning.message.includes('missing.md') && warning.repairable,
+        ),
+      );
+      assert.ok(
+        warnings.some(
+          (warning) =>
+            warning.message.includes('../outside-related.md') &&
+            !warning.repairable &&
+            /unsafe/i.test(warning.message),
+        ),
+      );
+      assert.ok(
+        warnings.some(
+          (warning) =>
+            warning.message.includes('duplicate.md') &&
+            !warning.repairable &&
+            /ambiguous/i.test(warning.message),
+        ),
+      );
+    } finally {
+      fs.rmSync(outsidePath, { force: true });
+    }
   });
 
   // ─── W022: asymmetric related links ───────────────────────────────────────
@@ -2090,6 +2337,58 @@ describe('validate health — related link checks (W021-W022)', () => {
     );
   });
 
+  test('W021 repair removes a missing scalar related link and preserves unrelated frontmatter', () => {
+    writePendingTodo(tmpDir, 'source.md', {
+      title: 'Source title',
+      related: 'missing.md',
+      area: 'tooling',
+    });
+    const sourcePath = path.join(
+      tmpDir,
+      '.planning',
+      'todos',
+      'pending',
+      'source.md',
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.deepStrictEqual(readRelated(sourcePath), []);
+    const content = fs.readFileSync(sourcePath, 'utf-8');
+    assert.match(content, /title: Source title/);
+    assert.match(content, /area: tooling/);
+  });
+
+  test('W021 repair removes only missing members from a mixed resolution list', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'phases', '01-test', '01-NOTES.md'),
+      '# Notes\n',
+    );
+    writePendingTodo(tmpDir, 'source.md', {
+      related:
+        '[todo.md, .planning/phases/01-test/01-NOTES.md, missing.md, ../unsafe.md, duplicate.md]',
+    });
+    writePendingTodo(tmpDir, 'todo.md', { related: 'source.md' });
+    writePendingTodo(tmpDir, 'duplicate.md', { title: 'Pending duplicate' });
+    writeCompletedTodo(tmpDir, 'duplicate.md', { title: 'Completed duplicate' });
+    const sourcePath = path.join(
+      tmpDir,
+      '.planning',
+      'todos',
+      'pending',
+      'source.md',
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.deepStrictEqual(readRelated(sourcePath), [
+      'todo.md',
+      '.planning/phases/01-test/01-NOTES.md',
+      '../unsafe.md',
+      'duplicate.md',
+    ]);
+  });
+
   // ─── W022 repair: addBacklink ─────────────────────────────────────────────
 
   test('W022 repair adds missing backlink to target todo file', () => {
@@ -2161,6 +2460,101 @@ describe('validate health — related link checks (W021-W022)', () => {
     assert.ok(
       relatedList.includes('todo-a.md'),
       `Backlink todo-a.md should be added: ${JSON.stringify(relatedList)}`,
+    );
+  });
+
+  test('W022 repair follows a path-qualified pending todo target', () => {
+    writePendingTodo(tmpDir, 'source.md', {
+      related: '.planning/todos/pending/target.md',
+    });
+    writePendingTodo(tmpDir, 'target.md', { title: 'Target' });
+    const targetPath = path.join(
+      tmpDir,
+      '.planning',
+      'todos',
+      'pending',
+      'target.md',
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.ok(readRelated(targetPath).includes('source.md'));
+  });
+
+  test('W022 repair adds a backlink to a completed todo target', () => {
+    writePendingTodo(tmpDir, 'source.md', { related: 'completed.md' });
+    writeCompletedTodo(tmpDir, 'completed.md', { title: 'Completed target' });
+    const targetPath = path.join(
+      tmpDir,
+      '.planning',
+      'todos',
+      'completed',
+      'completed.md',
+    );
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, result.error);
+    const output = JSON.parse(result.output);
+    const action = (output.repairs_performed || []).find(
+      (repair) => repair.action === 'addBacklink',
+    );
+    assert.ok(action, JSON.stringify(output.repairs_performed));
+    assert.strictEqual(action.success, true);
+    assert.ok(readRelated(targetPath).includes('source.md'));
+  });
+
+  test('W022 does not repair an existing non-todo project document', () => {
+    const documentPath = path.join(
+      tmpDir,
+      '.planning',
+      'phases',
+      '01-test',
+      '01-NOTES.md',
+    );
+    const original = '# Notes\n\nNo frontmatter.\n';
+    fs.writeFileSync(documentPath, original);
+    writePendingTodo(tmpDir, 'source.md', {
+      related: '.planning/phases/01-test/01-NOTES.md',
+    });
+
+    const result = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(result.success, result.error);
+    const output = JSON.parse(result.output);
+    assert.ok(
+      !(output.repairs_performed || []).some(
+        (repair) => repair.action === 'addBacklink',
+      ),
+      JSON.stringify(output.repairs_performed),
+    );
+    assert.strictEqual(fs.readFileSync(documentPath, 'utf-8'), original);
+  });
+
+  test('related link repair dispatch does not parse warning message prose', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-ng', 'bin', 'lib', 'verify.cjs'),
+      'utf-8',
+    );
+    assert.doesNotMatch(source, /\.exec\(\s*w\.message\s*,?\s*\)/);
+  });
+
+  test('a second related link repair run performs no W021 or W022 action', () => {
+    writePendingTodo(tmpDir, 'source.md', {
+      related: '[missing.md, completed.md]',
+    });
+    writeCompletedTodo(tmpDir, 'completed.md', { title: 'Completed target' });
+
+    const first = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(first.success, first.error);
+    const second = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(second.success, second.error);
+    const output = JSON.parse(second.output);
+    assert.ok(
+      !(output.repairs_performed || []).some(
+        (repair) =>
+          repair.action === 'clearRelatedLink' ||
+          repair.action === 'addBacklink',
+      ),
+      JSON.stringify(output.repairs_performed),
     );
   });
 
@@ -2900,7 +3294,7 @@ describe('validate health --repair — additional branch coverage', () => {
     assert.strictEqual(reset.success, true);
   });
 
-  test('clearPhaseLinkFromTodo repair runs when W017 fires', () => {
+  test('W017 repair removes only phase frontmatter and is idempotent', () => {
     writeMinimalProjectMd(tmpDir);
     writeMinimalRoadmap(tmpDir, ['1']);
     writeMinimalStateMd(tmpDir);
@@ -2917,8 +3311,10 @@ describe('validate health --repair — additional branch coverage', () => {
     fs.mkdirSync(pendingDir, { recursive: true });
     fs.writeFileSync(
       path.join(pendingDir, 'orphan.md'),
-      '---\nphase: 99\n---\n\nOrphan.\n',
+      '---\ntitle: Keep this title\nphase: 99\narea: tooling\n---\n\nOrphan body stays.\n',
     );
+
+    const todoPath = path.join(pendingDir, 'orphan.md');
 
     const result = runGsdTools('validate health --repair', tmpDir);
     assert.ok(result.success);
@@ -2931,9 +3327,31 @@ describe('validate health --repair — additional branch coverage', () => {
       `Expected clearPhaseLinkFromTodo: ${JSON.stringify(output.repairs_performed)}`,
     );
     assert.strictEqual(clear.success, true);
+    assert.strictEqual(clear.path, '.planning/todos/pending/orphan.md');
+
+    const after = fs.readFileSync(todoPath, 'utf-8');
+    assert.doesNotMatch(after, /^phase:/m, after);
+    assert.match(after, /^title: Keep this title$/m, after);
+    assert.match(after, /^area: tooling$/m, after);
+    assert.match(after, /Orphan body stays\./, after);
+
+    const rerun = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(rerun.success, `Second repair failed: ${rerun.error}`);
+    const rerunOutput = JSON.parse(rerun.output);
+    assert.ok(
+      !rerunOutput.warnings.some((warning) => warning.code === 'W017'),
+      `W017 must disappear after repair: ${JSON.stringify(rerunOutput.warnings)}`,
+    );
+    assert.ok(
+      !(rerunOutput.repairs_performed || []).some(
+        (action) => action.action === 'clearPhaseLinkFromTodo',
+      ),
+      `Second run must queue no W017 action: ${JSON.stringify(rerunOutput.repairs_performed)}`,
+    );
+    assert.strictEqual(fs.readFileSync(todoPath, 'utf-8'), after);
   });
 
-  test('closePhaseTodo repair runs (advisory, success=false) when W018 fires', () => {
+  test('W018 repair mode remains advisory and queues no action', () => {
     writeMinimalProjectMd(tmpDir);
     writeMinimalStateMd(tmpDir);
     writeValidConfigJson(tmpDir);
@@ -2955,14 +3373,16 @@ describe('validate health --repair — additional branch coverage', () => {
     const result = runGsdTools('validate health --repair', tmpDir);
     assert.ok(result.success);
     const output = JSON.parse(result.output);
-    const close = (output.repairs_performed || []).find(
-      (r) => r.action === 'closePhaseTodo',
-    );
+    const w018 = output.warnings.find((warning) => warning.code === 'W018');
+    assert.ok(w018, `Expected W018: ${JSON.stringify(output.warnings)}`);
+    assert.strictEqual(w018.repairable, false);
+    assert.strictEqual(output.repairable_count, 0);
     assert.ok(
-      close,
-      `Expected closePhaseTodo: ${JSON.stringify(output.repairs_performed)}`,
+      !(output.repairs_performed || []).some(
+        (action) => action.action === 'closePhaseTodo',
+      ),
+      `W018 must not appear as a failed repair: ${JSON.stringify(output.repairs_performed)}`,
     );
-    assert.strictEqual(close.success, false, 'closePhaseTodo is advisory-only');
   });
 
   // ─── clearRelatedLink: stale ref not in fm.related (skip path) ────────────
@@ -3809,6 +4229,19 @@ describe('validate health — STATE.md fields the template declares (W025)', () 
       0,
       `W025 must not raise the repairable count: ${JSON.stringify(output)}`,
     );
+
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+    const before = fs.readFileSync(statePath, 'utf-8');
+    const repair = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(repair.success, `Command failed: ${repair.error}`);
+    const repaired = JSON.parse(repair.output);
+    assert.strictEqual(fs.readFileSync(statePath, 'utf-8'), before);
+    assert.ok(
+      !(repaired.repairs_performed || []).some(
+        (action) => action.action === 'repairStateFields',
+      ),
+      `W025 must remain detection-only: ${JSON.stringify(repaired.repairs_performed)}`,
+    );
   });
 
   test('a frontmatter key of the same name does not count as the field', () => {
@@ -3840,4 +4273,80 @@ describe('validate health — STATE.md fields the template declares (W025)', () 
       `the plain form is a form gsd-tools reads: ${JSON.stringify(output.warnings)}`,
     );
   });
+});
+
+describe('validate health — shared metrics interpretation (W024)', () => {
+  let tmpDir;
+
+  const metricsRowCorpus = (eol = '\n') =>
+    [
+      '| - | - | - | - |',
+      'None yet',
+      '| Phase 70 P01 | 5min | 2 tasks | 3 files |',
+      '| Phase 70 P02 | multi-session | 1 tasks | 1 files |',
+      '| malformed | row |',
+    ].join(eol);
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    writeMinimalProjectMd(tmpDir);
+    writeMinimalRoadmap(tmpDir, ['1']);
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), '# Project\n');
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-a'), {
+      recursive: true,
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  function writeState(eol) {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      [
+        '# Project State',
+        '',
+        'Phase 1 in progress.',
+        '',
+        '## Performance Metrics',
+        '',
+        '**Velocity:**',
+        '- Total plans completed: 7',
+        '- Average duration: 1 min',
+        '- Total execution time: 7 min',
+        '',
+        '**By Phase:**',
+        '',
+        '| Phase | Plans | Total | Avg/Plan |',
+        '|-------|-------|-------|----------|',
+        ...metricsRowCorpus(eol).split(eol),
+        '',
+      ].join(eol),
+    );
+  }
+
+  for (const [name, eol] of [
+    ['LF', '\n'],
+    ['CRLF', '\r\n'],
+  ]) {
+    test(`W024 uses the shared valid-row count for ${name}`, () => {
+      writeState(eol);
+      const result = runGsdTools('validate health --repair', tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const output = JSON.parse(result.output);
+      const warning = output.warnings.find((item) => item.code === 'W024');
+      assert.ok(warning, `Expected W024: ${JSON.stringify(output.warnings)}`);
+      assert.match(warning.message, /holds 2 rows/);
+      assert.strictEqual(warning.repairable, false);
+      assert.strictEqual(
+        (output.repairs_performed || []).filter(
+          (action) => action.action === 'updateProgress',
+        ).length,
+        0,
+      );
+      assert.match(warning.fix, /state update-progress/);
+    });
+  }
 });

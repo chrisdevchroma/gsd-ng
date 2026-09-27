@@ -10,7 +10,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Create a pull/merge request from the current branch with auto-generated description from phase context.
 </objective>

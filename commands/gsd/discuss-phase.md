@@ -14,7 +14,9 @@ allowed-tools:
   - mcp__context7__query-docs
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Extract implementation decisions that downstream agents need — researcher and planner will use CONTEXT.md to know what to investigate and what choices are locked.
 
@@ -61,7 +63,7 @@ Key constraints:
 </execution_context>
 
 <context>
-Phase number: $ARGUMENTS (required)
+Phase number: the exact invocation text in the `<arguments>` block (required)
 
 Context files are resolved in-workflow using `init phase-op` and roadmap/state tool calls.
 </context>

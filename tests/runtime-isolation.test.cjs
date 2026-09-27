@@ -399,7 +399,7 @@ const ISOLATION_LIB_ALLOWLIST = {
   'gsd-ng/bin/lib/workspace.cjs': 2,
   'gsd-ng/hooks/bash-safety-hook.cjs': 10,
   'gsd-ng/hooks/gsd-check-update.js': 12,
-  'plugin/gsd-core.js': 1,
+  'plugins/gsd-core.js': 1,
 };
 
 const ISOLATION_REGISTRY_RELPATH = 'gsd-ng/bin/lib/template-processor.cjs';

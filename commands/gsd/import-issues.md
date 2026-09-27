@@ -9,7 +9,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Import external issues from connected issue trackers as GSD todos with external_ref frontmatter.
 
@@ -26,7 +28,7 @@ Routes to the import-issue workflow which handles:
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (optional issue number for quick single import)
+Arguments: the exact invocation text in the `<arguments>` block (optional issue number for quick single import)
 </context>
 
 <tool_usage>

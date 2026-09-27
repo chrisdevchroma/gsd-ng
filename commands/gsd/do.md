@@ -8,7 +8,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Analyze freeform natural language input and dispatch to the most appropriate GSD command.
 
@@ -23,7 +25,7 @@ Use when you know what you want but don't know which `{{COMMAND_PREFIX}}*` comma
 </execution_context>
 
 <context>
-$ARGUMENTS
+the exact invocation text in the `<arguments>` block
 </context>
 
 <tool_usage>

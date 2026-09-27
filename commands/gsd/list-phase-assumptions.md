@@ -9,6 +9,9 @@ allowed-tools:
   - Glob
 ---
 
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Analyze a phase and present the agent's assumptions about technical approach, implementation order, scope boundaries, risk areas, and dependencies.
 
@@ -21,7 +24,7 @@ Output: Conversational output only (no file creation) - ends with "What do you t
 </execution_context>
 
 <context>
-Phase number: $ARGUMENTS (required)
+Phase number: the exact invocation text in the `<arguments>` block (required)
 
 Project state and roadmap are loaded in-workflow using targeted reads.
 </context>

@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Installed at <config home>/plugin/gsd-core.js, so the config home is one
+// Installed at <config home>/plugins/gsd-core.js, so the config home is one
 // level up and the hook payload sits inside the engine tree beside it.
 const configHome = path.join(here, '..');
 
@@ -59,6 +59,273 @@ const SESSION_START_EVENTS = new Set([
   'session.created',
   'session.execution.started',
 ]);
+
+const COMMAND_MANIFEST_SCHEMA = 1;
+const COMMAND_NAME_RE = /^gsd-[a-z0-9-]+$/;
+
+function validateCommandManifest(manifest) {
+  if (
+    !manifest ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest) ||
+    manifest.schema_version !== COMMAND_MANIFEST_SCHEMA ||
+    !Array.isArray(manifest.commands)
+  ) {
+    throw new Error(
+      'OpenCode command manifest has an unsupported shape or schema',
+    );
+  }
+
+  const names = new Set();
+  const validated = [];
+  for (const record of manifest.commands) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      throw new Error('OpenCode command record must be an object');
+    }
+    const keys = Object.keys(record).sort();
+    const expectedKeys = [
+      'argument_mode',
+      'description',
+      'name',
+      'preludes',
+      'route',
+      'template',
+    ];
+    if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+      throw new Error('OpenCode command record has unknown or missing fields');
+    }
+    if (
+      typeof record.name !== 'string' ||
+      !COMMAND_NAME_RE.test(record.name) ||
+      names.has(record.name)
+    ) {
+      throw new Error(
+        `OpenCode command manifest has invalid or duplicate command name ${record.name}`,
+      );
+    }
+    names.add(record.name);
+    if (
+      typeof record.description !== 'string' ||
+      record.description.length === 0 ||
+      typeof record.template !== 'string'
+    ) {
+      throw new Error(
+        `OpenCode command record ${record.name} has invalid text fields`,
+      );
+    }
+    if (!['replace', 'append'].includes(record.argument_mode)) {
+      throw new Error(
+        `OpenCode command record ${record.name} has invalid argument mode`,
+      );
+    }
+    const placeholderCount = (record.template.match(/\$ARGUMENTS/g) || [])
+      .length;
+    if (
+      (record.argument_mode === 'replace' && placeholderCount !== 1) ||
+      (record.argument_mode === 'append' && placeholderCount !== 0)
+    ) {
+      throw new Error(
+        `OpenCode command record ${record.name} has an invalid argument placeholder count`,
+      );
+    }
+    const route = record.route;
+    const currentRoute =
+      route &&
+      typeof route === 'object' &&
+      !Array.isArray(route) &&
+      route.kind === 'current' &&
+      Object.keys(route).length === 1;
+    const plannerRoute =
+      route &&
+      typeof route === 'object' &&
+      !Array.isArray(route) &&
+      route.kind === 'planner' &&
+      route.agent === 'gsd-planner' &&
+      Object.keys(route).length === 2;
+    if (!currentRoute && !plannerRoute) {
+      throw new Error(
+        `OpenCode command record ${record.name} has an invalid route`,
+      );
+    }
+    if (!Array.isArray(record.preludes)) {
+      throw new Error(
+        `OpenCode command record ${record.name} has invalid preludes`,
+      );
+    }
+    const tokens = new Set();
+    for (const prelude of record.preludes) {
+      if (
+        !prelude ||
+        typeof prelude !== 'object' ||
+        Array.isArray(prelude) ||
+        JSON.stringify(Object.keys(prelude).sort()) !==
+          JSON.stringify(['argv', 'operation', 'token']) ||
+        typeof prelude.token !== 'string' ||
+        !/^<gsd-prelude-output index="\d+">$/.test(prelude.token) ||
+        tokens.has(prelude.token) ||
+        prelude.operation !== 'gsd-tools' ||
+        !Array.isArray(prelude.argv) ||
+        !ALLOWED_PRELUDE_ARGV.has(prelude.argv.join('\0'))
+      ) {
+        throw new Error(
+          `OpenCode command record ${record.name} has an invalid prelude`,
+        );
+      }
+      tokens.add(prelude.token);
+      if (record.template.split(prelude.token).length - 1 !== 1) {
+        throw new Error(
+          `OpenCode command record ${record.name} has a mismatched prelude token`,
+        );
+      }
+    }
+    const templateTokens = record.template.match(PRELUDE_TOKEN_RE) || [];
+    if (
+      templateTokens.length !== tokens.size ||
+      templateTokens.some((token) => !tokens.has(token))
+    ) {
+      throw new Error(
+        `OpenCode command record ${record.name} has an undeclared prelude token`,
+      );
+    }
+    validated.push(record);
+  }
+  return validated;
+}
+
+const PRELUDE_TOKEN_RE = /<gsd-prelude-output index="\d+">/g;
+const ALLOWED_PRELUDE_ARGV = new Set([
+  'cleanup\0--dry-run',
+  'cleanup',
+  'update\0--dry-run',
+]);
+
+function readCommandManifest(deps) {
+  if (deps.commandManifest !== undefined) {
+    return validateCommandManifest(deps.commandManifest);
+  }
+  const manifestPath =
+    deps.commandManifestPath ||
+    path.join(configHome, 'gsd-ng', 'opencode-commands.json');
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `OpenCode command manifest could not be loaded: ${error.message}`,
+    );
+  }
+  return validateCommandManifest(parsed);
+}
+
+function runPrelude(spawnFn, nodeExec, toolsPath, prelude) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawnFn(nodeExec, [toolsPath, ...prelude.argv], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    if (!child || !child.stdout || !child.stderr || !child.on) {
+      fail(
+        new Error(
+          'OpenCode command prelude did not return a capturable child process',
+        ),
+      );
+      return;
+    }
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on('error', fail);
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      if (code !== 0) {
+        reject(
+          new Error(
+            `OpenCode command prelude exited with code ${code}: ${stderr.trim()}`,
+          ),
+        );
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+}
+
+async function finalizeCommandText(record, input, deps) {
+  let text = record.template;
+  for (const prelude of record.preludes) {
+    const output = await runPrelude(
+      deps.spawnFn,
+      deps.nodeExec,
+      deps.toolsPath,
+      prelude,
+    );
+    text = text.replace(prelude.token, () => output);
+  }
+  const raw = input.prompt.text;
+  if (record.argument_mode === 'replace') {
+    return text.replace('$ARGUMENTS', () => raw);
+  }
+  return raw.length > 0 ? `${text}\n\n${raw}` : text;
+}
+
+async function executePlannerCommand(ctx, record, input, finalizedText) {
+  try {
+    const child = await ctx.session.create({});
+    const childID =
+      child &&
+      (child.id || child.sessionID || (child.data && child.data.id));
+    if (typeof childID !== 'string' || childID.length === 0) {
+      throw new Error('planner session create returned no child session ID');
+    }
+    await ctx.session.switchAgent({
+      sessionID: childID,
+      agent: record.route.agent,
+    });
+    await ctx.session.prompt({
+      sessionID: childID,
+      ...input.prompt,
+      text: finalizedText,
+      delivery: input.delivery,
+    });
+    await ctx.session.wait({ sessionID: childID });
+    const context = await ctx.session.context({ sessionID: childID });
+    return await ctx.session.synthetic({
+      sessionID: input.sessionID,
+      text: typeof context === 'string' ? context : JSON.stringify(context),
+    });
+  } catch (error) {
+    if (ctx.session && typeof ctx.session.synthetic === 'function') {
+      try {
+        await ctx.session.synthetic({
+          sessionID: input.sessionID,
+          text: `gsd-planner child routing failed: ${error.message}`,
+          description: 'gsd-planner child routing failed',
+        });
+      } catch (_syntheticError) {
+        // The original child-stage failure is the actionable error.
+      }
+    }
+    throw error;
+  }
+}
 
 /**
  * The interpreter to run the update-check script with.
@@ -218,6 +485,16 @@ export function createV2Adapter(deps = {}) {
   return async function setup(ctx) {
     await retirePrevious();
 
+    const commandRecords = readCommandManifest(deps);
+    const commandDeps = {
+      spawnFn: deps.spawnFn || spawn,
+      nodeExec:
+        deps.nodeExec || resolveNodeExec(process.versions, process.execPath),
+      toolsPath:
+        deps.toolsPath ||
+        path.join(configHome, 'gsd-ng', 'bin', 'gsd-tools.cjs'),
+    };
+
     if (!hooks) {
       hooks = createGsdHooks({
         ...deps,
@@ -229,14 +506,71 @@ export function createV2Adapter(deps = {}) {
 
     const controller = new AbortController();
 
-    const toolRegistration = await ctx.tool.hook('execute.before', async (event) => {
-      // Deny must propagate: the throw inside the core hook IS the block,
-      // so nothing here may swallow it.
-      await hooks['tool.execute.before'](
-        { tool: event && event.tool },
-        { args: { command: event && event.input && event.input.command } },
-      );
-    });
+    const toolRegistration = await ctx.tool.hook(
+      'execute.before',
+      async (event) => {
+        // Deny must propagate: the throw inside the core hook IS the block,
+        // so nothing here may swallow it.
+        await hooks['tool.execute.before'](
+          { tool: event && event.tool },
+          { args: { command: event && event.input && event.input.command } },
+        );
+      },
+    );
+
+    const commandRegistrations = [];
+    try {
+      const registration = await ctx.command.transform((editor) => {
+        for (const record of commandRecords) {
+          editor.add({
+            name: record.name,
+            description: record.description,
+            async execute(input) {
+              if (
+                !input ||
+                typeof input.sessionID !== 'string' ||
+                !input.prompt ||
+                typeof input.prompt.text !== 'string'
+              ) {
+                throw new Error(
+                  `OpenCode command ${record.name} received invalid input`,
+                );
+              }
+              const finalizedText = await finalizeCommandText(
+                record,
+                input,
+                commandDeps,
+              );
+              if (record.route.kind === 'planner') {
+                return executePlannerCommand(
+                  ctx,
+                  record,
+                  input,
+                  finalizedText,
+                );
+              }
+              return ctx.session.prompt({
+                sessionID: input.sessionID,
+                ...input.prompt,
+                text: finalizedText,
+                delivery: input.delivery,
+              });
+            },
+          });
+        }
+      });
+      commandRegistrations.push(registration);
+    } catch (error) {
+      for (const registration of commandRegistrations) {
+        if (registration && typeof registration.dispose === 'function') {
+          await registration.dispose();
+        }
+      }
+      if (toolRegistration && typeof toolRegistration.dispose === 'function') {
+        await toolRegistration.dispose();
+      }
+      throw error;
+    }
 
     // The event stream is consumed in the background so registering the
     // tool hook is not gated on the subscription. Every streamed event is
@@ -261,7 +595,8 @@ export function createV2Adapter(deps = {}) {
     const cleanup = () => {
       controller.abort();
     };
-    retirePrevious = async () => {
+    const retireCurrent = async () => {
+      cleanup();
       if (toolRegistration && typeof toolRegistration.dispose === 'function') {
         try {
           await toolRegistration.dispose();
@@ -269,10 +604,19 @@ export function createV2Adapter(deps = {}) {
           // A failed dispose is never a session failure either.
         }
       }
-      cleanup();
+      for (const registration of commandRegistrations) {
+        if (registration && typeof registration.dispose === 'function') {
+          try {
+            await registration.dispose();
+          } catch (_e) {
+            // Command reload cleanup is best-effort like tool-hook cleanup.
+          }
+        }
+      }
     };
+    retirePrevious = retireCurrent;
 
-    return cleanup;
+    return retireCurrent;
   };
 }
 

@@ -9,7 +9,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Debug issues using scientific method with subagent isolation.
 
@@ -19,7 +21,7 @@ Debug issues using scientific method with subagent isolation.
 </objective>
 
 <context>
-User's issue: $ARGUMENTS
+User's issue: the exact invocation text in the `<arguments>` block
 
 Check for active sessions:
 ```bash
@@ -68,11 +70,11 @@ debugger_model=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd
 
 ## 1. Check Active Sessions
 
-If active sessions exist AND no $ARGUMENTS:
+If active sessions exist AND the `<arguments>` block is empty:
 - List sessions with status, hypothesis, next action
 - User picks number to resume OR describes new issue
 
-If $ARGUMENTS provided OR user describes new issue:
+If the `<arguments>` block has input OR user describes new issue:
 - Continue to symptom gathering
 
 ## 2. Gather Symptoms (if new issue)

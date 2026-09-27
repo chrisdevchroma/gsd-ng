@@ -13,7 +13,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Audit Nyquist validation coverage for a completed phase. Three states:
 - (A) VALIDATION.md exists — audit and fill gaps
@@ -28,7 +30,7 @@ Output: updated VALIDATION.md + generated test files.
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS — optional, defaults to last completed phase.
+Phase: the exact invocation text in the `<arguments>` block — optional, defaults to last completed phase.
 
 `--batch` — run non-interactively. The question gate is skipped, not auto-answered: a run
 without a human present has no authority to grant a waiver, so anything needing one is

@@ -8,6 +8,10 @@ allowed-tools:
   - Glob
   - Grep
 ---
+
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Zero-friction idea capture — one Write call, one confirmation line.
 
@@ -25,7 +29,7 @@ Runs inline — no Task, no {{USER_QUESTION_TOOL}}, no Bash.
 </execution_context>
 
 <context>
-$ARGUMENTS
+the exact invocation text in the `<arguments>` block
 </context>
 
 <process>

@@ -10,7 +10,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Start a new milestone: questioning → research (optional) → requirements → roadmap.
 
@@ -35,7 +37,7 @@ Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Ga
 </execution_context>
 
 <context>
-Milestone name: $ARGUMENTS (optional - will prompt if not provided)
+Milestone name: the exact invocation text in the `<arguments>` block (optional - will prompt if not provided)
 
 Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
 </context>

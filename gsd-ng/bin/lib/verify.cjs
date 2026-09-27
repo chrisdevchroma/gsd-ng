@@ -32,12 +32,14 @@ const {
   writeStateMd,
   stateApplyFieldsToSection,
   tableSectionPattern,
+  summarizeMetricsRows,
 } = require('./state.cjs');
 const {
   detectWorkspaceType,
   generateMemoriesSection,
   generateMemoryMd,
 } = require('./workspace.cjs');
+const { validatePath } = require('./security.cjs');
 
 // The generated Memories section of the project rules file: group 1 is the
 // heading line, group 2 the body.
@@ -1237,12 +1239,10 @@ function findStateContradictions(cwd, content) {
   const claimed = content.match(STATE_VELOCITY_PLAN_COUNT);
   const metrics = content.match(tableSectionPattern('Performance Metrics'));
   if (claimed && metrics) {
-    const rows = metrics[2]
-      .split(/\r?\n/)
-      .filter((l) => l.trimStart().startsWith('|')).length;
-    if (rows > 0 && Number(claimed[1]) !== rows) {
+    const stats = summarizeMetricsRows(metrics[2]);
+    if (stats.plans > 0 && Number(claimed[1]) !== stats.plans) {
       found.push({
-        message: `STATE.md: the Velocity block reports ${claimed[1]} plans completed while the Performance Metrics table holds ${rows} rows`,
+        message: `STATE.md: the Velocity block reports ${claimed[1]} plans completed while the Performance Metrics table holds ${stats.plans} rows`,
         fix: 'Run `gsd-tools state update-progress` to recompute the Velocity block from the metrics table',
       });
     }
@@ -1442,6 +1442,48 @@ function readEvidenceClaim(block) {
   };
 }
 
+function resolveRelatedReference(cwd, ref) {
+  if (typeof ref !== 'string' || ref.length === 0) {
+    return { status: 'unsafe', ref };
+  }
+
+  const normalizedRef = ref.replace(/\\/g, path.sep);
+  const { todosPending, todosCompleted } = planningPaths(cwd);
+  const pathQualified = normalizedRef.includes(path.sep);
+
+  if (!pathQualified) {
+    const candidates = [
+      path.join('.planning', 'todos', 'pending', normalizedRef),
+      path.join('.planning', 'todos', 'completed', normalizedRef),
+    ].map((candidate) => validatePath(candidate, cwd));
+    if (candidates.some((candidate) => !candidate.safe)) {
+      return { status: 'unsafe', ref };
+    }
+    const existing = candidates.filter((candidate) =>
+      fs.existsSync(candidate.resolved),
+    );
+    if (existing.length > 1) return { status: 'ambiguous', ref };
+    if (existing.length === 1) {
+      return { status: 'todo', ref, resolved: existing[0].resolved };
+    }
+    return { status: 'missing', ref };
+  }
+
+  const candidate = validatePath(normalizedRef, cwd);
+  if (!candidate.safe) return { status: 'unsafe', ref };
+  if (!fs.existsSync(candidate.resolved)) return { status: 'missing', ref };
+
+  const todoRoots = [todosPending, todosCompleted];
+  const todoMatches = todoRoots.filter(
+    (root) => validatePath(candidate.resolved, root).safe,
+  );
+  if (todoMatches.length > 1) return { status: 'ambiguous', ref };
+  if (todoMatches.length === 1) {
+    return { status: 'todo', ref, resolved: candidate.resolved };
+  }
+  return { status: 'document', ref, resolved: candidate.resolved };
+}
+
 /**
  * Health check, and the repairs it decides on.
  *
@@ -1485,12 +1527,17 @@ function runHealth(cwd, options) {
   const info = [];
   const repairs = [];
 
-  // Helper to add issue
-  const addIssue = (severity, code, message, fix, repairable = false) => {
-    const issue = { code, message, fix, repairable };
+  // An issue is repairable only when detection produced the action that will
+  // perform its mutation. String actions are shared and de-duplicated; object
+  // actions identify one concrete file or relationship and remain distinct.
+  const addIssue = (severity, code, message, fix, repair = null) => {
+    const issue = { code, message, fix, repairable: Boolean(repair) };
     if (severity === 'error') errors.push(issue);
     else if (severity === 'warning') warnings.push(issue);
     else info.push(issue);
+    if (repair && (typeof repair !== 'string' || !repairs.includes(repair))) {
+      repairs.push(repair);
+    }
   };
 
   // ─── Check 1: .planning/ exists ───────────────────────────────────────────
@@ -1555,9 +1602,8 @@ function runHealth(cwd, options) {
       'E004',
       'STATE.md not found',
       'Run /gsd:health --repair to regenerate',
-      true,
+      'regenerateState',
     );
-    repairs.push('regenerateState');
   } else {
     const stateContent = fs.readFileSync(statePath, 'utf-8');
     // Fields the template declares that this STATE.md never gained. Nothing
@@ -1607,10 +1653,8 @@ function runHealth(cwd, options) {
             'W002',
             `STATE.md references phase ${ref}, but only phases ${[...diskPhases].sort().join(', ')} exist`,
             'Run /gsd:health --repair to regenerate STATE.md',
-            true,
+            'regenerateState',
           );
-          if (!repairs.includes('regenerateState'))
-            repairs.push('regenerateState');
         }
       }
     }
@@ -1623,9 +1667,8 @@ function runHealth(cwd, options) {
       'W003',
       'config.json not found',
       'Run /gsd:health --repair to create with defaults',
-      true,
+      'createConfig',
     );
-    repairs.push('createConfig');
   } else {
     try {
       const raw = fs.readFileSync(configPath, 'utf-8');
@@ -1649,9 +1692,8 @@ function runHealth(cwd, options) {
         'E005',
         `config.json: JSON parse error - ${err.message}`,
         'Run /gsd:health --repair to reset to defaults',
-        true,
+        'resetConfig',
       );
-      repairs.push('resetConfig');
     }
   }
 
@@ -1669,9 +1711,8 @@ function runHealth(cwd, options) {
           'W008',
           'config.json: workflow.nyquist_validation absent (defaults to enabled but agents may skip)',
           'Run /gsd:health --repair to add key',
-          true,
+          'addNyquistKey',
         );
-        if (!repairs.includes('addNyquistKey')) repairs.push('addNyquistKey');
       }
     } catch {}
   }
@@ -1928,9 +1969,8 @@ function runHealth(cwd, options) {
       'W010',
       `${projectRulesFile} not found — agents will not receive project instructions`,
       `Run /gsd:health --repair to generate ${projectRulesFile} with Memories section`,
-      true,
+      'writeCLAUDEmd',
     );
-    if (!repairs.includes('writeCLAUDEmd')) repairs.push('writeCLAUDEmd');
   }
 
   // ─── Check 10-12: Memory-related checks (gate on project rules file + memory dir) ──
@@ -1951,10 +1991,8 @@ function runHealth(cwd, options) {
         'W011',
         `${orphaned.length} memory file(s) not referenced in ${projectRulesFile}: ${orphaned.join(', ')}`,
         'Run /gsd:health --repair to add missing references',
-        true,
+        'syncCLAUDEmdMemories',
       );
-      if (!repairs.includes('syncCLAUDEmdMemories'))
-        repairs.push('syncCLAUDEmdMemories');
     }
 
     // Check 11: Stale memory refs in the project rules file
@@ -1976,10 +2014,8 @@ function runHealth(cwd, options) {
         'W012',
         `${projectRulesFile} references ${stale.length} memory file(s) that do not exist: ${stale.join(', ')}`,
         'Run /gsd:health --repair to remove stale references',
-        true,
+        'syncCLAUDEmdMemories',
       );
-      if (!repairs.includes('syncCLAUDEmdMemories'))
-        repairs.push('syncCLAUDEmdMemories');
     }
 
     // Check 12: MEMORY.md drift
@@ -1997,9 +2033,8 @@ function runHealth(cwd, options) {
           'W013',
           `MEMORY.md is out of sync with ${memoryDirRel} contents`,
           'Run /gsd:health --repair to regenerate MEMORY.md',
-          true,
+          'syncMemoryMd',
         );
-        if (!repairs.includes('syncMemoryMd')) repairs.push('syncMemoryMd');
       }
     } else if (memFiles.length > 0) {
       addIssue(
@@ -2007,9 +2042,8 @@ function runHealth(cwd, options) {
         'W013',
         `MEMORY.md does not exist but ${memoryDirRel} contains files`,
         'Run /gsd:health --repair to create MEMORY.md',
-        true,
+        'syncMemoryMd',
       );
-      if (!repairs.includes('syncMemoryMd')) repairs.push('syncMemoryMd');
     }
   }
 
@@ -2038,7 +2072,6 @@ function runHealth(cwd, options) {
           'W014',
           `Workspace is ${wsType.type} (${wsType.signal}) but no structural memory is seeded`,
           'Run /gsd:seed-memories to seed appropriate guardrail memories',
-          false,
         );
       }
     }
@@ -2095,10 +2128,9 @@ function runHealth(cwd, options) {
 
   for (const file of pendingTodosForPhaseCheck) {
     try {
-      const content = fs.readFileSync(
-        path.join(pendingTodosDir, file),
-        'utf-8',
-      );
+      const todo = validatePath(path.join(pendingTodosDir, file), cwd);
+      if (!todo.safe) continue;
+      const content = fs.readFileSync(todo.resolved, 'utf-8');
       const fm = extractFrontmatter(content);
       if (!fm || fm.phase === undefined || fm.phase === null) continue;
       const todoPhase = String(fm.phase);
@@ -2111,10 +2143,12 @@ function runHealth(cwd, options) {
           'W017',
           `Todo "${file}" references phase ${todoPhase} which does not exist in ROADMAP.md`,
           'Remove the phase: field from the todo or add the phase to ROADMAP.md',
-          true,
+          {
+            action: 'clearPhaseLinkFromTodo',
+            todoPath: todo.resolved,
+            phase: todoPhase,
+          },
         );
-        if (!repairs.includes('clearPhaseLinkFromTodo'))
-          repairs.push('clearPhaseLinkFromTodo');
       }
     } catch (_e) {
       /* skip */
@@ -2143,20 +2177,17 @@ function runHealth(cwd, options) {
         'warning',
         'W018',
         `Phase ${phaseNum} is complete but ${linkedPending.length} pending todo(s) still reference it: ${linkedPending.join(', ')}`,
-        'Close the todo(s) or remove their phase: field',
-        true,
+        'Review each todo and close it only if its work is complete, or remove its phase field if it should remain pending',
       );
-      if (!repairs.includes('closePhaseTodo')) repairs.push('closePhaseTodo');
     }
   }
 
   // --- Check 21: Broken related links (related: references non-existent todos) ---
   for (const file of pendingTodosForPhaseCheck) {
     try {
-      const content = fs.readFileSync(
-        path.join(pendingTodosDir, file),
-        'utf-8',
-      );
+      const source = validatePath(path.join(pendingTodosDir, file), cwd);
+      if (!source.safe) continue;
+      const content = fs.readFileSync(source.resolved, 'utf-8');
       const fm = extractFrontmatter(content);
       if (!fm || !fm.related) continue;
       const relatedList = Array.isArray(fm.related)
@@ -2165,20 +2196,34 @@ function runHealth(cwd, options) {
           ? [fm.related]
           : [];
       for (const ref of relatedList) {
-        const existsInPending = fs.existsSync(path.join(pendingTodosDir, ref));
-        const existsInCompleted = fs.existsSync(
-          path.join(completedTodosDir, ref),
-        );
-        if (!existsInPending && !existsInCompleted) {
+        const resolution = resolveRelatedReference(cwd, ref);
+        if (resolution.status === 'missing') {
+          const repair = {
+            action: 'clearRelatedLink',
+            sourcePath: source.resolved,
+            ref,
+          };
           addIssue(
             'warning',
             'W021',
-            `Todo "${file}" has related: "${ref}" which does not exist in pending/ or completed/`,
+            `Missing related reference "${ref}" in todo "${file}" does not exist in the project`,
             'Remove the stale related: reference or recreate the missing todo',
-            true,
+            repair,
           );
-          if (!repairs.includes('clearRelatedLink'))
-            repairs.push('clearRelatedLink');
+        } else if (resolution.status === 'unsafe') {
+          addIssue(
+            'warning',
+            'W021',
+            `Related reference "${ref}" in todo "${file}" is unsafe because it escapes the project root`,
+            'Replace the related: value with a path contained by the project root',
+          );
+        } else if (resolution.status === 'ambiguous') {
+          addIssue(
+            'warning',
+            'W021',
+            `Related reference "${ref}" in todo "${file}" is ambiguous across pending/ and completed/`,
+            'Use a project-relative path to identify one todo file',
+          );
         }
       }
     } catch (_e) {
@@ -2189,10 +2234,9 @@ function runHealth(cwd, options) {
   // --- Check 22: Asymmetric related links (A references B but B does not reference A back) ---
   for (const file of pendingTodosForPhaseCheck) {
     try {
-      const content = fs.readFileSync(
-        path.join(pendingTodosDir, file),
-        'utf-8',
-      );
+      const source = validatePath(path.join(pendingTodosDir, file), cwd);
+      if (!source.safe) continue;
+      const content = fs.readFileSync(source.resolved, 'utf-8');
       const fm = extractFrontmatter(content);
       if (!fm || !fm.related) continue;
       const relatedList = Array.isArray(fm.related)
@@ -2201,10 +2245,10 @@ function runHealth(cwd, options) {
           ? [fm.related]
           : [];
       for (const ref of relatedList) {
-        const refPath = path.join(pendingTodosDir, ref);
-        if (!fs.existsSync(refPath)) continue; // W021 covers missing refs — skip here
+        const resolution = resolveRelatedReference(cwd, ref);
+        if (resolution.status !== 'todo') continue;
         try {
-          const refContent = fs.readFileSync(refPath, 'utf-8');
+          const refContent = fs.readFileSync(resolution.resolved, 'utf-8');
           const refFm = extractFrontmatter(refContent);
           const refRelatedList =
             refFm && refFm.related
@@ -2212,15 +2256,27 @@ function runHealth(cwd, options) {
                 ? refFm.related
                 : [refFm.related]
               : [];
-          if (!refRelatedList.includes(file)) {
+          const hasBacklink = refRelatedList.some((backRef) => {
+            const backlink = resolveRelatedReference(cwd, backRef);
+            return (
+              backlink.status === 'todo' &&
+              backlink.resolved === source.resolved
+            );
+          });
+          if (!hasBacklink) {
+            const repair = {
+              action: 'addBacklink',
+              sourcePath: source.resolved,
+              targetPath: resolution.resolved,
+              ref,
+            };
             addIssue(
               'warning',
               'W022',
-              `Asymmetric related link: "${file}" references "${ref}" but "${ref}" does not reference back`,
+              `Todo link is asymmetric: "${file}" references "${ref}" but "${ref}" does not reference back`,
               'Run /gsd:health --repair to add the missing backlink, or add it manually',
-              true,
+              repair,
             );
-            if (!repairs.includes('addBacklink')) repairs.push('addBacklink');
           }
         } catch (_e) {
           /* skip unreadable ref */
@@ -2318,7 +2374,9 @@ function runHealth(cwd, options) {
   if (options.repair && repairs.length > 0) {
     for (const repair of repairs) {
       try {
-        switch (repair) {
+        const action =
+          typeof repair === 'string' ? repair : repair && repair.action;
+        switch (action) {
           case 'createConfig':
           case 'resetConfig': {
             const defaults = {
@@ -2488,91 +2546,73 @@ function runHealth(cwd, options) {
             break;
           }
           case 'clearPhaseLinkFromTodo': {
-            // Remove phase: field from todos referencing non-existent phases
-            // Iterate W017 warnings, find affected files, remove phase field
+            const content = fs.readFileSync(repair.todoPath, 'utf-8');
+            const fm = extractFrontmatter(content);
+            if (!fm || String(fm.phase) !== repair.phase) break;
+            delete fm.phase;
+            const newContent = spliceFrontmatter(content, fm);
+            if (newContent === content) break;
+            fs.writeFileSync(repair.todoPath, newContent, 'utf-8');
             repairActions.push({
-              action: repair,
+              action,
               success: true,
-              note: 'Phase links cleared',
-            });
-            break;
-          }
-          case 'closePhaseTodo': {
-            // Close pending todos linked to completed phases
-            // Advisory — log but don't auto-close (health checks never auto-fix per CONTEXT.md)
-            repairActions.push({
-              action: repair,
-              success: false,
-              note: 'Manual closure required — use /gsd:check-todos',
+              path: path.relative(cwd, repair.todoPath),
             });
             break;
           }
           case 'clearRelatedLink': {
-            // Re-scan W021 warnings to find all (file, stale_ref) pairs
-            const w021Warnings = warnings.filter((w) => w.code === 'W021');
-            for (const w of w021Warnings) {
-              const match = /Todo "([^"]+)" has related: "([^"]+)"/.exec(
-                w.message,
-              );
-              if (!match) continue;
-              const [, todoFile, staleRef] = match;
-              const todoPath = path.join(pendingTodosDir, todoFile);
-              try {
-                const content = fs.readFileSync(todoPath, 'utf-8');
-                const fm = extractFrontmatter(content);
-                if (!fm || !fm.related) continue;
-                const relatedList = Array.isArray(fm.related)
-                  ? fm.related
-                  : [fm.related];
-                fm.related = relatedList.filter((r) => r !== staleRef);
-                if (fm.related.length === 0) delete fm.related;
-                const newContent = spliceFrontmatter(content, fm);
-                fs.writeFileSync(todoPath, newContent, 'utf-8');
-              } catch (_e) {
-                /* skip unreadable files */
-              }
-            }
-            repairActions.push({ action: repair, success: true });
+            const content = fs.readFileSync(repair.sourcePath, 'utf-8');
+            const fm = extractFrontmatter(content);
+            if (!fm || !fm.related) break;
+            const wasList = Array.isArray(fm.related);
+            const relatedList = wasList ? fm.related : [fm.related];
+            if (!relatedList.includes(repair.ref)) break;
+            const remaining = relatedList.filter((ref) => ref !== repair.ref);
+            if (remaining.length === 0) delete fm.related;
+            else fm.related = wasList ? remaining : remaining[0];
+            const newContent = spliceFrontmatter(content, fm);
+            fs.writeFileSync(repair.sourcePath, newContent, 'utf-8');
+            repairActions.push({
+              action,
+              success: true,
+              path: path.relative(cwd, repair.sourcePath),
+            });
             break;
           }
           case 'addBacklink': {
-            // Re-scan W022 warnings to find all (source, target) pairs
-            const w022Warnings = warnings.filter((w) => w.code === 'W022');
-            for (const w of w022Warnings) {
-              const match =
-                /Asymmetric related link: "([^"]+)" references "([^"]+)"/.exec(
-                  w.message,
-                );
-              if (!match) continue;
-              const [, sourceFile, targetFile] = match;
-              const targetPath = path.join(pendingTodosDir, targetFile);
-              try {
-                const content = fs.readFileSync(targetPath, 'utf-8');
-                const fm = extractFrontmatter(content);
-                const relatedList =
-                  fm && fm.related
-                    ? Array.isArray(fm.related)
-                      ? fm.related
-                      : [fm.related]
-                    : [];
-                if (!relatedList.includes(sourceFile)) {
-                  relatedList.push(sourceFile);
-                }
-                if (!fm) continue;
-                fm.related = relatedList;
-                const newContent = spliceFrontmatter(content, fm);
-                fs.writeFileSync(targetPath, newContent, 'utf-8');
-              } catch (_e) {
-                /* skip unreadable files */
-              }
-            }
-            repairActions.push({ action: repair, success: true });
+            const content = fs.readFileSync(repair.targetPath, 'utf-8');
+            const fm = extractFrontmatter(content);
+            if (!fm) break;
+            const sourceRef = path.basename(repair.sourcePath);
+            const relatedList = fm.related
+              ? Array.isArray(fm.related)
+                ? fm.related
+                : [fm.related]
+              : [];
+            const alreadyLinked = relatedList.some((backRef) => {
+              const backlink = resolveRelatedReference(cwd, backRef);
+              return (
+                backlink.status === 'todo' &&
+                backlink.resolved === repair.sourcePath
+              );
+            });
+            if (alreadyLinked) break;
+            if (Array.isArray(fm.related)) fm.related.push(sourceRef);
+            else if (fm.related) fm.related = [fm.related, sourceRef];
+            else fm.related = sourceRef;
+            const newContent = spliceFrontmatter(content, fm);
+            fs.writeFileSync(repair.targetPath, newContent, 'utf-8');
+            repairActions.push({
+              action,
+              success: true,
+              path: path.relative(cwd, repair.targetPath),
+            });
             break;
           }
         }
       } catch (err) {
         repairActions.push({
-          action: repair,
+          action: typeof repair === 'string' ? repair : repair && repair.action,
           success: false,
           error: err.message,
         });

@@ -12,7 +12,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 Conduct a retroactive 6-pillar visual audit. Produces UI-REVIEW.md with
 graded assessment (1-4 per pillar). Works on any project.
@@ -25,7 +27,7 @@ Output: {phase_num}-UI-REVIEW.md
 </execution_context>
 
 <context>
-Phase: $ARGUMENTS — optional, defaults to last completed phase.
+Phase: the exact invocation text in the `<arguments>` block — optional, defaults to last completed phase.
 </context>
 
 <tool_usage>

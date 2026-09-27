@@ -63,6 +63,9 @@ const RUNTIMES = {
         skip: [],
         ownsDir: true,
       },
+      commandManifest: null,
+      retiredCommands: null,
+      retiredNamedArtifacts: null,
       agents: {
         dir: 'agents',
         pattern: 'gsd-<name>.md',
@@ -145,6 +148,9 @@ const RUNTIMES = {
         skip: ['set-profile.md'],
         ownsDir: false,
       },
+      commandManifest: null,
+      retiredCommands: null,
+      retiredNamedArtifacts: null,
       agents: {
         dir: 'agents',
         pattern: 'gsd-<name>.agent.md',
@@ -237,13 +243,18 @@ const RUNTIMES = {
 
     layout: {
       engine: { dir: 'gsd-ng' },
-      commands: {
-        dir: 'command',
-        pattern: 'gsd-<name>.md',
-        converter: 'opencodeCommand',
+      commands: null,
+      commandManifest: {
+        path: 'gsd-ng/opencode-commands.json',
+        sourceDir: 'commands/gsd',
         // Configures effort: frontmatter and model profiles, both Claude-only.
         skip: ['set-profile.md'],
-        ownsDir: false,
+      },
+      retiredCommands: {
+        dirs: ['command', 'commands'],
+        sourceDir: 'commands/gsd',
+        pattern: 'gsd-<name>.md',
+        skip: ['set-profile.md'],
       },
       agents: {
         dir: 'agent',
@@ -253,9 +264,10 @@ const RUNTIMES = {
         ownsDir: false,
       },
       plugin: {
-        dir: 'plugin',
+        dir: 'plugins',
         files: [{ from: 'hooks/gsd-opencode-plugin.js', to: 'gsd-core.js' }],
       },
+      retiredNamedArtifacts: [{ dir: 'plugin', files: ['gsd-core.js'] }],
       hooks: null,
       // The plugin spawns these, so the payload has to land in the engine tree.
       // Copilot's descriptor points at an equivalent path that nothing copies.

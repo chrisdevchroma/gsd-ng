@@ -9,7 +9,9 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-
+<arguments>
+$ARGUMENTS
+</arguments>
 <objective>
 List all pending todos, allow selection, load full context for the selected todo, and route to appropriate action.
 
@@ -27,7 +29,7 @@ Routes to the check-todos workflow which handles:
 </execution_context>
 
 <context>
-Arguments: $ARGUMENTS (optional area filter)
+Arguments: the exact invocation text in the `<arguments>` block (optional area filter)
 
 Todo state and roadmap correlation are loaded in-workflow using `list-todos` and `recurring-due` CLI calls.
 </context>

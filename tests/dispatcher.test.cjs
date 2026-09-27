@@ -12,7 +12,13 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
+const {
+  runGsdTools,
+  createTempProject,
+  cleanup,
+  resolveTmpDir,
+  TOOLS_PATH,
+} = require('./helpers.cjs');
 
 // ─── Dispatcher Error Paths ──────────────────────────────────────────────────
 
@@ -31,14 +37,20 @@ describe('dispatcher error paths', () => {
   test('no-command invocation prints usage and exits non-zero', () => {
     const result = runGsdTools('', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Usage:'), `Expected "Usage:" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Usage:'),
+      `Expected "Usage:" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown command
   test('unknown command produces clear error and exits non-zero', () => {
     const result = runGsdTools('nonexistent-cmd', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown command'), `Expected "Unknown command" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown command'),
+      `Expected "Unknown command" in stderr, got: ${result.error}`,
+    );
   });
 
   // --cwd= form with valid directory
@@ -46,101 +58,147 @@ describe('dispatcher error paths', () => {
     // Create STATE.md in tmpDir so state load can find it
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
-      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\n'
+      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\n',
     );
     const result = runGsdTools(`--cwd=${tmpDir} state load`, process.cwd());
-    assert.strictEqual(result.success, true, `Should succeed with --cwd=, got: ${result.error}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `Should succeed with --cwd=, got: ${result.error}`,
+    );
   });
 
   // --cwd= with empty value
   test('--cwd= with empty value produces error', () => {
     const result = runGsdTools('--cwd= state load', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Missing value for --cwd'), `Expected "Missing value for --cwd" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Missing value for --cwd'),
+      `Expected "Missing value for --cwd" in stderr, got: ${result.error}`,
+    );
   });
 
   // --cwd with nonexistent path
   test('--cwd with invalid path produces error', () => {
-    const result = runGsdTools('--cwd /nonexistent/path/xyz state load', tmpDir);
+    const result = runGsdTools(
+      '--cwd /nonexistent/path/xyz state load',
+      tmpDir,
+    );
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Invalid --cwd'), `Expected "Invalid --cwd" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Invalid --cwd'),
+      `Expected "Invalid --cwd" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: template
   test('template unknown subcommand errors', () => {
     const result = runGsdTools('template bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown template subcommand'), `Expected "Unknown template subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown template subcommand'),
+      `Expected "Unknown template subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: frontmatter
   test('frontmatter unknown subcommand errors', () => {
     const result = runGsdTools('frontmatter bogus file.md', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown frontmatter subcommand'), `Expected "Unknown frontmatter subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown frontmatter subcommand'),
+      `Expected "Unknown frontmatter subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: verify
   test('verify unknown subcommand errors', () => {
     const result = runGsdTools('verify bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown verify subcommand'), `Expected "Unknown verify subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown verify subcommand'),
+      `Expected "Unknown verify subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: phases
   test('phases unknown subcommand errors', () => {
     const result = runGsdTools('phases bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown phases subcommand'), `Expected "Unknown phases subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown phases subcommand'),
+      `Expected "Unknown phases subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: roadmap
   test('roadmap unknown subcommand errors', () => {
     const result = runGsdTools('roadmap bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown roadmap subcommand'), `Expected "Unknown roadmap subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown roadmap subcommand'),
+      `Expected "Unknown roadmap subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: requirements
   test('requirements unknown subcommand errors', () => {
     const result = runGsdTools('requirements bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown requirements subcommand'), `Expected "Unknown requirements subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown requirements subcommand'),
+      `Expected "Unknown requirements subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: phase
   test('phase unknown subcommand errors', () => {
     const result = runGsdTools('phase bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown phase subcommand'), `Expected "Unknown phase subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown phase subcommand'),
+      `Expected "Unknown phase subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: milestone
   test('milestone unknown subcommand errors', () => {
     const result = runGsdTools('milestone bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown milestone subcommand'), `Expected "Unknown milestone subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown milestone subcommand'),
+      `Expected "Unknown milestone subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: validate
   test('validate unknown subcommand errors', () => {
     const result = runGsdTools('validate bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown validate subcommand'), `Expected "Unknown validate subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown validate subcommand'),
+      `Expected "Unknown validate subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: todo
   test('todo unknown subcommand errors', () => {
     const result = runGsdTools('todo bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown todo subcommand'), `Expected "Unknown todo subcommand" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown todo subcommand'),
+      `Expected "Unknown todo subcommand" in stderr, got: ${result.error}`,
+    );
   });
 
   // Unknown subcommand: init
   test('init unknown workflow errors', () => {
     const result = runGsdTools('init bogus', tmpDir);
     assert.strictEqual(result.success, false, 'Should exit non-zero');
-    assert.ok(result.error.includes('Unknown init workflow'), `Expected "Unknown init workflow" in stderr, got: ${result.error}`);
+    assert.ok(
+      result.error.includes('Unknown init workflow'),
+      `Expected "Unknown init workflow" in stderr, got: ${result.error}`,
+    );
   });
 });
 
@@ -158,8 +216,15 @@ describe('flag-style argument parsing', () => {
   });
 
   test('--generate-slug flag style executes generate-slug and emits info hint to stderr', () => {
-    const result = runGsdTools(['--generate-slug', 'test feature name'], tmpDir);
-    assert.strictEqual(result.success, true, `--generate-slug flag failed: ${result.error}`);
+    const result = runGsdTools(
+      ['--generate-slug', 'test feature name'],
+      tmpDir,
+    );
+    assert.strictEqual(
+      result.success,
+      true,
+      `--generate-slug flag failed: ${result.error}`,
+    );
     // The info hint goes to stderr which runGsdTools captures in error field on success
     // We verify the command ran by checking output is a slug string
     assert.ok(result.output.length > 0, `Expected slug output, got empty`);
@@ -169,27 +234,46 @@ describe('flag-style argument parsing', () => {
     // Use execFileSync directly to capture stderr on success
     const { execFileSync } = require('child_process');
     const path = require('path');
-    const TOOLS_PATH = path.join(__dirname, '..', 'gsd-ng', 'bin', 'gsd-tools.cjs');
+    const TOOLS_PATH = path.join(
+      __dirname,
+      '..',
+      'gsd-ng',
+      'bin',
+      'gsd-tools.cjs',
+    );
     let stderr = '';
     try {
-      execFileSync(process.execPath, [TOOLS_PATH, '--generate-slug', 'hello world'], {
-        cwd: tmpDir,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      execFileSync(
+        process.execPath,
+        [TOOLS_PATH, '--generate-slug', 'hello world'],
+        {
+          cwd: tmpDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
     } catch (err) {
       stderr = err.stderr || '';
     }
     // Also try capturing stderr on success via a wrapper
     const { spawnSync } = require('child_process');
-    const spawnResult = spawnSync(process.execPath, [TOOLS_PATH, '--generate-slug', 'hello world'], {
-      cwd: tmpDir,
-      encoding: 'utf-8',
-    });
-    assert.strictEqual(spawnResult.status, 0, `Expected exit 0, got: ${spawnResult.stderr}`);
+    const spawnResult = spawnSync(
+      process.execPath,
+      [TOOLS_PATH, '--generate-slug', 'hello world'],
+      {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      },
+    );
+    assert.strictEqual(
+      spawnResult.status,
+      0,
+      `Expected exit 0, got: ${spawnResult.stderr}`,
+    );
     assert.ok(
-      spawnResult.stderr.includes('[info]') && spawnResult.stderr.includes('--generate-slug'),
-      `Expected [info] hint about --generate-slug in stderr, got: ${spawnResult.stderr}`
+      spawnResult.stderr.includes('[info]') &&
+        spawnResult.stderr.includes('--generate-slug'),
+      `Expected [info] hint about --generate-slug in stderr, got: ${spawnResult.stderr}`,
     );
   });
 });
@@ -212,7 +296,7 @@ describe('typo detection', () => {
     assert.strictEqual(result.success, false, 'Typo command should fail');
     assert.ok(
       result.error.includes('Did you mean') && result.error.includes('phase'),
-      `Expected "Did you mean: phase" in error, got: ${result.error}`
+      `Expected "Did you mean: phase" in error, got: ${result.error}`,
     );
   });
 
@@ -221,7 +305,7 @@ describe('typo detection', () => {
     assert.strictEqual(result.success, false, 'Typo command should fail');
     assert.ok(
       result.error.includes('Did you mean') && result.error.includes('commit'),
-      `Expected "Did you mean: commit" in error, got: ${result.error}`
+      `Expected "Did you mean: commit" in error, got: ${result.error}`,
     );
   });
 
@@ -230,7 +314,7 @@ describe('typo detection', () => {
     assert.strictEqual(result.success, false, 'Unknown command should fail');
     assert.ok(
       result.error.includes('Available commands'),
-      `Expected "Available commands" in error, got: ${result.error}`
+      `Expected "Available commands" in error, got: ${result.error}`,
     );
   });
 });
@@ -247,12 +331,12 @@ describe('roadmap add-phase alias', () => {
     // Create ROADMAP.md needed by phase add
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\n## Milestone: v1.0 Test\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n'
+      '# Roadmap\n\n## Milestone: v1.0 Test\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n',
     );
     // Create STATE.md needed by phase add
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
-      '# Project State\n\n## Current Position\n\nPhase: 0 of 0 (none) — Not Started\nPlan: none\nStatus: empty\n\nProgress: [] 0%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: None\nResume file: None\n\n## Decisions\n\nNone yet.\n'
+      '# Project State\n\n## Current Position\n\nPhase: 0 of 0 (none) — Not Started\nPlan: none\nStatus: empty\n\nProgress: [] 0%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: None\nResume file: None\n\n## Decisions\n\nNone yet.\n',
     );
   });
 
@@ -261,8 +345,15 @@ describe('roadmap add-phase alias', () => {
   });
 
   test('roadmap add-phase redirects to phase add and succeeds', () => {
-    const result = runGsdTools(['roadmap', 'add-phase', 'Test Feature Phase'], tmpDir);
-    assert.strictEqual(result.success, true, `roadmap add-phase failed: ${result.error}`);
+    const result = runGsdTools(
+      ['roadmap', 'add-phase', 'Test Feature Phase'],
+      tmpDir,
+    );
+    assert.strictEqual(
+      result.success,
+      true,
+      `roadmap add-phase failed: ${result.error}`,
+    );
   });
 });
 
@@ -270,55 +361,131 @@ describe('roadmap add-phase alias', () => {
 
 describe('guard sync-chain command', () => {
   let tmpDir;
+  let configPath;
 
   beforeEach(() => {
     tmpDir = createTempProject();
-    // Create a config.json so setConfigValue has something to write to
-    const fs = require('fs');
-    const path = require('path');
-    fs.writeFileSync(
-      path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify({ workflow: { _auto_chain_active: true } }, null, 2)
-    );
+    configPath = path.join(tmpDir, '.planning', 'config.json');
   });
 
   afterEach(() => {
     cleanup(tmpDir);
   });
 
-  test('guard sync-chain with --auto flag preserves _auto_chain_active', () => {
-    const result = runGsdTools(['guard', 'sync-chain', '--auto --phase 37'], tmpDir);
-    assert.strictEqual(result.success, true, `guard sync-chain --auto failed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.strictEqual(parsed.synced, true, 'synced should be true');
-    assert.strictEqual(parsed.had_auto, true, 'had_auto should be true when --auto present');
+  function writeChain(active) {
+    fs.writeFileSync(
+      configPath,
+      `${JSON.stringify({ workflow: { _auto_chain_active: active } }, null, 2)}\n`,
+    );
+  }
+
+  function readChain() {
+    return JSON.parse(fs.readFileSync(configPath, 'utf8')).workflow
+      ._auto_chain_active;
+  }
+
+  for (const { operation, initial, expected } of [
+    { operation: 'enter', initial: false, expected: true },
+    { operation: 'preserve', initial: true, expected: true },
+    { operation: 'preserve', initial: false, expected: false },
+    { operation: 'reset', initial: true, expected: false },
+  ]) {
+    test(`sync-chain ${operation} transitions ${initial} to ${expected}`, () => {
+      writeChain(initial);
+      const result = runGsdTools(['guard', 'sync-chain', operation], tmpDir);
+      assert.strictEqual(
+        result.success,
+        true,
+        `guard sync-chain ${operation} failed: ${result.error}`,
+      );
+      const response = JSON.parse(result.output);
+      assert.strictEqual(response.synced, true);
+      assert.strictEqual(response.operation, operation);
+      if (operation !== 'preserve') {
+        assert.strictEqual(response.active, expected);
+      }
+      assert.strictEqual(readChain(), expected);
+    });
+  }
+
+  test('downstream no-argument invocation preserves an active auto-chain without writing config', () => {
+    writeChain(true);
+    const before = fs.readFileSync(configPath, 'utf8');
+    const oldTime = new Date('2001-01-01T00:00:00.000Z');
+    fs.utimesSync(configPath, oldTime, oldTime);
+
+    const result = runGsdTools(['guard', 'sync-chain', 'preserve'], tmpDir);
+
+    assert.strictEqual(result.success, true, result.error);
+    assert.strictEqual(fs.readFileSync(configPath, 'utf8'), before);
+    assert.strictEqual(fs.statSync(configPath).mtimeMs, oldTime.getTime());
   });
 
-  test('guard sync-chain without --auto clears _auto_chain_active', () => {
-    const result = runGsdTools(['guard', 'sync-chain', '--phase 37'], tmpDir);
-    assert.strictEqual(result.success, true, `guard sync-chain without --auto failed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.strictEqual(parsed.synced, true, 'synced should be true');
-    assert.strictEqual(parsed.had_auto, false, 'had_auto should be false when --auto absent');
-    // Verify the config was actually updated
-    const fs = require('fs');
-    const path = require('path');
-    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
-    assert.strictEqual(config.workflow._auto_chain_active, false, '_auto_chain_active should be cleared to false');
-  });
+  for (const { operation, initial, expected } of [
+    { operation: 'enter', initial: true, expected: true },
+    { operation: 'reset', initial: false, expected: false },
+  ]) {
+    test(`sync-chain ${operation} is idempotent`, () => {
+      writeChain(initial);
+      const first = runGsdTools(['guard', 'sync-chain', operation], tmpDir);
+      const second = runGsdTools(['guard', 'sync-chain', operation], tmpDir);
+      assert.strictEqual(first.success, true, first.error);
+      assert.strictEqual(second.success, true, second.error);
+      assert.strictEqual(readChain(), expected);
+    });
+  }
 
-  test('guard sync-chain with empty args clears _auto_chain_active', () => {
-    const result = runGsdTools(['guard', 'sync-chain', ''], tmpDir);
-    assert.strictEqual(result.success, true, `guard sync-chain empty failed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.strictEqual(parsed.had_auto, false, 'had_auto should be false for empty args');
-  });
+  for (const operation of ['', 'unknown', '--auto', '$ARGUMENTS']) {
+    test(`sync-chain rejects non-operation ${JSON.stringify(operation)}`, () => {
+      writeChain(true);
+      const argv = ['guard', 'sync-chain'];
+      if (operation) argv.push(operation);
+      const result = runGsdTools(argv, tmpDir);
+      assert.strictEqual(result.success, false);
+      assert.match(result.error, /enter|preserve|reset|argument/i);
+      assert.strictEqual(
+        readChain(),
+        true,
+        'invalid input must not mutate state',
+      );
+    });
+  }
+});
 
-  test('guard sync-chain with --auto-advance does NOT treat as --auto', () => {
-    const result = runGsdTools(['guard', 'sync-chain', '--auto-advance'], tmpDir);
-    assert.strictEqual(result.success, true, `guard sync-chain --auto-advance failed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.strictEqual(parsed.had_auto, false, 'had_auto should be false for --auto-advance (not an exact --auto token)');
+describe('auto-chain invocation intent detection', () => {
+  const guardPath = path.join(
+    __dirname,
+    '..',
+    'gsd-ng',
+    'bin',
+    'lib',
+    'guard.cjs',
+  );
+
+  test('detects only a standalone --auto token without project config access', () => {
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-auto-'));
+    const planningPath = path.join(tmpDir, '.planning');
+    try {
+      const { hasStandaloneAuto } = require(guardPath);
+      for (const { input, expected } of [
+        { input: '', expected: false },
+        { input: '--auto', expected: true },
+        { input: '--auto @idea.md', expected: true },
+        { input: '--phase 37 --auto', expected: true },
+        { input: '--auto-advance', expected: false },
+        { input: '$ARGUMENTS', expected: false },
+        { input: '$(touch nope); `touch nope`', expected: false },
+      ]) {
+        assert.strictEqual(hasStandaloneAuto(input), expected, input);
+      }
+      assert.strictEqual(
+        fs.existsSync(planningPath),
+        false,
+        'pure detection must not create or read project config',
+      );
+    } finally {
+      cleanup(tmpDir);
+    }
   });
 });
 
@@ -341,19 +508,30 @@ describe('dispatcher routing branches', () => {
     fs.mkdirSync(phaseDir, { recursive: true });
 
     const result = runGsdTools('find-phase 01', tmpDir);
-    assert.strictEqual(result.success, true, `find-phase failed: ${result.error}`);
-    assert.ok(result.output.includes('01-test-phase'), `Expected output to contain "01-test-phase", got: ${result.output}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `find-phase failed: ${result.error}`,
+    );
+    assert.ok(
+      result.output.includes('01-test-phase'),
+      `Expected output to contain "01-test-phase", got: ${result.output}`,
+    );
   });
 
   // init resume
   test('init resume returns valid JSON', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
-      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n'
+      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n',
     );
 
     const result = runGsdTools('init resume', tmpDir);
-    assert.strictEqual(result.success, true, `init resume failed: ${result.error}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `init resume failed: ${result.error}`,
+    );
     const parsed = JSON.parse(result.output);
     assert.ok(typeof parsed === 'object', 'Output should be valid JSON object');
   });
@@ -363,13 +541,13 @@ describe('dispatcher routing branches', () => {
     // Create STATE.md
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
-      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n'
+      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n',
     );
 
     // Create ROADMAP.md with phase section
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\n## Milestone: v1.0 Test\n\n### Phase 1: Test Phase\n**Goal**: Test goal\n**Depends on**: None\n**Requirements**: TEST-01\n**Success Criteria**:\n  1. Tests pass\n**Plans**: 1 plan\nPlans:\n- [x] 01-01-PLAN.md\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n| 1 | 1/1 | Complete | 2026-01-01 |\n'
+      '# Roadmap\n\n## Milestone: v1.0 Test\n\n### Phase 1: Test Phase\n**Goal**: Test goal\n**Depends on**: None\n**Requirements**: TEST-01\n**Success Criteria**:\n  1. Tests pass\n**Plans**: 1 plan\nPlans:\n- [x] 01-01-PLAN.md\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n| 1 | 1/1 | Complete | 2026-01-01 |\n',
     );
 
     // Create phase dir
@@ -377,7 +555,11 @@ describe('dispatcher routing branches', () => {
     fs.mkdirSync(phaseDir, { recursive: true });
 
     const result = runGsdTools('init verify-work 01', tmpDir);
-    assert.strictEqual(result.success, true, `init verify-work failed: ${result.error}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `init verify-work failed: ${result.error}`,
+    );
     const parsed = JSON.parse(result.output);
     assert.ok(typeof parsed === 'object', 'Output should be valid JSON object');
   });
@@ -387,7 +569,7 @@ describe('dispatcher routing branches', () => {
     // Create ROADMAP.md with progress table
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      '# Roadmap\n\n## Milestone: v1.0 Test\n\n### Phase 1: Test Phase\n**Goal**: Test goal\n**Depends on**: None\n**Requirements**: TEST-01\n**Success Criteria**:\n  1. Tests pass\n**Plans**: 1 plan\nPlans:\n- [ ] 01-01-PLAN.md\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n| 1 | 0/1 | Not Started | - |\n'
+      '# Roadmap\n\n## Milestone: v1.0 Test\n\n### Phase 1: Test Phase\n**Goal**: Test goal\n**Depends on**: None\n**Requirements**: TEST-01\n**Success Criteria**:\n  1. Tests pass\n**Plans**: 1 plan\nPlans:\n- [ ] 01-01-PLAN.md\n\n## Progress\n\n| Phase | Plans | Status | Date |\n|-------|-------|--------|------|\n| 1 | 0/1 | Not Started | - |\n',
     );
 
     // Create phase dir with PLAN and SUMMARY
@@ -395,26 +577,34 @@ describe('dispatcher routing branches', () => {
     fs.mkdirSync(phaseDir, { recursive: true });
     fs.writeFileSync(
       path.join(phaseDir, '01-01-PLAN.md'),
-      '---\nphase: 01-test-phase\nplan: "01"\n---\n\n# Plan\n'
+      '---\nphase: 01-test-phase\nplan: "01"\n---\n\n# Plan\n',
     );
     fs.writeFileSync(
       path.join(phaseDir, '01-01-SUMMARY.md'),
-      '---\nphase: 01-test-phase\nplan: "01"\n---\n\n# Summary\n'
+      '---\nphase: 01-test-phase\nplan: "01"\n---\n\n# Summary\n',
     );
 
     const result = runGsdTools('roadmap update-plan-progress 1', tmpDir);
-    assert.strictEqual(result.success, true, `roadmap update-plan-progress failed: ${result.error}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `roadmap update-plan-progress failed: ${result.error}`,
+    );
   });
 
   // state (no subcommand) — default load
   test('state with no subcommand calls cmdStateLoad', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
-      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n'
+      '# Project State\n\n## Current Position\n\nPhase: 1 of 1 (Test)\nPlan: 01-01 complete\nStatus: Ready\nLast activity: 2026-01-01\n\nProgress: [##########] 100%\n\n## Session Continuity\n\nLast session: 2026-01-01\nStopped at: Test\nResume file: None\n',
     );
 
     const result = runGsdTools('state', tmpDir);
-    assert.strictEqual(result.success, true, `state load failed: ${result.error}`);
+    assert.strictEqual(
+      result.success,
+      true,
+      `state load failed: ${result.error}`,
+    );
     const parsed = JSON.parse(result.output);
     assert.ok(typeof parsed === 'object', 'Output should be valid JSON object');
   });
@@ -445,12 +635,27 @@ requirements-completed: [TEST-01]
     fs.writeFileSync(summaryPath, summaryContent);
 
     // Use relative path from tmpDir
-    const result = runGsdTools(`summary-extract .planning/phases/01-test/01-01-SUMMARY.md`, tmpDir);
-    assert.strictEqual(result.success, true, `summary-extract failed: ${result.error}`);
+    const result = runGsdTools(
+      `summary-extract .planning/phases/01-test/01-01-SUMMARY.md`,
+      tmpDir,
+    );
+    assert.strictEqual(
+      result.success,
+      true,
+      `summary-extract failed: ${result.error}`,
+    );
     const parsed = JSON.parse(result.output);
     assert.ok(typeof parsed === 'object', 'Output should be valid JSON object');
-    assert.strictEqual(parsed.path, '.planning/phases/01-test/01-01-SUMMARY.md', 'Path should match input');
-    assert.deepStrictEqual(parsed.requirements_completed, ['TEST-01'], 'requirements_completed should contain TEST-01');
+    assert.strictEqual(
+      parsed.path,
+      '.planning/phases/01-test/01-01-SUMMARY.md',
+      'Path should match input',
+    );
+    assert.deepStrictEqual(
+      parsed.requirements_completed,
+      ['TEST-01'],
+      'requirements_completed should contain TEST-01',
+    );
   });
 });
 
@@ -459,7 +664,9 @@ requirements-completed: [TEST-01]
 describe('sync-agents command', () => {
   let tmpDir;
   const { createTempProjectWithAgents } = require('./helpers.cjs');
-  afterEach(() => { if (tmpDir) cleanup(tmpDir); });
+  afterEach(() => {
+    if (tmpDir) cleanup(tmpDir);
+  });
 
   test('EFFSYNC-CLI-01: sync-agents writes effort: frontmatter, prints clean summary on stdout, restart notice on stderr', () => {
     tmpDir = createTempProjectWithAgents(['gsd-planner'], {
@@ -467,21 +674,24 @@ describe('sync-agents command', () => {
     });
     const result = runGsdTools(['sync-agents'], tmpDir);
     assert.ok(result.success, `command failed: ${result.error}`);
-    const planner = fs.readFileSync(path.join(tmpDir, '.claude/agents/gsd-planner.md'), 'utf-8');
+    const planner = fs.readFileSync(
+      path.join(tmpDir, '.claude/agents/gsd-planner.md'),
+      'utf-8',
+    );
     assert.match(planner, /^effort: xhigh$/m);
     // Stdout: clean summary, no restart notice substring
     assert.ok(
       result.output.includes('Synced 1 agent'),
-      `expected 'Synced 1 agent' in stdout: ${result.output}`
+      `expected 'Synced 1 agent' in stdout: ${result.output}`,
     );
     assert.ok(
       !result.output.includes('Restart Claude Code'),
-      `restart notice should NOT appear in stdout (one-voice consistency): ${result.output}`
+      `restart notice should NOT appear in stdout (one-voice consistency): ${result.output}`,
     );
     // Stderr: restart notice
     assert.ok(
       result.stderr.includes('Restart Claude Code to apply effort changes.'),
-      `restart notice missing from stderr: ${result.stderr}`
+      `restart notice missing from stderr: ${result.stderr}`,
     );
   });
 
@@ -493,12 +703,13 @@ describe('sync-agents command', () => {
     const second = runGsdTools(['sync-agents'], tmpDir);
     assert.ok(second.success);
     assert.ok(
-      second.output.includes('already in sync') || second.output.includes('Synced 0'),
-      `expected idempotent confirmation: ${second.output}`
+      second.output.includes('already in sync') ||
+        second.output.includes('Synced 0'),
+      `expected idempotent confirmation: ${second.output}`,
     );
     assert.ok(
       !second.stderr.includes('Restart Claude Code'),
-      `restart notice should NOT appear on idempotent run: ${second.stderr}`
+      `restart notice should NOT appear on idempotent run: ${second.stderr}`,
     );
   });
 });
@@ -651,8 +862,16 @@ describe('command group invoked with no subcommand', () => {
     );
     const bare = runGsdTools(['state'], tmpDir);
     const load = runGsdTools(['state', 'load'], tmpDir);
-    assert.equal(bare.success, true, `bare state should exit 0, got: ${bare.error || bare.output}`);
-    assert.equal(load.success, true, `state load should exit 0, got: ${load.error || load.output}`);
+    assert.equal(
+      bare.success,
+      true,
+      `bare state should exit 0, got: ${bare.error || bare.output}`,
+    );
+    assert.equal(
+      load.success,
+      true,
+      `state load should exit 0, got: ${load.error || load.output}`,
+    );
     assert.deepStrictEqual(
       JSON.parse(bare.output),
       JSON.parse(load.output),
@@ -665,7 +884,11 @@ describe('command group invoked with no subcommand', () => {
     test(`${group} invoked with no subcommand prints usage instead of throwing`, () => {
       const r = runGsdTools([group], tmpDir);
       const combined = `${r.output || ''}\n${r.stderr || r.error || ''}`;
-      assert.equal(r.success, false, `${group} should exit non-zero: ${combined}`);
+      assert.equal(
+        r.success,
+        false,
+        `${group} should exit non-zero: ${combined}`,
+      );
       assert.doesNotMatch(
         combined,
         /Cannot read properties of undefined/,

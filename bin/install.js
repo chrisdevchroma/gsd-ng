@@ -1037,17 +1037,25 @@ function writeManifest(configDir, version) {
 
 /**
  * Compare manifest to current files and copy mismatches to gsd-local-patches/.
- * Pure backup — no console output. Returns { modified: string[], patchesDisplayPath: string|null }.
- * patchesDisplayPath is null when nothing was modified (caller can skip notices).
+ * Pure backup — no console output. Returns the current detection batch.
+ * A clean pass retires active metadata without removing saved payload files.
  */
 function _backupModifiedFilesQuiet(configDir) {
   const manifestPath = path.join(configDir, MANIFEST_NAME);
-  if (!fs.existsSync(manifestPath)) return { modified: [], patchesDisplayPath: null };
+  const emptyBatch = {
+    modified: [],
+    patchesDisplayPath: null,
+    metadataPath: null,
+    metadata: null,
+  };
+  if (!fs.existsSync(manifestPath)) return emptyBatch;
   let manifest;
-  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return { modified: [], patchesDisplayPath: null }; }
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return emptyBatch; }
   const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
+  const metadataPath = path.join(patchesDir, 'backup-meta.json');
   const normalizedHashes = manifest.files_normalized || {};
   const modified = [];
+  let metadata = null;
   for (const [relPath, originalHash] of Object.entries(manifest.files || {})) {
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
@@ -1072,11 +1080,25 @@ function _backupModifiedFilesQuiet(configDir) {
   }
   if (modified.length > 0) {
     const meta = {
+      active: true,
       backed_up_at: new Date().toISOString(),
       from_version: manifest.version,
       files: modified,
     };
-    fs.writeFileSync(path.join(patchesDir, 'backup-meta.json'), JSON.stringify(meta, null, 2));
+    fs.writeFileSync(metadataPath, JSON.stringify(meta, null, 2));
+    metadata = meta;
+  } else if (fs.existsSync(metadataPath)) {
+    try {
+      const previousMeta = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+      if (previousMeta.active !== false) {
+        fs.writeFileSync(
+          metadataPath,
+          JSON.stringify(Object.assign({}, previousMeta, { active: false }), null, 2),
+        );
+      }
+    } catch {
+      // An unreadable metadata file cannot be active evidence for this batch.
+    }
   }
   const _isUnderCwd = configDir.startsWith(process.cwd() + path.sep) || configDir === process.cwd();
   const patchesDisplayPath =
@@ -1086,7 +1108,12 @@ function _backupModifiedFilesQuiet(configDir) {
     '/' +
     PATCHES_DIR_NAME +
     '/';
-  return { modified, patchesDisplayPath: modified.length > 0 ? patchesDisplayPath : null };
+  return {
+    modified,
+    patchesDisplayPath: modified.length > 0 ? patchesDisplayPath : null,
+    metadataPath: modified.length > 0 ? metadataPath : null,
+    metadata,
+  };
 }
 
 /**
@@ -1094,7 +1121,8 @@ function _backupModifiedFilesQuiet(configDir) {
  * Backs up modified files to gsd-local-patches/ for reapply after update.
  */
 function saveLocalPatches(configDir) {
-  const { modified, patchesDisplayPath } = _backupModifiedFilesQuiet(configDir);
+  const batch = _backupModifiedFilesQuiet(configDir);
+  const { modified, patchesDisplayPath } = batch;
   if (modified.length > 0) {
     console.log(
       '  ' + yellow + 'i' + reset + '  Found ' + modified.length + ' locally modified GSD file(s) — backed up to ' + patchesDisplayPath
@@ -1103,20 +1131,15 @@ function saveLocalPatches(configDir) {
       console.log('     ' + dim + f + reset);
     }
   }
-  return modified;
+  return batch;
 }
 
 /**
- * After install, report backed-up patches for user to reapply.
+ * After install, report patches found by this install's detection pass.
  */
-function reportLocalPatches(configDir) {
-  const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
-  const metaPath = path.join(patchesDir, 'backup-meta.json');
-  if (!fs.existsSync(metaPath)) return [];
-
-  let meta;
-  try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return []; }
-
+function reportLocalPatches(batch) {
+  if (!batch || !batch.metadata || batch.modified.length === 0) return [];
+  const meta = batch.metadata;
   if (meta.files && meta.files.length > 0) {
     const reapplyCommand = '/gsd:reapply-patches';
     console.log('');
@@ -1125,11 +1148,8 @@ function reportLocalPatches(configDir) {
       console.log('     ' + cyan + f + reset);
     }
     console.log('');
-    const _isUnderCwd = configDir.startsWith(process.cwd() + path.sep) || configDir === process.cwd();
-    const patchesDisplayPath = (_isUnderCwd ? configDir.replace(process.cwd(), '.') : configDir.replace(os.homedir(), '~')) + '/' + PATCHES_DIR_NAME + '/';
-    console.log('  Your modifications are saved in ' + cyan + patchesDisplayPath + reset);
-    console.log('  Run ' + cyan + reapplyCommand + reset + ' to merge them into the new version.');
-    console.log('  Or manually compare and merge the files.');
+    console.log('  Review and compare the backups in ' + cyan + batch.patchesDisplayPath + reset + '.');
+    console.log('  If any changes are still needed, run ' + cyan + reapplyCommand + reset + ' to merge them into the new version.');
     console.log('');
   }
   return meta.files || [];
@@ -1276,12 +1296,79 @@ function removeGsdFiles(targetDir, runtime) {
     }
   }
 
+  removeRetiredCommands(targetDir, runtime);
+  removeRetiredNamedArtifacts(targetDir, runtime);
+
   // The manifest is GSD-written and describes GSD's own files, so it goes with
   // them for every runtime. Read last: gsdOwnedNames() above sources the
   // `names` removal sets from it.
   const manifestPath = path.join(targetDir, MANIFEST_NAME);
   if (fs.existsSync(manifestPath)) {
     fs.unlinkSync(manifestPath);
+  }
+}
+
+function recordedRetiredCommandNames(targetDir, spec) {
+  const names = new Set();
+  const sourceDir = path.join(__dirname, '..', ...spec.sourceDir.split('/'));
+  if (fs.existsSync(sourceDir)) {
+    for (const file of fs.readdirSync(sourceDir)) {
+      if (!file.endsWith('.md') || (spec.skip || []).includes(file)) continue;
+      names.add(patternToRelPath(spec.pattern, file));
+    }
+  }
+
+  const manifestPath = path.join(targetDir, MANIFEST_NAME);
+  try {
+    const files = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).files;
+    if (files && typeof files === 'object' && !Array.isArray(files)) {
+      for (const relative of Object.keys(files)) {
+        const normalized = relative.replace(/\\/g, '/');
+        const parts = normalized.split('/');
+        if (
+          parts.length === 2 &&
+          spec.dirs.includes(parts[0]) &&
+          /^gsd-[a-z0-9-]+\.md$/.test(parts[1])
+        ) {
+          names.add(parts[1]);
+        }
+      }
+    }
+  } catch {
+    // Known package-owned names still cover installs with no usable manifest.
+  }
+  return names;
+}
+
+function removeRetiredCommands(targetDir, rt) {
+  const spec = ((RUNTIMES[rt] || {}).layout || {}).retiredCommands;
+  if (!spec) return;
+  const names = recordedRetiredCommandNames(targetDir, spec);
+  for (const dirName of spec.dirs) {
+    const dir = path.join(targetDir, dirName);
+    if (!isEnumerableManagedDir(dir)) continue;
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate) && !fs.statSync(candidate).isDirectory()) {
+        fs.unlinkSync(candidate);
+      }
+    }
+  }
+}
+
+function removeRetiredNamedArtifacts(targetDir, rt) {
+  const specs =
+    ((RUNTIMES[rt] || {}).layout || {}).retiredNamedArtifacts || [];
+  for (const spec of specs) {
+    const dir = path.join(targetDir, spec.dir);
+    if (!isEnumerableManagedDir(dir)) continue;
+    for (const name of spec.files || []) {
+      if (name !== path.basename(name)) continue;
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate) && !fs.statSync(candidate).isDirectory()) {
+        fs.unlinkSync(candidate);
+      }
+    }
   }
 }
 
@@ -1589,16 +1676,57 @@ const OPENCODE_HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
  */
 const OPENCODE_FALLBACK_COLOR = 'info';
 
+const OPENCODE_STATIC_ATTACHMENT_RE =
+  /^(\s*)@(?:~\/\.claude\/gsd-ng\/)?((?:workflows|references|templates)\/[^\s]+)[ \t]*$/gm;
+const OPENCODE_DYNAMIC_ATTACHMENT_RE = /^(\s*)@(\.planning\/[^\s]+)[ \t]*$/gm;
+
+function renderOpencodeAttachments(content, sourceRoot, stack = []) {
+  const withStatic = content.replace(
+    OPENCODE_STATIC_ATTACHMENT_RE,
+    (_line, indent, relativePath) => {
+      const normalized = relativePath.replace(/\\/g, '/');
+      if (stack.includes(normalized)) {
+        throw new Error(
+          `OpenCode static attachment cycle: ${[...stack, normalized].join(' -> ')}`,
+        );
+      }
+
+      const sourcePath = path.join(sourceRoot, ...normalized.split('/'));
+      if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+        throw new Error(`OpenCode missing static attachment: ${normalized}`);
+      }
+
+      const nested = renderOpencodeAttachments(
+        fs.readFileSync(sourcePath, 'utf8'),
+        sourceRoot,
+        [...stack, normalized],
+      );
+      return (
+        `${indent}<!-- BEGIN GSD STATIC ATTACHMENT: ${normalized} -->\n` +
+        nested +
+        (nested.endsWith('\n') ? '' : '\n') +
+        `${indent}<!-- END GSD STATIC ATTACHMENT: ${normalized} -->`
+      );
+    },
+  );
+
+  const withDynamic = withStatic.replace(
+    OPENCODE_DYNAMIC_ATTACHMENT_RE,
+    (_line, indent, projectPath) =>
+      `${indent}[Runtime attachment: read \`${projectPath}\` now with the Read tool. ` +
+      'This project file was not captured at install time.]',
+  );
+
+  return withDynamic.replace(
+    /@(?:~\/\.claude\/gsd-ng\/)?((?:workflows|references|templates)\/[^\s`]+\.md)/g,
+    (_reference, relativePath) => `the inlined \`${relativePath}\` attachment`,
+  );
+}
+
 /**
- * OpenCode-targeted content conversion.
- *
- * `@file` references get one extra pass over the shared rewrite. A local
- * install already lands on the documented project-relative form; a global one
- * would otherwise carry `~/…`, and whether OpenCode expands a tilde or a shell
- * variable inside an `@` reference is undocumented and could not be verified
- * from source. An unresolved reference makes every workflow-dispatch command a
- * no-op, so the absolute path is baked in — accepting that it names the OS user
- * — rather than left to a behaviour nothing confirms.
+ * OpenCode-targeted content conversion. Command attachments are rendered before
+ * this path rewrite; this function remains shared with agent conversion, where
+ * ordinary path mentions still need the target runtime's config directory.
  *
  * @param {string} content - File content to convert
  * @param {boolean} isGlobal - Whether this is a global install
@@ -1625,19 +1753,26 @@ function convertClaudeToOpencodeContent(content, isGlobal, targetDir) {
 /**
  * Convert a Claude command .md to an OpenCode command file.
  *
- * The body passes through untouched beyond path rewriting and `{{VAR}}`
- * resolution: `$ARGUMENTS`, `$1..$n`, `` !`shell` `` and `@file` are all native
- * OpenCode syntax. The frontmatter is rebuilt from the source's own lines, so a
- * quoted or folded value keeps its quoting, and a key with no value is dropped
- * rather than emitted empty.
+ * Package-owned static attachments are recursively rendered before path and
+ * template conversion because OpenCode V2 leaves stored-command `@path` text
+ * literal. Dynamic project attachments become runtime read instructions. The
+ * frontmatter is rebuilt from the source's own lines, so a quoted or folded
+ * value keeps its quoting, and a key with no value is dropped rather than
+ * emitted empty.
  *
  * @param {string} content - Source command .md content
  * @param {boolean} isGlobal - Whether this is a global install
  * @param {string} [targetDir] - Resolved install directory, for a global install
  * @returns {string} Converted content
  */
-function convertClaudeCommandToOpencodeCommand(content, isGlobal, targetDir) {
-  const converted = convertClaudeToOpencodeContent(content, isGlobal, targetDir);
+function convertClaudeCommandToOpencodeCommand(
+  content,
+  isGlobal,
+  targetDir,
+  sourceRoot = path.join(__dirname, '..', 'gsd-ng'),
+) {
+  const rendered = renderOpencodeAttachments(content, sourceRoot);
+  const converted = convertClaudeToOpencodeContent(rendered, isGlobal, targetDir);
   const frontmatterMatch = converted.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!frontmatterMatch) return converted;
 
@@ -1651,6 +1786,82 @@ function convertClaudeCommandToOpencodeCommand(content, isGlobal, targetDir) {
   const body = frontmatterMatch[2];
   if (kept.length === 0) return body;
   return '---\n' + kept.join('\n') + '\n---\n' + body;
+}
+
+const OPENCODE_PRELUDE_ARGV = new Map([
+  ['cleanup --dry-run', ['cleanup', '--dry-run']],
+  ['cleanup', ['cleanup']],
+  ['update --dry-run', ['update', '--dry-run']],
+]);
+
+function buildOpencodeCommandRecord(
+  name,
+  content,
+  isGlobal,
+  targetDir,
+  sourceRoot = path.join(__dirname, '..', 'gsd-ng'),
+) {
+  const sourceFrontmatter = extractFrontmatter(content);
+  const preludes = [];
+  const withPreludeTokens = content.replace(
+    /^[ \t]*!`([^`\r\n]+)`[ \t]*$/gm,
+    (marker, source) => {
+    if (/\$ARGUMENTS|\$\d+/.test(source)) {
+      throw new Error(`OpenCode command ${name} has an argument or positional placeholder in a prelude`);
+    }
+    const parsed = source.match(/^node "([^"]+)" (cleanup --dry-run|cleanup|update --dry-run)$/);
+    if (
+      !parsed ||
+      parsed[1] !== '$HOME/.claude/gsd-ng/bin/gsd-tools.cjs'
+    ) {
+      throw new Error(`OpenCode command ${name} has an unrecognized native shell prelude: ${source}`);
+    }
+    const argv = OPENCODE_PRELUDE_ARGV.get(parsed[2]);
+    if (!argv) {
+      throw new Error(`OpenCode command ${name} has an unrecognized native shell prelude: ${source}`);
+    }
+    const token = `<gsd-prelude-output index="${preludes.length}">`;
+    if (content.includes(token)) {
+      throw new Error(`OpenCode command ${name} collides with generated prelude token ${token}`);
+    }
+    preludes.push({ token, operation: 'gsd-tools', argv: argv.slice() });
+      return token;
+    },
+  );
+  const converted = convertClaudeCommandToOpencodeCommand(
+    withPreludeTokens,
+    isGlobal,
+    targetDir,
+    sourceRoot,
+  );
+  const description = extractFrontmatter(converted).description;
+  if (typeof description !== 'string' || description.trim().length === 0) {
+    throw new Error(`OpenCode command ${name} requires a description`);
+  }
+  const match = converted.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+  const template = match ? match[1] : converted;
+
+  const placeholders = template.match(/\$ARGUMENTS/g) || [];
+  if (placeholders.length > 1) {
+    throw new Error(`OpenCode command ${name} has more than one raw argument placeholder`);
+  }
+
+  let route = { kind: 'current' };
+  if (sourceFrontmatter.agent !== undefined) {
+    if (sourceFrontmatter.agent !== 'gsd-planner') {
+      throw new Error(`OpenCode command ${name} declares unsupported agent ${sourceFrontmatter.agent}`);
+    }
+    route = { kind: 'planner', agent: 'gsd-planner' };
+  }
+
+  return {
+    name,
+    description,
+    template,
+    argument_mode: placeholders.length === 1 ? 'replace' : 'append',
+    route,
+    preludes,
+  };
 }
 
 /**
@@ -2108,6 +2319,30 @@ function writeConvertedArtifact(entry, spec, ctx) {
   }
 }
 
+function writeOpencodeCommandManifest(spec, ctx) {
+  const srcDir = path.join(ctx.src, ...spec.sourceDir.split('/'));
+  const commands = [];
+  for (const file of fs.readdirSync(srcDir).sort()) {
+    if (!file.endsWith('.md') || (spec.skip || []).includes(file)) continue;
+    const name = 'gsd-' + path.basename(file, '.md').replace(/^gsd[:-]/, '');
+    commands.push(
+      buildOpencodeCommandRecord(
+        name,
+        fs.readFileSync(path.join(srcDir, file), 'utf8'),
+        ctx.isGlobal,
+        ctx.targetDir,
+      ),
+    );
+  }
+  const outputPath = path.join(ctx.targetDir, ...spec.path.split('/'));
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(
+    outputPath,
+    JSON.stringify({ schema_version: 1, commands }, null, 2) + '\n',
+  );
+  console.log(`  ${green}✓${reset} Installed ${spec.path}`);
+}
+
 /**
  * The files a named set installs, as { from, to } pairs. `from` is null for a
  * file GSD generates rather than ships.
@@ -2240,6 +2475,7 @@ function install(isGlobal) {
   // --clean: wipe managed tree, skip migration AND patch detection. Wins silently
   // over a v1 manifest — no migration, no notices, fresh install only.
   let migrationResult;
+  let localPatchBatch = null;
   if (hasClean) {
     wipeManagedTree(targetDir, runtime);
     console.log(`  ${green}✓${reset} Wiped managed tree (--clean)`);
@@ -2252,9 +2488,12 @@ function install(isGlobal) {
     migrationResult = applyMigrations(targetDir);
     if (!migrationResult.ran) {
       // Save any locally modified GSD files before they get wiped
-      saveLocalPatches(targetDir);
+      localPatchBatch = saveLocalPatches(targetDir);
     }
   }
+
+  removeRetiredCommands(targetDir, runtime);
+  removeRetiredNamedArtifacts(targetDir, runtime);
 
   fs.mkdirSync(targetDir, { recursive: true });
 
@@ -2263,6 +2502,10 @@ function install(isGlobal) {
   // something neither of them knows about.
   for (const entry of layoutArtifacts(runtime)) {
     writeArtifact(entry, ctx);
+  }
+
+  if (layout.commandManifest) {
+    writeOpencodeCommandManifest(layout.commandManifest, ctx);
   }
 
   // The hook payload a plugin spawns lands inside the engine tree, so it is
@@ -2369,7 +2612,7 @@ function install(isGlobal) {
       console.log(line);
     }
   } else {
-    reportLocalPatches(targetDir);
+    reportLocalPatches(localPatchBatch);
   }
 
   let settingsPath = null;
@@ -2879,6 +3122,7 @@ module.exports = {
   convertClaudeToCopilotContent,
   convertClaudeAgentToCopilotAgent,
   convertClaudeCommandToOpencodeCommand,
+  buildOpencodeCommandRecord,
   convertClaudeAgentToOpencodeAgent,
   convertContent,
   removeGsdFiles,
