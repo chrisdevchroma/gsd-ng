@@ -240,7 +240,7 @@ readStdinWithTimeout((input) => {
           try {
             const bridgePath = path.join(
               os.tmpdir(),
-              `claude-ctx-${session}.json`,
+              `gsd-ctx-${session}.json`,
             );
             const bridgeData = JSON.stringify({
               session_id: session,

@@ -5,7 +5,7 @@
 // context limits (the statusline only shows the user).
 //
 // How it works:
-// 1. The statusline hook writes metrics to /tmp/claude-ctx-{session_id}.json
+// 1. The statusline hook writes metrics to /tmp/gsd-ctx-{session_id}.json
 // 2. This hook reads those metrics after each tool use
 // 3. When remaining context drops below thresholds, it injects a warning
 //    as additionalContext, which the agent sees in its conversation
@@ -54,7 +54,11 @@ readStdinWithTimeout(input => {
       .filter(Boolean)
       .find(d => { try { return fs.existsSync(d); } catch { return false; } })
       || os.tmpdir();
-    const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
+    // Prefer the gsd-ctx bridge file; fall back to the legacy claude-ctx name so
+    // a new monitor still works alongside statuslines installed under the old name.
+    const newPath = path.join(tmpDir, `gsd-ctx-${sessionId}.json`);
+    const legacyPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
+    const metricsPath = fs.existsSync(newPath) ? newPath : legacyPath;
 
     // If no metrics file, this is a subagent or fresh session -- exit silently
     if (!fs.existsSync(metricsPath)) {
@@ -78,7 +82,7 @@ readStdinWithTimeout(input => {
     }
 
     // Debounce: check if we warned recently
-    const warnPath = path.join(tmpDir, `claude-ctx-${sessionId}-warned.json`);
+    const warnPath = path.join(tmpDir, `gsd-ctx-${sessionId}-warned.json`);
     let warnData = { callsSinceWarn: 0, lastLevel: null };
     let firstWarn = true;
 

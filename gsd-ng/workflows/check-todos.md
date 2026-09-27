@@ -122,13 +122,16 @@ Mark the recommended option by placing it FIRST in the options list and appendin
 **Check context usage for launch warnings:**
 
 ```bash
-# Read context percentage from statusline bridge file
-SESSION_ID=$(echo "$ARGUMENTS" | grep -oP '(?<=session_id=)\S+' 2>/dev/null || echo "")
+# Read context percentage from statusline bridge file (writer uses os.tmpdir(), so read from $TMPDIR too)
+SESSION_ID=$(echo "$ARGUMENTS" | sed -n 's/.*session_id=\([^[:space:]]*\).*/\1/p')
 CONTEXT_PCT=0
 if [[ -n "$SESSION_ID" ]]; then
-  BRIDGE_FILE="/tmp/claude-ctx-${SESSION_ID}.json"
+  BRIDGE_FILE="${TMPDIR:-/tmp}/gsd-ctx-${SESSION_ID}.json"
+  if [[ ! -f "$BRIDGE_FILE" ]]; then
+    BRIDGE_FILE="${TMPDIR:-/tmp}/claude-ctx-${SESSION_ID}.json"
+  fi
   if [[ -f "$BRIDGE_FILE" ]]; then
-    CONTEXT_PCT=$(node -e "try{const d=JSON.parse(require('fs').readFileSync('$BRIDGE_FILE','utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}")
+    CONTEXT_PCT=$(BRIDGE_FILE="$BRIDGE_FILE" node -e "try{const d=JSON.parse(require('fs').readFileSync(process.env.BRIDGE_FILE,'utf-8'));console.log(100-(d.remaining_percentage||100))}catch{console.log(0)}")
   fi
 fi
 ```
