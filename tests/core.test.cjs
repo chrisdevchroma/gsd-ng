@@ -944,6 +944,25 @@ describe('getMilestonePhaseFilter', () => {
     assert.strictEqual(filter.phaseCount, 3);
   });
 
+  test('phaseCount deduplicates equivalent padded phase identifiers', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '- [x] **Phase 3.1: Inserted Work**',
+        '',
+        '### Phase 03.1: Inserted Work',
+        '**Goal:** Complete inserted work',
+      ].join('\n'),
+    );
+
+    const filter = getMilestonePhaseFilter(tmpDir);
+
+    assert.strictEqual(filter('03.1-inserted-work'), true);
+    assert.strictEqual(filter.phaseCount, 1);
+  });
+
   test('phaseCount is 0 when ROADMAP is missing', () => {
     const filter = getMilestonePhaseFilter(tmpDir);
     assert.strictEqual(filter.phaseCount, 0);

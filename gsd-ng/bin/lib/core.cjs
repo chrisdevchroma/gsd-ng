@@ -1671,14 +1671,14 @@ function getMilestonePhaseFilter(cwd) {
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmap)) !== null) {
-      milestonePhaseNums.add(m[1]);
+      milestonePhaseNums.add(normalizePhaseName(m[1]));
     }
     // Also recognize bullet-only entries: `- [ ] Phase N: Title` (no Details
     // header yet). These exist for phases that are declared in the roadmap but
     // not yet planned via /gsd:plan-phase. The `getMilestonePhaseFilter` only
     // needs the phase number, so a Set union with the header results suffices.
     for (const entry of parsePhaseCheckboxes(roadmap)) {
-      milestonePhaseNums.add(entry.num);
+      milestonePhaseNums.add(normalizePhaseName(entry.num));
     }
   } catch {}
 
@@ -1688,16 +1688,10 @@ function getMilestonePhaseFilter(cwd) {
     return anyPhaseDir;
   }
 
-  const normalized = new Set(
-    [...milestonePhaseNums].map((n) =>
-      (n.replace(/^0+/, '') || '0').toLowerCase(),
-    ),
-  );
-
   function isDirInMilestone(dirName) {
     const m = dirName.match(PHASE_DIR_ANCHOR);
     if (!m) return false;
-    return normalized.has(m[1].toLowerCase());
+    return milestonePhaseNums.has(normalizePhaseName(m[1]));
   }
   isDirInMilestone.phaseCount = milestonePhaseNums.size;
   return isDirInMilestone;

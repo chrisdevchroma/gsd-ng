@@ -883,6 +883,37 @@ describe('validate health --repair command', () => {
     );
   });
 
+  test('regenerated STATE.md counts padded inserted phases once', () => {
+    writeValidConfigJson(tmpDir);
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '- [x] **Phase 3.1: Inserted Work**',
+        '',
+        '### Phase 03.1: Inserted Work',
+        '**Goal:** Complete inserted work',
+      ].join('\n'),
+    );
+    const phaseDir = path.join(
+      tmpDir,
+      '.planning',
+      'phases',
+      '03.1-inserted-work',
+    );
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '03.1-01-PLAN.md'), '# Plan\n');
+    fs.writeFileSync(path.join(phaseDir, '03.1-01-SUMMARY.md'), '# Summary\n');
+    const statePath = path.join(tmpDir, '.planning', 'STATE.md');
+
+    const repair = runGsdTools('validate health --repair', tmpDir);
+    assert.ok(repair.success, `Command failed: ${repair.error}`);
+
+    const regenerated = fs.readFileSync(statePath, 'utf-8');
+    assert.match(regenerated, /^\*\*Total Phases:\*\* 1$/m, regenerated);
+  });
+
   test('regenerated STATE.md stays on the last phase when every plan is done', () => {
     writeValidConfigJson(tmpDir);
     writeMinimalRoadmap(tmpDir, ['1']);
