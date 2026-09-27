@@ -1924,6 +1924,106 @@ test('COPILOT-10: all SKILL.md name: fields must use gsd- prefix, not gsd: (no c
 
 // ── copilot install writes snapshot VERSION (not verbatim copy) ───────
 
+function gitFixture(dir, args) {
+  const result = spawnSync('git', args, {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  assert.strictEqual(
+    result.status,
+    0,
+    `git ${args.join(' ')} failed: ${result.stderr || result.stdout}`,
+  );
+  return (result.stdout || '').trim();
+}
+
+function createSnapshotRepo(remoteUrl = 'https://example.com/gsd-ng.git') {
+  const dir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-snapshot-source-'));
+  gitFixture(dir, ['init', '-q']);
+  gitFixture(dir, ['config', 'user.name', 'Snapshot Test']);
+  gitFixture(dir, ['config', 'user.email', 'snapshot@example.com']);
+  fs.writeFileSync(path.join(dir, 'README.md'), 'fixture\n');
+  gitFixture(dir, ['add', 'README.md']);
+  gitFixture(dir, ['commit', '-qm', 'fixture']);
+  gitFixture(dir, ['branch', '-M', 'develop']);
+  gitFixture(dir, ['remote', 'add', 'origin', remoteUrl]);
+  gitFixture(dir, ['update-ref', 'refs/remotes/origin/develop', 'HEAD']);
+  return dir;
+}
+
+test('snapshot source records an attached branch configured upstream', () => {
+  const { resolveSnapshotSource } = require('../bin/install.js');
+  const dir = createSnapshotRepo();
+  try {
+    gitFixture(dir, ['branch', '--set-upstream-to', 'origin/develop', 'develop']);
+    assert.deepStrictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1'), {
+      remote_url: 'https://example.com/gsd-ng.git',
+      branch: 'develop',
+    });
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('snapshot source records a detached checkout with one remote-tracking ref', () => {
+  const { resolveSnapshotSource } = require('../bin/install.js');
+  const dir = createSnapshotRepo('git@github.com:example/gsd-ng.git');
+  try {
+    gitFixture(dir, ['checkout', '-q', '--detach', 'HEAD']);
+    assert.deepStrictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1'), {
+      remote_url: 'git@github.com:example/gsd-ng.git',
+      branch: 'develop',
+    });
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('snapshot source omits clean, ambiguous, missing-upstream, and failed git evidence', () => {
+  const { resolveSnapshotSource } = require('../bin/install.js');
+  const dir = createSnapshotRepo();
+  try {
+    assert.strictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7'), null);
+    assert.strictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7+not-a-sha'), null);
+    assert.strictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1'), null);
+
+    gitFixture(dir, ['update-ref', 'refs/remotes/origin/other', 'HEAD']);
+    gitFixture(dir, ['checkout', '-q', '--detach', 'HEAD']);
+    assert.strictEqual(resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1'), null);
+    assert.strictEqual(
+      resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1', () => {
+        throw new Error('git failed');
+      }),
+      null,
+    );
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('snapshot source never persists credentials or local source paths', () => {
+  const { resolveSnapshotSource } = require('../bin/install.js');
+  for (const remoteUrl of [
+    'https://token@example.com/gsd-ng.git',
+    'https://example.com/gsd-ng.git?token=secret',
+    '/home/user/private/gsd-ng',
+    'file:///home/user/private/gsd-ng',
+  ]) {
+    const dir = createSnapshotRepo(remoteUrl);
+    try {
+      gitFixture(dir, ['branch', '--set-upstream-to', 'origin/develop', 'develop']);
+      assert.strictEqual(
+        resolveSnapshotSource(dir, '1.0.0-dev.7+abcdef1'),
+        null,
+        remoteUrl,
+      );
+    } finally {
+      cleanup(dir);
+    }
+  }
+});
+
 test('SVN-01: --runtime copilot --local writes .github/gsd-ng/VERSION with resolved version', () => {
   const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-svn-01-'));
   try {
