@@ -2385,6 +2385,9 @@ function install(isGlobal) {
     statuslineCommand = isGlobal
       ? buildHookCommand(targetDir, 'gsd-statusline.js')
       : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-statusline.js';
+    // Local hook paths stay on $CLAUDE_PROJECT_DIR: hook contexts are launched
+    // by the harness, whose native variable is authoritative here - GSD-first
+    // chains apply to workflow invocations only.
     const updateCheckCommand = isGlobal
       ? buildHookCommand(targetDir, 'gsd-check-update.js')
       : 'node "$CLAUDE_PROJECT_DIR"/' + dirName + '/hooks/gsd-check-update.js';

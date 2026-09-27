@@ -189,7 +189,7 @@
   "gsd-ng/workflows/validate-phase.md": "7ca6ad1de513b6bc94571079c37d30a976ae0a74f7843d92718e8b90367459b8",
   "gsd-ng/workflows/verify-phase.md": "07b5848fad5868f4ff3f7c209da842f5530eaf5c5edca61ff6f5b2e28abf54d3",
   "gsd-ng/workflows/verify-work.md": "6ce413c4307a6c9edda167a48757514e3461ee09997e4d778c199508c075d464",
-  "hooks/bash-safety-hook.cjs": "037348ea75dd1ec878cb895065b75ae8570a3ad58aa173524cf351d787a1ba65",
+  "hooks/bash-safety-hook.cjs": "e114be53b131a9a0d95c0c01f2d610b1de872aa5344c0fb3428544bdcd196349",
   "hooks/gsd-check-update.js": "dce532e4d25cf2043156ef85494e9463ca0e3b2a05d527fda97ee0181f444475",
   "hooks/gsd-context-monitor.js": "642fdf3e406cad2206534748139d713558dddde361b287c8ec8345f9c22adbd1",
   "hooks/gsd-guardrail.js": "6a8d841574e0b665ec81e66f5fcb90c7ae094b5871cf96543c3e0f937f43613c",

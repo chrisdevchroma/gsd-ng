@@ -107,7 +107,7 @@ async function* fakeAsyncIterable(items) {
  * V2 ctx stand-in: records execute.before registrations and the options
  * handed to event.subscribe, and streams the given events to the adapter.
  */
-function fakeCtx(events) {
+function fakeCtx(events, location) {
   const ctx = {
     toolCalls: [],
     subscribeOpts: [],
@@ -126,6 +126,7 @@ function fakeCtx(events) {
       },
     },
   };
+  if (location) ctx.location = location;
   return ctx;
 }
 
@@ -573,10 +574,12 @@ async function withIsolatedEnv(home, fn) {
     HOME: process.env.HOME,
     CLAUDE_SETTINGS_PATH: process.env.CLAUDE_SETTINGS_PATH,
     CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR,
+    GSD_PROJECT_DIR: process.env.GSD_PROJECT_DIR,
   };
   process.env.HOME = home;
   delete process.env.CLAUDE_SETTINGS_PATH;
   delete process.env.CLAUDE_PROJECT_DIR;
+  delete process.env.GSD_PROJECT_DIR;
   try {
     return await fn();
   } finally {
@@ -675,5 +678,168 @@ describe('PLUGIN: the real factory reads the config home it is installed in', ()
     );
     assert.match(source, /import\.meta\.url/, 'the config home derives from the module location');
     assert.match(source, /createRequire/, 'the CommonJS safety library is required, not reimplemented');
+  });
+
+  test('the V2 plugin uses the project root instead of a nested active location or leaked env', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-v2-root-'));
+    try {
+      const { installedPlugin, home } = stageInstall(tmpDir);
+      const projectRoot = path.join(tmpDir, 'repo');
+      const activeLocation = path.join(projectRoot, 'packages', 'app');
+      const claudeProject = path.join(tmpDir, 'claude');
+      const gsdProject = path.join(tmpDir, 'gsd');
+      for (const projectDir of [
+        projectRoot,
+        activeLocation,
+        claudeProject,
+        gsdProject,
+      ]) {
+        fs.mkdirSync(path.join(projectDir, '.opencode'), { recursive: true });
+      }
+      fs.writeFileSync(
+        path.join(projectRoot, '.opencode', 'settings.json'),
+        DENY_SETTINGS,
+      );
+
+      await withIsolatedEnv(home, async () => {
+        process.env.CLAUDE_PROJECT_DIR = claudeProject;
+        process.env.GSD_PROJECT_DIR = gsdProject;
+        const mod = await importPlugin(installedPlugin);
+        const ctx = fakeCtx([], {
+          directory: activeLocation,
+          project: {
+            id: 'project',
+            directory: projectRoot,
+            canonical: path.join(tmpDir, 'canonical'),
+          },
+        });
+        const release = await mod.default.setup(ctx);
+        await assert.rejects(
+          () =>
+            ctx.toolCalls[0].cb({
+              tool: 'shell',
+              input: { command: DENY_COMMAND },
+            }),
+          /matches deny pattern "Bash\(rm:\*\)"/,
+        );
+        release();
+      });
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('the V2 plugin falls back to GSD_PROJECT_DIR when project metadata is unavailable', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-v2-fallback-'));
+    try {
+      const { installedPlugin, home } = stageInstall(tmpDir);
+      const activeLocation = path.join(tmpDir, 'repo', 'packages', 'app');
+      const claudeProject = path.join(tmpDir, 'claude');
+      const gsdProject = path.join(tmpDir, 'gsd');
+      for (const projectDir of [activeLocation, claudeProject, gsdProject]) {
+        fs.mkdirSync(path.join(projectDir, '.opencode'), { recursive: true });
+      }
+      fs.writeFileSync(
+        path.join(gsdProject, '.opencode', 'settings.json'),
+        DENY_SETTINGS,
+      );
+
+      await withIsolatedEnv(home, async () => {
+        process.env.CLAUDE_PROJECT_DIR = claudeProject;
+        process.env.GSD_PROJECT_DIR = gsdProject;
+        const mod = await importPlugin(installedPlugin);
+        const ctx = fakeCtx([], { directory: activeLocation });
+        const release = await mod.default.setup(ctx);
+        await assert.rejects(
+          () =>
+            ctx.toolCalls[0].cb({
+              tool: 'shell',
+              input: { command: DENY_COMMAND },
+            }),
+          /matches deny pattern "Bash\(rm:\*\)"/,
+        );
+        release();
+      });
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('the V1 plugin uses project.worktree instead of a nested active directory or leaked env', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-v1-project-'));
+    try {
+      const { installedPlugin, home } = stageInstall(tmpDir);
+      const projectRoot = path.join(tmpDir, 'repo');
+      const activeLocation = path.join(projectRoot, 'packages', 'app');
+      const claudeProject = path.join(tmpDir, 'claude');
+      const gsdProject = path.join(tmpDir, 'gsd');
+      for (const projectDir of [
+        projectRoot,
+        activeLocation,
+        claudeProject,
+        gsdProject,
+      ]) {
+        fs.mkdirSync(path.join(projectDir, '.opencode'), { recursive: true });
+      }
+      fs.writeFileSync(
+        path.join(projectRoot, '.opencode', 'settings.json'),
+        DENY_SETTINGS,
+      );
+
+      await withIsolatedEnv(home, async () => {
+        process.env.CLAUDE_PROJECT_DIR = claudeProject;
+        process.env.GSD_PROJECT_DIR = gsdProject;
+        const mod = await importPlugin(installedPlugin);
+        const hooks = await mod.default.server({
+          directory: activeLocation,
+          project: { id: 'project', worktree: projectRoot },
+        });
+        await assert.rejects(
+          () =>
+            hooks['tool.execute.before'](
+              { tool: 'bash' },
+              { args: { command: DENY_COMMAND } },
+            ),
+          /matches deny pattern "Bash\(rm:\*\)"/,
+        );
+      });
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('the V1 plugin falls back to GSD_PROJECT_DIR when project metadata is unavailable', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-plugin-v1-root-'));
+    try {
+      const { installedPlugin, home } = stageInstall(tmpDir);
+      const claudeProject = path.join(tmpDir, 'claude');
+      const gsdProject = path.join(tmpDir, 'gsd');
+      fs.mkdirSync(path.join(claudeProject, '.opencode'), { recursive: true });
+      fs.mkdirSync(path.join(gsdProject, '.opencode'), { recursive: true });
+      fs.writeFileSync(
+        path.join(gsdProject, '.opencode', 'settings.json'),
+        DENY_SETTINGS,
+      );
+
+      await withIsolatedEnv(home, async () => {
+        process.env.CLAUDE_PROJECT_DIR = claudeProject;
+        process.env.GSD_PROJECT_DIR = gsdProject;
+        const mod = await importPlugin(installedPlugin);
+        const hooks = await mod.default.server({
+          directory: claudeProject,
+          project: {},
+        });
+        await assert.rejects(
+          () =>
+            hooks['tool.execute.before'](
+              { tool: 'bash' },
+              { args: { command: DENY_COMMAND } },
+            ),
+          /matches deny pattern "Bash\(rm:\*\)"/,
+        );
+      });
+    } finally {
+      cleanup(tmpDir);
+    }
   });
 });
