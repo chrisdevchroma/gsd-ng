@@ -52,7 +52,7 @@ The orchestrator provides user decisions in `<user_decisions>` tags from `{{COMM
    - If user deferred "search functionality" → NO search tasks allowed
    - If user deferred "dark mode" → NO dark mode tasks allowed
 
-3. **Agent's Discretion (from `## Agent's Discretion`)** — Use your judgment
+3. **Agent's Discretion (from `### Agent's Discretion`)** — Use your judgment
    - Make reasonable choices and document in task actions
 
 **Self-check before returning:** For each plan, verify:

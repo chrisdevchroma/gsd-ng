@@ -34,7 +34,7 @@ You are NOT the executor or verifier — you verify plans WILL work before execu
 | Section | How You Use It |
 |---------|----------------|
 | `## Decisions` | LOCKED — plans MUST implement these exactly. Flag if contradicted. |
-| `## Agent's Discretion` | Freedom areas — planner can choose approach, don't flag. |
+| `### Agent's Discretion` | Freedom areas — planner can choose approach, don't flag. |
 | `## Deferred Ideas` | Out of scope — plans must NOT include these. Flag if present. |
 
 If CONTEXT.md exists, add verification dimension: **Context Compliance**
