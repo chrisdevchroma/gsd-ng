@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Test baseline capture and comparison now handle verbose commands without mistaking output-buffer exhaustion for a timeout. They retain actual exit codes and test counts while keeping failure details bounded and temporary output cleaned up.
 - Same-version development installs now update to the exact checked branch commit and fail instead of reporting success when the branch, checkout, installer, or installed version does not match.
 - Phase health checks now distinguish unplanned future work from started phases that have lost their directory, recognize explicitly archived phase records, preserve decimal and letter-suffixed identities, and avoid declaring directories orphaned when archive evidence is incomplete.
 - Memory health checks now follow bounded local project-rule imports instead of inspecting only the runtime's pointer file. References and manual markers are evaluated across the effective rules graph, while repairs write only to a uniquely revalidated Memories owner and fail closed on incomplete or ambiguous imports.

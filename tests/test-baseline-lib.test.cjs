@@ -992,3 +992,264 @@ test('test-baseline branch coverage', async (t) => {
     }
   });
 });
+
+test('test-baseline bounded command output', async (t) => {
+  const {
+    captureBaseline,
+    compareBaseline,
+  } = require('../gsd-ng/bin/lib/test-baseline.cjs');
+
+  function writeEmitter(dir, name, lines) {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    return `"${process.execPath}" "${file}"`;
+  }
+
+  function captureWrites(stream, callback) {
+    const originalWrite = stream.write;
+    const chunks = [];
+    stream.write = (chunk) => {
+      chunks.push(String(chunk));
+      return true;
+    };
+    try {
+      callback();
+    } finally {
+      stream.write = originalWrite;
+    }
+    return chunks.join('');
+  }
+
+  function assertNoSpools(tmpRoot) {
+    const spools = fs
+      .readdirSync(tmpRoot)
+      .filter((name) => name.startsWith('gsd-test-baseline-'));
+    assert.deepEqual(spools, [], `temporary spool artifacts remain: ${spools}`);
+  }
+
+  function withSpoolRoot(tmpDir, callback) {
+    const spoolRoot = path.join(tmpDir, 'spools');
+    fs.mkdirSync(spoolRoot, { recursive: true });
+    const previousTmpDir = process.env.TMPDIR;
+    process.env.TMPDIR = spoolRoot;
+    try {
+      callback(spoolRoot);
+    } finally {
+      if (previousTmpDir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previousTmpDir;
+    }
+  }
+
+  await t.test(
+    'capture and compare pass after more than the default child-process buffer',
+    () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-baseline-verbose-pass-'),
+      );
+      try {
+        const command = writeEmitter(tmpDir, 'pass.cjs', [
+          "'use strict';",
+          "process.stdout.write('FIREHOSE_START\\n');",
+          "process.stdout.write('x'.repeat(2 * 1024 * 1024 + 4096));",
+          "process.stdout.write('\\n# tests 23\\n# pass 23\\n# fail 0\\nFIREHOSE_END\\n');",
+        ]);
+        const entries = JSON.stringify([{ dir: '.', command }]);
+        const baselineFile = path.join(tmpDir, 'baseline.json');
+
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          captureWrites(process.stderr, () => {
+            captureBaseline(entries, baselineFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+
+        const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'))['.'];
+        assert.equal(baseline.exit_code, 0);
+        assert.equal(baseline.tests, 23);
+        assert.equal(baseline.pass, 23);
+        assert.equal(baseline.fail, 0);
+
+        let compared;
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          compared = captureWrites(process.stdout, () => {
+            compareBaseline(entries, baselineFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+        assert.match(compared, /✓ pass/);
+        assert.match(compared, /NEW_FAILURES=false/);
+        assert.doesNotMatch(compared, /FIREHOSE_(?:START|END)/);
+      } finally {
+        cleanup(tmpDir);
+      }
+    },
+  );
+
+  await t.test(
+    'verbose failures retain their exit code and only print a bounded tail',
+    () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-baseline-verbose-fail-'),
+      );
+      try {
+        const command = writeEmitter(tmpDir, 'fail.cjs', [
+          "'use strict';",
+          "process.stdout.write('EARLY_MARKER\\n');",
+          "process.stdout.write('y'.repeat(2 * 1024 * 1024 + 4096));",
+          "process.stdout.write('\\n' + 'z'.repeat(1900) + '\\nFINAL_MARKER\\n');",
+          'process.exitCode = 7;',
+        ]);
+        const entries = JSON.stringify([{ dir: '.', command }]);
+        const capturedFile = path.join(tmpDir, 'captured.json');
+
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          captureWrites(process.stderr, () => {
+            captureBaseline(entries, capturedFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+        const captured = JSON.parse(fs.readFileSync(capturedFile, 'utf8'))['.'];
+        assert.equal(captured.exit_code, 7);
+
+        const passingFile = path.join(tmpDir, 'passing.json');
+        fs.writeFileSync(
+          passingFile,
+          JSON.stringify({
+            '.': {
+              captured: '2026-01-01T00:00:00.000Z',
+              command,
+              exit_code: 0,
+              tests: null,
+              pass: null,
+              fail: null,
+            },
+          }),
+        );
+        let compared;
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          compared = captureWrites(process.stdout, () => {
+            compareBaseline(entries, passingFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+
+        assert.match(compared, /NEW_FAILURES=true/);
+        const detail = compared.split('New failure in .:\n')[1];
+        assert.ok(detail, `missing new-failure detail: ${compared}`);
+        assert.match(detail, /FINAL_MARKER/);
+        assert.doesNotMatch(detail, /EARLY_MARKER/);
+        assert.ok(
+          detail.trimEnd().length <= 2000,
+          `failure detail exceeded 2000 characters: ${detail.trimEnd().length}`,
+        );
+      } finally {
+        cleanup(tmpDir);
+      }
+    },
+  );
+
+  await t.test(
+    'TAP summaries survive a file-read boundary and a final line without newline',
+    () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-baseline-boundary-'),
+      );
+      try {
+        const command = writeEmitter(tmpDir, 'boundary.cjs', [
+          "'use strict';",
+          "process.stdout.write('b'.repeat(65530) + '\\n# tes');",
+          "process.stdout.write('ts 42\\n# pass 41\\n# fail 1');",
+        ]);
+        const baselineFile = path.join(tmpDir, 'baseline.json');
+        captureWrites(process.stderr, () => {
+          captureBaseline(
+            JSON.stringify([{ dir: '.', command }]),
+            baselineFile,
+          );
+        });
+        const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'))['.'];
+        assert.equal(baseline.tests, 42);
+        assert.equal(baseline.pass, 41);
+        assert.equal(baseline.fail, 1);
+      } finally {
+        cleanup(tmpDir);
+      }
+    },
+  );
+
+  await t.test(
+    'timeouts stay unknown and remove spools during capture and comparison',
+    () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-baseline-spooled-timeout-'),
+      );
+      const previousTimeout = process.env.GSD_TEST_TIMEOUT_MS;
+      try {
+        process.env.GSD_TEST_TIMEOUT_MS = '50';
+        const command = writeEmitter(tmpDir, 'timeout.cjs', [
+          "'use strict';",
+          'setTimeout(() => {}, 5000);',
+        ]);
+        const entries = JSON.stringify([{ dir: '.', command }]);
+        const baselineFile = path.join(tmpDir, 'timeout.json');
+
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          captureWrites(process.stderr, () => {
+            captureBaseline(entries, baselineFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+        const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'))['.'];
+        assert.equal(baseline.exit_code, -2);
+
+        baseline.exit_code = 0;
+        fs.writeFileSync(baselineFile, JSON.stringify({ '.': baseline }));
+        let compared;
+        withSpoolRoot(tmpDir, (spoolRoot) => {
+          compared = captureWrites(process.stdout, () => {
+            compareBaseline(entries, baselineFile);
+          });
+          assertNoSpools(spoolRoot);
+        });
+        assert.match(compared, /✗ t\/out/);
+        assert.match(compared, /NEW_FAILURES=true/);
+        assert.match(compared, /suite did not finish/);
+        assert.doesNotMatch(compared, /New failure in \.:/);
+      } finally {
+        if (previousTimeout === undefined)
+          delete process.env.GSD_TEST_TIMEOUT_MS;
+        else process.env.GSD_TEST_TIMEOUT_MS = previousTimeout;
+        cleanup(tmpDir);
+      }
+    },
+  );
+
+  await t.test('configured shell quoting and operators remain intact', () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(resolveTmpDir(), 'gsd-baseline-shell-command-'),
+    );
+    try {
+      const emitter = writeEmitter(tmpDir, 'shell.cjs', [
+        "'use strict';",
+        "process.stdout.write('# tests 1\\n# pass 1\\n# fail 0\\n');",
+      ]);
+      const command =
+        `SHELL_VALUE='two words' && test "$SHELL_VALUE" = 'two words' && ` +
+        `${emitter} | cat`;
+      const baselineFile = path.join(tmpDir, 'baseline.json');
+      captureWrites(process.stderr, () => {
+        captureBaseline(
+          JSON.stringify([{ dir: '.', command }]),
+          baselineFile,
+        );
+      });
+      const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'))['.'];
+      assert.equal(baseline.exit_code, 0);
+      assert.equal(baseline.tests, 1);
+      assert.equal(baseline.pass, 1);
+      assert.equal(baseline.fail, 0);
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});
