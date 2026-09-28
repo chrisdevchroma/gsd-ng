@@ -306,6 +306,88 @@ describe('summary-extract command', () => {
     cleanup(tmpDir);
   });
 
+  test('repeated summary fields match comma-separated and mixed selections', () => {
+    const summaryPath = 'SUMMARY.md';
+    fs.writeFileSync(
+      path.join(tmpDir, summaryPath),
+      '---\nkey-files:\n  - src/a.js\nkey-decisions:\n  - Keep both: no data loss\n---\n\n**Built both paths**\n',
+    );
+    const extract = (...flags) => {
+      const result = runGsdTools(
+        ['summary-extract', summaryPath, ...flags, '--json'],
+        tmpDir,
+      );
+      assert.ok(result.success, result.error);
+      return JSON.parse(result.output);
+    };
+    const expected = {
+      path: summaryPath,
+      one_liner: 'Built both paths',
+      decisions: [{ summary: 'Keep both', rationale: 'no data loss' }],
+    };
+    assert.deepStrictEqual(extract('--fields', 'one_liner,decisions'), expected);
+    assert.deepStrictEqual(
+      extract('--fields', 'one_liner', '--fields', 'decisions'),
+      expected,
+    );
+    const mixed = extract('--fields', 'one_liner,key_files', '--fields', 'decisions');
+    assert.deepStrictEqual(
+      mixed,
+      extract('--fields', 'one_liner,key_files,decisions'),
+    );
+    assert.deepStrictEqual(mixed.key_files, ['src/a.js']);
+  });
+
+  test('repeated summary fields in mixed form include the later decision', () => {
+    const summaryPath = 'SUMMARY.md';
+    fs.writeFileSync(
+      path.join(tmpDir, summaryPath),
+      '---\nkey-files:\n  - src/a.js\nkey-decisions:\n  - Keep both\n---\n\n**Built both paths**\n',
+    );
+    const extract = (...flags) => {
+      const result = runGsdTools(
+        ['summary-extract', summaryPath, ...flags, '--json'],
+        tmpDir,
+      );
+      assert.ok(result.success, result.error);
+      return JSON.parse(result.output);
+    };
+    const expected = extract('--fields', 'one_liner,key_files,decisions');
+    assert.deepStrictEqual(expected.decisions, [
+      { summary: 'Keep both', rationale: null },
+    ]);
+    assert.deepStrictEqual(
+      extract('--fields', 'one_liner,key_files', '--fields', 'decisions'),
+      expected,
+    );
+  });
+
+  test('repeated summary fields preserve single, absent, and explicit empty selections', () => {
+    const summaryPath = 'SUMMARY.md';
+    fs.writeFileSync(
+      path.join(tmpDir, summaryPath),
+      '---\nkey-files:\n  - src/a.js\nkey-decisions:\n  - Keep both\n---\n\n**Built both paths**\n',
+    );
+    const extract = (...flags) => {
+      const result = runGsdTools(
+        ['summary-extract', summaryPath, ...flags, '--json'],
+        tmpDir,
+      );
+      assert.ok(result.success, result.error);
+      return JSON.parse(result.output);
+    };
+    assert.deepStrictEqual(extract('--fields', 'one_liner'), {
+      path: summaryPath,
+      one_liner: 'Built both paths',
+    });
+    const full = extract();
+    assert.deepStrictEqual(full.key_files, ['src/a.js']);
+    assert.deepStrictEqual(full.decisions, [
+      { summary: 'Keep both', rationale: null },
+    ]);
+    assert.deepStrictEqual(extract('--fields', ''), { path: summaryPath });
+  });
+
   test('missing file returns error', () => {
     const result = runGsdTools(
       'summary-extract .planning/phases/01-test/01-01-SUMMARY.md --json',
