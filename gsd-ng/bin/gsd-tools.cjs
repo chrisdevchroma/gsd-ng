@@ -1987,9 +1987,8 @@ async function main() {
     case 'summary-extract': {
       validateArgs('summary-extract', null, args.slice(1));
       const summaryPath = args[1];
-      const fieldsIndex = args.indexOf('--fields');
-      const fields =
-        fieldsIndex !== -1 ? args[fieldsIndex + 1].split(',') : null;
+      const fieldsArg = listFlag(args, '--fields');
+      const fields = fieldsArg !== null ? fieldsArg.split(',') : null;
       const seDefaultIdx = args.indexOf('--default');
       const seDefaultValue =
         seDefaultIdx !== -1 ? args[seDefaultIdx + 1] : undefined;
@@ -2194,13 +2193,13 @@ async function main() {
     case 'breakout-check': {
       validateArgs('breakout-check', null, args.slice(1));
       const planIdx = args.indexOf('--plan');
-      const filesIdx = args.indexOf('--declared-files');
+      const filesArg = listFlag(args, '--declared-files');
       const checkArgs = [];
       if (planIdx !== -1) {
         checkArgs.push('--plan', args[planIdx + 1]);
       }
-      if (filesIdx !== -1) {
-        checkArgs.push('--declared-files', args[filesIdx + 1]);
+      if (filesArg !== null) {
+        checkArgs.push('--declared-files', filesArg);
       }
       commands.cmdBreakoutCheck(cwd, checkArgs);
       break;

@@ -236,6 +236,79 @@ describe('cmdBreakoutCheck integration', () => {
     cleanup(tmpDir);
   });
 
+  test('repeated declared files match comma-separated and mixed committed files', () => {
+    for (const file of ['src/a.js', 'lib/b.js', 'config/c.js']) {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, file)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, file), `content of ${file}`);
+    }
+    execSync('git add src/a.js lib/b.js config/c.js && git commit -m "feat(18-01): add files"', {
+      cwd: tmpDir,
+      stdio: 'pipe',
+    });
+    const check = (...flags) => {
+      const result = runGsdTools(
+        ['breakout-check', '--plan', '18-01', ...flags, '--json'],
+        tmpDir,
+      );
+      assert.ok(result.success, result.error);
+      return JSON.parse(result.output);
+    };
+    const comma = check('--declared-files', 'src/a.js,lib/b.js,config/c.js');
+    assert.strictEqual(comma.status, 'ok');
+    assert.deepStrictEqual(comma.details.unexpected_files, []);
+    const single = check('--declared-files', 'src/a.js');
+    assert.deepStrictEqual(
+      single.details.unexpected_files.map(({ file }) => file),
+      ['config/c.js', 'lib/b.js'],
+    );
+    assert.deepStrictEqual(check().details.unexpected_files, []);
+    const mixed = check(
+      '--declared-files', 'src/a.js,lib/b.js',
+      '--declared-files', 'config/c.js',
+    );
+    assert.strictEqual(mixed.status, 'ok', JSON.stringify(mixed));
+    assert.deepStrictEqual(mixed.details.unexpected_files, []);
+    assert.deepStrictEqual(mixed, comma);
+    const repeated = check(
+      '--declared-files', 'src/a.js',
+      '--declared-files', 'lib/b.js',
+      '--declared-files', 'config/c.js',
+    );
+    assert.strictEqual(repeated.status, 'ok', JSON.stringify(repeated));
+    assert.deepStrictEqual(repeated.details.unexpected_files, []);
+  });
+
+  test('repeated declared files retain a committed second file', () => {
+    fs.mkdirSync(path.join(tmpDir, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'a.js'), 'a');
+    fs.writeFileSync(path.join(tmpDir, 'lib', 'b.js'), 'b');
+    execSync('git add src/a.js lib/b.js && git commit -m "feat(18-01): add files"', {
+      cwd: tmpDir,
+      stdio: 'pipe',
+    });
+    const check = (...flags) => {
+      const result = runGsdTools(
+        ['breakout-check', '--plan', '18-01', ...flags, '--json'],
+        tmpDir,
+      );
+      assert.ok(result.success, result.error);
+      return JSON.parse(result.output);
+    };
+    const comma = check('--declared-files', 'src/a.js,lib/b.js');
+    assert.strictEqual(comma.status, 'ok');
+    assert.deepStrictEqual(comma.details.unexpected_files, []);
+    const single = check('--declared-files', 'src/a.js');
+    assert.strictEqual(single.status, 'warning');
+    assert.deepStrictEqual(single.details.unexpected_files.map(({ file }) => file), ['lib/b.js']);
+    const absent = check();
+    assert.strictEqual(absent.status, 'ok');
+    assert.deepStrictEqual(absent.details.unexpected_files, []);
+    const repeated = check('--declared-files', 'src/a.js', '--declared-files', 'lib/b.js');
+    assert.strictEqual(repeated.status, 'ok', JSON.stringify(repeated));
+    assert.deepStrictEqual(repeated.details.unexpected_files, []);
+    assert.deepStrictEqual(repeated, comma);
+  });
+
   test('Test 12: cmdBreakoutCheck via gsd-tools breakout-check --plan 18-01 --declared-files src/a.js,src/b.js returns JSON with status field', () => {
     // Write files and commit with plan-tagged message
     fs.writeFileSync(path.join(tmpDir, 'src', 'a.js'), 'content a');
