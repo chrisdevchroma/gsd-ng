@@ -21,6 +21,9 @@
  * run-to-run variance:
  *   - gsd-file-manifest.json carries a wall-clock timestamp, replaced with a
  *     fixed string.
+ *   - its optional snapshot_source identifies the source checkout, not the
+ *     installed tree; the installer suite checks which sources are safe, and
+ *     an on-disk assertion below checks that capture leaves provenance intact.
  *   - gsd-ng/VERSION and the manifest's copy of it hold the version, which
  *     changes on every release; replaced outright. That the two agree with
  *     each other and with the install banner is asserted directly in the
@@ -99,6 +102,7 @@ function normalizeContent(relpath, buf, replacePaths) {
     if (typeof parsed.version === 'string') {
       parsed.version = VERSION_PLACEHOLDER;
     }
+    delete parsed.snapshot_source;
     for (const relpathKey of [VERSION_RELPATH, CHANGELOG_RELPATH]) {
       if (parsed.files && typeof parsed.files[relpathKey] === 'string') {
         parsed.files[relpathKey] = VERSION_HASH_PLACEHOLDER;
@@ -279,6 +283,107 @@ test('TREE-05: formatDiff names every changed, added and removed path', () => {
   assert.match(message, /one\.md/);
   assert.match(message, /two\.md/);
   assert.match(message, /three\.md/);
+});
+
+test('optional snapshot source changes no recorded tree hash or installed bytes', () => {
+  const roots = [];
+  const payload = 'installed payload\n';
+  const payloadHash = crypto.createHash('sha256').update(payload).digest('hex');
+  const baseManifest = {
+    version: '1.0.0-dev.7+abcdef1',
+    timestamp: '2026-09-28T12:00:00.000Z',
+    schema_version: 2,
+    files: { 'gsd-ng/payload.md': payloadHash },
+    files_normalized: { 'gsd-ng/payload.md': payloadHash },
+    installed_hooks: ['gsd-core.js'],
+  };
+
+  function installedTree(manifest = baseManifest, content = payload) {
+    const root = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-optional-source-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, 'gsd-ng'));
+    fs.writeFileSync(path.join(root, 'gsd-ng', 'payload.md'), content);
+    const manifestPath = path.join(root, MANIFEST_RELPATH);
+    const raw = JSON.stringify(manifest, null, 2);
+    fs.writeFileSync(manifestPath, raw);
+    const tree = captureTree(root);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), raw);
+    return { root, tree, raw };
+  }
+
+  function changedManifest(edit) {
+    const manifest = structuredClone(baseManifest);
+    edit(manifest);
+    return manifest;
+  }
+
+  try {
+    const baseline = installedTree();
+    for (const snapshotSource of [
+      { remote_url: 'https://example.com/gsd-ng.git', branch: 'develop' },
+      { remote_url: 'git@github.com:example/gsd-ng.git', branch: 'main' },
+      { remote_url: 'https://another.example/gsd-ng.git', branch: 'release' },
+    ]) {
+      const sourced = installedTree(changedManifest((m) => {
+        m.snapshot_source = snapshotSource;
+      }));
+      assert.notEqual(sourced.raw, baseline.raw);
+      assert.equal(fs.readFileSync(path.join(sourced.root, MANIFEST_RELPATH), 'utf8'), sourced.raw);
+      assert.equal(sourced.tree[MANIFEST_RELPATH], baseline.tree[MANIFEST_RELPATH]);
+      assert.deepEqual(compareTrees(baseline.tree, sourced.tree), EMPTY_DIFF);
+    }
+
+    for (const edit of [
+      (m) => { m.schema_version = 3; },
+      (m) => { m.installed_hooks.push('another-hook.js'); },
+      (m) => { m.unrelated_field = 'different'; },
+      (m) => { m.files['gsd-ng/payload.md'] = 'different'; },
+      (m) => { m.files_normalized['gsd-ng/payload.md'] = 'different'; },
+    ]) {
+      const altered = installedTree(changedManifest(edit));
+      assert.deepEqual(compareTrees(baseline.tree, altered.tree), {
+        changed: [MANIFEST_RELPATH], added: [], removed: [],
+      });
+    }
+
+    const changedPayload = installedTree(baseManifest, 'changed payload\n');
+    assert.deepEqual(compareTrees(baseline.tree, changedPayload.tree), {
+      changed: ['gsd-ng/payload.md'], added: [], removed: [],
+    });
+    const addedFile = installedTree();
+    fs.writeFileSync(path.join(addedFile.root, 'gsd-ng', 'extra.md'), 'extra\n');
+    assert.deepEqual(compareTrees(baseline.tree, captureTree(addedFile.root)), {
+      changed: [], added: ['gsd-ng/extra.md'], removed: [],
+    });
+    const removedFile = installedTree();
+    fs.unlinkSync(path.join(removedFile.root, 'gsd-ng', 'payload.md'));
+    assert.deepEqual(compareTrees(baseline.tree, captureTree(removedFile.root)), {
+      changed: [], added: [], removed: ['gsd-ng/payload.md'],
+    });
+  } finally {
+    for (const root of roots) cleanup(root);
+  }
+});
+
+test('installed manifest keeps source provenance after tree capture', () => {
+  const { resolveSnapshotSource } = require('../bin/install.js');
+  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-installed-source-'));
+  try {
+    const targetDir = runInstall(tmpDir, { runtime: 'claude', scope: 'local' });
+    const manifestPath = path.join(targetDir, MANIFEST_RELPATH);
+    const before = fs.readFileSync(manifestPath, 'utf8');
+    const manifest = JSON.parse(before);
+    const expected = resolveSnapshotSource(path.resolve(__dirname, '..'), manifest.version);
+    if (expected) {
+      assert.deepEqual(manifest.snapshot_source, expected);
+    } else {
+      assert.equal(Object.hasOwn(manifest, 'snapshot_source'), false);
+    }
+    assert.ok(captureTree(targetDir)[MANIFEST_RELPATH]);
+    assert.equal(fs.readFileSync(manifestPath, 'utf8'), before);
+  } finally {
+    cleanup(tmpDir);
+  }
 });
 
 // ── the installer is byte-stable across runs ─────────────────────────────────
