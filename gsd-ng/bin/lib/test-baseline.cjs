@@ -10,14 +10,20 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
+const { StringDecoder } = require('string_decoder');
 
 // Must stay distinct from 0 and from any real non-zero exit: compareBaseline
 // treats a 'fail' baseline as licence to suppress new-failure detection.
 const TIMEOUT_EXIT_CODE = -2;
 
 const DEFAULT_TIMEOUT_MS = 600000;
+const READ_CHUNK_SIZE = 64 * 1024;
+const MAX_SUMMARY_LINE = 256;
+const FAILURE_TAIL_SIZE = 2000;
+const SPOOL_PREFIX = 'gsd-test-baseline-';
 
 function resolveTimeoutMs() {
   const raw = process.env.GSD_TEST_TIMEOUT_MS;
@@ -26,32 +32,118 @@ function resolveTimeoutMs() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
+function closeQuietly(fd) {
+  try {
+    fs.closeSync(fd);
+  } catch {}
+}
+
+function removeQuietly(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {}
+}
+
+function scanSpool(spoolFile) {
+  const summary = { tests: null, pass: null, fail: null };
+  const readBuffer = Buffer.allocUnsafe(READ_CHUNK_SIZE);
+  const decoder = new StringDecoder('utf8');
+  const readFd = fs.openSync(spoolFile, 'r');
+  let candidate = '';
+  let discardingLine = false;
+  let tail = '';
+
+  function appendCandidate(fragment) {
+    if (discardingLine) return;
+    if (candidate.length + fragment.length > MAX_SUMMARY_LINE) {
+      candidate = '';
+      discardingLine = true;
+      return;
+    }
+    candidate += fragment;
+  }
+
+  function finishLine() {
+    if (!discardingLine) {
+      const match = candidate.match(/^# (tests|pass|fail) (\d+)/);
+      if (match) summary[match[1]] = parseInt(match[2], 10);
+    }
+    candidate = '';
+    discardingLine = false;
+  }
+
+  function consume(text) {
+    tail = (tail + text).slice(-FAILURE_TAIL_SIZE);
+    let start = 0;
+    for (let index = text.indexOf('\n'); index !== -1;) {
+      appendCandidate(text.slice(start, index));
+      finishLine();
+      start = index + 1;
+      index = text.indexOf('\n', start);
+    }
+    appendCandidate(text.slice(start));
+  }
+
+  try {
+    let bytesRead;
+    while (
+      (bytesRead = fs.readSync(
+        readFd,
+        readBuffer,
+        0,
+        readBuffer.length,
+        null,
+      )) > 0
+    ) {
+      consume(decoder.write(readBuffer.subarray(0, bytesRead)));
+    }
+    consume(decoder.end());
+    if (candidate.length > 0 && !discardingLine) finishLine();
+    return { ...summary, tail };
+  } finally {
+    closeQuietly(readFd);
+  }
+}
+
 /**
  * Run one test command, distinguishing "exited non-zero" from "never exited".
  *
- * A timed-out execSync throws with `code: 'ETIMEDOUT'`, `signal: 'SIGTERM'`,
- * `status: null`. `killed` is undefined, not true, so it cannot discriminate.
- *
- * @returns {{exitCode: number, output: string, timedOut: boolean}}
+ * @returns {{exitCode: number, summary: {tests: number|null, pass: number|null, fail: number|null}, tail: string, timedOut: boolean}}
  */
 function runTestCommand(command, runDir) {
+  const spoolDir = fs.mkdtempSync(path.join(os.tmpdir(), SPOOL_PREFIX));
   try {
-    const output = execSync(command, {
-      cwd: runDir,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: resolveTimeoutMs(),
-    });
-    return { exitCode: 0, output, timedOut: false };
-  } catch (err) {
+    const spoolFile = path.join(spoolDir, 'output.log');
+    const writeFd = fs.openSync(spoolFile, 'w');
+    let result;
+    try {
+      result = spawnSync(command, {
+        cwd: runDir,
+        shell: true,
+        stdio: ['ignore', writeFd, writeFd],
+        timeout: resolveTimeoutMs(),
+      });
+    } finally {
+      closeQuietly(writeFd);
+    }
+
+    const summary = scanSpool(spoolFile);
     const timedOut =
-      err.code === 'ETIMEDOUT' ||
-      (err.signal === 'SIGTERM' && err.status == null);
+      result.error?.code === 'ETIMEDOUT' ||
+      (result.signal === 'SIGTERM' && result.status == null);
+    const exitCode = timedOut
+      ? TIMEOUT_EXIT_CODE
+      : Number.isInteger(result.status)
+        ? result.status
+        : 1;
     return {
-      exitCode: timedOut ? TIMEOUT_EXIT_CODE : err.status || 1,
-      output: (err.stdout || '') + (err.stderr || ''),
+      exitCode,
+      summary,
+      tail: summary.tail,
       timedOut,
     };
+  } finally {
+    removeQuietly(spoolDir);
   }
 }
 
@@ -68,18 +160,14 @@ function captureBaseline(entriesJson, outputFile) {
 
   for (const { dir, command } of entries) {
     const runDir = dir === '.' ? cwd : path.join(cwd, dir);
-    const { exitCode, output, timedOut } = runTestCommand(command, runDir);
-    // Extract TAP summary lines (e.g., "# tests 1089", "# pass 1089", "# fail 0")
-    const testsMatch = output.match(/^# tests (\d+)/m);
-    const passMatch = output.match(/^# pass (\d+)/m);
-    const failMatch = output.match(/^# fail (\d+)/m);
+    const { exitCode, summary, timedOut } = runTestCommand(command, runDir);
     baselines[dir] = {
       captured: new Date().toISOString(),
       command: command,
       exit_code: exitCode,
-      tests: testsMatch ? parseInt(testsMatch[1]) : null,
-      pass: passMatch ? parseInt(passMatch[1]) : null,
-      fail: failMatch ? parseInt(failMatch[1]) : null,
+      tests: summary.tests,
+      pass: summary.pass,
+      fail: summary.fail,
     };
     const status = timedOut
       ? 'unknown (timed out — recorded as unknown, not as failing)'
@@ -118,7 +206,10 @@ function compareBaseline(entriesJson, baselineFile) {
 
   for (const { dir, command } of entries) {
     const runDir = dir === '.' ? cwd : path.join(cwd, dir);
-    const { exitCode, output, timedOut } = runTestCommand(command, runDir);
+    const { exitCode, summary, tail, timedOut } = runTestCommand(
+      command,
+      runDir,
+    );
 
     const baseline = baselines[dir] || { exit_code: -1 };
     const baselineStatus =
@@ -133,9 +224,7 @@ function compareBaseline(entriesJson, baselineFile) {
     const isNew = postStatus === 'fail' && baselineStatus !== 'fail';
     if (isNew) hasNewFailure = true;
 
-    // Parse post-run count from TAP output
-    const postTestsMatch = output.match(/^# tests (\d+)/m);
-    const postTests = postTestsMatch ? parseInt(postTestsMatch[1]) : null;
+    const postTests = summary.tests;
     const baselineTests = baseline.tests;
     const countDiff =
       baselineTests != null && postTests != null
@@ -149,7 +238,7 @@ function compareBaseline(entriesJson, baselineFile) {
       post: postStatus,
       isNew,
       timedOut,
-      output: output.slice(-2000),
+      output: tail,
       baselineTests,
       postTests,
       countDiff,
