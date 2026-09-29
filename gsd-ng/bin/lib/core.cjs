@@ -1337,6 +1337,58 @@ function getArchivedPhaseDirs(cwd) {
 const DETAILS_OPEN_SOURCE = String.raw`<details\b[^>]*>`;
 const DETAILS_CLOSE_SOURCE = String.raw`</details\s*>`;
 
+function roadmapDetailsScope(content) {
+  let fence = null;
+  const lines = content.split(/(?<=\n)/);
+  const structural = lines
+    .map((line) => {
+      const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      const masked = fence !== null;
+      if (fence) {
+        const close = new RegExp(`^ {0,3}${fence.char}{${fence.length},}\\s*$`);
+        if (close.test(line)) fence = null;
+      } else if (marker) {
+        fence = { char: marker[1][0], length: marker[1].length };
+      }
+      return masked || marker ? line.replace(/[^\r\n]/g, ' ') : line;
+    })
+    .join('');
+
+  const blocks = [];
+  const stack = [];
+  let invalid = false;
+  let offset = 0;
+  const tags = new RegExp(
+    `${DETAILS_OPEN_SOURCE}|${DETAILS_CLOSE_SOURCE}`,
+    'gi',
+  );
+  for (const tag of structural.matchAll(tags)) {
+    if (/^<\//.test(tag[0])) {
+      if (stack.length === 0) {
+        invalid = true;
+      } else {
+        const start = stack.pop();
+        if (stack.length === 0) {
+          const end = tag.index + tag[0].length;
+          blocks.push({ start, end });
+          offset = end;
+        }
+      }
+    } else {
+      stack.push(tag.index);
+    }
+  }
+  return { blocks, offset, invalid: invalid || stack.length > 0 };
+}
+
+function assertRoadmapDetailsWritable(content) {
+  if (roadmapDetailsScope(content).invalid) {
+    throw new Error(
+      'ROADMAP.md has malformed details tags; close or fix its <details> and </details> tags before writing.',
+    );
+  }
+}
+
 /**
  * Extract the current (active) milestone content from ROADMAP.md.
  * Strips shipped milestone sections wrapped in <details> blocks.
@@ -1349,10 +1401,14 @@ const DETAILS_CLOSE_SOURCE = String.raw`</details\s*>`;
  * rewrite probes read this function rather than the write scope.
  */
 function extractCurrentMilestone(content) {
-  return content.replace(
-    new RegExp(`${DETAILS_OPEN_SOURCE}[\\s\\S]*?${DETAILS_CLOSE_SOURCE}`, 'gi'),
-    '',
-  );
+  const { blocks } = roadmapDetailsScope(content);
+  let end = 0;
+  let current = '';
+  for (const block of blocks) {
+    current += content.slice(end, block.start);
+    end = block.end;
+  }
+  return current + content.slice(end);
 }
 
 /**
@@ -1379,13 +1435,7 @@ function replaceInCurrentMilestone(content, pattern, replacement) {
 // contiguous tail, which is narrower than the current milestone whenever live
 // content sits above a collapsed section.
 function currentMilestoneOffset(content) {
-  let offset = 0;
-  for (const match of content.matchAll(
-    new RegExp(DETAILS_CLOSE_SOURCE, 'gi'),
-  )) {
-    offset = match.index + match[0].length;
-  }
-  return offset;
+  return roadmapDetailsScope(content).offset;
 }
 
 function currentMilestoneSlice(content) {
@@ -1829,6 +1879,7 @@ module.exports = {
   getMilestoneInfo,
   getMilestonePhaseFilter,
   extractCurrentMilestone,
+  assertRoadmapDetailsWritable,
   replaceInCurrentMilestone,
   currentMilestoneOffset,
   hasPhaseTableRow,

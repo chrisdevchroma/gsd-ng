@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Planner and codebase-mapper guidance now agree on the default codebase-map documents, with a routing test that catches future mapping drift.
+- Phase and roadmap updates now reject malformed archive `<details>` markup before changing planning files or phase directories, preventing an unclosed archive from causing archived content to be deleted or rewritten. Fenced examples no longer affect the active milestone boundary.
 - Repeating a single-value CLI option now reports an error instead of silently using the first value. Repeated output-mode and quick-verification switches remain idempotent; `state patch` now accepts only the named `--field`/`--value` form.
 - Repeated `summary-extract --fields` and `breakout-check --declared-files` options now retain every value, matching comma-separated input instead of silently dropping later fields or file declarations.
 - Test baseline capture and comparison now handle verbose commands without mistaking output-buffer exhaustion for a timeout. They retain actual exit codes and test counts while keeping failure details bounded and temporary output cleaned up.

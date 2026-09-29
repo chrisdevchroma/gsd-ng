@@ -19,6 +19,7 @@ const {
   generateSlugInternal,
   getMilestonePhaseFilter,
   extractCurrentMilestone,
+  assertRoadmapDetailsWritable,
   replaceInCurrentMilestone,
   currentMilestoneOffset,
   hasPhaseTableRow,
@@ -1159,6 +1160,7 @@ function cmdPhaseAdd(cwd, description) {
     }
 
     const rawContent = fs.readFileSync(roadmapPath, 'utf-8');
+    assertRoadmapDetailsWritable(rawContent);
     const slug = generateSlugInternal(description);
     const index = parseCurrentMilestonePhaseSections(rawContent);
     validatePhaseSectionTopology(rawContent, index);
@@ -1233,6 +1235,7 @@ function cmdPhaseInsert(cwd, afterPhase, description) {
     }
 
     const rawContent = fs.readFileSync(roadmapPath, 'utf-8');
+    assertRoadmapDetailsWritable(rawContent);
     const slug = generateSlugInternal(description);
     const index = parseCurrentMilestonePhaseSections(rawContent);
     validatePhaseSectionTopology(rawContent, index);
@@ -1615,6 +1618,7 @@ function cmdPhaseRemove(cwd, targetPhase, options) {
       // Read before anything is deleted, so the existence check below sees the
       // document as it stood.
       const roadmapBeforeAnything = fs.readFileSync(roadmapPath, 'utf-8');
+      assertRoadmapDetailsWritable(roadmapBeforeAnything);
 
       // Find and validate target directory
       let targetDir = null;
@@ -2124,6 +2128,11 @@ function cmdPhaseComplete(cwd, phaseNum) {
       const normalized = normalizePhaseName(phaseNum);
       const today = new Date().toISOString().split('T')[0];
 
+      const initialRoadmap = fs.existsSync(roadmapPath)
+        ? fs.readFileSync(roadmapPath, 'utf-8')
+        : null;
+      if (initialRoadmap !== null) assertRoadmapDetailsWritable(initialRoadmap);
+
       // Verify phase info
       const phaseInfo = findPhaseInternal(cwd, phaseNum);
       if (!phaseInfo) {
@@ -2138,8 +2147,8 @@ function cmdPhaseComplete(cwd, phaseNum) {
       const roadmapMissed = [];
 
       // Update ROADMAP.md: mark phase complete
-      if (fs.existsSync(roadmapPath)) {
-        roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
+      if (initialRoadmap !== null) {
+        roadmapContent = initialRoadmap;
 
         // Checkbox: - [ ] Phase N: → - [x] Phase N: (...completed DATE)
         const checkboxPattern = new RegExp(

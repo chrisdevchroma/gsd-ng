@@ -18,6 +18,7 @@ const {
   error,
   findPhaseInternal,
   extractCurrentMilestone,
+  assertRoadmapDetailsWritable,
   replaceInCurrentMilestone,
   hasPhaseTableRow,
   hasPhasePlansLine,
@@ -356,6 +357,10 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
 
   return withRoadmapLock(cwd, () => {
     const { roadmap: roadmapPath } = planningPaths(cwd);
+    const initialRoadmap = fs.existsSync(roadmapPath)
+      ? fs.readFileSync(roadmapPath, 'utf-8')
+      : null;
+    if (initialRoadmap !== null) assertRoadmapDetailsWritable(initialRoadmap);
 
     const phaseInfo = findPhaseInternal(cwd, phaseNum);
     if (!phaseInfo) {
@@ -390,7 +395,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
         : 'Planned';
     const today = new Date().toISOString().split('T')[0];
 
-    if (!fs.existsSync(roadmapPath)) {
+    if (initialRoadmap === null) {
       output(
         {
           updated: false,
@@ -403,7 +408,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum) {
       return;
     }
 
-    let roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
+    let roadmapContent = initialRoadmap;
     const phaseEscaped = phaseNumPattern(phaseNum);
     const landed = [];
     const missed = [];
