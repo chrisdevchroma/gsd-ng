@@ -41,6 +41,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 | integration, external API | INTEGRATIONS.md, STACK.md |
 | refactor, cleanup | CONCERNS.md, ARCHITECTURE.md |
 | setup, config | STACK.md, STRUCTURE.md |
+| (default) | STACK.md, ARCHITECTURE.md |
 
 **`{{COMMAND_PREFIX}}execute-phase`** references codebase docs to:
 - Follow existing conventions when writing code

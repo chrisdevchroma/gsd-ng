@@ -30,6 +30,7 @@ const {
   planningPaths,
   extractCurrentMilestone,
   currentMilestoneOffset,
+  assertRoadmapDetailsWritable,
   writeFileAtomic,
   reapStaleAtomicTempFiles,
   lockPathFor,
@@ -1256,7 +1257,7 @@ describe('milestone scoping tag spellings', () => {
     });
   }
 
-  test('an unclosed <details> leaves both scopes over the whole document', () => {
+  test('an unclosed <details> is not writable', () => {
     const content = '# Roadmap\n\n<details open>\n<summary>v0.1</summary>\n\nunterminated\n\n## Current\n\nlive line\n';
 
     assert.ok(
@@ -1266,38 +1267,41 @@ describe('milestone scoping tag spellings', () => {
     assert.strictEqual(
       currentMilestoneOffset(content),
       0,
-      'and the whole document stays writable',
+      'a read-only query does not throw on malformed content',
     );
+    assert.throws(() => assertRoadmapDetailsWritable(content), /ROADMAP\.md.*details/i);
   });
 
-  test('a fenced example tag counts as an archive on both scopes', () => {
+  test('a fenced example tag is prose on both scopes', () => {
     const content =
       '# Roadmap\n\n## Current\n\nlive line\n\n```markdown\n<details>\nan example\n</details>\n```\n\ntail line\n';
 
     assert.ok(
-      !extractCurrentMilestone(content).includes('an example'),
-      'neither scope reads fences, so the example is archived like any block',
+      extractCurrentMilestone(content).includes('an example'),
+      'the fenced example is live prose',
     );
     assert.ok(
-      !content.slice(currentMilestoneOffset(content)).includes('an example'),
-      'and the two agree about it, which is what stops a rewrite landing in one and not the other',
+      content.slice(currentMilestoneOffset(content)).includes('an example'),
+      'a fenced close does not move the writable boundary',
     );
+    assert.doesNotThrow(() => assertRoadmapDetailsWritable(content));
   });
 
-  test('a nested <details> ends the archive at its own close tag', () => {
+  test('a nested <details> ends the archive at the outer close tag', () => {
     const content =
       '# Roadmap\n\n<details open>\n<summary>v0.1</summary>\n\nouter\n\n<details>\ninner\n</details>\n\ntrailing\n\n</details>\n\n## Current\n\nlive line\n';
     const milestone = extractCurrentMilestone(content);
 
     assert.ok(!milestone.includes('inner'), 'the inner block is archived');
     assert.ok(
-      milestone.includes('trailing'),
-      'what follows the inner close is not, which is the non-greedy match, not a nesting-aware one',
+      !milestone.includes('trailing'),
+      'trailing content remains in the outer archive',
     );
     assert.ok(
       !content.slice(currentMilestoneOffset(content)).includes('trailing'),
       'the write scope still starts after the outermost close',
     );
+    assert.doesNotThrow(() => assertRoadmapDetailsWritable(content));
   });
 });
 
