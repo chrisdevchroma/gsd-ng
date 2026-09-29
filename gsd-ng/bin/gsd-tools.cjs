@@ -13,7 +13,7 @@
  *   state json                         Output STATE.md frontmatter as JSON
  *   state update <field> <value>       Update a STATE.md field
  *   state get [section]                Get STATE.md content or section
- *   state patch --field val ...        Batch update STATE.md fields
+ *   state patch --field key --value val Update one STATE.md field
  *   resolve-model <agent-type>         Get model for agent based on profile
  *   resolve-effort <agent-type>        Get effort for agent based on profile
  *   sync-agents [--agents-dir <path>]  Re-sync effort: frontmatter into agent files
@@ -320,7 +320,7 @@ const ARG_SCHEMAS = {
     json: { positional: { min: 0, max: 0 }, flags: [] },
     update: { positional: { min: 2, max: 2 }, flags: [] },
     get: { positional: { min: 0, max: 1 }, flags: [] },
-    // 'patch' omitted: takes dynamic --key value pairs, any flag is valid
+    patch: { positional: { min: 0, max: 0 }, flags: ['--field', '--value'] },
     'advance-plan': { positional: { min: 0, max: 0 }, flags: [] },
     'record-metric': {
       positional: { min: 0, max: 0 },
@@ -639,17 +639,7 @@ function validateArgs(command, subcommand, remainingArgs) {
   const cmdLabel = subcommand ? `${command} ${subcommand}` : command;
   const usageHint = `Usage: ${cmdLabel}${schema.positional.min > 0 ? ' <arg>' + (schema.positional.max === null || schema.positional.max > 1 ? ' ...' : '') : ''}`;
 
-  // 1. Equals syntax detection (e.g. phase=40 instead of 40)
-  for (const arg of remainingArgs) {
-    if (arg && !arg.startsWith('--') && /^[a-zA-Z][\w-]*=/.test(arg)) {
-      error(
-        `'${arg}' looks like a key=value assignment — positional args don't use '=' syntax.\n` +
-          `${usageHint}`,
-      );
-    }
-  }
-
-  // 2. Count positional args, accounting for flag-value pairs.
+  // 1. Find positional args, accounting for flag-value pairs.
   //    Any --flag followed by a non-flag value is treated as a flag-value pair;
   //    the value is consumed by the flag and NOT counted as a positional.
   //    This applies to both known flags (--field value) and unknown flags (--phase 40).
@@ -667,6 +657,16 @@ function validateArgs(command, subcommand, remainingArgs) {
   const actualPositionals = remainingArgs.filter(
     (a, i) => a && !a.startsWith('--') && !flagValueConsumed.has(i),
   );
+
+  // 2. Equals syntax is invalid in a positional slot, not in a flag value.
+  for (const arg of actualPositionals) {
+    if (/^[a-zA-Z][\w-]*=/.test(arg)) {
+      error(
+        `'${arg}' looks like a key=value assignment — positional args don't use '=' syntax.\n` +
+          `${usageHint}`,
+      );
+    }
+  }
 
   // 3. Flag handling: distinguish "flag where positional expected" vs "unknown flag"
   //    - If positional requirements are NOT met and schema accepts no flags:
@@ -897,17 +897,25 @@ async function main() {
 
   // Optional cwd override for sandboxed subagents running outside project root.
   let cwd = process.cwd();
-  const cwdEqArg = args.find((arg) => arg.startsWith('--cwd='));
-  const cwdIdx = args.indexOf('--cwd');
-  if (cwdEqArg) {
-    const value = cwdEqArg.slice('--cwd='.length).trim();
+  const cwdFlags = args.filter(
+    (arg) => arg === '--cwd' || arg.startsWith('--cwd='),
+  );
+  if (cwdFlags.length > 1) {
+    error(
+      `--cwd was given ${cwdFlags.length} times for 'global options' but takes a single value.`,
+    );
+  }
+  const cwdArg = cwdFlags[0];
+  if (cwdArg?.startsWith('--cwd=')) {
+    const value = cwdArg.slice('--cwd='.length).trim();
     if (!value) error('Missing value for --cwd');
-    args.splice(args.indexOf(cwdEqArg), 1);
+    args.splice(args.indexOf(cwdArg), 1);
     cwd = path.resolve(value);
-  } else if (cwdIdx !== -1) {
-    const value = args[cwdIdx + 1];
+  } else if (cwdArg === '--cwd') {
+    const idx = args.indexOf(cwdArg);
+    const value = args[idx + 1];
     if (!value || value.startsWith('--')) error('Missing value for --cwd');
-    args.splice(cwdIdx, 2);
+    args.splice(idx, 2);
     cwd = path.resolve(value);
   } else {
     // No explicit --cwd: resolve git repo root to handle worktree contexts
@@ -950,31 +958,25 @@ async function main() {
     error(`Invalid --cwd: ${cwd}`);
   }
 
-  const jsonIndex = args.indexOf('--json');
-  if (jsonIndex !== -1) {
-    setJsonMode(true);
-    args.splice(jsonIndex, 1);
+  for (const flag of ['--json', '--file']) {
+    if (args.includes(flag)) {
+      if (flag === '--json') setJsonMode(true);
+      else setFileOutput(true);
+      for (let i = args.length - 1; i >= 0; i--) {
+        if (args[i] === flag) args.splice(i, 1);
+      }
+    }
   }
 
-  // --file: when present, output() writes JSON to a temp file prefixed with @file:
-  // instead of inline to stdout. Opt-in for the rare case where file output is needed.
-  const fileIndex = args.indexOf('--file');
-  if (fileIndex !== -1) {
-    setFileOutput(true);
-    args.splice(fileIndex, 1);
-  }
-
-  // --pick <name>: extract a single field from JSON output (replaces jq dependency).
-  // Supports dot-notation (e.g., --pick workflow.research) and bracket notation
-  // for arrays (e.g., --pick directories[-1]).
-  const pickIdx = args.indexOf('--pick');
-  let pickField = null;
-  if (pickIdx !== -1) {
-    pickField = args[pickIdx + 1];
+  // Validate before help and before stdout interception.
+  const pickField = scalarFlag(args, '--pick', 'global options');
+  const pickFlag = '--pick';
+  if (args.includes(pickFlag)) {
     if (!pickField || pickField.startsWith('--'))
       error('Missing value for --pick');
-    args.splice(pickIdx, 2);
+    args.splice(args.indexOf(pickFlag), 2);
   }
+  _pickFieldForPostRun = pickField;
 
   if (args.includes('--help') || args.includes('-h')) printHelp();
 
@@ -1015,7 +1017,9 @@ async function main() {
         let jsonStr = captured;
         if (jsonStr.startsWith('@file:')) {
           try {
-            jsonStr = fs.readFileSync(jsonStr.slice(6), 'utf-8');
+            const outputFile = jsonStr.slice(6);
+            jsonStr = fs.readFileSync(outputFile, 'utf-8');
+            fs.unlinkSync(outputFile);
           } catch {
             jsonStr = captured;
           }
@@ -1079,128 +1083,99 @@ async function main() {
       } else if (subcommand === 'get') {
         state.cmdStateGet(cwd, args[2]);
       } else if (subcommand === 'patch') {
-        const patches = {};
-        const fieldIdx = args.indexOf('--field');
-        const valueIdx = args.indexOf('--value');
-        if (fieldIdx !== -1 || valueIdx !== -1) {
-          // Named flag mode: --field NAME --value VALUE
-          if (fieldIdx === -1 || valueIdx === -1) {
-            process.stderr.write(
-              JSON.stringify({
-                error:
-                  '--field and --value must be used together. Usage: state patch --field <name> --value <val>',
-              }) + '\n',
-            );
-            process.exit(1);
-          }
-          const key = args[fieldIdx + 1];
-          const val = args[valueIdx + 1];
-          if (!key || key.startsWith('--') || !val) {
-            process.stderr.write(
-              JSON.stringify({
-                error:
-                  '--field and --value require arguments. Usage: state patch --field <name> --value <val>',
-              }) + '\n',
-            );
-            process.exit(1);
-          }
-          patches[key] = val;
-        } else {
-          // Legacy positional mode: --key value pairs (strip -- prefix)
-          if (args.length < 4) {
-            process.stderr.write(
-              JSON.stringify({
-                error:
-                  'state patch requires at least one field-value pair. Usage: state patch --<field> <value> OR state patch --field <name> --value <val>',
-              }) + '\n',
-            );
-            process.exit(1);
-          }
-          for (let i = 2; i < args.length; i += 2) {
-            const key = args[i].replace(/^--/, '');
-            const value = args[i + 1];
-            if (key && value !== undefined) {
-              patches[key] = value;
-            }
-          }
-        }
-        if (Object.keys(patches).length === 0) {
+        const key = scalarFlag(args, '--field', 'state patch');
+        const val = scalarFlag(args, '--value', 'state patch');
+        if (!key || !val) {
           process.stderr.write(
-            JSON.stringify({ error: 'No valid field-value pairs provided' }) +
-              '\n',
+            JSON.stringify({
+              error:
+                '--field and --value require arguments. Usage: state patch --field <name> --value <val>',
+            }) + '\n',
           );
           process.exit(1);
         }
-        state.cmdStatePatch(cwd, patches);
+        state.cmdStatePatch(cwd, { [key]: val });
       } else if (subcommand === 'advance-plan') {
         state.cmdStateAdvancePlan(cwd);
       } else if (subcommand === 'record-metric') {
-        const phaseIdx = args.indexOf('--phase');
-        const planIdx = args.indexOf('--plan');
-        const durationIdx = args.indexOf('--duration');
-        const tasksIdx = args.indexOf('--tasks');
-        const filesIdx = args.indexOf('--files');
+        const phase = scalarFlag(args, '--phase', 'state record-metric');
+        const plan = scalarFlag(args, '--plan', 'state record-metric');
+        const duration = scalarFlag(args, '--duration', 'state record-metric');
+        const tasks = scalarFlag(args, '--tasks', 'state record-metric');
+        const files = scalarFlag(args, '--files', 'state record-metric');
         state.cmdStateRecordMetric(cwd, {
-          phase: phaseIdx !== -1 ? args[phaseIdx + 1] : null,
-          plan: planIdx !== -1 ? args[planIdx + 1] : null,
-          duration: durationIdx !== -1 ? args[durationIdx + 1] : null,
-          tasks: tasksIdx !== -1 ? args[tasksIdx + 1] : null,
-          files: filesIdx !== -1 ? args[filesIdx + 1] : null,
+          phase,
+          plan,
+          duration,
+          tasks,
+          files,
         });
       } else if (subcommand === 'update-progress') {
         state.cmdStateUpdateProgress(cwd);
       } else if (subcommand === 'add-decision') {
-        const phaseIdx = args.indexOf('--phase');
-        const summaryIdx = args.indexOf('--summary');
-        const summaryFileIdx = args.indexOf('--summary-file');
-        const rationaleIdx = args.indexOf('--rationale');
-        const rationaleFileIdx = args.indexOf('--rationale-file');
+        const phase = scalarFlag(args, '--phase', 'state add-decision');
+        const summary = scalarFlag(args, '--summary', 'state add-decision');
+        const summary_file = scalarFlag(
+          args,
+          '--summary-file',
+          'state add-decision',
+        );
+        const rationale = scalarFlag(args, '--rationale', 'state add-decision');
+        const rationale_file = scalarFlag(
+          args,
+          '--rationale-file',
+          'state add-decision',
+        );
         state.cmdStateAddDecision(cwd, {
-          phase: phaseIdx !== -1 ? args[phaseIdx + 1] : null,
-          summary: summaryIdx !== -1 ? args[summaryIdx + 1] : null,
-          summary_file: summaryFileIdx !== -1 ? args[summaryFileIdx + 1] : null,
-          rationale: rationaleIdx !== -1 ? args[rationaleIdx + 1] : '',
-          rationale_file:
-            rationaleFileIdx !== -1 ? args[rationaleFileIdx + 1] : null,
+          phase,
+          summary,
+          summary_file,
+          rationale: rationale === null ? '' : rationale,
+          rationale_file,
         });
       } else if (subcommand === 'add-blocker') {
-        const textIdx = args.indexOf('--text');
-        const textFileIdx = args.indexOf('--text-file');
+        const text = scalarFlag(args, '--text', 'state add-blocker');
+        const text_file = scalarFlag(args, '--text-file', 'state add-blocker');
         state.cmdStateAddBlocker(cwd, {
-          text: textIdx !== -1 ? args[textIdx + 1] : null,
-          text_file: textFileIdx !== -1 ? args[textFileIdx + 1] : null,
+          text,
+          text_file,
         });
       } else if (subcommand === 'resolve-blocker') {
-        const textIdx = args.indexOf('--text');
         state.cmdStateResolveBlocker(
           cwd,
-          textIdx !== -1 ? args[textIdx + 1] : null,
+          scalarFlag(args, '--text', 'state resolve-blocker'),
         );
       } else if (subcommand === 'record-session') {
-        const stoppedIdx = args.indexOf('--stopped-at');
-        const resumeIdx = args.indexOf('--resume-file');
+        const stopped_at = scalarFlag(
+          args,
+          '--stopped-at',
+          'state record-session',
+        );
+        const resume_file = scalarFlag(
+          args,
+          '--resume-file',
+          'state record-session',
+        );
         state.cmdStateRecordSession(cwd, {
-          stopped_at: stoppedIdx !== -1 ? args[stoppedIdx + 1] : null,
-          resume_file: resumeIdx !== -1 ? args[resumeIdx + 1] : 'None',
+          stopped_at,
+          resume_file: resume_file === null ? 'None' : resume_file,
         });
       } else if (subcommand === 'begin-phase') {
-        const phaseIdx = args.indexOf('--phase');
-        const nameIdx = args.indexOf('--name');
-        const plansIdx = args.indexOf('--plans');
+        const phase = scalarFlag(args, '--phase', 'state begin-phase');
+        const name = scalarFlag(args, '--name', 'state begin-phase');
+        const plans = scalarFlag(args, '--plans', 'state begin-phase');
         state.cmdStateBeginPhase(
           cwd,
-          phaseIdx !== -1 ? args[phaseIdx + 1] : null,
-          nameIdx !== -1 ? args[nameIdx + 1] : null,
-          plansIdx !== -1 ? parseInt(args[plansIdx + 1], 10) : null,
+          phase,
+          name,
+          plans === null ? null : parseInt(plans, 10),
         );
       } else if (subcommand === 'adjust-quick-table') {
         state.cmdStateAdjustQuickTable(cwd);
       } else if (subcommand === 'record-quick-task') {
-        const flagValue = (name) => {
-          const idx = args.indexOf(name);
-          return idx !== -1 ? args[idx + 1] : null;
-        };
-        state.cmdStateRecordQuickTask(cwd, {
+        const flagValue = (name) =>
+          scalarFlag(args, name, 'state record-quick-task');
+        const options = {
           id: flagValue('--id'),
           description: flagValue('--description'),
           description_file: flagValue('--description-file'),
@@ -1208,7 +1183,8 @@ async function main() {
           commit: flagValue('--commit'),
           dir: flagValue('--dir'),
           status: flagValue('--status'),
-        });
+        };
+        state.cmdStateRecordQuickTask(cwd, options);
       } else if (subcommand === 'rebuild-frontmatter') {
         state.cmdStateRebuildFrontmatter(cwd);
       } else if (subcommand === 'load' || !subcommand) {
@@ -1249,9 +1225,7 @@ async function main() {
     case 'sync-agents': {
       validateArgs('sync-agents', null, args.slice(1));
       // Optional --agents-dir override (default: <cwd>/.claude/agents).
-      const agentsDirIdx = args.indexOf('--agents-dir');
-      const customAgentsDir =
-        agentsDirIdx !== -1 ? args[agentsDirIdx + 1] : null;
+      const customAgentsDir = scalarFlag(args, '--agents-dir', 'sync-agents');
       const agentsDir = customAgentsDir
         ? path.resolve(customAgentsDir)
         : path.join(cwd, '.claude', 'agents');
@@ -1302,7 +1276,13 @@ async function main() {
     case 'commit': {
       validateArgs('commit', null, args.slice(1));
       const amend = args.includes('--amend');
-      const filesIndex = args.indexOf('--files');
+      const filesCount = args.filter((arg) => arg === '--files').length;
+      if (filesCount > 1)
+        error(
+          `--files was given ${filesCount} times for 'commit' but takes one delimiter.`,
+        );
+      const filesMarker = '--files';
+      const filesIndex = args.indexOf(filesMarker);
       // Collect all positional args between command name and first flag,
       // then join them — handles both quoted ("multi word msg") and
       // unquoted (multi word msg) invocations from different shells
@@ -1322,9 +1302,8 @@ async function main() {
     case 'verify-summary': {
       validateArgs('verify-summary', null, args.slice(1));
       const summaryPath = args[1];
-      const countIndex = args.indexOf('--check-count');
-      const checkCount =
-        countIndex !== -1 ? parseInt(args[countIndex + 1], 10) : 2;
+      const count = scalarFlag(args, '--check-count', 'verify-summary');
+      const checkCount = count === null ? 2 : parseInt(count, 10);
       verify.cmdVerifySummary(cwd, summaryPath, checkCount);
       break;
     }
@@ -1336,19 +1315,19 @@ async function main() {
         template.cmdTemplateSelect(cwd, args[2]);
       } else if (subcommand === 'fill') {
         const templateType = args[2];
-        const phaseIdx = args.indexOf('--phase');
-        const planIdx = args.indexOf('--plan');
-        const nameIdx = args.indexOf('--name');
-        const typeIdx = args.indexOf('--type');
-        const waveIdx = args.indexOf('--wave');
-        const fieldsIdx = args.indexOf('--fields');
+        const phase = scalarFlag(args, '--phase', 'template fill');
+        const plan = scalarFlag(args, '--plan', 'template fill');
+        const name = scalarFlag(args, '--name', 'template fill');
+        const type = scalarFlag(args, '--type', 'template fill');
+        const wave = scalarFlag(args, '--wave', 'template fill');
+        const fields = scalarFlag(args, '--fields', 'template fill');
         template.cmdTemplateFill(cwd, templateType, {
-          phase: phaseIdx !== -1 ? args[phaseIdx + 1] : null,
-          plan: planIdx !== -1 ? args[planIdx + 1] : null,
-          name: nameIdx !== -1 ? args[nameIdx + 1] : null,
-          type: typeIdx !== -1 ? args[typeIdx + 1] : 'execute',
-          wave: waveIdx !== -1 ? args[waveIdx + 1] : '1',
-          fields: fieldsIdx !== -1 ? JSON.parse(args[fieldsIdx + 1]) : {},
+          phase,
+          plan,
+          name,
+          type: type === null ? 'execute' : type,
+          wave: wave === null ? '1' : wave,
+          fields: fields === null ? {} : JSON.parse(fields),
         });
       } else {
         const suggestions = suggestSubcommand(subcommand, 'template');
@@ -1378,49 +1357,34 @@ async function main() {
       validateArgs('frontmatter', subcommand, args.slice(2));
       const file = args[2];
       if (subcommand === 'get') {
-        const fieldIdx = args.indexOf('--field');
-        const formatIdx = args.indexOf('--format');
-        const defaultIdx = args.indexOf('--default');
-        const defaultValue =
-          defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
-        frontmatter.cmdFrontmatterGet(
-          cwd,
-          file,
-          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
-          formatIdx !== -1 ? args[formatIdx + 1] : null,
-          defaultValue,
-        );
+        const field = scalarFlag(args, '--field', 'frontmatter get');
+        const format = scalarFlag(args, '--format', 'frontmatter get');
+        const fallback = scalarFlag(args, '--default', 'frontmatter get');
+        const defaultValue = fallback === null ? undefined : fallback;
+        frontmatter.cmdFrontmatterGet(cwd, file, field, format, defaultValue);
       } else if (subcommand === 'set') {
-        const fieldIdx = args.indexOf('--field');
-        const valueIdx = args.indexOf('--value');
+        const field = scalarFlag(args, '--field', 'frontmatter set');
+        const value = scalarFlag(args, '--value', 'frontmatter set');
         frontmatter.cmdFrontmatterSet(
           cwd,
           file,
-          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
-          valueIdx !== -1 ? args[valueIdx + 1] : undefined,
+          field,
+          value === null ? undefined : value,
         );
       } else if (subcommand === 'merge') {
-        const dataIdx = args.indexOf('--data');
-        frontmatter.cmdFrontmatterMerge(
-          cwd,
-          file,
-          dataIdx !== -1 ? args[dataIdx + 1] : null,
-        );
+        const data = scalarFlag(args, '--data', 'frontmatter merge');
+        frontmatter.cmdFrontmatterMerge(cwd, file, data);
       } else if (subcommand === 'validate') {
-        const schemaIdx = args.indexOf('--schema');
-        frontmatter.cmdFrontmatterValidate(
-          cwd,
-          file,
-          schemaIdx !== -1 ? args[schemaIdx + 1] : null,
-        );
+        const schema = scalarFlag(args, '--schema', 'frontmatter validate');
+        frontmatter.cmdFrontmatterValidate(cwd, file, schema);
       } else if (subcommand === 'array-append') {
-        const fieldIdx = args.indexOf('--field');
-        const valueIdx = args.indexOf('--value');
+        const field = scalarFlag(args, '--field', 'frontmatter array-append');
+        const value = scalarFlag(args, '--value', 'frontmatter array-append');
         frontmatter.cmdFrontmatterArrayAppend(
           cwd,
           file,
-          fieldIdx !== -1 ? args[fieldIdx + 1] : null,
-          valueIdx !== -1 ? args[valueIdx + 1] : undefined,
+          field,
+          value === null ? undefined : value,
         );
       } else {
         const suggestions = suggestSubcommand(subcommand, 'frontmatter');
@@ -1533,8 +1497,8 @@ async function main() {
 
     case 'config-get': {
       validateArgs('config-get', null, args.slice(1));
-      const defaultIdx = args.indexOf('--default');
-      const defaultValue = defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+      const fallback = scalarFlag(args, '--default', 'config-get');
+      const defaultValue = fallback === null ? undefined : fallback;
       config.cmdConfigGet(cwd, args[1], defaultValue);
       break;
     }
@@ -1553,11 +1517,11 @@ async function main() {
       const subcommand = args[1];
       validateArgs('phases', subcommand, args.slice(2));
       if (subcommand === 'list') {
-        const typeIndex = args.indexOf('--type');
-        const phaseIndex = args.indexOf('--phase');
+        const type = scalarFlag(args, '--type', 'phases list');
+        const phaseValue = scalarFlag(args, '--phase', 'phases list');
         const options = {
-          type: typeIndex !== -1 ? args[typeIndex + 1] : null,
-          phase: phaseIndex !== -1 ? args[phaseIndex + 1] : null,
+          type,
+          phase: phaseValue,
           includeArchived: args.includes('--include-archived'),
         };
         phase.cmdPhasesList(cwd, options);
@@ -1588,9 +1552,8 @@ async function main() {
       const subcommand = args[1];
       validateArgs('roadmap', subcommand, args.slice(2));
       if (subcommand === 'get-phase') {
-        const defaultIdx = args.indexOf('--default');
-        const defaultValue =
-          defaultIdx !== -1 ? args[defaultIdx + 1] : undefined;
+        const fallback = scalarFlag(args, '--default', 'roadmap get-phase');
+        const defaultValue = fallback === null ? undefined : fallback;
         roadmap.cmdRoadmapGetPhase(cwd, args[2], defaultValue);
       } else if (subcommand === 'analyze') {
         const analyzeCurrentFilter = args.slice(2).includes('--current');
@@ -1735,7 +1698,12 @@ async function main() {
       const subcommand = args[1];
       validateArgs('milestone', subcommand, args.slice(2));
       if (subcommand === 'complete') {
-        const nameIndex = args.indexOf('--name');
+        const names = args.filter((arg) => arg === '--name');
+        if (names.length > 1)
+          error(
+            `--name was given ${names.length} times for 'milestone complete' but takes a single value.`,
+          );
+        const nameIndex = names.length ? args.indexOf(names[0]) : -1;
         const archivePhases = args.includes('--archive-phases');
         // Collect --name value (everything after --name until next flag or end)
         let milestoneName = null;
@@ -1876,11 +1844,28 @@ async function main() {
     case 'scaffold': {
       validateArgs('scaffold', null, args.slice(1));
       const scaffoldType = args[1];
-      const phaseIndex = args.indexOf('--phase');
-      const nameIndex = args.indexOf('--name');
+      const phase = scalarFlag(args, '--phase', 'scaffold');
+      const names = args.filter((arg) => arg === '--name');
+      if (names.length > 1)
+        error(
+          `--name was given ${names.length} times for 'scaffold' but takes a single value.`,
+        );
+      const nameIndex = names.length ? args.indexOf(names[0]) : -1;
       const scaffoldOptions = {
-        phase: phaseIndex !== -1 ? args[phaseIndex + 1] : null,
-        name: nameIndex !== -1 ? args.slice(nameIndex + 1).join(' ') : null,
+        phase,
+        name:
+          nameIndex !== -1
+            ? args
+                .slice(nameIndex + 1)
+                .filter(
+                  (arg, i, tail) =>
+                    !(
+                      arg === '--phase' ||
+                      (i > 0 && tail[i - 1] === '--phase')
+                    ),
+                )
+                .join(' ')
+            : null,
       };
       commands.cmdScaffold(cwd, scaffoldType, scaffoldOptions);
       break;
@@ -1903,12 +1888,9 @@ async function main() {
           init.cmdInitNewMilestone(cwd);
           break;
         case 'quick': {
-          const verifyFlagIdx = args.indexOf('--verify');
-          const verifyMode = verifyFlagIdx !== -1;
+          const verifyMode = args.includes('--verify');
           // Remove --verify from args before joining as description
-          const descArgs = args
-            .slice(2)
-            .filter((_, i) => i + 2 !== verifyFlagIdx);
+          const descArgs = args.slice(2).filter((arg) => arg !== '--verify');
           init.cmdInitQuick(cwd, descArgs.join(' '), verifyMode);
           break;
         }
@@ -1989,9 +1971,8 @@ async function main() {
       const summaryPath = args[1];
       const fieldsArg = listFlag(args, '--fields');
       const fields = fieldsArg !== null ? fieldsArg.split(',') : null;
-      const seDefaultIdx = args.indexOf('--default');
-      const seDefaultValue =
-        seDefaultIdx !== -1 ? args[seDefaultIdx + 1] : undefined;
+      const fallback = scalarFlag(args, '--default', 'summary-extract');
+      const seDefaultValue = fallback === null ? undefined : fallback;
       commands.cmdSummaryExtract(cwd, summaryPath, fields, seDefaultValue);
       break;
     }
@@ -1999,8 +1980,7 @@ async function main() {
     case 'detect-platform': {
       validateArgs('detect-platform', null, args.slice(1));
       // Support --field <name> for scalar extraction (e.g. detect-platform --field platform)
-      const dpFieldIdx = args.indexOf('--field');
-      const dpField = dpFieldIdx !== -1 ? args[dpFieldIdx + 1] : null;
+      const dpField = scalarFlag(args, '--field', 'detect-platform');
       // Use the first non-flag positional argument as the remote name
       const dpRemoteArg = args[1] && !args[1].startsWith('--') ? args[1] : null;
       if (dpField) {
@@ -2018,8 +1998,7 @@ async function main() {
     case 'detect-workspace': {
       validateArgs('detect-workspace', null, args.slice(1));
       // Support --field <name> for scalar extraction
-      const dwFieldIdx = args.indexOf('--field');
-      const dwField = dwFieldIdx !== -1 ? args[dwFieldIdx + 1] : null;
+      const dwField = scalarFlag(args, '--field', 'detect-workspace');
       if (dwField) {
         const dwResult = workspace.cmdDetectWorkspace(cwd, true);
         if (dwResult && dwResult[dwField] !== undefined) {
@@ -2034,8 +2013,7 @@ async function main() {
     case 'git-context': {
       validateArgs('git-context', null, args.slice(1));
       // Support --field <name> for scalar extraction
-      const gcFieldIdx = args.indexOf('--field');
-      const gcField = gcFieldIdx !== -1 ? args[gcFieldIdx + 1] : null;
+      const gcField = scalarFlag(args, '--field', 'git-context');
       if (gcField) {
         const gcResult = workspace.cmdGitContext(cwd, true);
         if (gcResult && gcResult[gcField] !== undefined) {
@@ -2051,8 +2029,7 @@ async function main() {
       validateArgs('ssh-check', null, args.slice(1));
       const sshUrl = args[1] && !args[1].startsWith('--') ? args[1] : '';
       // Support --field <name> for scalar extraction
-      const scFieldIdx = args.indexOf('--field');
-      const scField = scFieldIdx !== -1 ? args[scFieldIdx + 1] : null;
+      const scField = scalarFlag(args, '--field', 'ssh-check');
       if (scField) {
         const scResult = workspace.cmdSshCheck(sshUrl, true);
         if (scResult && scResult[scField] !== undefined) {
@@ -2073,11 +2050,11 @@ async function main() {
     case 'websearch': {
       validateArgs('websearch', null, args.slice(1));
       const query = args[1];
-      const limitIdx = args.indexOf('--limit');
-      const freshnessIdx = args.indexOf('--freshness');
+      const limit = scalarFlag(args, '--limit', 'websearch');
+      const freshness = scalarFlag(args, '--freshness', 'websearch');
       await commands.cmdWebsearch(query, {
-        limit: limitIdx !== -1 ? parseInt(args[limitIdx + 1], 10) : 10,
-        freshness: freshnessIdx !== -1 ? args[freshnessIdx + 1] : null,
+        limit: limit === null ? 10 : parseInt(limit, 10),
+        freshness,
       });
       break;
     }
@@ -2088,8 +2065,7 @@ async function main() {
       const phase = listBackupTags ? null : args[1];
       const dryRun = args.includes('--dry-run');
       const allowStable = args.includes('--allow-stable');
-      const strategyIdx = args.indexOf('--strategy');
-      const strategy = strategyIdx >= 0 ? args[strategyIdx + 1] : null;
+      const strategy = scalarFlag(args, '--strategy', 'squash');
       commands.cmdSquash(cwd, phase, {
         strategy,
         dryRun,
@@ -2101,18 +2077,17 @@ async function main() {
 
     case 'version-bump': {
       validateArgs('version-bump', null, args.slice(1));
-      const levelIdx = args.indexOf('--level');
-      const schemeIdx = args.indexOf('--scheme');
+      const level = scalarFlag(args, '--level', 'version-bump');
+      const scheme = scalarFlag(args, '--scheme', 'version-bump');
       const snapshot = args.includes('--snapshot');
-      const vbFieldIdx = args.indexOf('--field');
-      const vbField = vbFieldIdx !== -1 ? args[vbFieldIdx + 1] : null;
+      const vbField = scalarFlag(args, '--field', 'version-bump');
       if (vbField) {
         // silent=true: returns result without calling output()/process.exit()
         const vbResult = commands.cmdVersionBump(
           cwd,
           {
-            level: levelIdx >= 0 ? args[levelIdx + 1] : null,
-            scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
+            level,
+            scheme,
             snapshot,
           },
           true,
@@ -2123,8 +2098,8 @@ async function main() {
         process.exit(0);
       }
       commands.cmdVersionBump(cwd, {
-        level: levelIdx >= 0 ? args[levelIdx + 1] : null,
-        scheme: schemeIdx >= 0 ? args[schemeIdx + 1] : null,
+        level,
+        scheme,
         snapshot,
       });
       break;
@@ -2133,16 +2108,15 @@ async function main() {
     case 'generate-changelog': {
       validateArgs('generate-changelog', null, args.slice(1));
       const version = args[1];
-      const dateIdx = args.indexOf('--date');
+      const date = scalarFlag(args, '--date', 'generate-changelog');
       commands.cmdGenerateChangelog(cwd, version, {
-        date: dateIdx >= 0 ? args[dateIdx + 1] : null,
+        date,
       });
       break;
     }
 
     case 'generate-allowlist': {
-      const platformIdx = args.indexOf('--platform');
-      const platformFlag = platformIdx >= 0 ? args[platformIdx + 1] : undefined;
+      const platformFlag = scalarFlag(args, '--platform', 'generate-allowlist');
       commands.cmdGenerateAllowlist(cwd, platformFlag || process.platform);
       break;
     }
@@ -2160,8 +2134,7 @@ async function main() {
       validateArgs('issue-import', null, args.slice(1));
       const platform = args[1];
       const number = args[2];
-      const repoIdx = args.indexOf('--repo');
-      const repo = repoIdx >= 0 ? args[repoIdx + 1] : null;
+      const repo = scalarFlag(args, '--repo', 'issue-import');
       const forceUnsafe = args.includes('--force-unsafe');
       commands.cmdIssueImport(cwd, platform, number, repo, { forceUnsafe });
       break;
@@ -2182,21 +2155,21 @@ async function main() {
 
     case 'pingpong-check': {
       validateArgs('pingpong-check', null, args.slice(1));
-      const windowIdx = args.indexOf('--window');
+      const window = scalarFlag(args, '--window', 'pingpong-check');
       commands.cmdPingpongCheck(
         cwd,
-        windowIdx !== -1 ? ['--window', args[windowIdx + 1]] : [],
+        window === null ? [] : ['--window', window],
       );
       break;
     }
 
     case 'breakout-check': {
       validateArgs('breakout-check', null, args.slice(1));
-      const planIdx = args.indexOf('--plan');
+      const plan = scalarFlag(args, '--plan', 'breakout-check');
       const filesArg = listFlag(args, '--declared-files');
       const checkArgs = [];
-      if (planIdx !== -1) {
-        checkArgs.push('--plan', args[planIdx + 1]);
+      if (plan !== null) {
+        checkArgs.push('--plan', plan);
       }
       if (filesArg !== null) {
         checkArgs.push('--declared-files', filesArg);
@@ -2295,13 +2268,8 @@ function extractField(obj, fieldPath) {
   return current;
 }
 
-// Capture pickField before main() runs so the .then() closure can access it.
-// main() sets pickField as a local — we need it for the post-run extraction.
-// Re-parse --pick from argv here (main() hasn't spliced it yet at module scope).
-const _pickFieldForPostRun = (() => {
-  const i = process.argv.indexOf('--pick');
-  return i !== -1 ? process.argv[i + 1] : null;
-})();
+// Set by main() after global validation; never re-read raw argv.
+let _pickFieldForPostRun = null;
 
 main()
   .then(() => {
@@ -2314,7 +2282,9 @@ main()
       let captured = _pickStdoutChunks.join('');
       if (captured.startsWith('@file:')) {
         try {
-          captured = fs.readFileSync(captured.slice(6), 'utf-8');
+          const outputFile = captured.slice(6);
+          captured = fs.readFileSync(outputFile, 'utf-8');
+          fs.unlinkSync(outputFile);
         } catch {
           /* keep as-is */
         }

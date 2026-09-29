@@ -68,6 +68,14 @@ describe('arg validation - equals syntax', () => {
       `Expected "positional args don't use '=' syntax" in stderr, got: ${result.error}`
     );
   });
+
+  test('equals-containing value following a known flag is not a positional assignment', () => {
+    const file = path.join(tmpDir, 'frontmatter.md');
+    fs.writeFileSync(file, '---\nphase: 01\n---\nBody\n');
+    const result = runGsdTools(['frontmatter', 'get', file, '--field', 'missing', '--default', 'build=green'], tmpDir);
+    assert.strictEqual(result.success, true, result.error);
+    assert.strictEqual(result.output, 'build=green');
+  });
 });
 
 // ─── Count Validation ────────────────────────────────────────────────────────
@@ -262,4 +270,9 @@ describe('ARG_SCHEMAS coverage', () => {
       `Expected at least 36 validateArgs call sites (14 compound + 22 top-level), got ${callMatches}`
     );
   });
+});
+
+test('dispatcher has no literal first-wins flag reads', () => {
+  const source = fs.readFileSync(TOOLS_PATH, 'utf8');
+  assert.doesNotMatch(source, /\bargs\.indexOf\(\s*['"]--[^'"]+['"]\s*\)/);
 });

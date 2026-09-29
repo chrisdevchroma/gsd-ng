@@ -682,11 +682,10 @@ describe('STATE.md frontmatter sync', () => {
 `,
     );
 
-    const result = runGsdTools(
-      'state patch --Status "In progress" --"Current Plan" 04-02',
-      tmpDir,
-    );
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    for (const [field, value] of [['Status', 'In progress'], ['Current Plan', '04-02']]) {
+      const result = runGsdTools(['state', 'patch', '--field', field, '--value', value], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+    }
 
     const content = fs.readFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
@@ -1230,14 +1229,13 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
     cleanup(tmpDir);
   });
 
-  test('state patch updates multiple fields at once', () => {
+  test('separate named state patches update multiple fields', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
-    const result = runGsdTools(
-      'state patch --Status Complete --"Current Phase" 04',
-      tmpDir,
-    );
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    for (const [field, value] of [['Status', 'Complete'], ['Current Phase', '04']]) {
+      const result = runGsdTools(['state', 'patch', '--field', field, '--value', value], tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+    }
 
     const updated = fs.readFileSync(
       path.join(tmpDir, '.planning', 'STATE.md'),
@@ -1247,6 +1245,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
       updated.includes('**Status:** Complete'),
       'Status should be updated to Complete',
     );
+    assert.ok(updated.includes('**Current Phase:** 04'));
     assert.ok(
       updated.includes('**Last Activity:** 2024-01-15'),
       'Last Activity should be unchanged',
@@ -1256,10 +1255,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
   test('state patch reports failed fields that do not exist', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
-    const result = runGsdTools(
-      'state patch --Status Done --Missing value --json',
-      tmpDir,
-    );
+    const result = runGsdTools(['state', 'patch', '--field', 'Status', '--value', 'Done', '--json'], tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -1268,11 +1264,10 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
       output.updated.includes('Status'),
       'Status should be in updated list',
     );
-    assert.ok(Array.isArray(output.failed), 'failed should be an array');
-    assert.ok(
-      output.failed.includes('Missing'),
-      'Missing should be in failed list',
-    );
+    const missing = runGsdTools(['state', 'patch', '--field', 'Missing', '--value', 'value', '--json'], tmpDir);
+    assert.ok(!missing.success, 'An entirely missing patch should fail');
+    assert.match(missing.error, /All patches failed: Missing/);
+    assert.match(fs.readFileSync(path.join(tmpDir, '.planning', 'STATE.md'), 'utf-8'), /\*\*Status:\*\* Done/);
   });
 
   test('state update changes a single field', () => {
@@ -1400,16 +1395,16 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
     assert.ok(!result.success, 'Command should exit non-zero with no args');
   });
 
-  test('state patch --status executing (legacy positional mode) still works', () => {
+  test('state patch named mode updates one field', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'STATE.md'), stateMd);
 
     const result = runGsdTools(
-      ['state', 'patch', '--Status', 'executing'],
+      ['state', 'patch', '--field', 'Status', '--value', 'executing'],
       tmpDir,
     );
     assert.ok(
       result.success,
-      `Legacy positional patch should still succeed: ${result.error}`,
+      `Named patch should succeed: ${result.error}`,
     );
 
     const updated = fs.readFileSync(
@@ -1418,7 +1413,7 @@ describe('cmdStatePatch and cmdStateUpdate (state patch, state update)', () => {
     );
     assert.ok(
       updated.includes('**Status:** executing'),
-      'Status should be updated via legacy mode',
+      'Status should be updated via named mode',
     );
   });
 

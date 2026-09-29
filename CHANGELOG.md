@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Repeating a single-value CLI option now reports an error instead of silently using the first value. Repeated output-mode and quick-verification switches remain idempotent; `state patch` now accepts only the named `--field`/`--value` form.
 - Repeated `summary-extract --fields` and `breakout-check --declared-files` options now retain every value, matching comma-separated input instead of silently dropping later fields or file declarations.
 - Test baseline capture and comparison now handle verbose commands without mistaking output-buffer exhaustion for a timeout. They retain actual exit codes and test counts while keeping failure details bounded and temporary output cleaned up.
 - Same-version development installs now update to the exact checked branch commit and fail instead of reporting success when the branch, checkout, installer, or installed version does not match.
