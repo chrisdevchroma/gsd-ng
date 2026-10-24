@@ -2281,6 +2281,99 @@ describe('resolve-model command', () => {
       'error should mention agent-type required',
     );
   });
+
+  describe('runtime-aware display', () => {
+    function writeRuntimeMarker(dir, value) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, '.runtime'), value + '\n', 'utf-8');
+    }
+
+    test('non-claude runtime with no override prints empty string, never "null"', () => {
+      const markerDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-rm-marker-'),
+      );
+      try {
+        writeRuntimeMarker(markerDir, 'opencode');
+        const result = runGsdTools('resolve-model gsd-planner', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        assert.strictEqual(
+          result.output,
+          '',
+          'plain text must never interpolate the literal "null"',
+        );
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('claude runtime prints the profile alias', () => {
+      const markerDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-rm-marker-'),
+      );
+      try {
+        writeRuntimeMarker(markerDir, 'claude');
+        fs.writeFileSync(
+          path.join(tmpDir, '.planning', 'config.json'),
+          JSON.stringify({ model_profile: 'quality' }),
+        );
+        const result = runGsdTools('resolve-model gsd-planner', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        assert.strictEqual(result.output, 'opus');
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('claude runtime with profile=inherit prints empty string, never "null"', () => {
+      const markerDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-rm-marker-'),
+      );
+      try {
+        writeRuntimeMarker(markerDir, 'claude');
+        fs.writeFileSync(
+          path.join(tmpDir, '.planning', 'config.json'),
+          JSON.stringify({ model_profile: 'inherit' }),
+        );
+        const result = runGsdTools('resolve-model gsd-planner', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        assert.strictEqual(
+          result.output,
+          '',
+          'plain text must never interpolate the literal "null"',
+        );
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('--json keeps structured null with profile field', () => {
+      const markerDir = fs.mkdtempSync(
+        path.join(resolveTmpDir(), 'gsd-rm-marker-'),
+      );
+      try {
+        writeRuntimeMarker(markerDir, 'opencode');
+        const result = runGsdTools('resolve-model gsd-planner --json', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        const output = JSON.parse(result.output);
+        assert.strictEqual(output.model, null, 'json must carry null model');
+        assert.strictEqual(
+          output.profile,
+          'balanced',
+          'profile field must remain present',
+        );
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
