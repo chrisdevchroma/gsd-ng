@@ -69,6 +69,8 @@ fi
 
 Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
 
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
+
 **If `project_exists` is true:** Error — project already initialized. Use `{{COMMAND_PREFIX}}progress`.
 
 **If `has_git` is false:** Initialize git:

@@ -237,6 +237,7 @@ describe('resolveModelInternal', () => {
   });
 
   afterEach(() => {
+    delete process.env.GSD_TEST_RUNTIME_MARKER_DIR;
     cleanup(tmpDir);
   });
 
@@ -245,6 +246,11 @@ describe('resolveModelInternal', () => {
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify(obj, null, 2),
     );
+  }
+
+  function writeRuntimeMarker(dir, value) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '.runtime'), value + '\n', 'utf-8');
   }
 
   describe('model profile structural validation', () => {
@@ -310,6 +316,45 @@ describe('resolveModelInternal', () => {
       writeConfig({});
       // balanced profile, gsd-planner -> opus
       assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
+    });
+  });
+
+  describe('runtime awareness', () => {
+    test('non-claude runtime with no override returns null (session-inherit)', () => {
+      const markerDir = path.join(tmpDir, 'marker-opencode');
+      writeRuntimeMarker(markerDir, 'opencode');
+      process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+      writeConfig({ model_profile: 'quality' });
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), null);
+    });
+
+    test('provider-qualified override returns verbatim on non-claude runtime', () => {
+      const markerDir = path.join(tmpDir, 'marker-copilot');
+      writeRuntimeMarker(markerDir, 'copilot');
+      process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+      writeConfig({
+        model_overrides: { 'gsd-planner': 'vulcan-halogen/Qwen3.8-Flash-Next' },
+      });
+      assert.strictEqual(
+        resolveModelInternal(tmpDir, 'gsd-planner'),
+        'vulcan-halogen/Qwen3.8-Flash-Next',
+      );
+    });
+
+    test('claude runtime with staged marker keeps profile alias', () => {
+      const markerDir = path.join(tmpDir, 'marker-claude');
+      writeRuntimeMarker(markerDir, 'claude');
+      process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+      writeConfig({ model_profile: 'quality' });
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), 'opus');
+    });
+
+    test('claude runtime with staged marker and profile=inherit returns null', () => {
+      const markerDir = path.join(tmpDir, 'marker-claude-inherit');
+      writeRuntimeMarker(markerDir, 'claude');
+      process.env.GSD_TEST_RUNTIME_MARKER_DIR = markerDir;
+      writeConfig({ model_profile: 'inherit' });
+      assert.strictEqual(resolveModelInternal(tmpDir, 'gsd-planner'), null);
     });
   });
 });

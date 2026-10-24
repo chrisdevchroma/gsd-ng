@@ -1557,6 +1557,12 @@ function resolveModelInternal(cwd, agentType) {
     return override;
   }
 
+  // Non-Claude runtimes never receive a bare Claude alias: with no explicit
+  // override above, return null for session-inherit.
+  if (getEngineRuntime() !== 'claude') {
+    return null;
+  }
+
   // Fall back to profile lookup
   const profile = config.model_profile || 'balanced';
   const agentModels = MODEL_PROFILES[agentType];

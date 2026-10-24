@@ -39,6 +39,8 @@ AUDITOR_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-
 NYQUIST_CFG=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" config-get workflow.nyquist_validation)
 ```
 
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`. (Resolved value here is `AUDITOR_MODEL`.)
+
 If `NYQUIST_CFG` is `false`: exit with "Nyquist validation is disabled. Enable via {{COMMAND_PREFIX}}settings."
 
 Display banner: `GSD > VALIDATE PHASE {N}: {name}`
