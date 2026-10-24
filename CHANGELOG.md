@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Non-Claude runtimes no longer receive bare Claude model aliases for GSD agents. Model profiles on OpenCode or Copilot resolved to names like `opus` that those runtimes cannot resolve, so workflow spawns failed on model lookup or expired-key errors before any work started. Resolution is now runtime-aware: outside a Claude runtime the resolved model is null (session-inherit) unless a `model_overrides` entry in `.planning/config.json` explicitly names a model, which still returns verbatim on every runtime and is the way to pin a specific provider-qualified model per agent. The plain-text `resolve-model` output prints an empty string instead of the literal `null`, and every workflow that reads a model field from `init` now omits the `model` parameter from the spawn when that value is null or empty, so a subagent runs on the session's default model. Claude runtime behavior is unchanged, including the `inherit` profile, and `--json` output still carries the structured null.
+
 - Planner and codebase-mapper guidance now agree on the default codebase-map documents, with a routing test that catches future mapping drift.
 - Phase and roadmap updates now reject malformed archive `<details>` markup before changing planning files or phase directories, preventing an unclosed archive from causing archived content to be deleted or rewritten. Fenced examples no longer affect the active milestone boundary.
 - Repeating a single-value CLI option now reports an error instead of silently using the first value. Repeated output-mode and quick-verification switches remain idempotent; `state patch` now accepts only the named `--field`/`--value` form.
