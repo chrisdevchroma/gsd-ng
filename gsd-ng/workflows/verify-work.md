@@ -42,6 +42,8 @@ fi
 ```
 
 Parse JSON for: `planner_model`, `checker_model`, `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`.
+
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
 </step>
 
 <step name="check_active_session">

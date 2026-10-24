@@ -34,6 +34,8 @@ fi
 
 Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_enabled`, `plan_checker_enabled`, `nyquist_validation_enabled`, `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `plan_count`, `planning_exists`, `roadmap_exists`, `phase_req_ids`.
 
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
+
 **File paths (for <files_to_read> blocks):** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`, `verification_path`, `uat_path`. These are null if files don't exist.
 
 **If `planning_exists` is false:** Error — run `{{COMMAND_PREFIX}}new-project` first.

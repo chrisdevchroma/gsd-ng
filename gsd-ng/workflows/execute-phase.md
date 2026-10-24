@@ -33,6 +33,8 @@ fi
 
 Parse JSON for: `executor_model`, `verifier_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `target_branch`, `auto_push`, `remote`, `review_branch_template`, `pr_draft`, `platform`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
 
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
+
 Store as shell variables: `BRANCHING_STRATEGY`, `BRANCH_NAME`, `TARGET_BRANCH`, `AUTO_PUSH`, `REMOTE`.
 
 **If `phase_found` is false:** Error — phase directory not found.

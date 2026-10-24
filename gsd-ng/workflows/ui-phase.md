@@ -40,6 +40,8 @@ Resolve UI agent models:
 UI_RESEARCHER_MODEL=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-ui-researcher)
 ```
 
+If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`. (Resolved value here is `UI_RESEARCHER_MODEL`.)
+
 Check config:
 
 ```bash
