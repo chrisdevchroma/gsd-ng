@@ -29,8 +29,6 @@ fi
 
 Extract from init JSON: `executor_model`, `commit_docs`, `phase_dir`, `phase_number`, `plans`, `summaries`, `incomplete_plans`, `state_path`, `config_path`.
 
-If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
-
 If `.planning/` missing: error.
 </step>
 

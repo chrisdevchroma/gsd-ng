@@ -33,8 +33,6 @@ Resolve integration checker model:
 integration_checker_model=$(node "$HOME/.claude/gsd-ng/bin/gsd-tools.cjs" resolve-model gsd-integration-checker)
 ```
 
-If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
-
 ## 1. Determine Milestone Scope
 
 ```bash
