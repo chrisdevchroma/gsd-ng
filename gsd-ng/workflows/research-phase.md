@@ -8,12 +8,8 @@ Standalone research command. For most workflows, use `{{COMMAND_PREFIX}}plan-pha
 
 ## Step 0: Resolve Model Profile
 
-@~/.claude/gsd-ng/references/claude-model-profile-resolution.md
-
 Resolve model for:
 - `gsd-phase-researcher`
-
-If a `*_model` value is null or empty, OMIT the `model` parameter from the spawn - the subagent runs on the session's default model. Never pass `model="null"` or `model=""`.
 
 ## Step 1: Normalize and Validate Phase
 

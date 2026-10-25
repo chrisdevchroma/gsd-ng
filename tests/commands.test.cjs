@@ -2374,6 +2374,94 @@ describe('resolve-model command', () => {
       }
     });
   });
+
+  describe('model_note in JSON output', () => {
+    function writeRuntimeMarker(dir, value) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, '.runtime'), value + '\n', 'utf-8');
+    }
+
+    function makeMarkerDir() {
+      return fs.mkdtempSync(path.join(resolveTmpDir(), 'gsd-rm-note-'));
+    }
+
+    test('null model adds model_note "omit param" to JSON', () => {
+      const markerDir = makeMarkerDir();
+      try {
+        writeRuntimeMarker(markerDir, 'opencode');
+        const result = runGsdTools('resolve-model gsd-planner --json', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        const output = JSON.parse(result.output);
+        assert.strictEqual(output.model, null);
+        assert.strictEqual(output.model_note, 'omit param');
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('claude runtime with inherit profile also adds model_note', () => {
+      const markerDir = makeMarkerDir();
+      try {
+        writeRuntimeMarker(markerDir, 'claude');
+        fs.writeFileSync(
+          path.join(tmpDir, '.planning', 'config.json'),
+          JSON.stringify({ model_profile: 'inherit' }),
+        );
+        const result = runGsdTools('resolve-model gsd-planner --json', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        const output = JSON.parse(result.output);
+        assert.strictEqual(output.model, null);
+        assert.strictEqual(output.model_note, 'omit param');
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('non-null model has no model_note key', () => {
+      const result = runGsdTools('resolve-model gsd-planner --json', tmpDir);
+      assert.ok(result.success, `Command failed: ${result.error}`);
+      const output = JSON.parse(result.output);
+      assert.ok(output.model, 'should resolve a model');
+      assert.ok(!('model_note' in output), 'model_note must be absent');
+    });
+
+    test('unknown agent with null model carries unknown_agent and model_note', () => {
+      const markerDir = makeMarkerDir();
+      try {
+        writeRuntimeMarker(markerDir, 'opencode');
+        const result = runGsdTools(
+          'resolve-model fake-nonexistent-agent --json',
+          tmpDir,
+          { GSD_TEST_RUNTIME_MARKER_DIR: markerDir },
+        );
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        const output = JSON.parse(result.output);
+        assert.strictEqual(output.model, null);
+        assert.strictEqual(output.unknown_agent, true);
+        assert.strictEqual(output.model_note, 'omit param');
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+
+    test('plain text null model stays an empty string', () => {
+      const markerDir = makeMarkerDir();
+      try {
+        writeRuntimeMarker(markerDir, 'opencode');
+        const result = runGsdTools('resolve-model gsd-planner', tmpDir, {
+          GSD_TEST_RUNTIME_MARKER_DIR: markerDir,
+        });
+        assert.ok(result.success, `Command failed: ${result.error}`);
+        assert.strictEqual(result.output, '');
+      } finally {
+        cleanup(markerDir);
+      }
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

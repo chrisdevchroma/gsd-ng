@@ -293,6 +293,9 @@ function cmdResolveModel(cwd, agentType) {
   const result = agentModels
     ? { model, profile }
     : { model, profile, unknown_agent: true };
+  if (model === null) {
+    result.model_note = 'omit param';
+  }
   // Null model displays as '' so shell callers never interpolate the literal
   // "null" into a spawn parameter. JSON mode is unaffected: output() ignores
   // displayValue under --json, so the structured null survives there.

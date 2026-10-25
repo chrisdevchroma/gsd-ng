@@ -1,6 +1,6 @@
 'use strict';
 
-// Lint keeping the profile tables in `gsd-ng/references/claude-model-profiles.md`
+// Lint keeping the profile tables in `gsd-ng/references/model-profiles.md`
 // in sync with MODEL_PROFILES / EFFORT_PROFILES in `gsd-ng/bin/lib/model-profiles.cjs`.
 //
 // The reference doc is what agents and users read; the constants are what the
@@ -21,7 +21,7 @@ const {
 } = require('../gsd-ng/bin/lib/model-profiles.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const DOC_PATH = 'gsd-ng/references/claude-model-profiles.md';
+const DOC_PATH = 'gsd-ng/references/model-profiles.md';
 const EXPECTED_HEADER = ['Agent', '`quality`', '`balanced`', '`budget`'];
 
 // Parses the first pipe table after `heading`. Returns
