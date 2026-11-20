@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Installed path chains no longer borrow another harness's identity. Every installed command resolves the project root through a harness-neutral `GSD_PROJECT_DIR`: an explicit `export GSD_PROJECT_DIR=/your/project` now wins in every runtime's installed path chains, a Claude Code install additionally keeps its native `CLAUDE_PROJECT_DIR` working with no user action, and OpenCode and Copilot installs resolve through `git rev-parse` without any `CLAUDE_PROJECT_DIR` reference in the installed files.
 
 - Model guidance now travels with the data. `gsd-tools resolve-model <agent> --json` includes `"model_note": "omit param"` when no model resolves, so a caller reads the omit instruction from the output itself instead of from repeated workflow guidance. A resolved model adds no extra key, and plain-text output is unchanged. Workflows no longer repeat the null-model rule. The model-profile reference is now `references/model-profiles.md`, a runtime-neutral name, and the separate profile-resolution reference is removed as redundant.
+- The health repair action for a missing project rules file is now `writeProjectRulesFile`. It generates the active runtime's rules file with the `## GSD` workspace-type section.
 
 ### Removed
 

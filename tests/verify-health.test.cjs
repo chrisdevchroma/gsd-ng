@@ -1373,7 +1373,7 @@ describe('validate health - project rules file (W010)', () => {
     cleanup(tmpDir);
   });
 
-  function writeCLAUDEmd(tmpDir, content) {
+  function writeRulesFile(tmpDir, content) {
     fs.writeFileSync(path.join(tmpDir, 'CLAUDE.md'), content);
   }
 
@@ -1392,7 +1392,7 @@ describe('validate health - project rules file (W010)', () => {
   });
 
   test('W010 does not fire when CLAUDE.md exists', () => {
-    writeCLAUDEmd(tmpDir, '# Project\n\nSome content.\n');
+    writeRulesFile(tmpDir, '# Project\n\nSome content.\n');
 
     const result = runGsdTools('validate health', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -1413,15 +1413,15 @@ describe('validate health - project rules file (W010)', () => {
     const output = JSON.parse(result.output);
     const writeRules =
       output.repairs_performed &&
-      output.repairs_performed.find((r) => r.action === 'writeCLAUDEmd');
+      output.repairs_performed.find((r) => r.action === 'writeProjectRulesFile');
     assert.ok(
       writeRules,
-      `Expected writeCLAUDEmd repair action: ${JSON.stringify(output)}`,
+      `Expected writeProjectRulesFile repair action: ${JSON.stringify(output)}`,
     );
     assert.strictEqual(
       writeRules.success,
       true,
-      'writeCLAUDEmd should succeed',
+      'writeProjectRulesFile should succeed',
     );
 
     const rulesPath = path.join(tmpDir, 'CLAUDE.md');
@@ -1495,11 +1495,11 @@ describe('validate health - project rules file (W010)', () => {
       `the probe should report the rules file missing: ${JSON.stringify(output.warnings)}`,
     );
     const action = (output.repairs_performed || []).find(
-      (r) => r.action === 'writeCLAUDEmd',
+      (r) => r.action === 'writeProjectRulesFile',
     );
     assert.ok(
       action,
-      `expected the writeCLAUDEmd repair: ${JSON.stringify(output.repairs_performed)}`,
+      `expected the writeProjectRulesFile repair: ${JSON.stringify(output.repairs_performed)}`,
     );
     assert.strictEqual(action.success, true, 'the repair should report success');
     assert.strictEqual(
@@ -3683,7 +3683,7 @@ describe('validate health — runtime identity comes from the install marker', (
   test('RUNTIME-RULES-03: the repair writes AGENTS.md on an opencode install', () => {
     const output = runHealth('validate health --repair');
     const action = (output.repairs_performed || []).find(
-      (r) => r.action === 'writeCLAUDEmd',
+      (r) => r.action === 'writeProjectRulesFile',
     );
     assert.ok(action, `Expected the rules-file repair: ${JSON.stringify(output)}`);
     assert.strictEqual(action.path, 'AGENTS.md');

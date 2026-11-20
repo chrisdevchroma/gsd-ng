@@ -2024,7 +2024,7 @@ function runHealth(cwd, options) {
       'W010',
       `${projectRulesFile} not found — agents will not receive project instructions`,
       `Run /gsd:health --repair to generate ${projectRulesFile}`,
-      'writeCLAUDEmd',
+      'writeProjectRulesFile',
     );
   }
 
@@ -2414,7 +2414,7 @@ function runHealth(cwd, options) {
             }
             break;
           }
-          case 'writeCLAUDEmd': {
+          case 'writeProjectRulesFile': {
             const repairRulesFile = resolveRuntimeSpec().PROJECT_RULES_FILE;
             const repairRulesPath = path.join(cwd, repairRulesFile);
             const wsType = detectWorkspaceType(cwd);
