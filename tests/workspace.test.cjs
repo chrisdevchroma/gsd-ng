@@ -1868,4 +1868,14 @@ describe('cmdSshCheck — execSync error branches via PATH stub', () => {
     assert.match(result.message, /SSH agent check failed/);
     assert.match(result.message, /something else went wrong/);
   });
+
+  test('uses err.message when the agent check error carries no stderr output', () => {
+    writeStub(5, '');
+    process.env.PATH = stubBin + path.delimiter + savedPath;
+
+    const result = workspace.cmdSshCheck('git@github.com:user/repo.git', true);
+    assert.strictEqual(result.status, 'agent_not_running');
+    assert.strictEqual(result.agent_running, false);
+    assert.match(result.message, /^SSH agent check failed: /);
+  });
 });
