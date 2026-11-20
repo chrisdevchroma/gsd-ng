@@ -1,5 +1,5 @@
 /**
- * Workspace — Workspace topology detection and memory helpers
+ * Workspace - Workspace topology detection and git context
  */
 
 const fs = require('fs');
@@ -11,10 +11,8 @@ const {
   loadConfig,
   resolveTargetBranch,
   planningPaths,
-  resolveRuntimeSpec,
 } = require('./core.cjs');
 const { DEFAULTS } = require('./defaults.cjs');
-const { extractFrontmatter } = require('./frontmatter.cjs');
 const { cmdDetectPlatform } = require('./commands.cjs');
 
 // ─── Workspace topology detection ────────────────────────────────────────────
@@ -111,183 +109,6 @@ function detectWorkspaceType(cwd) {
 
   // 4. Default: standalone
   return { type: 'standalone', signal: null, submodule_paths: [] };
-}
-
-// ─── Memory section generation ────────────────────────────────────────────────
-
-/**
- * The memory directory of the runtime this install belongs to, without its
- * trailing slash — `.claude/memory` on claude, `.github/memory` on copilot.
- *
- * Reading the registry rather than naming claude's directory is what lets the
- * two generators below run on a non-claude install at all: they were writing a
- * runtime-correct destination from a claude-only source, so on any other runtime
- * they found nothing and produced nothing.
- *
- * @returns {string} Memory directory relative to the project root
- */
-function memoryDirRelative() {
-  return resolveRuntimeSpec().MEMORY_DIR.replace(/\/+$/, '');
-}
-
-/**
- * Generate the project rules file's Memories section from the runtime's memory
- * directory.
- *
- * Reads all .md files (except MEMORY.md), extracts frontmatter description/name,
- * and builds the bullet list section.
- *
- * @param {string} cwd - Project root directory
- * @returns {string} Markdown section string, or '' if no memory directory
- */
-function generateMemoriesSection(cwd) {
-  const memoryRel = memoryDirRelative();
-  const memoryDir = path.join(cwd, ...memoryRel.split('/'));
-
-  if (!fs.existsSync(memoryDir)) {
-    return '';
-  }
-
-  let files;
-  try {
-    files = fs
-      .readdirSync(memoryDir)
-      .filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
-      .sort();
-  } catch {
-    return '';
-  }
-
-  if (files.length === 0) {
-    return '';
-  }
-
-  const bullets = files.map((filename) => {
-    const filePath = path.join(memoryDir, filename);
-    let description = '(no description)';
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const fm = extractFrontmatter(content);
-      if (fm.description) {
-        description = fm.description;
-      } else if (fm.name) {
-        description = fm.name;
-      }
-    } catch {
-      // Use fallback description
-    }
-    return `- [${memoryRel}/${filename}](${memoryRel}/${filename}) — ${description}`;
-  });
-
-  return [
-    '## Memories',
-    '',
-    `Read \`${memoryRel}/\` for persistent feedback and project context. Key entries:`,
-    '',
-    ...bullets,
-  ].join('\n');
-}
-
-/**
- * Generate the MEMORY.md content string from the runtime's memory directory.
- *
- * Groups files by their frontmatter `type` field. Capitalizes group headings.
- * Filters out MEMORY.md itself.
- *
- * @param {string} cwd - Project root directory
- * @returns {string} MEMORY.md content string, or '' if no qualifying files
- */
-function generateMemoryMd(cwd) {
-  const memoryDir = path.join(cwd, ...memoryDirRelative().split('/'));
-
-  if (!fs.existsSync(memoryDir)) {
-    return '';
-  }
-
-  let files;
-  try {
-    files = fs
-      .readdirSync(memoryDir)
-      .filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
-      .sort();
-  } catch {
-    return '';
-  }
-
-  if (files.length === 0) {
-    return '';
-  }
-
-  // Build groups
-  const groups = {};
-  for (const filename of files) {
-    const filePath = path.join(memoryDir, filename);
-    let description = '(no description)';
-    let groupName = 'Other';
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const fm = extractFrontmatter(content);
-      if (fm.description) {
-        description = fm.description;
-      } else if (fm.name) {
-        description = fm.name;
-      }
-      if (fm.type) {
-        // Capitalize first letter of type for the group heading
-        groupName = fm.type.charAt(0).toUpperCase() + fm.type.slice(1);
-      }
-    } catch {
-      // Use defaults
-    }
-
-    if (!groups[groupName]) {
-      groups[groupName] = [];
-    }
-    groups[groupName].push({ filename, description });
-  }
-
-  /* c8 ignore next 3 — unreachable: groups is populated by the loop above whenever files.length > 0, which is already guarded earlier */
-  if (Object.keys(groups).length === 0) {
-    return '';
-  }
-
-  const lines = ['# Memory Index'];
-  for (const [groupName, entries] of Object.entries(groups)) {
-    lines.push('');
-    lines.push(`## ${groupName}`);
-    for (const { filename, description } of entries) {
-      lines.push(`- [${filename}](${filename}) — ${description}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
-// ─── Memory template seeding ─────────────────────────────────────────────────
-
-/**
- * Copy a memory template file to the target directory with the given filename.
- *
- * Creates the target directory if it doesn't exist.
- *
- * @param {string} templatePath - Absolute path to the source template file
- * @param {string} targetDir - Directory to seed the memory into
- * @param {string} filename - Filename for the output file
- * @returns {{ seeded: true, path: string } | { seeded: false, reason: string }}
- */
-function seedMemoryTemplate(templatePath, targetDir, filename) {
-  if (!fs.existsSync(templatePath)) {
-    return { seeded: false, reason: 'template not found' };
-  }
-
-  try {
-    fs.mkdirSync(targetDir, { recursive: true });
-    const outputPath = path.join(targetDir, filename);
-    fs.copyFileSync(templatePath, outputPath);
-    return { seeded: true, path: outputPath };
-  } catch (err) {
-    return { seeded: false, reason: err.message };
-  }
 }
 
 // ─── Git context resolution ───────────────────────────────────────────────────
@@ -640,9 +461,6 @@ function cmdSshCheck(remoteUrl, silent) {
 module.exports = {
   detectWorkspaceType,
   findConfiguredIntersection,
-  generateMemoriesSection,
-  generateMemoryMd,
-  seedMemoryTemplate,
   cmdDetectWorkspace,
   resolveGitContext,
   cmdGitContext,

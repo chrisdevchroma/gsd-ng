@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Installed path chains no longer borrow another harness's identity. Every installed command resolves the project root through a harness-neutral `GSD_PROJECT_DIR`: an explicit `export GSD_PROJECT_DIR=/your/project` now wins in every runtime's installed path chains, a Claude Code install additionally keeps its native `CLAUDE_PROJECT_DIR` working with no user action, and OpenCode and Copilot installs resolve through `git rev-parse` without any `CLAUDE_PROJECT_DIR` reference in the installed files.
 
 - Model guidance now travels with the data. `gsd-tools resolve-model <agent> --json` includes `"model_note": "omit param"` when no model resolves, so a caller reads the omit instruction from the output itself instead of from repeated workflow guidance. A resolved model adds no extra key, and plain-text output is unchanged. Workflows no longer repeat the null-model rule. The model-profile reference is now `references/model-profiles.md`, a runtime-neutral name, and the separate profile-resolution reference is removed as redundant.
+- The health repair action for a missing project rules file is now `writeProjectRulesFile`. It generates the active runtime's rules file with the `## GSD` workspace-type section.
+
+### Removed
+
+- The installer no longer creates or seeds runtime memory directories. Generated memory indexes and the generated `## Memories` section are gone, and the `seed-memories` command no longer exists. Cross-project rules now live in a shared memory submodule linked from the project rules file, so the engine does not create, read, or check runtime memory files.
 
 ### Fixed
 
@@ -29,7 +34,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Test baseline capture and comparison now handle verbose commands without mistaking output-buffer exhaustion for a timeout. They retain actual exit codes and test counts while keeping failure details bounded and temporary output cleaned up.
 - Same-version development installs now update to the exact checked branch commit and fail instead of reporting success when the branch, checkout, installer, or installed version does not match.
 - Phase health checks now distinguish unplanned future work from started phases that have lost their directory, recognize explicitly archived phase records, preserve decimal and letter-suffixed identities, and avoid declaring directories orphaned when archive evidence is incomplete.
-- Memory health checks now follow bounded local project-rule imports instead of inspecting only the runtime's pointer file. References and manual markers are evaluated across the effective rules graph, while repairs write only to a uniquely revalidated Memories owner and fail closed on incomplete or ambiguous imports.
 - Command arguments now cross every supported runtime through one lossless data boundary, including empty, multiline, quoted and shell-like input. Automatic workflow chains use explicit enter, preserve and reset transitions, so an argumentless downstream step can no longer clear an active chain and a fresh project can detect `--auto` before its planning configuration exists.
 - Health checks now resolve `related:` references as pending todos, completed todos, project documents, missing paths, unsafe paths or ambiguous names before offering a repair. Valid project documents are preserved, backlink checks apply only to todos, and automatic repair removes only references proven missing.
 - `phase add` and `phase insert` place roadmap details by phase-heading boundaries rather than optional horizontal rules. Integer additions follow the highest integer section, decimal insertions follow their complete sibling family, malformed topology fails before mutation, and a failed write leaves neither a partial roadmap update nor an orphan phase directory.

@@ -78,7 +78,6 @@ function foreignDirNames(runtime, runtimes = RUNTIMES) {
  */
 const OWNED_SEGMENTS = [
   'gsd-ng',
-  'memory',
   'logs',
   'skills',
   'cache',

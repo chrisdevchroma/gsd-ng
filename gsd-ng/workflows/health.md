@@ -166,10 +166,6 @@ Report final status.
 | W008 | warning | config.json: workflow.nyquist_validation absent (defaults to enabled but agents may skip) | Yes |
 | W009 | warning | Phase has executed plans (or a Validation Architecture in RESEARCH.md) but no VALIDATION.md | No |
 | W010 | warning | `{{PROJECT_RULES_FILE}}` not found — agents missing project instructions | Yes |
-| W011 | warning | Memory files not referenced across the complete imported project-rule graph | Only with one revalidated Memories owner |
-| W012 | warning | A project-rule graph node references non-existent memory files | Only with one revalidated Memories owner |
-| W013 | warning | MEMORY.md out of sync with {{MEMORY_DIR}} contents | Yes |
-| W014 | warning | Workspace topology detected but no structural memory seeded | No |
 | W017 | warning | Todo references a phase that does not exist in ROADMAP.md | Yes |
 | W018 | warning | Phase is complete but pending todos still reference it | Yes |
 | W019 | warning | REQUIREMENTS.md: a requirement is ticked off but its traceability row still reads Planned | No |
@@ -183,7 +179,6 @@ Report final status.
 | W027 | error | A phase sets `nyquist_compliant: true` with no `## Validation Audit` section — it claims a compliance it has no record of earning | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 | I002 | info | Phase inventory incomplete because a milestone record is unreadable | No |
-| I003 | info | Project-rule graph incomplete because an explicit import is unsafe, unreadable, or beyond a traversal cap | No |
 | I010 | info | The resolved CWD, reported alongside E010 | No |
 
 E010 and I010 come from the home-directory guard, which returns before any other check
@@ -219,14 +214,11 @@ W009, W026 and W027 read the Nyquist validation gate and are worth stating plain
 | resetConfig | Delete + recreate config.json | Loses custom settings |
 | regenerateState | Create STATE.md from ROADMAP structure | Loses session history |
 | addNyquistKey | Add workflow.nyquist_validation: true to config.json | None — matches existing default |
-| writeCLAUDEmd | Create `{{PROJECT_RULES_FILE}}` with Memories section from {{MEMORY_DIR}} | None — generates from existing files |
-| syncCLAUDEmdMemories | Update the uniquely revalidated project-rule owner of the Memories section to match {{MEMORY_DIR}} | Replaces only that owner section in-place; refuses incomplete, ambiguous, manual, or changed ownership |
-| syncMemoryMd | Regenerate {{MEMORY_DIR}}MEMORY.md from {{MEMORY_DIR}} files | Overwrites MEMORY.md |
+| writeProjectRulesFile | Create `{{PROJECT_RULES_FILE}}` with the `## GSD` workspace-type section | None — generates from the detected workspace type |
 
 **Not repairable (too risky):**
 - PROJECT.md, ROADMAP.md content
 - Phase directory renaming
 - Orphaned plan cleanup
-- Topology drift (W014) — complex; suggests running {{COMMAND_PREFIX}}seed-memories manually
 
 </repair_actions>
