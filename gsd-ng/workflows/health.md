@@ -214,7 +214,7 @@ W009, W026 and W027 read the Nyquist validation gate and are worth stating plain
 | resetConfig | Delete + recreate config.json | Loses custom settings |
 | regenerateState | Create STATE.md from ROADMAP structure | Loses session history |
 | addNyquistKey | Add workflow.nyquist_validation: true to config.json | None — matches existing default |
-| writeCLAUDEmd | Create `{{PROJECT_RULES_FILE}}` with the `## GSD` workspace-type section | None - generates from the detected workspace type |
+| writeCLAUDEmd | Create `{{PROJECT_RULES_FILE}}` with the `## GSD` workspace-type section | None — generates from the detected workspace type |
 
 **Not repairable (too risky):**
 - PROJECT.md, ROADMAP.md content

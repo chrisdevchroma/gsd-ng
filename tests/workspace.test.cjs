@@ -1,5 +1,5 @@
 /**
- * GSD Tools Tests — Workspace Detection and Memory Helpers
+ * GSD Tools Tests — Workspace Detection and Git Context Helpers
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
