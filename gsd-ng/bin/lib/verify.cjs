@@ -2424,10 +2424,12 @@ function runHealth(cwd, options) {
                 : `## GSD\n\n**Workspace type:** ${wsType.type}\n**Detection signal:** ${wsType.signal}\n`;
             if (fs.existsSync(repairRulesPath)) {
               const content = fs.readFileSync(repairRulesPath, 'utf-8');
-              if (!/^##[ \t]+GSD\b/m.test(content)) {
+              if (!/^##[ \t]+GSD\b/im.test(content)) {
                 fs.writeFileSync(
                   repairRulesPath,
-                  content.replace(/\s+$/, '') + '\n\n' + gsdSection,
+                  content.trim()
+                    ? content.replace(/\s+$/, '') + '\n\n' + gsdSection
+                    : gsdSection,
                   'utf-8',
                 );
               }

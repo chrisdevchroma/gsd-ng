@@ -18,6 +18,7 @@ const {
   resolveTmpDir,
 } = require('./helpers.cjs');
 const { cmdValidateHealth } = require('../gsd-ng/bin/lib/verify.cjs');
+const { resolveRuntimeSpec } = require('../gsd-ng/bin/lib/core.cjs');
 
 // ─── Helpers for setting up minimal valid projects ────────────────────────────
 
@@ -1354,6 +1355,7 @@ describe('validate health --repair command', () => {
 
 describe('validate health - project rules file (W010)', () => {
   let tmpDir;
+  const RULES_FILE = resolveRuntimeSpec().PROJECT_RULES_FILE;
 
   beforeEach(() => {
     tmpDir = createTempProject();
@@ -1435,6 +1437,167 @@ describe('validate health - project rules file (W010)', () => {
     assert.ok(
       content.includes('**Workspace type:** standalone'),
       'the ## GSD section should record the workspace type',
+    );
+  });
+
+  // ─── Repair against a rules file that arrives after the probe ─────────────
+  //
+  // The append path is the window between the W010 probe and the repair: the
+  // file is missing when health reports it, then lands before the repair runs.
+  // Probe and repair read the same path inside one synchronous pass, so the
+  // child answers the first probe of that path as absent and every later call
+  // truthfully. The window becomes repeatable while the repair itself runs
+  // unmodified: same detection result, same read, same write.
+
+  const REPAIR_LIB = path.join(
+    __dirname,
+    '..',
+    'gsd-ng',
+    'bin',
+    'lib',
+    'verify.cjs',
+  );
+
+  const REPAIR_WITH_LATE_FILE_SRC = `
+    const fs = require('fs');
+    const path = require('path');
+    const [lib, cwd, rulesPath] = process.argv.slice(1);
+    const realExistsSync = fs.existsSync;
+    let firstProbe = true;
+    fs.existsSync = function (target) {
+      if (firstProbe && path.resolve(String(target)) === rulesPath) {
+        firstProbe = false;
+        return false;
+      }
+      return realExistsSync.apply(fs, arguments);
+    };
+    require(lib).cmdValidateHealth(cwd, { repair: true });
+  `;
+
+  function repairAfterRulesFileArrives(rulesPath) {
+    const { spawnSync } = require('child_process');
+    const child = spawnSync(
+      process.execPath,
+      ['-e', REPAIR_WITH_LATE_FILE_SRC, '--', REPAIR_LIB, tmpDir, rulesPath],
+      { encoding: 'utf-8' },
+    );
+    assert.strictEqual(
+      child.status,
+      0,
+      `the repair run should succeed: ${child.stderr.trim()}`,
+    );
+    return JSON.parse(child.stdout);
+  }
+
+  function assertRulesFileRepaired(output) {
+    assert.ok(
+      output.warnings.some((w) => w.code === 'W010'),
+      `the probe should report the rules file missing: ${JSON.stringify(output.warnings)}`,
+    );
+    const action = (output.repairs_performed || []).find(
+      (r) => r.action === 'writeCLAUDEmd',
+    );
+    assert.ok(
+      action,
+      `expected the writeCLAUDEmd repair: ${JSON.stringify(output.repairs_performed)}`,
+    );
+    assert.strictEqual(action.success, true, 'the repair should report success');
+    assert.strictEqual(
+      action.path,
+      RULES_FILE,
+      'the repair should name the active runtime rules file',
+    );
+  }
+
+  test('W010 repair appends the ## GSD section to a file that has none', () => {
+    const rulesPath = path.join(tmpDir, RULES_FILE);
+    const existing = '# Existing rules\n\nHandwritten guidance.\n';
+    fs.writeFileSync(rulesPath, existing);
+
+    assertRulesFileRepaired(repairAfterRulesFileArrives(rulesPath));
+
+    const after = fs.readFileSync(rulesPath, 'utf-8');
+    assert.ok(
+      after.startsWith(existing),
+      `the existing content stays verbatim at the top: ${JSON.stringify(after)}`,
+    );
+    assert.ok(
+      after.endsWith('## GSD\n\n**Workspace type:** standalone\n'),
+      `the section is appended after the existing content: ${JSON.stringify(after)}`,
+    );
+    assert.match(
+      after,
+      /^Handwritten guidance\.\n\n## GSD$/m,
+      `one blank line joins the existing content and the section: ${JSON.stringify(after)}`,
+    );
+    assert.strictEqual(
+      (after.match(/^##[ \t]+GSD\b/gim) || []).length,
+      1,
+      `one GSD heading after the append: ${JSON.stringify(after)}`,
+    );
+  });
+
+  test('W010 repair records type and detection signal in a submodule workspace', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.gitmodules'),
+      '[submodule "foo"]\n  path = foo\n  url = https://example.com\n',
+    );
+    const rulesPath = path.join(tmpDir, RULES_FILE);
+    const existing = '# Existing rules\n\nHandwritten guidance.\n';
+    fs.writeFileSync(rulesPath, existing);
+
+    assertRulesFileRepaired(repairAfterRulesFileArrives(rulesPath));
+
+    const after = fs.readFileSync(rulesPath, 'utf-8');
+    assert.ok(
+      after.startsWith(existing),
+      `the existing content stays verbatim at the top: ${JSON.stringify(after)}`,
+    );
+    assert.ok(
+      after.endsWith(
+        '## GSD\n\n**Workspace type:** submodule\n**Detection signal:** .gitmodules\n',
+      ),
+      `the appended section should name the type and its signal: ${JSON.stringify(after)}`,
+    );
+  });
+
+  test('W010 repair leaves no leading blank lines when the file is blank', () => {
+    const rulesPath = path.join(tmpDir, RULES_FILE);
+    for (const blank of ['', '   \n \n']) {
+      fs.writeFileSync(rulesPath, blank);
+
+      assertRulesFileRepaired(repairAfterRulesFileArrives(rulesPath));
+
+      const after = fs.readFileSync(rulesPath, 'utf-8');
+      assert.ok(
+        after.startsWith('## GSD\n'),
+        `a ${JSON.stringify(blank)} file should open on the heading: ${JSON.stringify(after)}`,
+      );
+      assert.ok(
+        !after.startsWith('\n'),
+        `a ${JSON.stringify(blank)} file should gain no leading blank line: ${JSON.stringify(after)}`,
+      );
+    }
+  });
+
+  test('W010 repair reads a lowercase ## gsd heading as the GSD section', () => {
+    const rulesPath = path.join(tmpDir, RULES_FILE);
+    const existing =
+      '# Existing rules\n\n## gsd\n\n**Workspace type:** standalone\n';
+    fs.writeFileSync(rulesPath, existing);
+
+    assertRulesFileRepaired(repairAfterRulesFileArrives(rulesPath));
+
+    const after = fs.readFileSync(rulesPath, 'utf-8');
+    assert.strictEqual(
+      after,
+      existing,
+      'a lowercase heading counts as the section, so nothing is appended',
+    );
+    assert.strictEqual(
+      (after.match(/^##[ \t]+GSD\b/gim) || []).length,
+      1,
+      `no duplicate GSD heading: ${JSON.stringify(after)}`,
     );
   });
 });
