@@ -546,7 +546,6 @@ Commands are written below with the Claude Code prefix. Copilot CLI and OpenCode
 | `/gsd:do <description>` | Route freeform text to the right GSD command automatically |
 | `/gsd:note <text> \| list \| promote <N>` | Zero-friction idea capture, list notes, or promote to todos |
 | `/gsd:reapply-patches` | Reapply local modifications after a GSD update |
-| `/gsd:seed-memories` | Detect workspace topology and seed appropriate guardrail memories |
 | `/gsd:stats` | Display project statistics -- phases, plans, requirements, git metrics, and timeline |
 
 ---

@@ -2699,7 +2699,6 @@ test('TEMPLATE-RESOLVE-01: after single --local claude install, no .md file unde
       '{{COMMAND_PREFIX}}',
       '{{GSD_BLOCK_OPEN}}',
       '{{GSD_BLOCK_CLOSE}}',
-      '{{MEMORY_DIR}}',
     ];
 
     function walk(dir, out) {
@@ -4427,92 +4426,6 @@ test('ALLOW-11: second install logs "Permissions already up to date" (no per-sec
     assert.strictEqual(second.status, 0);
     assert.match(second.stdout, /Permissions already up to date/);
     assert.doesNotMatch(second.stdout, /Added \d+ allow entries/);
-  } finally {
-    cleanup(tmpDir);
-  }
-});
-
-// ── seed-memories resolves the project rules file per runtime ──
-
-test('F-RULES-01: seed-memories.md uses {{PROJECT_RULES_FILE}} and installs resolved per runtime', () => {
-  const seedMemoriesSrc = path.resolve(
-    __dirname,
-    '..',
-    'commands',
-    'gsd',
-    'seed-memories.md',
-  );
-  assert.ok(
-    fs.existsSync(seedMemoriesSrc),
-    'commands/gsd/seed-memories.md must exist in source (F-RULES-01)',
-  );
-  assert.ok(
-    fs.readFileSync(seedMemoriesSrc, 'utf8').includes('{{PROJECT_RULES_FILE}}'),
-    'seed-memories.md source must use {{PROJECT_RULES_FILE}} rather than a hardcoded rules ' +
-      'file name, so the same source serves every runtime (F-RULES-01)',
-  );
-
-  const tmpDir = fs.mkdtempSync(path.join(BASE_TMPDIR, 'gsd-f-rules-01-'));
-  try {
-    const install = (runtime) => {
-      const dir = path.join(tmpDir, runtime);
-      fs.mkdirSync(dir, { recursive: true });
-      const result = spawnSync(
-        process.execPath,
-        [INSTALLER, '--runtime', runtime, '--local'],
-        {
-          encoding: 'utf8',
-          timeout: 15000,
-          cwd: dir,
-          env: Object.assign({}, process.env, { HOME: os.homedir() }),
-        },
-      );
-      assert.strictEqual(
-        result.status,
-        0,
-        `${runtime} install must exit 0 (F-RULES-01)\nstderr: ` +
-          (result.stderr || ''),
-      );
-      return dir;
-    };
-
-    const claudeSeed = fs.readFileSync(
-      path.join(
-        install('claude'),
-        '.claude',
-        'commands',
-        'gsd',
-        'seed-memories.md',
-      ),
-      'utf8',
-    );
-    assert.ok(
-      claudeSeed.includes('CLAUDE.md'),
-      'claude install must resolve {{PROJECT_RULES_FILE}} to CLAUDE.md (F-RULES-01)',
-    );
-    assert.ok(
-      !claudeSeed.includes('copilot-instructions.md'),
-      'claude install must not carry the copilot rules file path (F-RULES-01)',
-    );
-
-    const copilotSeed = fs.readFileSync(
-      path.join(
-        install('copilot'),
-        '.github',
-        'skills',
-        'gsd-seed-memories',
-        'SKILL.md',
-      ),
-      'utf8',
-    );
-    assert.ok(
-      copilotSeed.includes('.github/copilot-instructions.md'),
-      'copilot install must resolve {{PROJECT_RULES_FILE}} to .github/copilot-instructions.md (F-RULES-01)',
-    );
-    assert.ok(
-      !copilotSeed.includes('CLAUDE.md'),
-      'copilot install must not carry the claude rules file path (F-RULES-01)',
-    );
   } finally {
     cleanup(tmpDir);
   }

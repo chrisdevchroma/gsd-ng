@@ -18,6 +18,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Model guidance now travels with the data. `gsd-tools resolve-model <agent> --json` includes `"model_note": "omit param"` when no model resolves, so a caller reads the omit instruction from the output itself instead of from repeated workflow guidance. A resolved model adds no extra key, and plain-text output is unchanged. Workflows no longer repeat the null-model rule. The model-profile reference is now `references/model-profiles.md`, a runtime-neutral name, and the separate profile-resolution reference is removed as redundant.
 
+### Removed
+
+- The installer no longer creates or seeds runtime memory directories. Generated memory indexes and the generated `## Memories` section are gone, and the `seed-memories` command no longer exists. Cross-project rules now live in a shared memory submodule linked from the project rules file, so the engine does not create, read, or check runtime memory files.
+
 ### Fixed
 
 - Non-Claude runtimes no longer receive bare Claude model aliases for GSD agents. Model profiles on OpenCode or Copilot resolved to names like `opus` that those runtimes cannot resolve, so workflow spawns failed on model lookup or expired-key errors before any work started. Resolution is now runtime-aware: outside a Claude runtime the resolved model is null (session-inherit) unless a `model_overrides` entry in `.planning/config.json` explicitly names a model, which still returns verbatim on every runtime and is the way to pin a specific provider-qualified model per agent. The plain-text `resolve-model` output prints an empty string instead of the literal `null`, so a null resolution never reaches a spawn call as text. Claude runtime behavior is unchanged, including the `inherit` profile, and `--json` output still carries the structured null.

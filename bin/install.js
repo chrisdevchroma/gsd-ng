@@ -675,12 +675,11 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, isCommand = false)
       content = content.replace(globalClaudeHomeRegex, toHomePrefix(pathPrefix, runtime));
       content = content.replace(localClaudeRegex, `./${dirName}/`);
       // NOTE: {{PROJECT_RULES_FILE}} is intentionally NOT resolved here.
-      // Skills (seed-memories, new-project Step 9) detect the active runtime at
+      // Skills (new-project Step 9) detect the active runtime at
       // skill-execution time and resolve runtime-divergent paths themselves
-      // (project rules file, memory directory) using the topology of the
-      // workspace — so the same skill source files work for every runtime in
-      // the RUNTIMES registry. Other template variables such as
-      // {{PROJECT_RULES_FILE}} and {{MEMORY_DIR}} are resolved later by the
+      // using the topology of the workspace, so the same skill source files
+      // work for every runtime in the RUNTIMES registry. Runtime template
+      // tokens such as {{PROJECT_RULES_FILE}} are resolved later by the
       // processTemplate loop using values from the active runtime's RUNTIMES
       // entry.
       content = processAttribution(content, getCommitAttribution());
