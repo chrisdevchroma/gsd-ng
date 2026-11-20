@@ -238,9 +238,6 @@ describe('RUNTIMES extension', () => {
   test('RUNTIMES.claude exposes GSD_BLOCK_CLOSE = ## (h2 prefix marker)', () => {
     assert.equal(RUNTIMES.claude.GSD_BLOCK_CLOSE, '## ');
   });
-  test('RUNTIMES.claude exposes MEMORY_DIR = .claude/memory/', () => {
-    assert.equal(RUNTIMES.claude.MEMORY_DIR, '.claude/memory/');
-  });
   test('RUNTIMES.copilot exposes COMMAND_PREFIX = /gsd-', () => {
     assert.equal(RUNTIMES.copilot.COMMAND_PREFIX, '/gsd-');
   });
@@ -253,29 +250,23 @@ describe('RUNTIMES extension', () => {
       '<!-- /GSD Configuration -->',
     );
   });
-  test('RUNTIMES.copilot exposes MEMORY_DIR = .github/memory/', () => {
-    assert.equal(RUNTIMES.copilot.MEMORY_DIR, '.github/memory/');
-  });
-
-  test('processTemplate resolves 4 new tokens for claude', () => {
-    const corpus =
-      '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+  test('processTemplate resolves 3 tokens for claude', () => {
+    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}}';
     const out = processTemplate(corpus, buildContext('claude'));
-    assert.equal(out, '/gsd: ## GSD ##  .claude/memory/');
+    assert.equal(out, '/gsd: ## GSD ## ');
     assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
   });
-  test('processTemplate resolves 4 new tokens for copilot', () => {
-    const corpus =
-      '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}} {{MEMORY_DIR}}';
+  test('processTemplate resolves 3 tokens for copilot', () => {
+    const corpus = '{{COMMAND_PREFIX}} {{GSD_BLOCK_OPEN}} {{GSD_BLOCK_CLOSE}}';
     const out = processTemplate(corpus, buildContext('copilot'));
     assert.equal(
       out,
-      '/gsd- <!-- GSD Configuration --> <!-- /GSD Configuration --> .github/memory/',
+      '/gsd- <!-- GSD Configuration --> <!-- /GSD Configuration -->',
     );
     assert.ok(!out.includes('{{'), 'no unresolved {{VAR}} should remain');
   });
 
-  test('SYNTHETIC RUNTIME ACCEPTANCE: adding _test_runtime registry entry alone resolves all 6 keys', () => {
+  test('SYNTHETIC RUNTIME ACCEPTANCE: adding _test_runtime registry entry alone resolves all 5 keys', () => {
     // Mutate RUNTIMES in-test to add a synthetic runtime — proves "registry-only abstraction" property.
     const stash = RUNTIMES._test_runtime;
     RUNTIMES._test_runtime = {
@@ -284,7 +275,6 @@ describe('RUNTIMES extension', () => {
       COMMAND_PREFIX: '/_test:',
       GSD_BLOCK_OPEN: '<!-- TEST OPEN -->',
       GSD_BLOCK_CLOSE: '<!-- TEST CLOSE -->',
-      MEMORY_DIR: '_test/memory/',
     };
     try {
       const corpus = [
@@ -293,12 +283,11 @@ describe('RUNTIMES extension', () => {
         '{{COMMAND_PREFIX}}',
         '{{GSD_BLOCK_OPEN}}',
         '{{GSD_BLOCK_CLOSE}}',
-        '{{MEMORY_DIR}}',
       ].join(' | ');
       const out = processTemplate(corpus, { runtime: '_test_runtime' });
       assert.equal(
         out,
-        '_TEST_RULES.md | _TEST_TOOL | /_test: | <!-- TEST OPEN --> | <!-- TEST CLOSE --> | _test/memory/',
+        '_TEST_RULES.md | _TEST_TOOL | /_test: | <!-- TEST OPEN --> | <!-- TEST CLOSE -->',
       );
       assert.ok(
         !out.includes('{{'),
@@ -325,7 +314,6 @@ describe('RUNTIMES.opencode', () => {
     ['COMMAND_PREFIX', '/gsd-'],
     ['GSD_BLOCK_OPEN', '<!-- GSD Configuration -->'],
     ['GSD_BLOCK_CLOSE', '<!-- /GSD Configuration -->'],
-    ['MEMORY_DIR', '.opencode/memory/'],
   ];
 
   for (const [key, expected] of contentKeys) {
@@ -342,7 +330,7 @@ describe('RUNTIMES.opencode', () => {
     ]);
   });
 
-  test('processTemplate resolves all six content keys for opencode', () => {
+  test('processTemplate resolves all five content keys for opencode', () => {
     const corpus = contentKeys.map(([key]) => `{{${key}}}`).join(' | ');
     const out = processTemplate(corpus, buildContext('opencode'));
     assert.equal(out, contentKeys.map(([, value]) => value).join(' | '));

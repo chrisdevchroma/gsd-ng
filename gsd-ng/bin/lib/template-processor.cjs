@@ -31,7 +31,6 @@ const RUNTIMES = {
     COMMAND_PREFIX: '/gsd:',
     GSD_BLOCK_OPEN: '## GSD',
     GSD_BLOCK_CLOSE: '## ',
-    MEMORY_DIR: '.claude/memory/',
     // The project-local config directory name, for content that names a
     // project-relative path. It duplicates `configHome.localDirName` because
     // substitution reads uppercase keys straight off the row while the
@@ -122,7 +121,6 @@ const RUNTIMES = {
     COMMAND_PREFIX: '/gsd-',
     GSD_BLOCK_OPEN: '<!-- GSD Configuration -->',
     GSD_BLOCK_CLOSE: '<!-- /GSD Configuration -->',
-    MEMORY_DIR: '.github/memory/',
     CONFIG_DIR: '.github',
     RUNTIME_LABEL: 'Copilot CLI',
     PROJECT_DIR_ENV: 'GSD_PROJECT_DIR',
@@ -219,7 +217,6 @@ const RUNTIMES = {
     COMMAND_PREFIX: '/gsd-',
     GSD_BLOCK_OPEN: '<!-- GSD Configuration -->',
     GSD_BLOCK_CLOSE: '<!-- /GSD Configuration -->',
-    MEMORY_DIR: '.opencode/memory/',
     CONFIG_DIR: '.opencode',
     RUNTIME_LABEL: 'OpenCode',
     PROJECT_DIR_ENV: 'GSD_PROJECT_DIR',
